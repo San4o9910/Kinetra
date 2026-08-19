@@ -1,29 +1,39 @@
 name: Bootstrap Kinetra repository
 
 on:
-  push:
+  pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
   bootstrap:
+    if: github.event_name == 'workflow_dispatch' || github.head_ref == 'bootstrap/baseline'
     runs-on: ubuntu-latest
+    env:
+      TARGET_BRANCH: ${{ github.event.pull_request.head.ref || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ env.TARGET_BRANCH }}
           fetch-depth: 0
 
       - name: Restore baseline archive
         shell: bash
         run: |
           set -euo pipefail
-          cat .bootstrap/part-* | base64 --decode > /tmp/kinetra-baseline.tar.gz
-          echo "fe60e1b11284ad9de5565c0317c9a9aa2eea1ddd0e4a00b355be558395b79d9d  /tmp/kinetra-baseline.tar.gz" | sha256sum -c -
-          tar -xzf /tmp/kinetra-baseline.tar.gz -C .
-          rm -rf .bootstrap
-          rm -f .github/workflows/bootstrap-project.yml
+          if [[ -d .bootstrap ]]; then
+            cat .bootstrap/part-* | base64 --decode > /tmp/kinetra-baseline.tar.gz
+            echo "fe60e1b11284ad9de5565c0317c9a9aa2eea1ddd0e4a00b355be558395b79d9d  /tmp/kinetra-baseline.tar.gz" | sha256sum -c -
+            tar -xzf /tmp/kinetra-baseline.tar.gz -C .
+            rm -rf .bootstrap
+            rm -f .github/workflows/bootstrap-project.yml
+          else
+            echo "Baseline archive already restored; nothing to unpack."
+          fi
 
       - uses: actions/setup-node@v4
         with:
@@ -44,14 +54,18 @@ jobs:
             -print0 | sort -z | xargs -0 sha256sum > MANIFEST.sha256
           sha256sum -c MANIFEST.sha256
 
-      - name: Commit baseline
+      - name: Commit baseline to bootstrap branch
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
+          if git diff --cached --quiet; then
+            echo "No baseline changes to commit."
+            exit 0
+          fi
           git commit -m 'feat: T01 foundation + T02 auth module + GitHub Actions CI' \
             -m 'Monorepo: @kinetra/frontend, @kinetra/backend, @kinetra/shared' \
             -m 'PWA foundation, JWT authentication, PostgreSQL auth migration, E2E tests and GitHub Actions CI.'
-          git push origin HEAD:main
+          git push origin HEAD:${TARGET_BRANCH}
