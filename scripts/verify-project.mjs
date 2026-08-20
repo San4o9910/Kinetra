@@ -51,6 +51,7 @@ const requiredFiles = [
   'docs/T04_PROFILE_SURVEY.md',
   'docs/T05_ONBOARDING_CAROUSEL.md',
   'docs/T06_BASE_LESSONS.md',
+  'docs/T07_MAIN_SCREEN.md',
   'apps/frontend/index.html',
   'apps/frontend/src/features/auth/LoginScreen.tsx',
   'apps/frontend/src/features/survey/SurveyWizard.tsx',
@@ -61,12 +62,20 @@ const requiredFiles = [
   'apps/frontend/src/features/base-lessons/BaseLessonsView.tsx',
   'apps/frontend/src/features/base-lessons/LessonPlayer.tsx',
   'apps/frontend/src/features/base-lessons/model.ts',
+  'apps/frontend/src/features/navigation/TabBar.tsx',
+  'apps/frontend/src/features/program/ComingSoonScreen.tsx',
+  'apps/frontend/src/features/program/ProgramScreen.tsx',
+  'apps/frontend/src/features/program/ProgramWeekView.tsx',
+  'apps/frontend/src/features/program/WorkoutPlayer.tsx',
+  'apps/frontend/src/features/program/model.ts',
   'apps/frontend/src/routing.ts',
   'apps/frontend/test/api-session.test.ts',
   'apps/frontend/test/survey-routing.test.ts',
   'apps/frontend/test/onboarding.test.ts',
   'apps/frontend/test/base-lessons-api.test.ts',
   'apps/frontend/test/base-lessons.test.ts',
+  'apps/frontend/test/main-screen.test.ts',
+  'apps/frontend/test/program-api.test.ts',
   'apps/frontend/public/manifest.webmanifest',
   'apps/frontend/public/service-worker.js',
   'apps/frontend/public/offline.html',
@@ -78,6 +87,7 @@ const requiredFiles = [
   'apps/backend/migrations/002_content.sql',
   'apps/backend/migrations/003_survey.sql',
   'apps/backend/migrations/004_base_lessons.sql',
+  'apps/backend/migrations/005_program_media_availability.sql',
   'apps/backend/scripts/migrate.mjs',
   'apps/backend/scripts/seed.mjs',
   'apps/backend/scripts/verify-content.mjs',
@@ -103,13 +113,22 @@ const requiredFiles = [
   'apps/backend/src/base-lessons/postgres-base-lessons.repository.ts',
   'apps/backend/src/base-lessons/runtime.ts',
   'apps/backend/src/base-lessons/storage.ts',
+  'apps/backend/src/program/router.ts',
+  'apps/backend/src/program/schema.ts',
+  'apps/backend/src/program/service.ts',
+  'apps/backend/src/program/repository.ts',
+  'apps/backend/src/program/postgres-program.repository.ts',
+  'apps/backend/src/program/runtime.ts',
   'apps/backend/test/auth.e2e.test.ts',
   'apps/backend/test/profile.e2e.test.ts',
   'apps/backend/test/profile.postgres.test.ts',
   'apps/backend/test/base-lessons.e2e.test.ts',
   'apps/backend/test/base-lessons.postgres.test.ts',
+  'apps/backend/test/program.e2e.test.ts',
+  'apps/backend/test/program.postgres.test.ts',
   'apps/backend/test/support/fake-object-url-signer.ts',
   'apps/backend/test/support/in-memory-base-lessons.repository.ts',
+  'apps/backend/test/support/in-memory-program.repository.ts',
   'scripts/test-frontend-browser.mjs',
   'packages/shared/src/index.ts',
 ];
@@ -425,6 +444,11 @@ expectMatches(
   /WHERE conname = ANY\(\$1::text\[\]\)[\s\S]*?\[\s*\[\s*'videos_storage_key_not_blank'/u,
   'T06 database verifier binds constraint names as one PostgreSQL array parameter',
 );
+expectIncludes(
+  contentVerifier,
+  'videos_media_available_requires_storage_key',
+  'T07 database verifier checks the workout media availability constraint',
+);
 
 const ciWorkflow = await readText('.github/workflows/ci.yml');
 expectIncludes(ciWorkflow, 'run: npm run db:seed', 'CI executes the T03 seed');
@@ -473,6 +497,26 @@ expectIncludes(
   ciWorkflow,
   "grep -F 'KINETRA_T06_BROWSER_E2E=PASS'",
   'CI proves that the T06 browser acceptance test executed',
+);
+expectIncludes(
+  ciWorkflow,
+  "grep -F 'KINETRA_T07_BACKEND_E2E=PASS'",
+  'CI proves that the T07 HTTP E2E test executed',
+);
+expectIncludes(
+  ciWorkflow,
+  "grep -F 'KINETRA_T07_POSTGRES_INTEGRATION=PASS'",
+  'CI proves that the T07 PostgreSQL integration test executed',
+);
+expectIncludes(
+  ciWorkflow,
+  "grep -F 'KINETRA_T07_BROWSER_E2E=PASS'",
+  'CI proves that the T07 browser acceptance test executed',
+);
+expectIncludes(
+  ciWorkflow,
+  "echo 'KINETRA_T07_TEST_SUITE=PASS'",
+  'CI emits the T07 suite completion marker',
 );
 expectIncludes(
   ciWorkflow,
@@ -589,6 +633,25 @@ expectIncludes(
   baseLessonsMigration,
   'video_progress_user_completed_idx',
   'T06 completion lookup has a user-scoped partial index',
+);
+
+const programMediaMigration = await readText(
+  'apps/backend/migrations/005_program_media_availability.sql',
+);
+expectIncludes(
+  programMediaMigration,
+  'media_available boolean NOT NULL DEFAULT false',
+  'T07 workout media stays unavailable until an upload is confirmed',
+);
+expectIncludes(
+  programMediaMigration,
+  'videos_media_available_requires_storage_key',
+  'T07 available media must have a storage key',
+);
+expectIncludes(
+  programMediaMigration,
+  'NOT media_available OR storage_key IS NOT NULL',
+  'T07 database rejects available media without an object key',
 );
 
 expectIncludes(
@@ -713,6 +776,140 @@ for (const contract of [
   expectIncludes(baseLessonsDocumentation, contract, `T06 documented contract: ${contract}`);
 }
 
+expectIncludes(
+  backendApp,
+  "'/api/v1/program'",
+  'T07 program router is mounted under /api/v1/program',
+);
+
+const programRouter = await readText('apps/backend/src/program/router.ts');
+expectMatches(
+  programRouter,
+  /router\.get\(\s*['"]\/current-week['"]/u,
+  'T07 GET current-week route exists',
+);
+expectMatches(
+  programRouter,
+  /router\.get\(\s*['"]\/weeks\/:weekNumber['"]/u,
+  'T07 GET selected week route exists',
+);
+expectMatches(
+  programRouter,
+  /router\.put\(\s*['"]\/complete-workout['"]/u,
+  'T07 PUT complete-workout route exists',
+);
+expectIncludes(programRouter, 'router.use(authMiddleware)', 'T07 routes require access JWT');
+expectIncludes(programRouter, "'Cache-Control', 'no-store'", 'T07 responses disable caching');
+expectIncludes(
+  programRouter,
+  'requireAuthenticatedPrincipal(request)',
+  'T07 derives workout identity only from the JWT principal',
+);
+
+const programSchema = await readText('apps/backend/src/program/schema.ts');
+expectIncludes(programSchema, 'video_id: z.uuid(', 'T07 validates workout video UUIDs');
+expectIncludes(programSchema, 'program_week:', 'T07 validates the submitted program week');
+expectIncludes(programSchema, '.int(', 'T07 requires integer week numbers');
+expectIncludes(programSchema, '.min(1', 'T07 rejects non-positive week numbers');
+expectIncludes(programSchema, '.strict()', 'T07 completion payload rejects unknown fields');
+
+const programRepository = await readText('apps/backend/src/program/postgres-program.repository.ts');
+expectIncludes(
+  programRepository,
+  'COUNT(DISTINCT day_of_week)',
+  'T07 current-week progress counts distinct completed days',
+);
+expectIncludes(
+  programRepository,
+  'latestWeekDaysCompleted >= PROGRAM_DAYS_PER_WEEK',
+  'T07 advances after all seven days in the latest started week',
+);
+expectIncludes(
+  programRepository,
+  'ORDER BY day.day_of_week',
+  'T07 returns seven days in stable weekday order',
+);
+expectIncludes(
+  programRepository,
+  'video.media_available',
+  'T07 reads explicit workout media availability',
+);
+expectIncludes(
+  programRepository,
+  'mediaAvailable: row.media_available',
+  'T07 maps persisted workout media availability',
+);
+expectIncludes(
+  programRepository,
+  'completion.user_id = $1',
+  'T07 completion joins are scoped to the authenticated user',
+);
+expectIncludes(
+  programRepository,
+  "SELECT user_id, video_id, $3, CURRENT_DATE, NOW(), 'player'",
+  'T07 records player as the workout completion source',
+);
+expectIncludes(
+  programRepository,
+  'ON CONFLICT (user_id, video_id, program_week) DO NOTHING',
+  'T07 workout completion is idempotent',
+);
+
+const programService = await readText('apps/backend/src/program/service.ts');
+expectIncludes(
+  programService,
+  'programIconByDirection',
+  'T07 backend maps stored icon keys to the public canonical emoji contract',
+);
+for (const icon of ['🧘', '💪', '🌿', '⚡', '🧘‍♂️', '🧠', '🍲']) {
+  expectIncludes(programService, icon, `T07 backend workout icon: ${icon}`);
+}
+expectIncludes(
+  programService,
+  'parsedWeekNumber.data > progress.currentWeekNumber + 1',
+  'T07 only previews at most the next program week',
+);
+expectIncludes(
+  programService,
+  'parsedBody.data.program_week !== progress.currentWeekNumber',
+  'T07 distinguishes current, past, and locked future workout requests',
+);
+expectIncludes(
+  programService,
+  'existingCompletion.completedAt !== null',
+  'T07 preserves idempotent retries after the current week advances',
+);
+expectIncludes(programService, "'PROGRAM_WEEK_LOCKED'", 'T07 rejects locked week access');
+expectIncludes(programService, "'WORKOUT_NOT_FOUND'", 'T07 rejects mismatched workout IDs');
+expectIncludes(
+  programService,
+  'snapshot.days.length !== PROGRAM_DAYS_PER_WEEK',
+  'T07 fails closed if a program week is not seven days',
+);
+expectIncludes(programService, "return 'locked'", 'T07 marks the preview week as locked');
+expectIncludes(
+  programService,
+  "status !== 'locked' && day.mediaAvailable",
+  'T07 signs media only after upload confirmation and never for a locked week',
+);
+
+const programDocumentation = await readText('docs/T07_MAIN_SCREEN.md');
+for (const contract of [
+  'GET /api/v1/program/current-week',
+  'GET /api/v1/program/weeks/:weekNumber',
+  'PUT /api/v1/program/complete-workout',
+  'PROGRAM_WEEK_LOCKED',
+  'Видео скоро будет доступно',
+  'KINETRA_T07_BACKEND_E2E=PASS',
+  'KINETRA_T07_POSTGRES_INTEGRATION=PASS',
+  'KINETRA_T07_TAB_NAVIGATION=PASS',
+  'KINETRA_T07_SYSTEM_BACK=PASS',
+  'KINETRA_T07_PLAYER_TAB_HISTORY=PASS',
+  'KINETRA_T07_BROWSER_E2E=PASS',
+]) {
+  expectIncludes(programDocumentation, contract, `T07 documented contract: ${contract}`);
+}
+
 const frontendApi = await readText('apps/frontend/src/lib/api.ts');
 expectIncludes(frontendApi, "credentials: 'include'", 'frontend sends refresh cookies');
 expectIncludes(frontendApi, "'/api/v1/auth/refresh'", 'frontend refreshes access tokens');
@@ -757,6 +954,35 @@ expectIncludes(
   "'/api/v1/base-lessons/complete-program'",
   'T06 frontend calls server-side program completion',
 );
+expectIncludes(
+  frontendApi,
+  "'/api/v1/program/current-week'",
+  'T07 frontend fetches the current program week',
+);
+expectIncludes(
+  frontendApi,
+  '/api/v1/program/weeks/${encodeURIComponent(String(weekNumber))}',
+  'T07 frontend fetches a selected program week',
+);
+expectIncludes(
+  frontendApi,
+  "'/api/v1/program/complete-workout'",
+  'T07 frontend completes the selected workout',
+);
+
+const sharedContracts = await readText('packages/shared/src/index.ts');
+for (const contract of [
+  'ProgramDirection',
+  'ProgramWeekStatus',
+  'ProgramVideo',
+  'ProgramDay',
+  'ProgramWeek',
+  'ProgramOverallProgress',
+  'WeekResponse',
+  'CompleteWorkoutRequest',
+]) {
+  expectIncludes(sharedContracts, contract, `T07 shared contract: ${contract}`);
+}
 
 const frontendApp = await readText('apps/frontend/src/App.tsx');
 expectIncludes(frontendApp, '<LoginScreen', 'frontend has an access-token handoff from login');
@@ -769,6 +995,9 @@ expectIncludes(
 expectIncludes(frontendApp, 'logout().finally', 'frontend revokes the refresh session on logout');
 expectIncludes(frontendApp, '<OnboardingCarousel', 'T05 route renders the onboarding carousel');
 expectIncludes(frontendApp, '<BaseLessonsScreen', 'T06 route renders the base lessons screen');
+expectIncludes(frontendApp, '<ProgramScreen', 'T07 active route renders the weekly program');
+expectIncludes(frontendApp, '<TabBar', 'T07 active routes render the bottom tab bar');
+expectIncludes(frontendApp, '<ComingSoonScreen', 'T07 renders schedule/progress placeholders');
 
 const baseLessonsModel = await readText('apps/frontend/src/features/base-lessons/model.ts');
 expectIncludes(
@@ -861,6 +1090,138 @@ expectIncludes(lessonPlayer, "window.addEventListener('pagehide'", 'T06 saves be
 expectIncludes(lessonPlayer, "window.addEventListener('popstate'", 'T06 handles system Back');
 expectIncludes(frontendApi, 'keepalive: true', 'T06 exit progress PUT is keepalive-enabled');
 
+const programModel = await readText('apps/frontend/src/features/program/model.ts');
+expectIncludes(
+  programModel,
+  'WORKOUT_COMPLETION_THRESHOLD = 90',
+  'T07 player completion threshold is ninety percent',
+);
+for (const presentation of [
+  "breathing: { label: 'Дыхание', icon: '🧘' }",
+  "strength: { label: 'Сила', icon: '💪' }",
+  "body_therapy: { label: 'Тело мой дом', icon: '🌿' }",
+  "functional: { label: 'Функционал', icon: '⚡' }",
+  "stretching: { label: 'Растяжка', icon: '🧘‍♂️' }",
+  "neuro: { label: 'Нейрогимнастика', icon: '🧠' }",
+  "recovery: { label: 'Восстановление', icon: '🍲' }",
+]) {
+  expectIncludes(programModel, presentation, `T07 direction presentation: ${presentation}`);
+}
+expectIncludes(
+  programModel,
+  'Math.min(totalWeeks, currentWeekNumber + 1)',
+  'T07 frontend cannot navigate beyond the next preview week',
+);
+expectIncludes(programModel, 'Intl.DateTimeFormat', 'T07 computes today in the profile timezone');
+expectIncludes(
+  programModel,
+  "return day.completed ? 'completed' : 'available'",
+  'T07 derives completed and available workout card states',
+);
+
+const tabBar = await readText('apps/frontend/src/features/navigation/TabBar.tsx');
+for (const testId of ['tab-bar', 'tab-home', 'tab-schedule', 'tab-progress', 'tab-settings']) {
+  expectIncludes(tabBar, testId, `T07 tab bar test hook: ${testId}`);
+}
+for (const label of ['Главная', 'Расписание', 'Прогресс', 'Настройки']) {
+  expectIncludes(tabBar, label, `T07 tab bar label: ${label}`);
+}
+expectIncludes(
+  tabBar,
+  "aria-current={active ? 'page'",
+  'T07 exposes the active tab to assistive tech',
+);
+expectIncludes(
+  tabBar,
+  'event.preventDefault()',
+  'T07 tab links preserve standalone client routing',
+);
+
+const programWeekView = await readText('apps/frontend/src/features/program/ProgramWeekView.tsx');
+for (const testId of [
+  'main-screen',
+  'week-heading',
+  'week-progress',
+  'week-previous',
+  'week-next',
+  'workout-card-',
+  'workout-status-',
+  'today-workout',
+]) {
+  expectIncludes(programWeekView, testId, `T07 main-screen test hook: ${testId}`);
+}
+expectIncludes(programWeekView, 'role="progressbar"', 'T07 exposes week progress semantics');
+expectIncludes(
+  programWeekView,
+  'disabled={disabled}',
+  'T07 locked workout cards are not interactive',
+);
+expectIncludes(
+  programWeekView,
+  "data-today={isToday ? 'true'",
+  'T07 identifies the current day for browser and accessibility checks',
+);
+expectIncludes(programWeekView, "isToday ? 'is-today'", 'T07 applies the today highlight');
+for (const status of ['Пройдено', 'Доступно', 'Заблокировано']) {
+  expectIncludes(programWeekView, status, `T07 workout status copy: ${status}`);
+}
+
+const comingSoonScreen = await readText('apps/frontend/src/features/program/ComingSoonScreen.tsx');
+expectIncludes(comingSoonScreen, 'Скоро', 'T07 schedule/progress placeholder copy is present');
+
+const workoutPlayer = await readText('apps/frontend/src/features/program/WorkoutPlayer.tsx');
+for (const testId of [
+  'workout-player',
+  'workout-video-placeholder',
+  'workout-video',
+  'workout-back',
+]) {
+  expectIncludes(workoutPlayer, testId, `T07 workout player test hook: ${testId}`);
+}
+expectIncludes(
+  workoutPlayer,
+  'Видео скоро будет доступно',
+  'T07 renders the missing workout video placeholder',
+);
+expectIncludes(
+  workoutPlayer,
+  'completionPercent >= WORKOUT_COMPLETION_THRESHOLD',
+  'T07 completes playback only at the ninety-percent threshold',
+);
+expectIncludes(
+  workoutPlayer,
+  'completeWorkout({',
+  'T07 player sends the authenticated workout completion request',
+);
+expectIncludes(workoutPlayer, 'onTimeUpdate', 'T07 player observes HTML5 playback progress');
+expectIncludes(workoutPlayer, 'window.setInterval', 'T07 player throttles progress checks');
+expectIncludes(
+  workoutPlayer,
+  "window.addEventListener('popstate'",
+  'T07 player handles system Back',
+);
+
+const programScreen = await readText('apps/frontend/src/features/program/ProgramScreen.tsx');
+expectIncludes(programScreen, 'getCurrentWeek(controller.signal)', 'T07 restores the current week');
+expectIncludes(programScreen, 'getWeek(weekNumber, controller.signal)', 'T07 navigates by week');
+expectIncludes(programScreen, '<ProgramWeekView', 'T07 renders the seven-day week view');
+expectIncludes(programScreen, '<WorkoutPlayer', 'T07 opens the workout player');
+expectIncludes(
+  programScreen,
+  'dayOfWeekInTimeZone(new Date(), timezone)',
+  'T07 highlights today in the profile timezone',
+);
+expectIncludes(
+  programScreen,
+  'handleWorkoutCompleted',
+  'T07 applies the authoritative completion response to the card list',
+);
+expectIncludes(
+  programScreen,
+  'requestVersion.current',
+  'T07 prevents stale week responses from replacing newer navigation',
+);
+
 const onboardingModel = await readText('apps/frontend/src/features/onboarding/model.ts');
 expectIncludes(
   onboardingModel,
@@ -926,6 +1287,13 @@ for (const [status, route] of [
   expectIncludes(routes, `case '${status}'`, `T04 route status: ${status}`);
   expectIncludes(routes, `return appRoutes.${route}`, `T04 route destination: ${route}`);
 }
+expectIncludes(routes, "schedule: '/schedule'", 'T07 schedule tab route exists');
+expectIncludes(routes, "progress: '/progress'", 'T07 progress tab route exists');
+expectIncludes(
+  routes,
+  'isActiveAppRoute',
+  'T07 active-profile route guard includes all tab routes',
+);
 
 const frontendStyles = await readText('apps/frontend/src/styles.css');
 for (const color of ['#080909', '#181c1c', '#c8f169', '#f4f6f2', '#a8b0ac']) {
@@ -959,6 +1327,49 @@ expectIncludes(
   'background: linear-gradient(135deg, #181c1c, #202525)',
   'T06 poster uses the prescribed placeholder gradient',
 );
+for (const selectorFragment of [
+  '.program-shell',
+  '.program-week-progress',
+  '.workout-card',
+  '.workout-card.is-completed',
+  '.workout-card.is-today',
+  '.workout-card.is-locked',
+  '.tab-bar',
+  '.tab-bar-link',
+  '.workout-video-placeholder',
+]) {
+  expectIncludes(frontendStyles, selectorFragment, `T07 style surface: ${selectorFragment}`);
+}
+expectMatches(
+  frontendStyles,
+  /\.tab-bar\s*\{[^}]*position:\s*fixed/isu,
+  'T07 tab bar is fixed to the viewport',
+);
+expectIncludes(
+  frontendStyles,
+  'height: calc(56px + env(safe-area-inset-bottom))',
+  'T07 tab bar includes the bottom safe area',
+);
+expectIncludes(
+  frontendStyles,
+  'border-top: 1px solid #2a2f2f',
+  'T07 tab bar has the prescribed border',
+);
+expectIncludes(frontendStyles, 'background: #111414', 'T07 tab bar has the prescribed surface');
+expectIncludes(frontendStyles, 'color: #6b7370', 'T07 inactive tabs use the prescribed color');
+expectIncludes(frontendStyles, 'min-height: 44px', 'T07 tab targets meet the minimum size');
+expectIncludes(
+  frontendStyles,
+  'border-left: 3px solid #c8f169',
+  'T07 completed cards have an accent',
+);
+expectIncludes(frontendStyles, 'opacity: 0.4', 'T07 locked cards use the prescribed opacity');
+expectIncludes(
+  frontendStyles,
+  '.workout-card.is-today',
+  'T07 today card receives an accent outline',
+);
+expectIncludes(frontendStyles, 'gap: 12px', 'T07 workout list uses the prescribed card gap');
 expectIncludes(indexHtml, 'fonts.googleapis.com', 'Inter stylesheet is connected');
 expectIncludes(indexHtml, 'family=Inter', 'Inter font family is requested');
 
@@ -966,6 +1377,7 @@ const browserTest = await readText('scripts/test-frontend-browser.mjs');
 expectIncludes(browserTest, 'KINETRA_T04_BROWSER_E2E=PASS', 'T04 browser acceptance test exists');
 expectIncludes(browserTest, 'KINETRA_T05_BROWSER_E2E=PASS', 'T05 browser acceptance test exists');
 expectIncludes(browserTest, 'KINETRA_T06_BROWSER_E2E=PASS', 'T06 browser acceptance test exists');
+expectIncludes(browserTest, 'KINETRA_T07_BROWSER_E2E=PASS', 'T07 browser acceptance test exists');
 expectIncludes(
   browserTest,
   'KINETRA_T06_PERIODIC_PROGRESS=PASS',
@@ -1000,7 +1412,11 @@ expectIncludes(
   'browser test checks session restore',
 );
 expectIncludes(browserTest, 'base lessons route', 'browser test checks base-lessons routing');
-expectIncludes(browserTest, 'active route', 'browser test checks active routing');
+expectIncludes(
+  browserTest,
+  'T07 main screen after base lesson completion',
+  'browser test checks active routing to the T07 main screen',
+);
 expectIncludes(
   browserTest,
   "request.url === '/api/v1/base-lessons'",
@@ -1030,6 +1446,71 @@ expectIncludes(
   browserTest,
   'counters.lessonProgress, 6',
   'T06 browser scenario completes four distinct lessons',
+);
+expectIncludes(
+  browserTest,
+  "request.url === '/api/v1/program/current-week'",
+  'T07 browser mock serves the current program week',
+);
+expectIncludes(
+  browserTest,
+  '/api/v1/program/complete-workout',
+  'T07 browser mock validates workout completion',
+);
+expectIncludes(
+  browserTest,
+  'KINETRA_T07_WEEK_NAVIGATION=PASS',
+  'T07 browser scenario proves week arrow navigation',
+);
+expectIncludes(
+  browserTest,
+  'KINETRA_T07_TAB_NAVIGATION=PASS',
+  'T07 browser scenario proves schedule, progress, and home tab routing',
+);
+expectIncludes(
+  browserTest,
+  'KINETRA_T07_SYSTEM_BACK=PASS',
+  'T07 browser scenario proves standalone-PWA system Back from a workout',
+);
+expectIncludes(
+  browserTest,
+  'KINETRA_T07_PLAYER_TAB_HISTORY=PASS',
+  'T07 browser scenario proves player and tab navigation share one clean history stack',
+);
+expectIncludes(
+  browserTest,
+  'KINETRA_T07_WORKOUT_COMPLETION=PASS',
+  'T07 browser scenario proves ninety-percent workout completion',
+);
+expectIncludes(
+  browserTest,
+  'workout-video-placeholder',
+  'T07 browser scenario opens the missing-workout-video placeholder',
+);
+expectIncludes(
+  browserTest,
+  "video.dispatchEvent(new Event('timeupdate'",
+  'T07 browser scenario drives real media progress events',
+);
+expectIncludes(
+  browserTest,
+  'belowThresholdProgress',
+  'T07 browser scenario proves that eighty-nine percent does not complete a workout',
+);
+expectIncludes(
+  browserTest,
+  'assertMainScreenLayout(320)',
+  'T07 browser scenario covers the minimum mobile width',
+);
+expectIncludes(
+  browserTest,
+  "attribute('workout-status-1', 'data-state')",
+  'T07 browser scenario verifies the completed card state',
+);
+expectIncludes(
+  browserTest,
+  "attribute('tab-settings', 'aria-current')",
+  'T07 browser scenario verifies active tab semantics',
 );
 expectIncludes(
   browserTest,
@@ -1239,18 +1720,93 @@ expectIncludes(
   'T06 frontend API test preserves the unlock failure contract',
 );
 
+const programBackendTests = await readText('apps/backend/test/program.e2e.test.ts');
+for (const scenario of [
+  'program endpoints require an access token',
+  'current week defaults to week one and exposes seven ordered workout days',
+  'specific week access allows only the current week and the next locked week',
+  'workout media URLs require both availability and an unlocked week',
+  'workout completion is strict, validates schedule membership, and is idempotent',
+  'completing all seven workouts advances and caps the current program week',
+]) {
+  expectIncludes(programBackendTests, scenario, `T07 backend scenario: ${scenario}`);
+}
+expectIncludes(
+  programBackendTests,
+  'KINETRA_T07_BACKEND_E2E=PASS',
+  'T07 HTTP E2E emits an execution marker',
+);
+expectIncludes(
+  programBackendTests,
+  "['🧘', '💪', '🌿', '⚡', '🧘‍♂️', '🧠', '🍲']",
+  'T07 HTTP E2E fixes all seven canonical workout icons',
+);
+
+const programPostgresTests = await readText('apps/backend/test/program.postgres.test.ts');
+expectIncludes(
+  programPostgresTests,
+  "process.env.KINETRA_REQUIRE_POSTGRES_TEST === 'true'",
+  'T07 PostgreSQL test fails closed when required by CI',
+);
+expectIncludes(
+  programPostgresTests,
+  "COUNT(*) FILTER (WHERE source = 'player')",
+  'T07 PostgreSQL test proves the completion source',
+);
+expectIncludes(
+  programPostgresTests,
+  'day.mediaAvailable === false',
+  'T07 PostgreSQL test proves seeded workout media is unavailable',
+);
+expectIncludes(
+  programPostgresTests,
+  "{ kind: 'completed', inserted: false }",
+  'T07 PostgreSQL test proves idempotent completion',
+);
+expectIncludes(
+  programPostgresTests,
+  'KINETRA_T07_POSTGRES_INTEGRATION=PASS',
+  'T07 PostgreSQL test emits an execution marker',
+);
+
+const mainScreenFrontendTests = await readText('apps/frontend/test/main-screen.test.ts');
+for (const scenario of ['seven', 'progress', 'arrow', 'tab', 'today']) {
+  expectIncludes(
+    mainScreenFrontendTests.toLowerCase(),
+    scenario,
+    `T07 frontend tests cover ${scenario}`,
+  );
+}
+
+const programFrontendApiTests = await readText('apps/frontend/test/program-api.test.ts');
+for (const path of [
+  '/api/v1/program/current-week',
+  '/api/v1/program/weeks/2',
+  '/api/v1/program/complete-workout',
+]) {
+  expectIncludes(programFrontendApiTests, path, `T07 frontend API test: ${path}`);
+}
+expectIncludes(
+  programFrontendApiTests,
+  'authorization',
+  'T07 frontend API tests prove access JWT attachment',
+);
+
 for (const temporaryArtifact of [
   '.github/workflows/apply-t04-fixes.yml',
   '.github/workflows/apply-t05.yml',
   '.github/workflows/apply-t06.yml',
+  '.github/workflows/apply-t07.yml',
   '.github/workflows/export-dev-env.yml',
   '.github/workflows/export-full-env.yml',
   '.github/workflows/export-source.yml',
   '.t05-bootstrap',
   '.t06-bootstrap',
+  '.t07-bootstrap',
   'docs/.probe',
   'docs/.t05-pr-trigger',
   'docs/.t06-pr-trigger',
+  'docs/.t07-pr-trigger',
 ]) {
   try {
     await access(resolve(root, temporaryArtifact));

@@ -3,7 +3,6 @@ import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises';
 import { createServer } from 'node:http';
-import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -79,6 +78,9 @@ const counters = {
   baseLessonsGet: 0,
   lessonProgress: 0,
   baseProgramComplete: 0,
+  currentWeekGet: 0,
+  weekGet: 0,
+  workoutComplete: 0,
   logout: 0,
 };
 
@@ -109,6 +111,108 @@ let baseLessons = baseLessonTitles.map((title, index) => ({
 
 const lessonProgressUpdates = [];
 let failNextBaseLessonsGet = false;
+
+const workoutSchedule = [
+  {
+    direction: 'breathing',
+    title: 'Дыхание',
+    description: 'Практика дыхания и контроля тела.',
+    duration_minutes: 25,
+    icon: '🧘',
+  },
+  {
+    direction: 'strength',
+    title: 'Сила',
+    description: 'Силовая тренировка с постепенным ростом нагрузки.',
+    duration_minutes: 35,
+    icon: '💪',
+  },
+  {
+    direction: 'body_therapy',
+    title: 'Тело мой дом',
+    description: 'Мягкая работа с подвижностью и ощущениями тела.',
+    duration_minutes: 30,
+    icon: '🌿',
+  },
+  {
+    direction: 'functional',
+    title: 'Функционал',
+    description: 'Комплекс на координацию, силу и выносливость.',
+    duration_minutes: 35,
+    icon: '⚡',
+  },
+  {
+    direction: 'stretching',
+    title: 'Растяжка',
+    description: 'Спокойная работа над гибкостью и расслаблением.',
+    duration_minutes: 30,
+    icon: '🧘‍♂️',
+  },
+  {
+    direction: 'neuro',
+    title: 'Нейрогимнастика',
+    description: 'Короткая тренировка внимания, баланса и координации.',
+    duration_minutes: 15,
+    icon: '🧠',
+  },
+  {
+    direction: 'recovery',
+    title: 'Восстановление',
+    description: 'Восстановительная практика без высокой нагрузки.',
+    duration_minutes: 20,
+    icon: '🍲',
+  },
+];
+
+const completedWorkoutIds = new Set();
+const workoutCompletionUpdates = [];
+let holdWorkoutCompletionResponse = false;
+let releaseWorkoutCompletionResponse = null;
+
+const workoutVideoId = (weekNumber, dayOfWeek) =>
+  `20000000-0000-4000-8${String(weekNumber).padStart(3, '0')}-${String(dayOfWeek).padStart(12, '0')}`;
+
+const programWeekPayload = (weekNumber) => {
+  const days = workoutSchedule.map((workout, index) => {
+    const dayOfWeek = index + 1;
+    const videoId = workoutVideoId(weekNumber, dayOfWeek);
+    const completed = completedWorkoutIds.has(videoId);
+
+    return {
+      id: `30000000-0000-4000-8${String(weekNumber).padStart(3, '0')}-${String(dayOfWeek).padStart(12, '0')}`,
+      day_of_week: dayOfWeek,
+      ...workout,
+      video: {
+        id: videoId,
+        video_url:
+          weekNumber === 1 && dayOfWeek === 1
+            ? `${frontendOrigin}/browser-test-video.mp4?workout=${dayOfWeek}`
+            : null,
+        poster_url: null,
+      },
+      completed,
+      completed_at: completed ? '2026-08-20T12:30:00.000Z' : null,
+    };
+  });
+  const daysCompleted = days.filter(({ completed }) => completed).length;
+
+  return {
+    week: {
+      id: `40000000-0000-4000-8000-${String(weekNumber).padStart(12, '0')}`,
+      week_number: weekNumber,
+      title: `Неделя ${weekNumber}`,
+      status: weekNumber === 1 ? 'active' : 'locked',
+      days,
+      days_completed: daysCompleted,
+      total_days: 7,
+    },
+    total_weeks: 12,
+    overall_progress: {
+      weeks_completed: daysCompleted === 7 ? 1 : 0,
+      total_workouts_done: completedWorkoutIds.size,
+    },
+  };
+};
 
 const baseLessonsPayload = () => {
   const totalCompleted = baseLessons.filter(
@@ -498,6 +602,71 @@ const createMockApiServer = () =>
       return;
     }
 
+    if (request.method === 'GET' && request.url === '/api/v1/program/current-week') {
+      if (!hasValidAccessToken(request)) {
+        json(response, 401, {
+          error: { code: 'AUTHENTICATION_REQUIRED', message: 'A valid access token is required.' },
+        });
+        return;
+      }
+
+      counters.currentWeekGet += 1;
+      json(response, 200, programWeekPayload(1));
+      return;
+    }
+
+    const programWeekMatch = (request.url ?? '').match(/^\/api\/v1\/program\/weeks\/(\d+)$/u);
+
+    if (request.method === 'GET' && programWeekMatch !== null) {
+      if (!hasValidAccessToken(request)) {
+        json(response, 401, {
+          error: { code: 'AUTHENTICATION_REQUIRED', message: 'A valid access token is required.' },
+        });
+        return;
+      }
+
+      const weekNumber = Number(programWeekMatch[1]);
+      counters.weekGet += 1;
+
+      if (!Number.isInteger(weekNumber) || weekNumber < 1 || weekNumber > 2) {
+        json(response, 403, {
+          error: { code: 'PROGRAM_WEEK_LOCKED', message: 'Эта неделя пока недоступна.' },
+        });
+        return;
+      }
+
+      json(response, 200, programWeekPayload(weekNumber));
+      return;
+    }
+
+    if (request.method === 'PUT' && request.url === '/api/v1/program/complete-workout') {
+      if (!hasValidAccessToken(request)) {
+        json(response, 401, {
+          error: { code: 'AUTHENTICATION_REQUIRED', message: 'A valid access token is required.' },
+        });
+        return;
+      }
+
+      const body = await readJsonBody(request);
+      assert.deepEqual(Object.keys(body).sort(), ['program_week', 'video_id']);
+      assert.equal(body.program_week, 1);
+      assert.equal(body.video_id, workoutVideoId(1, 1));
+      counters.workoutComplete += 1;
+      workoutCompletionUpdates.push(body);
+
+      if (holdWorkoutCompletionResponse) {
+        await new Promise((resolve) => {
+          releaseWorkoutCompletionResponse = resolve;
+        });
+        holdWorkoutCompletionResponse = false;
+        releaseWorkoutCompletionResponse = null;
+      }
+
+      completedWorkoutIds.add(body.video_id);
+      json(response, 200, programWeekPayload(1));
+      return;
+    }
+
     if ((request.url ?? '').startsWith('/api/')) {
       json(response, 404, { error: { code: 'NOT_FOUND', message: 'Not found.' } });
       return;
@@ -554,17 +723,6 @@ const close = async (server) => {
   });
 };
 
-const freePort = async () => {
-  const server = net.createServer();
-  await listen(server, 0);
-  const address = server.address();
-  assert.notEqual(address, null);
-  assert.equal(typeof address, 'object');
-  const port = address.port;
-  await close(server);
-  return port;
-};
-
 const findChrome = () => {
   const candidates = [
     process.env.CHROME_BIN,
@@ -583,35 +741,74 @@ const findChrome = () => {
 };
 
 class CdpClient {
-  constructor(url) {
-    this.socket = new WebSocket(url);
+  constructor(commandStream, responseStream) {
+    this.commandStream = commandStream;
+    this.responseStream = responseStream;
+    this.responseBuffer = '';
+    this.sessionId = null;
     this.nextId = 1;
     this.pending = new Map();
   }
 
   async connect() {
-    await new Promise((resolve, reject) => {
-      this.socket.addEventListener('open', resolve, { once: true });
-      this.socket.addEventListener('error', reject, { once: true });
-    });
-    this.socket.addEventListener('message', (event) => {
-      const message = JSON.parse(String(event.data));
-      if (typeof message.id !== 'number') {
-        return;
-      }
+    this.responseStream.on('data', (chunk) => {
+      this.responseBuffer += chunk.toString('utf8');
+      let delimiter = this.responseBuffer.indexOf('\0');
 
-      const pending = this.pending.get(message.id);
-      if (pending === undefined) {
-        return;
-      }
+      while (delimiter >= 0) {
+        const payload = this.responseBuffer.slice(0, delimiter);
+        this.responseBuffer = this.responseBuffer.slice(delimiter + 1);
+        delimiter = this.responseBuffer.indexOf('\0');
 
-      this.pending.delete(message.id);
-      if (message.error !== undefined) {
-        pending.reject(new Error(message.error.message ?? 'CDP command failed.'));
-      } else {
-        pending.resolve(message.result);
+        if (payload.length === 0) {
+          continue;
+        }
+
+        const message = JSON.parse(payload);
+        if (typeof message.id !== 'number') {
+          continue;
+        }
+
+        const pending = this.pending.get(message.id);
+        if (pending === undefined) {
+          continue;
+        }
+
+        this.pending.delete(message.id);
+        if (message.error !== undefined) {
+          pending.reject(new Error(message.error.message ?? 'CDP command failed.'));
+        } else {
+          pending.resolve(message.result);
+        }
       }
     });
+
+    const rejectPending = (error) => {
+      for (const pending of this.pending.values()) {
+        pending.reject(error);
+      }
+      this.pending.clear();
+    };
+    this.responseStream.once('error', rejectPending);
+    this.responseStream.once('close', () => rejectPending(new Error('Chrome CDP pipe closed.')));
+  }
+
+  async attachToPage() {
+    let target = null;
+    await waitFor('Chrome DevTools target', async () => {
+      const targets = await this.send('Target.getTargets');
+      target =
+        targets.targetInfos.find(
+          (item) => item.type === 'page' && String(item.url).startsWith(frontendOrigin),
+        ) ?? null;
+      return target !== null;
+    });
+
+    const attached = await this.send('Target.attachToTarget', {
+      targetId: target.targetId,
+      flatten: true,
+    });
+    this.sessionId = attached.sessionId;
   }
 
   send(method, params = {}) {
@@ -620,7 +817,11 @@ class CdpClient {
 
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
-      this.socket.send(JSON.stringify({ id, method, params }));
+      const message = { id, method, params };
+      if (this.sessionId !== null) {
+        message.sessionId = this.sessionId;
+      }
+      this.commandStream.write(`${JSON.stringify(message)}\0`);
     });
   }
 
@@ -639,7 +840,7 @@ class CdpClient {
   }
 
   close() {
-    this.socket.close();
+    this.commandStream.end();
   }
 }
 
@@ -750,7 +951,6 @@ const assertNoBrowserProfileDirectories = async () => {
 
 const runBrowserScenario = async () => {
   const apiServer = createMockApiServer();
-  const debugPort = await freePort();
   const profileDirectory = await mkdtemp(path.join(os.tmpdir(), 'kinetra-browser-'));
   let chrome = null;
   let cdp = null;
@@ -783,34 +983,24 @@ const runBrowserScenario = async () => {
         '--disable-sync',
         '--no-first-run',
         '--mute-audio',
-        `--remote-debugging-port=${debugPort}`,
+        '--remote-debugging-pipe',
         `--user-data-dir=${profileDirectory}`,
         `${frontendOrigin}/login`,
       ],
-      { stdio: ['ignore', 'ignore', 'pipe'] },
+      { stdio: ['ignore', 'ignore', 'pipe', 'pipe', 'pipe'] },
     );
 
     chrome.stderr.on('data', (chunk) => {
       chromeErrors += chunk.toString();
     });
 
-    let target = null;
-    await waitFor('Chrome DevTools target', async () => {
-      try {
-        const response = await fetch(`http://127.0.0.1:${debugPort}/json/list`);
-        const targets = await response.json();
-        target =
-          targets.find(
-            (item) => item.type === 'page' && String(item.url).startsWith(frontendOrigin),
-          ) ?? null;
-        return target?.webSocketDebuggerUrl !== undefined;
-      } catch {
-        return false;
-      }
-    });
-
-    cdp = new CdpClient(target.webSocketDebuggerUrl);
+    const commandStream = chrome.stdio[3];
+    const responseStream = chrome.stdio[4];
+    assert.notEqual(commandStream, null, 'Chrome did not expose its CDP command pipe.');
+    assert.notEqual(responseStream, null, 'Chrome did not expose its CDP response pipe.');
+    cdp = new CdpClient(commandStream, responseStream);
     await cdp.connect();
+    await cdp.attachToPage();
     await cdp.send('Runtime.enable');
     await cdp.send('Page.enable');
     await cdp.send('Network.enable');
@@ -1024,6 +1214,67 @@ const runBrowserScenario = async () => {
       assert.ok(
         metrics.lastCardBottom <= metrics.footerTop,
         `Fixed CTA overlaps the final lesson at ${width}px.`,
+      );
+      await cdp.evaluate("window.scrollTo({ top: 0, behavior: 'auto' })");
+    };
+    const assertMainScreenLayout = async (width) => {
+      await cdp.send('Emulation.setDeviceMetricsOverride', {
+        width,
+        height: 820,
+        screenWidth: width,
+        screenHeight: 820,
+        deviceScaleFactor: 1,
+        mobile: true,
+      });
+      await cdp.evaluate(`new Promise((resolve) => {
+        window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'auto' });
+        requestAnimationFrame(() => requestAnimationFrame(resolve));
+      })`);
+      const metrics = await cdp.evaluate(`(() => {
+        const cards = [
+          ...document.querySelectorAll(${JSON.stringify('[data-testid^="workout-card-"]')})
+        ];
+        const tabBar = document.querySelector(${JSON.stringify(selector('tab-bar'))});
+        const tabs = [
+          ...document.querySelectorAll(${JSON.stringify('[data-testid^="tab-"]')})
+        ].filter((tab) => tab.getAttribute('data-testid') !== 'tab-bar');
+        const lastCard = cards.at(-1);
+        const tabBarRect = tabBar?.getBoundingClientRect();
+        const lastCardRect = lastCard?.getBoundingClientRect();
+        return {
+          innerWidth: window.innerWidth,
+          innerHeight: window.innerHeight,
+          scrollWidth: document.documentElement.scrollWidth,
+          cardCount: cards.length,
+          cardsInsideViewport: cards.every((card) => {
+            const rect = card.getBoundingClientRect();
+            return rect.left >= 0 && rect.right <= window.innerWidth && rect.height >= 44;
+          }),
+          tabCount: tabs.length,
+          tabTargetsAreLargeEnough: tabs.every((tab) => {
+            const rect = tab.getBoundingClientRect();
+            return rect.width >= 44 && rect.height >= 44;
+          }),
+          tabBarBottom: tabBarRect?.bottom ?? -1,
+          tabBarTop: tabBarRect?.top ?? -1,
+          tabBarHeight: tabBarRect?.height ?? 0,
+          lastCardBottom: lastCardRect?.bottom ?? window.innerHeight + 1,
+        };
+      })()`);
+      assert.equal(metrics.innerWidth, width);
+      assert.ok(metrics.scrollWidth <= width, `Main screen horizontal overflow at ${width}px.`);
+      assert.equal(metrics.cardCount, 7);
+      assert.equal(metrics.cardsInsideViewport, true, `Workout card overflow at ${width}px.`);
+      assert.equal(metrics.tabCount, 4);
+      assert.equal(metrics.tabTargetsAreLargeEnough, true, `Tab target below 44px at ${width}px.`);
+      assert.ok(
+        Math.abs(metrics.tabBarBottom - metrics.innerHeight) <= 1,
+        `Tab bar is not pinned to the viewport at ${width}px.`,
+      );
+      assert.ok(metrics.tabBarHeight >= 56, `Tab bar is below 56px at ${width}px.`);
+      assert.ok(
+        metrics.lastCardBottom <= metrics.tabBarTop,
+        `Tab bar overlaps the final workout at ${width}px.`,
       );
       await cdp.evaluate("window.scrollTo({ top: 0, behavior: 'auto' })");
     };
@@ -1430,15 +1681,339 @@ const runBrowserScenario = async () => {
     );
     console.log('KINETRA_T06_CARD_STATES=PASS');
     await click('base-lessons-complete');
-    await waitFor('active route after base lesson completion', () => exists('journey-active'));
+    await waitFor('T07 main screen after base lesson completion', () => exists('main-screen'));
     assert.equal(await pathname(), '/');
+
+    await waitFor(
+      'current program week with seven workouts',
+      async () =>
+        (await text('week-heading')) === 'Неделя 1' &&
+        (await attribute('week-progress', 'aria-valuenow')) === '0' &&
+        (await attribute('week-progress', 'aria-valuemax')) === '7' &&
+        (await cdp.evaluate(
+          `document.querySelectorAll(${JSON.stringify('[data-testid^="workout-card-"]')}).length`,
+        )) === 7,
+    );
+    const renderedWorkoutCards = await cdp.evaluate(`[
+      ...document.querySelectorAll(${JSON.stringify('[data-testid^="workout-card-"]')})
+    ].map((card) => card.textContent?.replace(/\\s+/gu, ' ').trim() ?? '')`);
+    assert.equal(renderedWorkoutCards.length, 7);
+    for (const [index, workout] of workoutSchedule.entries()) {
+      const cardText = renderedWorkoutCards[index] ?? '';
+      assert.ok(cardText.includes(workout.title), `Workout ${index + 1} title is missing.`);
+      assert.ok(cardText.includes(workout.icon), `Workout ${index + 1} icon is missing.`);
+      assert.ok(
+        cardText.includes(String(workout.duration_minutes)),
+        `Workout ${index + 1} duration is missing.`,
+      );
+    }
+    const initialWorkoutStates = await cdp.evaluate(`[
+      ...document.querySelectorAll(${JSON.stringify('[data-testid^="workout-status-"]')})
+    ].map((status) => status.getAttribute('data-state'))`);
+    assert.deepEqual(
+      initialWorkoutStates,
+      Array.from({ length: 7 }, () => 'available'),
+    );
+    assert.equal(await disabled('week-previous'), true);
+    assert.equal(await disabled('week-next'), false);
+
+    const tabState = await cdp.evaluate(`(() => {
+      const ids = ['tab-home', 'tab-schedule', 'tab-progress', 'tab-settings'];
+      return {
+        count: ids.filter((id) => document.querySelector('[data-testid="' + id + '"]')).length,
+        active: ids.filter((id) =>
+          document.querySelector('[data-testid="' + id + '"]')?.getAttribute('aria-current') === 'page'
+        ),
+      };
+    })()`);
+    assert.deepEqual(tabState, { count: 4, active: ['tab-home'] });
+
+    const todayState = await cdp.evaluate(`(() => {
+      const cards = [
+        ...document.querySelectorAll(${JSON.stringify('[data-testid^="workout-card-"]')})
+      ];
+      const todayCards = cards.filter((card) => card.getAttribute('data-today') === 'true');
+      return {
+        count: todayCards.length,
+        highlighted: todayCards[0]?.classList.contains('is-today') ?? false,
+      };
+    })()`);
+    assert.deepEqual(todayState, { count: 1, highlighted: true });
+    assert.equal(await exists('today-workout'), true);
+    await assertMainScreenLayout(320);
+    await assertMainScreenLayout(428);
+
+    await click('tab-schedule');
+    await waitFor(
+      'schedule tab placeholder',
+      async () => (await pathname()) === '/schedule' && (await exists('schedule-screen')),
+    );
+    assert.equal(await attribute('tab-schedule', 'aria-current'), 'page');
+    assert.ok((await text('schedule-screen'))?.includes('Скоро'));
+    await click('tab-progress');
+    await waitFor(
+      'progress tab placeholder',
+      async () => (await pathname()) === '/progress' && (await exists('progress-screen')),
+    );
+    assert.equal(await attribute('tab-progress', 'aria-current'), 'page');
+    assert.ok((await text('progress-screen'))?.includes('Скоро'));
+    await click('tab-home');
+    await waitFor(
+      'main screen after tab navigation',
+      async () => (await pathname()) === '/' && (await exists('main-screen')),
+    );
+    console.log('KINETRA_T07_TAB_NAVIGATION=PASS');
+
+    await click('today-workout');
+    await waitFor('today workout player or placeholder', async () => exists('workout-player'));
+    assert.equal(
+      (await exists('workout-video')) || (await exists('workout-video-placeholder')),
+      true,
+    );
+    await cdp.evaluate('window.history.back()');
+    await waitFor(
+      'week list after today workout system Back',
+      async () =>
+        (await exists('main-screen')) &&
+        (await cdp.evaluate('window.history.state?.kinetraWorkoutVideoId === undefined')),
+    );
+    console.log('KINETRA_T07_SYSTEM_BACK=PASS');
+
+    await click('workout-card-7');
+    await waitFor('placeholder before Home tab reselection', () =>
+      exists('workout-video-placeholder'),
+    );
+    await click('tab-home');
+    await waitFor(
+      'Home tab closes the current workout without a hidden history entry',
+      async () =>
+        (await pathname()) === '/' &&
+        (await exists('main-screen')) &&
+        (await cdp.evaluate('window.history.state?.kinetraWorkoutVideoId === undefined')),
+    );
+    await click('week-next');
+    await waitFor(
+      'preview week before Forward restores a workout from another week',
+      async () => (await text('week-heading')) === 'Неделя 2',
+    );
+    await cdp.evaluate('window.history.forward()');
+    await waitFor(
+      'Forward restores the workout and week represented by its history entry',
+      async () =>
+        (await exists('workout-video-placeholder')) &&
+        (await cdp.evaluate(`
+          typeof window.history.state?.kinetraWorkoutVideoId === 'string' &&
+          window.history.state?.kinetraProgramWeek === 1
+        `)),
+    );
+    await cdp.evaluate('window.history.back()');
+    await waitFor(
+      'Back closes the Forward-restored workout',
+      async () =>
+        (await exists('main-screen')) &&
+        (await text('week-heading')) === 'Неделя 1' &&
+        (await cdp.evaluate('window.history.state?.kinetraWorkoutVideoId === undefined')),
+    );
+
+    await click('workout-card-7');
+    await waitFor('placeholder before player reload', () => exists('workout-video-placeholder'));
+    await cdp.send('Page.reload', { ignoreCache: true });
+    await waitFor(
+      'reload restores the workout from history state',
+      async () =>
+        (await exists('workout-video-placeholder')) &&
+        (await cdp.evaluate(`
+          typeof window.history.state?.kinetraWorkoutVideoId === 'string' &&
+          window.history.state?.kinetraProgramWeek === 1
+        `)),
+    );
+    await cdp.evaluate('window.history.back()');
+    await waitFor(
+      'Back after player reload returns to the week',
+      async () =>
+        (await exists('main-screen')) &&
+        (await cdp.evaluate('window.history.state?.kinetraWorkoutVideoId === undefined')),
+    );
+
+    await click('workout-card-7');
+    await waitFor('placeholder before cross-tab navigation', () =>
+      exists('workout-video-placeholder'),
+    );
+    await click('tab-schedule');
+    await waitFor(
+      'Schedule tab replaces the workout history sentinel',
+      async () =>
+        (await pathname()) === '/schedule' &&
+        (await exists('schedule-screen')) &&
+        (await cdp.evaluate('window.history.state?.kinetraWorkoutVideoId === undefined')),
+    );
+    await cdp.evaluate('window.history.back()');
+    await waitFor(
+      'browser Back after player tab navigation restores Home once',
+      async () =>
+        (await pathname()) === '/' &&
+        (await exists('main-screen')) &&
+        (await cdp.evaluate('window.history.state?.kinetraWorkoutVideoId === undefined')),
+    );
+    console.log('KINETRA_T07_PLAYER_TAB_HISTORY=PASS');
+
+    await click('week-next');
+    await waitFor(
+      'future week preview',
+      async () =>
+        (await text('week-heading')) === 'Неделя 2' &&
+        (await cdp.evaluate(`(() => {
+          const statuses = [
+            ...document.querySelectorAll(${JSON.stringify('[data-testid^="workout-status-"]')})
+          ];
+          return statuses.length === 7 &&
+            statuses.every((status) => status.getAttribute('data-state') === 'locked');
+        })()`)),
+    );
+    assert.equal(await disabled('week-previous'), false);
+    assert.equal(await disabled('week-next'), true);
+    assert.equal(await exists('today-workout'), false);
+    await click('week-previous');
+    await waitFor(
+      'current week after previous arrow',
+      async () => (await text('week-heading')) === 'Неделя 1',
+    );
+    console.log('KINETRA_T07_WEEK_NAVIGATION=PASS');
+
+    await click('workout-card-7');
+    await waitFor('T07 missing workout video placeholder', () =>
+      exists('workout-video-placeholder'),
+    );
+    assert.ok((await text('workout-video-placeholder'))?.includes('Видео скоро будет доступно'));
+    await click('workout-back');
+    await waitFor(
+      'week list after workout placeholder',
+      async () =>
+        (await exists('main-screen')) &&
+        (await cdp.evaluate('window.history.state?.kinetraWorkoutVideoId === undefined')),
+    );
+
+    await click('workout-card-1');
+    await waitFor('T07 workout video player', () => exists('workout-video'));
+    const belowThresholdProgress = await cdp.evaluate(`(() => {
+      const video = document.querySelector(${JSON.stringify(selector('workout-video'))});
+      if (!(video instanceof HTMLVideoElement)) {
+        throw new Error('Workout video was not found.');
+      }
+      Object.defineProperties(video, {
+        duration: { configurable: true, value: 100 },
+        currentTime: { configurable: true, writable: true, value: 89 },
+        paused: { configurable: true, value: false },
+        ended: { configurable: true, value: false },
+      });
+      video.dispatchEvent(new Event('timeupdate', { bubbles: true }));
+      return { currentTime: video.currentTime, duration: video.duration };
+    })()`);
+    assert.deepEqual(belowThresholdProgress, { currentTime: 89, duration: 100 });
+    const belowThresholdSettled = await cdp.evaluate(`new Promise((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve(
+        document.querySelector(${JSON.stringify(selector('workout-player'))})
+          ?.getAttribute('aria-busy') ?? null
+      )));
+    })`);
+    assert.equal(belowThresholdSettled, 'false');
+    assert.equal(workoutCompletionUpdates.length, 0);
+
+    holdWorkoutCompletionResponse = true;
+    const completedWorkoutProgress = await cdp.evaluate(`(() => {
+      const video = document.querySelector(${JSON.stringify(selector('workout-video'))});
+      if (!(video instanceof HTMLVideoElement)) {
+        throw new Error('Workout video was not found.');
+      }
+      Object.defineProperty(video, 'currentTime', {
+        configurable: true,
+        writable: true,
+        value: 95,
+      });
+      video.dispatchEvent(new Event('timeupdate', { bubbles: true }));
+      return { currentTime: video.currentTime, duration: video.duration };
+    })()`);
+    assert.deepEqual(completedWorkoutProgress, { currentTime: 95, duration: 100 });
+    await waitFor(
+      'held complete-workout response while the player is saving',
+      async () =>
+        workoutCompletionUpdates.length === 1 &&
+        releaseWorkoutCompletionResponse !== null &&
+        (await attribute('workout-player', 'aria-busy')) === 'true',
+    );
+    assert.equal(await attribute('tab-bar', 'aria-busy'), 'true');
+    assert.equal(await attribute('tab-schedule', 'aria-disabled'), 'true');
+    await click('tab-schedule');
+    const routeWhileSaving = await cdp.evaluate(`new Promise((resolve) => {
+      requestAnimationFrame(() => resolve({
+        pathname: window.location.pathname,
+        playerVisible: document.querySelector(${JSON.stringify(selector('workout-player'))}) !== null,
+      }));
+    })`);
+    assert.deepEqual(routeWhileSaving, { pathname: '/', playerVisible: true });
+    await cdp.evaluate('window.history.back()');
+    await waitFor(
+      'system Back is held on the single player entry while completion is saving',
+      async () =>
+        (await exists('workout-player')) &&
+        (await attribute('workout-player', 'aria-busy')) === 'true' &&
+        (await cdp.evaluate(
+          `window.history.state?.kinetraWorkoutVideoId === ${JSON.stringify(workoutVideoId(1, 1))}`,
+        )),
+    );
+    await cdp.evaluate('window.history.forward()');
+    const playerAfterBlockedForward = await cdp.evaluate(`new Promise((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve({
+        visible: document.querySelector(${JSON.stringify(selector('workout-player'))}) !== null,
+          busy: document.querySelector(${JSON.stringify(selector('workout-player'))})
+            ?.getAttribute('aria-busy') ?? null,
+          videoId: window.history.state?.kinetraWorkoutVideoId ?? null,
+          programWeek: window.history.state?.kinetraProgramWeek ?? null,
+      })));
+    })`);
+    assert.deepEqual(playerAfterBlockedForward, {
+      visible: true,
+      busy: 'true',
+      videoId: workoutVideoId(1, 1),
+      programWeek: 1,
+    });
+    assert.equal(workoutCompletionUpdates.length, 1);
+    releaseWorkoutCompletionResponse();
+    assert.deepEqual(workoutCompletionUpdates[0], {
+      video_id: workoutVideoId(1, 1),
+      program_week: 1,
+    });
+    await waitFor('workout completion response applied', () =>
+      cdp.evaluate(`(() => {
+          const message = document.querySelector(${JSON.stringify('.workout-completion-message')});
+          return message?.textContent?.trim() === 'Тренировка пройдена' &&
+            document.querySelector(${JSON.stringify(selector('workout-player'))})
+              ?.getAttribute('aria-busy') === 'false';
+        })()`),
+    );
+    assert.equal(await attribute('tab-bar', 'aria-busy'), 'false');
+    if (await exists('workout-player')) {
+      await click('workout-back');
+    }
+    await waitFor(
+      'completed workout card after returning to week',
+      async () =>
+        (await attribute('workout-status-1', 'data-state')) === 'completed' &&
+        (await attribute('week-progress', 'aria-valuenow')) === '1' &&
+        (await cdp.evaluate('window.history.state?.kinetraWorkoutVideoId === undefined')),
+    );
+    assert.ok((await text('workout-status-1'))?.includes('Пройдено'));
+    console.log('KINETRA_T07_WORKOUT_COMPLETION=PASS');
 
     await cdp.send('Page.reload', { ignoreCache: true });
-    await waitFor('active route restored after reload', () => exists('journey-active'));
+    await waitFor('T07 main route restored after reload', () => exists('main-screen'));
     assert.equal(await pathname(), '/');
+    assert.equal(await attribute('workout-status-1', 'data-state'), 'completed');
 
-    await click('open-settings');
+    await click('tab-settings');
     await waitFor('settings before logout', () => exists('settings-screen'));
+    assert.equal(await pathname(), '/settings');
+    assert.equal(await attribute('tab-settings', 'aria-current'), 'page');
     await click('logout');
     await waitFor('login after logout', () => exists('login-screen'));
     assert.equal(await pathname(), '/login');
@@ -1455,11 +2030,15 @@ const runBrowserScenario = async () => {
     assert.ok(counters.baseLessonsGet >= 7);
     assert.equal(counters.lessonProgress, 6);
     assert.equal(counters.baseProgramComplete, 1);
+    assert.ok(counters.currentWeekGet >= 2);
+    assert.equal(counters.weekGet, 4);
+    assert.equal(counters.workoutComplete, 1);
     assert.equal(counters.logout, 1);
 
     console.log('KINETRA_T04_BROWSER_E2E=PASS');
     console.log('KINETRA_T05_BROWSER_E2E=PASS');
     console.log('KINETRA_T06_BROWSER_E2E=PASS');
+    console.log('KINETRA_T07_BROWSER_E2E=PASS');
   } catch (error) {
     if (cdp !== null) {
       try {
@@ -1479,6 +2058,9 @@ const runBrowserScenario = async () => {
     }
     throw error;
   } finally {
+    releaseWorkoutCompletionResponse?.();
+    releaseWorkoutCompletionResponse = null;
+    holdWorkoutCompletionResponse = false;
     cdp?.close();
     await terminateChrome(chrome);
     await close(apiServer);
