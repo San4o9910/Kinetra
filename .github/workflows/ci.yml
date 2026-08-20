@@ -98,7 +98,10 @@ jobs:
           npm run test 2>&1 | tee /tmp/kinetra-test.log
           grep -F 'KINETRA_T04_POSTGRES_INTEGRATION=PASS' /tmp/kinetra-test.log
           grep -F 'KINETRA_T04_BROWSER_E2E=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T05_POSTGRES_INTEGRATION=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T05_BROWSER_E2E=PASS' /tmp/kinetra-test.log
           echo 'KINETRA_T04_TEST_SUITE=PASS'
+          echo 'KINETRA_T05_TEST_SUITE=PASS'
 
       - name: Verify browser profile cleanup
         if: always()
