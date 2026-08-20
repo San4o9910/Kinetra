@@ -168,3 +168,53 @@ export interface LessonProgressResponse {
   readonly completed: boolean;
   readonly completed_at: string | null;
 }
+
+export type ProgramDirection =
+  'breathing' | 'strength' | 'body_therapy' | 'functional' | 'stretching' | 'neuro' | 'recovery';
+
+export type ProgramWeekStatus = 'locked' | 'active' | 'completed';
+
+export interface ProgramVideo {
+  readonly id: string;
+  readonly video_url: string | null;
+  readonly poster_url: string | null;
+}
+
+export interface ProgramDay {
+  readonly id: string;
+  readonly day_of_week: number;
+  readonly direction: ProgramDirection;
+  readonly title: string;
+  readonly description: string | null;
+  readonly duration_minutes: number;
+  readonly icon: string;
+  readonly video: ProgramVideo;
+  readonly completed: boolean;
+  readonly completed_at: string | null;
+}
+
+export interface ProgramWeek {
+  readonly id: string;
+  readonly week_number: number;
+  readonly title: string;
+  readonly status: ProgramWeekStatus;
+  readonly days: readonly ProgramDay[];
+  readonly days_completed: number;
+  readonly total_days: number;
+}
+
+export interface ProgramOverallProgress {
+  readonly weeks_completed: number;
+  readonly total_workouts_done: number;
+}
+
+export interface WeekResponse {
+  readonly week: ProgramWeek;
+  readonly total_weeks: number;
+  readonly overall_progress: ProgramOverallProgress;
+}
+
+export interface CompleteWorkoutRequest {
+  readonly video_id: string;
+  readonly program_week: number;
+}

@@ -32,6 +32,7 @@ const requiredConstraints = [
   'videos_status_valid',
   'videos_storage_key_not_blank',
   'videos_workout_storage_key_required',
+  'videos_media_available_requires_storage_key',
   'program_weeks_number_unique',
   'program_weeks_number_valid',
   'program_weeks_status_valid',
@@ -211,6 +212,7 @@ try {
       [
         'videos_storage_key_not_blank',
         'videos_workout_storage_key_required',
+        'videos_media_available_requires_storage_key',
         'video_progress_completed_state_valid',
       ],
     ],
@@ -227,6 +229,12 @@ try {
       .get('videos_workout_storage_key_required')
       ?.includes('storage_key IS NOT NULL'),
     'Workout videos must retain a required storage key.',
+  );
+  assert(
+    constraintDefinitions
+      .get('videos_media_available_requires_storage_key')
+      ?.includes('NOT media_available'),
+    'Media may only be marked available when a storage key exists.',
   );
   assert(
     /completion_percent\s*>=\s*\(?90\)?/u.test(
