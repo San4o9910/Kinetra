@@ -1,6 +1,6 @@
 a6b98ea7cb6d61ed8d430dd0dffa46c87012b5cf859d4ce7207898954951fdcd  ./.editorconfig
 2cc5ccdcaefe94c9fbcf5afb411f78214aef11ffda9fd4a8b8aa0840381996c7  ./.env.example
-e4ebece5583ecf972b0f9cb961eec12c156ff03d0db251addf0730ee7e4b2b1d  ./.github/workflows/ci.yml
+5d517736880bfaf1e8c10acc48fa5c45cefee4ba72e2b72a0d4b94cc7dc283af  ./.github/workflows/ci.yml
 cfd42d58b59b1374120ba1643e14ed5039101ec9d3d271c8b1414326d4e14675  ./.gitignore
 177d20030d4dcc37eae9ef92865ec54dadce60e8f19e9a34a5d4f37502195a36  ./.nvmrc
 019a6ff828333978e4ecceae4a881852c6f850fbc6d86755f5e4c9c068727ec8  ./.prettierignore
@@ -8,8 +8,11 @@ cfd42d58b59b1374120ba1643e14ed5039101ec9d3d271c8b1414326d4e14675  ./.gitignore
 776cb0f51144b12269b8820fbebe33248336811954c0ffcd4171b71a5c9efcf9  ./README.md
 480dcfb7d7823f1472b977dee09b0759e8a5b6f8b381a5bdb76a86f9cba5b959  ./VALIDATION.md
 a1dc8f7c0bfd1dbe0f2692349ec1f5fd66e8bfbebc7faf16ddd8bd4b481ac786  ./apps/backend/migrations/001_auth.sql
-c6f27e67ef1deb4e4b759cc4781fbe41866ed149c71a5f4e631c0d3f984fcb84  ./apps/backend/package.json
+1cd2a247a646081b8eda1fc955c276a664c1820b47ce209aecbf6bfd3151cae6  ./apps/backend/migrations/002_content.sql
+78446f51fd6f7afb1e28856422ce646d5014da8abbcdb122d6b33af65aa5e497  ./apps/backend/package.json
 7f6ee59410d5c1f9e642e547fb2430db62f4f551f9890982cef5b7d29ec34662  ./apps/backend/scripts/migrate.mjs
+8c5af08a24d282b7c18467ce655fb90a3ba8f7cb70730bf2518820c1cb848477  ./apps/backend/scripts/seed.mjs
+cdda2a5b092ee2640164696ba5a8425cf89122000ac0d09ed6cf763a93719ac0  ./apps/backend/scripts/verify-content.mjs
 0ebf0af6917ad79c1963f824e73c15fb65684a92422fcc0b85555c54521ca855  ./apps/backend/src/app.ts
 43c2f9a6a86c48678c003094e151053260a4e6964a8df8b75f429f461d09926e  ./apps/backend/src/auth/cookies.ts
 9f300a549a4e89cbce6bf1e5a60c4352393d540b873b871de182574e955da911  ./apps/backend/src/auth/delivery.ts
@@ -55,11 +58,12 @@ e0d4ed2617fce78e328dce5b4ecaa05bf664570fb762c2b6e92ba9f74b1ba860  ./apps/fronten
 e41b9415fb00d84b87a357008b1e3c821a736fe9bd7da2989c6ceb3029332295  ./apps/frontend/vite.config.ts
 1f23635f93bd6720b16e07581bb455a4f70935757430e421c2f8f52d35be4ef5  ./docker-compose.yml
 b22b9d35cf2cce03a2e861f0a33b03fefaddcc7a57718dec3c950ad4329275bf  ./docs/T02_AUTH_API.md
+f01f5ec12a490c691b3fbe9586ab3bb3d810caba713bb01c9010ee84a12371b0  ./docs/T03_CONTENT_MODEL.md
 c9d0cf795704aff86ec30a193714a58313fca9c0f6f3d6536eb37ddcd6083882  ./eslint.config.mjs
 335bb2383e14cb67ae6ecda1365baa3fd1c8e82b3960ebecb4dd228b1defccd3  ./package-lock.json
-e1e2d42425d8d186254b36706a9ca31eb4e095ad139d7b4eb1c9de0647828a99  ./package.json
+7623dd107281ea8a3f5eceaaefd1c78408084674d13701a27a2989772aca0a95  ./package.json
 1226b52db0d0863828daae249e0b8ba56452f40c4d6ebc4dab1f6bb40e532da8  ./packages/shared/package.json
 dda86bae0018730a97e06f5fcc744606571731cd5bc6747666ae98e2cc2999d1  ./packages/shared/src/index.ts
 c8171db33a1b645b8c36d542cf4bfc5c47073df8842b846f91a6ebf083973c5e  ./packages/shared/tsconfig.json
-ca3ec90fdc1defc4d5cd7be5769e842aeaff74f26a13f67792ec9a0252e6727d  ./scripts/verify-project.mjs
+2ed91e22f4bacee82aa38ce5675ee03120b7447441949f09b27a838c73ee9d52  ./scripts/verify-project.mjs
 2b67887209f3334ebdc96426f5c2cb87480fb85ff2f75c0d42b0a944dae7922a  ./tsconfig.base.json

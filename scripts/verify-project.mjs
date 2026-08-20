@@ -44,6 +44,7 @@ const expectMatches = (text, pattern, message) => {
 
 const requiredFiles = [
   '.env.example',
+  '.github/workflows/ci.yml',
   'docker-compose.yml',
   'README.md',
   'docs/T02_AUTH_API.md',
@@ -56,7 +57,10 @@ const requiredFiles = [
   'apps/frontend/public/icons/icon-maskable-512.png',
   'apps/frontend/src/pwa/registerServiceWorker.ts',
   'apps/backend/migrations/001_auth.sql',
+  'apps/backend/migrations/002_content.sql',
   'apps/backend/scripts/migrate.mjs',
+  'apps/backend/scripts/seed.mjs',
+  'apps/backend/scripts/verify-content.mjs',
   'apps/backend/src/app.ts',
   'apps/backend/src/server.ts',
   'apps/backend/src/auth/cookies.ts',
@@ -113,7 +117,14 @@ if (frontendPackage.dependencies?.['socket.io-client']) {
   fail('frontend dependency: socket.io-client');
 }
 
-for (const script of ['db:migrate', 'test', 'typecheck', 'build']) {
+for (const script of [
+  'db:migrate',
+  'db:seed',
+  'db:verify-content',
+  'test',
+  'typecheck',
+  'build',
+]) {
   if (backendPackage.scripts?.[script]) {
     pass(`backend script: ${script}`);
   } else {
@@ -268,6 +279,74 @@ expectIncludes(
   migration,
   'password_reset_tokens_one_outstanding_idx',
   'only one outstanding reset token per user',
+);
+
+const contentMigration = await readText('apps/backend/migrations/002_content.sql');
+for (const table of [
+  'videos',
+  'program_weeks',
+  'program_days',
+  'subscriptions',
+  'video_progress',
+  'workout_completions',
+  'weekly_metrics',
+  'achievements',
+  'user_achievements',
+]) {
+  expectMatches(
+    contentMigration,
+    new RegExp(`CREATE TABLE IF NOT EXISTS ${table}\\b`, 'u'),
+    `T03 table: ${table}`,
+  );
+}
+expectIncludes(
+  contentMigration,
+  "type IN ('base_lesson', 'workout')",
+  'video types are constrained',
+);
+expectIncludes(
+  contentMigration,
+  "provider IN ('yukassa', 'tribute')",
+  'subscription providers are constrained',
+);
+expectIncludes(
+  contentMigration,
+  'videos_workout_schedule_unique_idx',
+  'workout schedule has a unique index',
+);
+expectIncludes(
+  contentMigration,
+  'PRIMARY KEY (user_id, video_id)',
+  'video progress has a composite primary key',
+);
+expectIncludes(
+  contentMigration,
+  'PRIMARY KEY (user_id, achievement_id)',
+  'user achievements have a composite primary key',
+);
+
+const contentSeed = await readText('apps/backend/scripts/seed.mjs');
+expectIncludes(contentSeed, 'weekNumber <= 12', 'seed creates 12 program weeks');
+expectIncludes(contentSeed, 'daySchedule', 'seed defines the seven-day schedule');
+expectIncludes(contentSeed, 'baseLessons', 'seed defines base lessons');
+expectIncludes(contentSeed, 'workoutSlugs', 'seed creates workout videos');
+expectIncludes(contentSeed, 'achievements', 'seed defines initial achievements');
+expectIncludes(contentSeed, 'ON CONFLICT', 'seed is idempotent');
+expectIncludes(contentSeed, 'KINETRA_CONTENT_SEED=PASS', 'seed performs count verification');
+
+const contentVerifier = await readText('apps/backend/scripts/verify-content.mjs');
+expectIncludes(
+  contentVerifier,
+  'KINETRA_T03_DATABASE_VERIFICATION=PASS',
+  'T03 database verification script is present',
+);
+
+const ciWorkflow = await readText('.github/workflows/ci.yml');
+expectIncludes(ciWorkflow, 'run: npm run db:seed', 'CI executes the T03 seed');
+expectIncludes(
+  ciWorkflow,
+  'run: npm run db:verify-content',
+  'CI verifies the T03 schema and seeded data',
 );
 
 const rateLimiter = await readText('apps/backend/src/auth/rate-limit.ts');
