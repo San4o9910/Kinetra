@@ -1,4 +1,4 @@
-import { useMemo, useState, type ChangeEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
 import type {
   MeResponse,
   SurveyAgeRange,
@@ -7,24 +7,22 @@ import type {
   SurveyGender,
   SurveyGoal,
   SurveyInjury,
-  SurveySubmission,
 } from '@kinetra/shared';
 
 import { saveSurvey } from '../../lib/api';
+import {
+  SURVEY_STEP_COUNT,
+  createSurveyDraft,
+  isSurveyStepValid,
+  surveyDraftToSubmission,
+  toggleSurveyInjury,
+  type SurveyDraft,
+} from './model';
 
 interface SurveyWizardProps {
   readonly initialSurvey: SurveyAnswer | null;
   readonly onSaved: (profile: MeResponse) => void;
   readonly onCancel?: () => void;
-}
-
-interface SurveyDraft {
-  readonly gender: SurveyGender | null;
-  readonly age_range: SurveyAgeRange | null;
-  readonly goal: SurveyGoal | null;
-  readonly injuries: readonly SurveyInjury[];
-  readonly injuries_detail: string;
-  readonly experience: SurveyExperience | null;
 }
 
 interface Option<T extends string> {
@@ -104,86 +102,27 @@ const questionTitles = [
   'Какой у вас опыт тренировок?',
 ] as const;
 
-const fromSurvey = (survey: SurveyAnswer | null): SurveyDraft => ({
-  gender: survey?.gender ?? null,
-  age_range: survey?.age_range ?? null,
-  goal: survey?.goal ?? null,
-  injuries: survey?.injuries ?? [],
-  injuries_detail: survey?.injuries_detail ?? '',
-  experience: survey?.experience ?? null,
-});
-
-const isStepValid = (step: number, draft: SurveyDraft): boolean => {
-  switch (step) {
-    case 0:
-      return draft.gender !== null;
-    case 1:
-      return draft.age_range !== null;
-    case 2:
-      return draft.goal !== null;
-    case 3: {
-      if (draft.injuries.length === 0) {
-        return false;
-      }
-
-      if (draft.injuries.includes('none') && draft.injuries.length > 1) {
-        return false;
-      }
-
-      return !draft.injuries.includes('other') || draft.injuries_detail.trim().length > 0;
-    }
-    case 4:
-      return draft.experience !== null;
-    default:
-      return false;
-  }
-};
-
-const toSubmission = (draft: SurveyDraft): SurveySubmission | null => {
-  if (
-    draft.gender === null ||
-    draft.age_range === null ||
-    draft.goal === null ||
-    draft.injuries.length === 0 ||
-    draft.experience === null
-  ) {
-    return null;
-  }
-
-  const submission = {
-    gender: draft.gender,
-    age_range: draft.age_range,
-    goal: draft.goal,
-    injuries: [...draft.injuries],
-    experience: draft.experience,
-  } satisfies SurveySubmission;
-
-  return draft.injuries.includes('other')
-    ? {
-        ...submission,
-        injuries_detail: draft.injuries_detail.trim(),
-      }
-    : submission;
-};
-
 interface ChoiceGridProps<T extends string> {
+  readonly label: string;
   readonly options: readonly Option<T>[];
   readonly value: T | null;
   readonly onChange: (value: T) => void;
 }
 
-const ChoiceGrid = <T extends string,>({
+const ChoiceGrid = <T extends string>({
+  label,
   options,
   value,
   onChange,
 }: ChoiceGridProps<T>): ReactNode => (
-  <div className="survey-options" role="radiogroup">
+  <div className="survey-options" role="radiogroup" aria-label={label}>
     {options.map((option) => {
       const selected = option.value === value;
 
       return (
         <button
           className={`survey-option${selected ? ' is-selected' : ''}`}
+          data-testid={`survey-option-${option.value}`}
           type="button"
           role="radio"
           aria-checked={selected}
@@ -207,49 +146,28 @@ export const SurveyWizard = ({
   onCancel,
 }: SurveyWizardProps): ReactNode => {
   const [step, setStep] = useState(0);
-  const [draft, setDraft] = useState<SurveyDraft>(() => fromSurvey(initialSurvey));
+  const [draft, setDraft] = useState<SurveyDraft>(() => createSurveyDraft(initialSurvey));
   const [isSaving, setIsSaving] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const isValid = useMemo(() => isStepValid(step, draft), [draft, step]);
+  const questionHeadingRef = useRef<HTMLHeadingElement>(null);
+  const isValid = useMemo(() => isSurveyStepValid(step, draft), [draft, step]);
   const isEditing = initialSurvey !== null;
+
+  useEffect(() => {
+    if (step > 0) {
+      questionHeadingRef.current?.focus();
+    }
+  }, [step]);
 
   const setField = <K extends keyof SurveyDraft>(key: K, value: SurveyDraft[K]): void => {
     setDraft((current) => ({ ...current, [key]: value }));
     setSubmitError(null);
   };
 
-  const toggleInjury = (injury: SurveyInjury): void => {
-    setDraft((current) => {
-      if (injury === 'none') {
-        return {
-          ...current,
-          injuries: current.injuries.includes('none') ? [] : ['none'],
-          injuries_detail: '',
-        };
-      }
-
-      const withoutNone = current.injuries.filter((item) => item !== 'none');
-      const injuries = withoutNone.includes(injury)
-        ? withoutNone.filter((item) => item !== injury)
-        : [...withoutNone, injury];
-
-      return {
-        ...current,
-        injuries,
-        injuries_detail: injuries.includes('other') ? current.injuries_detail : '',
-      };
-    });
-    setSubmitError(null);
-  };
-
-  const handleDetailChange = (event: ChangeEvent<HTMLTextAreaElement>): void => {
-    setField('injuries_detail', event.target.value);
-  };
-
   const save = async (): Promise<void> => {
-    const submission = toSubmission(draft);
+    const submission = surveyDraftToSubmission(draft);
 
-    if (submission === null || !isStepValid(4, draft)) {
+    if (submission === null) {
       setSubmitError('Ответьте на все обязательные вопросы.');
       return;
     }
@@ -262,17 +180,17 @@ export const SurveyWizard = ({
       onSaved(profile);
     } catch (error) {
       setSubmitError(
-        error instanceof Error
-          ? error.message
-          : 'Не удалось сохранить анкету. Попробуйте ещё раз.',
+        error instanceof Error ? error.message : 'Не удалось сохранить анкету. Попробуйте ещё раз.',
       );
     } finally {
       setIsSaving(false);
     }
   };
 
+  const progressPercent = Math.round(((step + 1) / SURVEY_STEP_COUNT) * 100);
+
   return (
-    <main className="survey-shell">
+    <main className="survey-shell" data-testid="survey-screen">
       <section className="survey-panel" aria-labelledby="survey-question">
         <header className="survey-header">
           <div className="survey-brand">
@@ -281,36 +199,41 @@ export const SurveyWizard = ({
             </span>
             <span>KINETRA</span>
           </div>
-          <div className="survey-progress-copy">
-            <span>
-              Шаг {step + 1} из {questionTitles.length}
+          <div className="survey-progress-copy" aria-live="polite">
+            <span data-testid="survey-step">
+              Шаг {step + 1} из {SURVEY_STEP_COUNT}
             </span>
-            <strong>{Math.round(((step + 1) / questionTitles.length) * 100)}%</strong>
+            <strong>{progressPercent}%</strong>
           </div>
           <div
             className="survey-progress"
             role="progressbar"
+            aria-label="Прогресс анкеты"
             aria-valuemin={1}
-            aria-valuemax={questionTitles.length}
+            aria-valuemax={SURVEY_STEP_COUNT}
             aria-valuenow={step + 1}
+            aria-valuetext={`Шаг ${step + 1} из ${SURVEY_STEP_COUNT}`}
           >
-            <span style={{ width: `${((step + 1) / questionTitles.length) * 100}%` }} />
+            <span style={{ width: `${progressPercent}%` }} />
           </div>
         </header>
 
         <div className="survey-card">
-          <p className="survey-intro">
-            Чтобы мы могли подобрать программу, которая подходит именно вам, ответьте на
-            несколько вопросов. Это займёт меньше минуты.
+          <p className="survey-intro" id="survey-intro">
+            Чтобы мы могли подобрать программу, которая подходит именно вам, ответьте на несколько
+            вопросов. Это займёт меньше минуты.
           </p>
           <p className="survey-kicker">
             {isEditing ? 'Редактирование анкеты' : 'Персональная программа'}
           </p>
-          <h1 id="survey-question">{questionTitles[step]}</h1>
+          <h1 id="survey-question" ref={questionHeadingRef} tabIndex={-1}>
+            {questionTitles[step]}
+          </h1>
 
-          <div className="survey-question-body">
+          <div className="survey-question-body" aria-describedby="survey-intro">
             {step === 0 ? (
               <ChoiceGrid
+                label={questionTitles[0]}
                 options={genderOptions}
                 value={draft.gender}
                 onChange={(value) => setField('gender', value)}
@@ -319,14 +242,16 @@ export const SurveyWizard = ({
 
             {step === 1 ? (
               <ChoiceGrid
+                label={questionTitles[1]}
                 options={ageOptions}
-                value={draft.age_range}
-                onChange={(value) => setField('age_range', value)}
+                value={draft.ageRange}
+                onChange={(value) => setField('ageRange', value)}
               />
             ) : null}
 
             {step === 2 ? (
               <ChoiceGrid
+                label={questionTitles[2]}
                 options={goalOptions}
                 value={draft.goal}
                 onChange={(value) => setField('goal', value)}
@@ -335,17 +260,25 @@ export const SurveyWizard = ({
 
             {step === 3 ? (
               <>
-                <div className="survey-options injury-options" aria-label="Травмы и ограничения">
+                <div
+                  className="survey-options injury-options"
+                  role="group"
+                  aria-label="Травмы и ограничения"
+                >
                   {injuryOptions.map((option) => {
                     const selected = draft.injuries.includes(option.value);
 
                     return (
                       <button
                         className={`survey-option${selected ? ' is-selected' : ''}`}
+                        data-testid={`survey-option-${option.value}`}
                         type="button"
                         aria-pressed={selected}
                         key={option.value}
-                        onClick={() => toggleInjury(option.value)}
+                        onClick={() => {
+                          setDraft((current) => toggleSurveyInjury(current, option.value));
+                          setSubmitError(null);
+                        }}
                       >
                         <span className="option-indicator option-checkbox" aria-hidden="true" />
                         <span>
@@ -359,22 +292,29 @@ export const SurveyWizard = ({
                   <label className="survey-detail">
                     <span>Опишите ограничение</span>
                     <textarea
-                      value={draft.injuries_detail}
-                      onChange={handleDetailChange}
+                      data-testid="injuries-detail"
+                      value={draft.injuriesDetail}
+                      onChange={(event: ChangeEvent<HTMLTextAreaElement>) =>
+                        setField('injuriesDetail', event.target.value)
+                      }
                       maxLength={500}
                       rows={4}
+                      required
+                      aria-describedby="injury-detail-hint"
                       placeholder="Например: старая травма голеностопа"
                     />
                   </label>
                 ) : null}
-                <p className="survey-hint">
-                  «Нет ограничений» нельзя выбрать вместе с другими вариантами.
+                <p className="survey-hint" id="injury-detail-hint">
+                  «Нет ограничений» нельзя выбрать вместе с другими вариантами. При выборе «Другое»
+                  описание обязательно.
                 </p>
               </>
             ) : null}
 
             {step === 4 ? (
               <ChoiceGrid
+                label={questionTitles[4]}
                 options={experienceOptions}
                 value={draft.experience}
                 onChange={(value) => setField('experience', value)}
@@ -391,6 +331,7 @@ export const SurveyWizard = ({
           <footer className="survey-actions">
             <button
               className="secondary-button"
+              data-testid="survey-back"
               type="button"
               disabled={step === 0 && onCancel === undefined}
               onClick={() => {
@@ -404,9 +345,10 @@ export const SurveyWizard = ({
               {step === 0 && onCancel !== undefined ? 'Отмена' : 'Назад'}
             </button>
 
-            {step < questionTitles.length - 1 ? (
+            {step < SURVEY_STEP_COUNT - 1 ? (
               <button
                 className="primary-button"
+                data-testid="survey-next"
                 type="button"
                 disabled={!isValid}
                 onClick={() => setStep((current) => current + 1)}
@@ -416,6 +358,7 @@ export const SurveyWizard = ({
             ) : (
               <button
                 className="primary-button"
+                data-testid="survey-save"
                 type="button"
                 disabled={!isValid || isSaving}
                 onClick={() => void save()}

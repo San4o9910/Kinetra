@@ -9,6 +9,16 @@ import { PostgresProfileRepository } from '../src/profile/postgres-profile.repos
 const databaseUrl = process.env.DATABASE_URL;
 const { Pool } = pg;
 
+const rejectsConstraint = async (promise: Promise<unknown>, constraint: string): Promise<void> => {
+  await assert.rejects(promise, (error: unknown) => {
+    if (typeof error !== 'object' || error === null || !('constraint' in error)) {
+      return false;
+    }
+
+    return (error as { readonly constraint?: unknown }).constraint === constraint;
+  });
+};
+
 test(
   'PostgreSQL profile repository versions surveys and restores subscription state',
   { skip: databaseUrl === undefined },
@@ -61,6 +71,39 @@ test(
           )
         `,
         [userId, `test-${userId}`],
+      );
+
+      await rejectsConstraint(
+        pool.query(
+          `
+            INSERT INTO survey_answers (
+              user_id, version, gender, age_range, goal, injuries, experience
+            )
+            VALUES ($1, 90, 'female', '26-35', 'strength', $2::text[], 'novice')
+          `,
+          [userId, ['knees', 'knees']],
+        ),
+        'survey_answers_injuries_unique',
+      );
+
+      await rejectsConstraint(
+        pool.query(
+          `
+            INSERT INTO survey_answers (
+              user_id,
+              version,
+              gender,
+              age_range,
+              goal,
+              injuries,
+              injuries_detail,
+              experience
+            )
+            VALUES ($1, 91, 'female', '26-35', 'strength', $2::text[], $3, 'novice')
+          `,
+          [userId, ['other'], 'x'.repeat(501)],
+        ),
+        'survey_answers_other_detail_valid',
       );
 
       const first = await repository.saveSurveyVersion(userId, {

@@ -1,26 +1,33 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import type { MeResponse, OnboardingStatus } from '@kinetra/shared';
 
+import { LoginScreen } from './features/auth/LoginScreen';
 import { SurveyWizard } from './features/survey/SurveyWizard';
-import { ApiRequestError, fetchMe, readStoredAccessToken } from './lib/api';
+import { ApiRequestError, bootstrapSession, fetchMe, logout } from './lib/api';
+import {
+  appRoutes,
+  isSettingsRoute,
+  normalizeAppRoute,
+  routeForOnboardingStatus,
+  type AppRoute,
+} from './routing';
 
-type ViewMode = 'journey' | 'settings' | 'edit-survey';
+interface StageCopy {
+  readonly eyebrow: string;
+  readonly title: string;
+  readonly description: string;
+}
 
-const stageCopy: Record<
-  Exclude<OnboardingStatus, 'survey_pending'>,
-  { readonly eyebrow: string; readonly title: string; readonly description: string }
-> = {
+const stageCopy: Record<Exclude<OnboardingStatus, 'survey_pending'>, StageCopy> = {
   onboarding_pending: {
     eyebrow: 'СЛЕДУЮЩИЙ ЭТАП · T05',
     title: 'Познакомимся с программой',
-    description:
-      'Анкета сохранена. Следующим экраном будет короткая карусель о подходе Kinetra.',
+    description: 'Анкета сохранена. Следующим экраном будет короткая карусель о подходе Kinetra.',
   },
   base_lessons: {
     eyebrow: 'БАЗОВЫЕ УРОКИ · T06',
     title: 'Подготовьте основу',
-    description:
-      'Здесь появятся семь базовых уроков, которые помогут безопасно начать программу.',
+    description: 'Здесь появятся семь базовых уроков, которые помогут безопасно начать программу.',
   },
   active: {
     eyebrow: 'ГЛАВНАЯ · T08',
@@ -35,10 +42,7 @@ interface JourneyPlaceholderProps {
   readonly onOpenSettings: () => void;
 }
 
-const JourneyPlaceholder = ({
-  profile,
-  onOpenSettings,
-}: JourneyPlaceholderProps): ReactNode => {
+const JourneyPlaceholder = ({ profile, onOpenSettings }: JourneyPlaceholderProps): ReactNode => {
   const status = profile.user.onboardingStatus;
 
   if (status === 'survey_pending') {
@@ -48,7 +52,7 @@ const JourneyPlaceholder = ({
   const copy = stageCopy[status];
 
   return (
-    <main className="app-shell">
+    <main className="app-shell" data-testid={`journey-${status}`}>
       <section className="stage-card">
         <header className="stage-topbar">
           <div className="survey-brand">
@@ -57,7 +61,12 @@ const JourneyPlaceholder = ({
             </span>
             <span>KINETRA</span>
           </div>
-          <button className="ghost-button" type="button" onClick={onOpenSettings}>
+          <button
+            className="ghost-button"
+            data-testid="open-settings"
+            type="button"
+            onClick={onOpenSettings}
+          >
             Настройки
           </button>
         </header>
@@ -85,17 +94,23 @@ interface SettingsProps {
   readonly profile: MeResponse;
   readonly onClose: () => void;
   readonly onEditSurvey: () => void;
+  readonly onLogout: () => void;
 }
 
-const Settings = ({ profile, onClose, onEditSurvey }: SettingsProps): ReactNode => (
-  <main className="app-shell">
+const Settings = ({ profile, onClose, onEditSurvey, onLogout }: SettingsProps): ReactNode => (
+  <main className="app-shell" data-testid="settings-screen">
     <section className="settings-card">
       <header className="stage-topbar">
         <div>
           <p className="survey-kicker">ПРОФИЛЬ</p>
           <h1>Настройки</h1>
         </div>
-        <button className="ghost-button" type="button" onClick={onClose}>
+        <button
+          className="ghost-button"
+          data-testid="close-settings"
+          type="button"
+          onClick={onClose}
+        >
           Закрыть
         </button>
       </header>
@@ -119,115 +134,241 @@ const Settings = ({ profile, onClose, onEditSurvey }: SettingsProps): ReactNode 
         </div>
       </dl>
 
-      <button
-        className="primary-button settings-action"
-        type="button"
-        disabled={profile.survey === null}
-        onClick={onEditSurvey}
-      >
-        Редактировать анкету
-      </button>
+      <div className="settings-actions">
+        <button
+          className="primary-button settings-action"
+          data-testid="edit-survey"
+          type="button"
+          disabled={profile.survey === null}
+          onClick={onEditSurvey}
+        >
+          Редактировать анкету
+        </button>
+        <button
+          className="secondary-button settings-action"
+          data-testid="logout"
+          type="button"
+          onClick={onLogout}
+        >
+          Выйти
+        </button>
+      </div>
     </section>
   </main>
 );
 
-const SessionRequired = (): ReactNode => (
-  <main className="app-shell">
-    <section className="stage-card session-card">
+interface SystemStateProps {
+  readonly kind: 'offline' | 'server';
+  readonly message: string;
+  readonly onRetry: () => void;
+}
+
+const SystemState = ({ kind, message, onRetry }: SystemStateProps): ReactNode => (
+  <main className="app-shell" data-testid={`${kind}-screen`}>
+    <section className="stage-card system-state" aria-labelledby="system-state-title">
       <div className="survey-brand">
         <span className="survey-brand-mark" aria-hidden="true">
           K
         </span>
         <span>KINETRA</span>
       </div>
-      <p className="survey-kicker">ЗАЩИЩЁННЫЙ ПРОФИЛЬ</p>
-      <h1>Войдите в аккаунт</h1>
-      <p>
-        После авторизации Kinetra загрузит ваш профиль с сервера и продолжит с того этапа,
-        на котором вы остановились.
-      </p>
+      <p className="survey-kicker">{kind === 'offline' ? 'НЕТ СЕТИ' : 'СЕРВЕР НЕДОСТУПЕН'}</p>
+      <h1 id="system-state-title">
+        {kind === 'offline' ? 'Проверьте подключение' : 'Попробуем ещё раз'}
+      </h1>
+      <p>{message}</p>
+      <button
+        className="primary-button system-state-action"
+        data-testid="retry-session"
+        type="button"
+        onClick={onRetry}
+      >
+        Повторить
+      </button>
     </section>
   </main>
 );
 
-export const App = (): ReactNode => {
-  const [profile, setProfile] = useState<MeResponse | null>(null);
-  const [mode, setMode] = useState<ViewMode>('journey');
-  const [isLoading, setIsLoading] = useState(readStoredAccessToken() !== null);
-  const [loadError, setLoadError] = useState<string | null>(null);
+type SessionState =
+  | { readonly kind: 'booting' }
+  | { readonly kind: 'unauthenticated' }
+  | { readonly kind: 'offline'; readonly message: string }
+  | { readonly kind: 'server'; readonly message: string }
+  | { readonly kind: 'authenticated'; readonly profile: MeResponse };
+
+const routeAtStartup = (): AppRoute =>
+  typeof window === 'undefined' ? appRoutes.login : normalizeAppRoute(window.location.pathname);
+
+const useBrowserRoute = (): readonly [AppRoute, (route: AppRoute, replace?: boolean) => void] => {
+  const [route, setRoute] = useState<AppRoute>(routeAtStartup);
 
   useEffect(() => {
-    if (readStoredAccessToken() === null) {
-      setIsLoading(false);
-      return;
+    const handlePopState = (): void => setRoute(normalizeAppRoute(window.location.pathname));
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  const navigate = useCallback((nextRoute: AppRoute, replace = false): void => {
+    if (typeof window !== 'undefined' && window.location.pathname !== nextRoute) {
+      if (replace) {
+        window.history.replaceState(null, '', nextRoute);
+      } else {
+        window.history.pushState(null, '', nextRoute);
+      }
+      window.scrollTo({ top: 0, behavior: 'auto' });
     }
 
-    const controller = new AbortController();
+    setRoute(nextRoute);
+  }, []);
 
-    void fetchMe(controller.signal)
-      .then((loadedProfile) => {
-        setProfile(loadedProfile);
-        setLoadError(null);
-      })
-      .catch((error: unknown) => {
-        if (error instanceof DOMException && error.name === 'AbortError') {
+  return [route, navigate] as const;
+};
+
+export const App = (): ReactNode => {
+  const [session, setSession] = useState<SessionState>({ kind: 'booting' });
+  const [route, navigate] = useBrowserRoute();
+
+  const restoreSession = useCallback(async (signal?: AbortSignal): Promise<void> => {
+    setSession({ kind: 'booting' });
+
+    try {
+      const restored = await bootstrapSession();
+
+      if (!restored) {
+        setSession({ kind: 'unauthenticated' });
+        return;
+      }
+
+      const profile = await fetchMe(signal);
+      setSession({ kind: 'authenticated', profile });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        return;
+      }
+
+      if (error instanceof ApiRequestError) {
+        if (error.kind === 'auth') {
+          setSession({ kind: 'unauthenticated' });
           return;
         }
 
-        setLoadError(
-          error instanceof ApiRequestError
-            ? error.message
-            : 'Не удалось загрузить профиль. Проверьте подключение.',
-        );
-      })
-      .finally(() => setIsLoading(false));
+        if (error.kind === 'network') {
+          setSession({ kind: 'offline', message: error.message });
+          return;
+        }
 
-    return () => controller.abort();
+        setSession({ kind: 'server', message: error.message });
+        return;
+      }
+
+      setSession({
+        kind: 'server',
+        message: 'Не удалось загрузить профиль. Попробуйте ещё раз.',
+      });
+    }
   }, []);
 
-  if (isLoading) {
+  useEffect(() => {
+    const controller = new AbortController();
+    void restoreSession(controller.signal);
+    return () => controller.abort();
+  }, [restoreSession]);
+
+  useEffect(() => {
+    if (session.kind !== 'offline') {
+      return;
+    }
+
+    const retryWhenOnline = (): void => void restoreSession();
+    window.addEventListener('online', retryWhenOnline);
+    return () => window.removeEventListener('online', retryWhenOnline);
+  }, [restoreSession, session.kind]);
+
+  useEffect(() => {
+    if (session.kind === 'unauthenticated') {
+      if (route !== appRoutes.login) {
+        navigate(appRoutes.login, true);
+      }
+      return;
+    }
+
+    if (session.kind !== 'authenticated') {
+      return;
+    }
+
+    if (isSettingsRoute(route)) {
+      if (route === appRoutes.editSurvey && session.profile.survey === null) {
+        navigate(appRoutes.settings, true);
+      }
+      return;
+    }
+
+    const expectedRoute = routeForOnboardingStatus(session.profile.user.onboardingStatus);
+
+    if (route !== expectedRoute) {
+      navigate(expectedRoute, true);
+    }
+  }, [navigate, route, session]);
+
+  if (session.kind === 'booting') {
     return (
-      <main className="app-shell">
-        <div className="loading-state" role="status">
-          <span />
-          Загружаем профиль…
+      <main className="app-shell" data-testid="session-loading">
+        <div className="loading-state" role="status" aria-live="polite">
+          <span aria-hidden="true" />
+          Восстанавливаем защищённую сессию…
         </div>
       </main>
     );
   }
 
-  if (profile === null) {
+  if (session.kind === 'unauthenticated') {
     return (
-      <>
-        <SessionRequired />
-        {loadError === null ? null : (
-          <div className="global-error" role="alert">
-            {loadError}
-          </div>
-        )}
-      </>
-    );
-  }
-
-  if (mode === 'edit-survey') {
-    return (
-      <SurveyWizard
-        initialSurvey={profile.survey}
-        onSaved={(updated) => {
-          setProfile(updated);
-          setMode('settings');
+      <LoginScreen
+        onAuthenticated={(profile) => {
+          setSession({ kind: 'authenticated', profile });
+          navigate(routeForOnboardingStatus(profile.user.onboardingStatus), true);
         }}
-        onCancel={() => setMode('settings')}
       />
     );
   }
 
-  if (mode === 'settings') {
+  if (session.kind === 'offline' || session.kind === 'server') {
+    return (
+      <SystemState
+        kind={session.kind}
+        message={session.message}
+        onRetry={() => void restoreSession()}
+      />
+    );
+  }
+
+  const profile = session.profile;
+
+  if (route === appRoutes.editSurvey) {
+    return (
+      <SurveyWizard
+        initialSurvey={profile.survey}
+        onSaved={(updated) => {
+          setSession({ kind: 'authenticated', profile: updated });
+          navigate(appRoutes.settings, true);
+        }}
+        onCancel={() => navigate(appRoutes.settings)}
+      />
+    );
+  }
+
+  if (route === appRoutes.settings) {
     return (
       <Settings
         profile={profile}
-        onClose={() => setMode('journey')}
-        onEditSurvey={() => setMode('edit-survey')}
+        onClose={() => navigate(routeForOnboardingStatus(profile.user.onboardingStatus))}
+        onEditSurvey={() => navigate(appRoutes.editSurvey)}
+        onLogout={() => {
+          void logout().finally(() => {
+            setSession({ kind: 'unauthenticated' });
+            navigate(appRoutes.login, true);
+          });
+        }}
       />
     );
   }
@@ -237,12 +378,14 @@ export const App = (): ReactNode => {
       <SurveyWizard
         initialSurvey={profile.survey}
         onSaved={(updated) => {
-          setProfile(updated);
-          setMode('journey');
+          setSession({ kind: 'authenticated', profile: updated });
+          navigate(routeForOnboardingStatus(updated.user.onboardingStatus), true);
         }}
       />
     );
   }
 
-  return <JourneyPlaceholder profile={profile} onOpenSettings={() => setMode('settings')} />;
+  return (
+    <JourneyPlaceholder profile={profile} onOpenSettings={() => navigate(appRoutes.settings)} />
+  );
 };

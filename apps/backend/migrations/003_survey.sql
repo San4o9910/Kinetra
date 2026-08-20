@@ -1,3 +1,13 @@
+CREATE OR REPLACE FUNCTION kinetra_text_array_has_unique_elements(values_to_check text[])
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+PARALLEL SAFE
+AS $$
+  SELECT cardinality(values_to_check) = COUNT(DISTINCT item)
+  FROM unnest(values_to_check) AS item;
+$$;
+
 CREATE TABLE IF NOT EXISTS survey_answers (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL,
@@ -41,6 +51,9 @@ CREATE TABLE IF NOT EXISTS survey_answers (
       'other'
     ]::text[]
   ),
+  CONSTRAINT survey_answers_injuries_unique CHECK (
+    kinetra_text_array_has_unique_elements(injuries)
+  ),
   CONSTRAINT survey_answers_none_exclusive CHECK (
     NOT ('none' = ANY(injuries) AND cardinality(injuries) > 1)
   ),
@@ -48,7 +61,7 @@ CREATE TABLE IF NOT EXISTS survey_answers (
     (
       'other' = ANY(injuries)
       AND injuries_detail IS NOT NULL
-      AND btrim(injuries_detail) <> ''
+      AND char_length(btrim(injuries_detail)) BETWEEN 1 AND 500
     )
     OR
     (

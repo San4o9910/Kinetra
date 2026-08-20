@@ -174,6 +174,22 @@ test('survey validation rejects invalid ranges, incomplete injuries, and body us
     });
     assert.equal(otherWithoutDetail.status, 400);
 
+    const duplicateInjuries = await requestJson(harness, '/api/v1/me/survey', {
+      method: 'PUT',
+      body: { ...validSurvey, injuries: ['knees', 'knees'] },
+    });
+    assert.equal(duplicateInjuries.status, 400);
+
+    const oversizedDetail = await requestJson(harness, '/api/v1/me/survey', {
+      method: 'PUT',
+      body: {
+        ...validSurvey,
+        injuries: ['other'],
+        injuries_detail: 'x'.repeat(501),
+      },
+    });
+    assert.equal(oversizedDetail.status, 400);
+
     const attemptedOverride = await requestJson(harness, '/api/v1/me/survey', {
       method: 'PUT',
       body: { ...validSurvey, userId: randomUUID() },

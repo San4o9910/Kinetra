@@ -48,7 +48,14 @@ const requiredFiles = [
   'docker-compose.yml',
   'README.md',
   'docs/T02_AUTH_API.md',
+  'docs/T04_PROFILE_SURVEY.md',
   'apps/frontend/index.html',
+  'apps/frontend/src/features/auth/LoginScreen.tsx',
+  'apps/frontend/src/features/survey/SurveyWizard.tsx',
+  'apps/frontend/src/features/survey/model.ts',
+  'apps/frontend/src/routing.ts',
+  'apps/frontend/test/api-session.test.ts',
+  'apps/frontend/test/survey-routing.test.ts',
   'apps/frontend/public/manifest.webmanifest',
   'apps/frontend/public/service-worker.js',
   'apps/frontend/public/offline.html',
@@ -58,6 +65,7 @@ const requiredFiles = [
   'apps/frontend/src/pwa/registerServiceWorker.ts',
   'apps/backend/migrations/001_auth.sql',
   'apps/backend/migrations/002_content.sql',
+  'apps/backend/migrations/003_survey.sql',
   'apps/backend/scripts/migrate.mjs',
   'apps/backend/scripts/seed.mjs',
   'apps/backend/scripts/verify-content.mjs',
@@ -71,7 +79,15 @@ const requiredFiles = [
   'apps/backend/src/auth/router.ts',
   'apps/backend/src/auth/service.ts',
   'apps/backend/src/auth/tokens.ts',
+  'apps/backend/src/auth/middleware.ts',
+  'apps/backend/src/profile/postgres-profile.repository.ts',
+  'apps/backend/src/profile/router.ts',
+  'apps/backend/src/profile/schema.ts',
+  'apps/backend/src/profile/service.ts',
   'apps/backend/test/auth.e2e.test.ts',
+  'apps/backend/test/profile.e2e.test.ts',
+  'apps/backend/test/profile.postgres.test.ts',
+  'scripts/test-frontend-browser.mjs',
   'packages/shared/src/index.ts',
 ];
 
@@ -117,14 +133,7 @@ if (frontendPackage.dependencies?.['socket.io-client']) {
   fail('frontend dependency: socket.io-client');
 }
 
-for (const script of [
-  'db:migrate',
-  'db:seed',
-  'db:verify-content',
-  'test',
-  'typecheck',
-  'build',
-]) {
+for (const script of ['db:migrate', 'db:seed', 'db:verify-content', 'test', 'typecheck', 'build']) {
   if (backendPackage.scripts?.[script]) {
     pass(`backend script: ${script}`);
   } else {
@@ -199,8 +208,16 @@ expectIncludes(
 );
 
 const serviceWorker = await readText('apps/frontend/public/service-worker.js');
-expectIncludes(serviceWorker, "caches.match('/offline.html')", 'offline navigation fallback present');
-expectMatches(serviceWorker, /pathname\.startsWith\('\/api\/'\)/u, 'service worker bypasses API calls');
+expectIncludes(
+  serviceWorker,
+  "caches.match('/offline.html')",
+  'offline navigation fallback present',
+);
+expectMatches(
+  serviceWorker,
+  /pathname\.startsWith\('\/api\/'\)/u,
+  'service worker bypasses API calls',
+);
 
 const backendApp = await readText('apps/backend/src/app.ts');
 expectIncludes(backendApp, "app.get('/health'", 'health endpoint present');
@@ -221,8 +238,16 @@ for (const endpoint of [
 }
 expectIncludes(router, 'assertNoUserIdOverride', 'request body cannot override user identity');
 expectIncludes(router, 'emailVerificationEnabled', 'verify-email route is configuration-gated');
-expectIncludes(router, "response.setHeader('Cache-Control', 'no-store')", 'auth responses disable caching');
-expectIncludes(router, 'clearRefreshTokenCookie', 'invalid/logout/reset flows clear refresh cookie');
+expectIncludes(
+  router,
+  "response.setHeader('Cache-Control', 'no-store')",
+  'auth responses disable caching',
+);
+expectIncludes(
+  router,
+  'clearRefreshTokenCookie',
+  'invalid/logout/reset flows clear refresh cookie',
+);
 
 const password = await readText('apps/backend/src/auth/password.ts');
 expectIncludes(password, "from 'bcrypt'", 'bcrypt implementation imported');
@@ -268,12 +293,20 @@ for (const table of [
   'password_reset_tokens',
   'email_verification_tokens',
 ]) {
-  expectMatches(migration, new RegExp(`CREATE TABLE IF NOT EXISTS ${table}\\b`, 'u'), `table: ${table}`);
+  expectMatches(
+    migration,
+    new RegExp(`CREATE TABLE IF NOT EXISTS ${table}\\b`, 'u'),
+    `table: ${table}`,
+  );
 }
 expectIncludes(migration, 'password_hash text NOT NULL', 'only password hash column is defined');
 expectIncludes(migration, 'token_hash char(64) NOT NULL', 'token tables store hashes');
 expectIncludes(migration, 'revoked_at timestamptz NULL', 'refresh revocation timestamp stored');
-expectIncludes(migration, 'used_at timestamptz NULL', 'one-time token consumption timestamp stored');
+expectIncludes(
+  migration,
+  'used_at timestamptz NULL',
+  'one-time token consumption timestamp stored',
+);
 expectIncludes(migration, 'expires_at timestamptz NOT NULL', 'token TTL stored');
 expectIncludes(
   migration,
@@ -349,8 +382,187 @@ expectIncludes(
   'CI verifies the T03 schema and seeded data',
 );
 
+const surveyMigration = await readText('apps/backend/migrations/003_survey.sql');
+expectMatches(
+  surveyMigration,
+  /CREATE TABLE IF NOT EXISTS survey_answers\b/u,
+  'T04 survey_answers table is created',
+);
+expectIncludes(
+  surveyMigration,
+  'survey_answers_one_current_idx',
+  'T04 allows only one current survey per user',
+);
+expectIncludes(
+  surveyMigration,
+  'kinetra_text_array_has_unique_elements',
+  'T04 database rejects duplicate injury options',
+);
+expectIncludes(
+  surveyMigration,
+  'char_length(btrim(injuries_detail)) BETWEEN 1 AND 500',
+  'T04 database enforces injury detail length',
+);
+
+const authMiddleware = await readText('apps/backend/src/auth/middleware.ts');
+expectIncludes(authMiddleware, 'claims.sub', 'T04 protected identity comes from JWT subject');
+expectIncludes(authMiddleware, 'request.auth', 'T04 auth middleware stores verified principal');
+expectIncludes(
+  authMiddleware,
+  'AUTHENTICATION_REQUIRED',
+  'T04 auth middleware rejects invalid access tokens',
+);
+
+const profileRouter = await readText('apps/backend/src/profile/router.ts');
+expectMatches(profileRouter, /router\.get\(\s*['"]\/['"]/u, 'T04 GET /api/v1/me route exists');
+expectMatches(
+  profileRouter,
+  /router\.put\(\s*['"]\/survey['"]/u,
+  'T04 PUT /api/v1/me/survey route exists',
+);
+expectIncludes(profileRouter, 'requireAuthenticatedPrincipal', 'T04 routes require JWT principal');
+
+const surveySchema = await readText('apps/backend/src/profile/schema.ts');
+expectIncludes(surveySchema, '.strict()', 'T04 survey payload rejects unknown fields');
+expectIncludes(surveySchema, "'18-25'", 'T04 age ranges are enumerated');
+expectIncludes(surveySchema, 'new Set(injuries)', 'T04 API rejects duplicate injury options');
+expectIncludes(surveySchema, 'injuries_detail', 'T04 other injury requires details');
+
+const profileRepository = await readText('apps/backend/src/profile/postgres-profile.repository.ts');
+expectIncludes(profileRepository, 'FOR UPDATE', 'T04 survey versioning locks the user row');
+expectIncludes(
+  profileRepository,
+  'SET is_current = false',
+  'T04 supersedes the previous survey version',
+);
+expectIncludes(
+  profileRepository,
+  "WHEN onboarding_status = 'survey_pending' THEN 'onboarding_pending'",
+  'T04 advances onboarding status after the first survey',
+);
+
+const frontendApi = await readText('apps/frontend/src/lib/api.ts');
+expectIncludes(frontendApi, "credentials: 'include'", 'frontend sends refresh cookies');
+expectIncludes(frontendApi, "'/api/v1/auth/refresh'", 'frontend refreshes access tokens');
+expectIncludes(frontendApi, 'refreshInFlight', 'frontend deduplicates concurrent refreshes');
+expectIncludes(
+  frontendApi,
+  'response.status === 401',
+  'frontend retries protected requests after 401',
+);
+expectIncludes(
+  frontendApi,
+  'private accessToken: string | null = null',
+  'access token is kept in memory',
+);
+expectIncludes(
+  frontendApi,
+  "window.localStorage.removeItem('kinetra.accessToken')",
+  'legacy localStorage access tokens are removed',
+);
+if (frontendApi.includes('localStorage.setItem')) {
+  fail('frontend never writes access tokens to localStorage');
+} else {
+  pass('frontend never writes access tokens to localStorage');
+}
+
+const frontendApp = await readText('apps/frontend/src/App.tsx');
+expectIncludes(frontendApp, '<LoginScreen', 'frontend has an access-token handoff from login');
+expectIncludes(frontendApp, '<SystemState', 'frontend distinguishes network failure from logout');
+expectIncludes(
+  frontendApp,
+  'routeForOnboardingStatus',
+  'frontend routes by server onboarding status',
+);
+expectIncludes(frontendApp, 'logout().finally', 'frontend revokes the refresh session on logout');
+
+const surveyWizard = await readText('apps/frontend/src/features/survey/SurveyWizard.tsx');
+expectIncludes(surveyWizard, 'Шаг {step + 1}', 'survey displays five-step progress');
+expectIncludes(surveyWizard, 'disabled={!isValid}', 'survey blocks invalid forward navigation');
+expectIncludes(surveyWizard, 'toggleSurveyInjury', 'survey makes none mutually exclusive');
+expectIncludes(
+  surveyWizard,
+  'data-testid="injuries-detail"',
+  'survey renders details for other injuries',
+);
+
+const surveyModel = await readText('apps/frontend/src/features/survey/model.ts');
+expectIncludes(surveyModel, "injury === 'none'", 'survey model makes none mutually exclusive');
+expectIncludes(surveyModel, 'detailLength <= 500', 'survey model bounds other injury details');
+
+const routes = await readText('apps/frontend/src/routing.ts');
+for (const [status, route] of [
+  ['survey_pending', 'survey'],
+  ['onboarding_pending', 'onboarding'],
+  ['base_lessons', 'baseLessons'],
+  ['active', 'home'],
+]) {
+  expectIncludes(routes, `case '${status}'`, `T04 route status: ${status}`);
+  expectIncludes(routes, `return appRoutes.${route}`, `T04 route destination: ${route}`);
+}
+
+const frontendStyles = await readText('apps/frontend/src/styles.css');
+for (const color of ['#080909', '#181c1c', '#c8f169', '#f4f6f2', '#a8b0ac']) {
+  expectIncludes(frontendStyles.toLowerCase(), color, `T04 design color: ${color}`);
+}
+expectIncludes(frontendStyles, 'min-height: 48px', 'T04 controls exceed 44px touch target');
+expectIncludes(indexHtml, 'fonts.googleapis.com', 'Inter stylesheet is connected');
+expectIncludes(indexHtml, 'family=Inter', 'Inter font family is requested');
+
+const browserTest = await readText('scripts/test-frontend-browser.mjs');
+expectIncludes(browserTest, 'KINETRA_T04_BROWSER_E2E=PASS', 'T04 browser acceptance test exists');
+expectIncludes(
+  browserTest,
+  "localStorage.getItem('kinetra.accessToken')",
+  'browser test checks token storage',
+);
+expectIncludes(
+  browserTest,
+  'server progress restored after reload',
+  'browser test checks session restore',
+);
+expectIncludes(browserTest, 'base lessons route', 'browser test checks base-lessons routing');
+expectIncludes(browserTest, 'active route', 'browser test checks active routing');
+
+for (const script of [
+  'test:backend',
+  'test:frontend:unit',
+  'test:frontend:browser',
+  'test:frontend',
+]) {
+  if (rootPackage.scripts?.[script]) {
+    pass(`T04 root script: ${script}`);
+  } else {
+    fail(`T04 root script: ${script}`);
+  }
+}
+
+const profileTests = await readText('apps/backend/test/profile.e2e.test.ts');
+for (const scenario of [
+  'invalidAge',
+  'mixedNone',
+  'otherWithoutDetail',
+  'duplicateInjuries',
+  'oversizedDetail',
+  'creates a new current version',
+]) {
+  expectIncludes(profileTests, scenario, `T04 backend scenario: ${scenario}`);
+}
+
+const profilePostgresTests = await readText('apps/backend/test/profile.postgres.test.ts');
+expectIncludes(
+  profilePostgresTests,
+  'survey_answers_injuries_unique',
+  'T04 PostgreSQL test covers duplicate injuries',
+);
+expectIncludes(
+  profilePostgresTests,
+  'survey_answers_other_detail_valid',
+  'T04 PostgreSQL test covers detail length',
+);
+
 const rateLimiter = await readText('apps/backend/src/auth/rate-limit.ts');
-expectIncludes(rateLimiter, "response.status(429)", 'password-reset rate limiter returns HTTP 429');
+expectIncludes(rateLimiter, 'response.status(429)', 'password-reset rate limiter returns HTTP 429');
 expectIncludes(rateLimiter, "'Retry-After'", 'rate limiter returns Retry-After');
 
 const envExample = await readText('.env.example');
