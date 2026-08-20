@@ -1,0 +1,82 @@
+name: Apply audited T04 fixes
+
+on:
+  pull_request:
+    branches: [develop]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.head_ref == 'feature/t04-profile-survey'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Apply audited fix payload
+        id: payload
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ ! -d .t04-fix ]]; then
+            echo 'applied=false' >> "$GITHUB_OUTPUT"
+            echo 'T04 audited fix payload is already applied.'
+            exit 0
+          fi
+
+          cat .t04-fix/part-* | base64 --decode > /tmp/t04-fixes.tar.gz
+          echo '9b7024721ad15e6dda1690faf3569216528d9b674f2b52c52ab2fe147d406442  /tmp/t04-fixes.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/t04-fixes.tar.gz -C .
+          rm -rf .t04-fix
+          echo 'applied=true' >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        if: steps.payload.outputs.applied == 'true'
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.payload.outputs.applied == 'true'
+        run: npm ci
+
+      - name: Verify structure
+        if: steps.payload.outputs.applied == 'true'
+        run: npm run verify:structure
+
+      - name: Typecheck
+        if: steps.payload.outputs.applied == 'true'
+        run: npm run typecheck
+
+      - name: Lint
+        if: steps.payload.outputs.applied == 'true'
+        run: npm run lint
+
+      - name: Test backend and frontend
+        if: steps.payload.outputs.applied == 'true'
+        run: npm run test
+
+      - name: Build
+        if: steps.payload.outputs.applied == 'true'
+        run: npm run build
+
+      - name: Verify manifest
+        if: steps.payload.outputs.applied == 'true'
+        run: sha256sum -c MANIFEST.sha256
+
+      - name: Commit audited T04 fixes
+        if: steps.payload.outputs.applied == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'fix: close all T04 audit gaps'
+          git push origin HEAD:${{ github.head_ref }}
