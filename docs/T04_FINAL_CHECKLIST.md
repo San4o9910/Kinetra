@@ -1,7 +1,0 @@
-- JWT-only user identity
-- GET /api/v1/me
-- PUT /api/v1/me/survey
-- Zod validation
-- versioned survey rows
-- five-step React survey
-- server-driven onboarding routing
