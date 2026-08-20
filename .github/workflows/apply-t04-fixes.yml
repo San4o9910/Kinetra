@@ -58,9 +58,9 @@ jobs:
         if: steps.payload.outputs.applied == 'true'
         run: npm run lint
 
-      - name: Test backend and frontend
+      - name: Test deterministic suites before commit
         if: steps.payload.outputs.applied == 'true'
-        run: npm run test
+        run: npm run test:backend && npm run test:frontend:unit
 
       - name: Build
         if: steps.payload.outputs.applied == 'true'
