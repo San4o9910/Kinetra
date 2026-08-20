@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import type { MeResponse, OnboardingStatus } from '@kinetra/shared';
+import type { MeResponse } from '@kinetra/shared';
 
 import { LoginScreen } from './features/auth/LoginScreen';
+import { BaseLessonsScreen } from './features/base-lessons/BaseLessonsScreen';
 import { OnboardingCarousel } from './features/onboarding/OnboardingCarousel';
 import { SurveyWizard } from './features/survey/SurveyWizard';
 import { ApiRequestError, bootstrapSession, fetchMe, logout } from './lib/api';
@@ -19,21 +20,10 @@ interface StageCopy {
   readonly description: string;
 }
 
-const stageCopy: Record<
-  Exclude<OnboardingStatus, 'survey_pending' | 'onboarding_pending'>,
-  StageCopy
-> = {
-  base_lessons: {
-    eyebrow: 'БАЗОВЫЕ УРОКИ · T06',
-    title: 'Подготовьте основу',
-    description: 'Здесь появятся семь базовых уроков, которые помогут безопасно начать программу.',
-  },
-  active: {
-    eyebrow: 'ГЛАВНАЯ · T08',
-    title: 'Ваше движение начинается здесь',
-    description:
-      'Главный экран будет показывать тренировку дня, прогресс недели и ключевые метрики.',
-  },
+const activeStageCopy: StageCopy = {
+  eyebrow: 'ГЛАВНАЯ · T08',
+  title: 'Ваше движение начинается здесь',
+  description: 'Главный экран будет показывать тренировку дня, прогресс недели и ключевые метрики.',
 };
 
 interface JourneyPlaceholderProps {
@@ -42,16 +32,8 @@ interface JourneyPlaceholderProps {
 }
 
 const JourneyPlaceholder = ({ profile, onOpenSettings }: JourneyPlaceholderProps): ReactNode => {
-  const status = profile.user.onboardingStatus;
-
-  if (status === 'survey_pending' || status === 'onboarding_pending') {
-    return null;
-  }
-
-  const copy = stageCopy[status];
-
   return (
-    <main className="app-shell" data-testid={`journey-${status}`}>
+    <main className="app-shell" data-testid="journey-active">
       <section className="stage-card">
         <header className="stage-topbar">
           <div className="survey-brand">
@@ -71,13 +53,13 @@ const JourneyPlaceholder = ({ profile, onOpenSettings }: JourneyPlaceholderProps
         </header>
 
         <div className="stage-content">
-          <p className="survey-kicker">{copy.eyebrow}</p>
-          <h1>{copy.title}</h1>
-          <p>{copy.description}</p>
+          <p className="survey-kicker">{activeStageCopy.eyebrow}</p>
+          <h1>{activeStageCopy.title}</h1>
+          <p>{activeStageCopy.description}</p>
 
           <div className="profile-summary">
             <span>Статус программы</span>
-            <strong>{status}</strong>
+            <strong>{profile.user.onboardingStatus}</strong>
             <span>Подписка</span>
             <strong>
               {profile.subscription.isActive ? 'Активна' : profile.subscription.status}
@@ -389,6 +371,23 @@ export const App = (): ReactNode => {
       <OnboardingCarousel
         key={profile.user.id}
         userId={profile.user.id}
+        onCompleted={(updated) => {
+          setSession({ kind: 'authenticated', profile: updated });
+          navigate(routeForOnboardingStatus(updated.user.onboardingStatus), true);
+        }}
+        onOpenSettings={() => navigate(appRoutes.settings)}
+        onSessionExpired={() => {
+          setSession({ kind: 'unauthenticated' });
+          navigate(appRoutes.login, true);
+        }}
+      />
+    );
+  }
+
+  if (profile.user.onboardingStatus === 'base_lessons') {
+    return (
+      <BaseLessonsScreen
+        key={profile.user.id}
         onCompleted={(updated) => {
           setSession({ kind: 'authenticated', profile: updated });
           navigate(routeForOnboardingStatus(updated.user.onboardingStatus), true);

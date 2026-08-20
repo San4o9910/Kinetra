@@ -1,9 +1,12 @@
 import type {
   ApiErrorResponse,
   AuthSessionResponse,
+  BaseLessonsResponse,
   HealthResponse,
+  LessonProgressResponse,
   MeResponse,
   SurveySubmission,
+  UpdateLessonProgressRequest,
 } from '@kinetra/shared';
 
 const configuredApiUrl =
@@ -139,6 +142,33 @@ export class ApiClient {
 
   public async completeOnboarding(): Promise<MeResponse> {
     return this.authenticatedJsonRequest<MeResponse>('/api/v1/me/onboarding-complete', {
+      method: 'PUT',
+    });
+  }
+
+  public async getBaseLessons(signal?: AbortSignal): Promise<BaseLessonsResponse> {
+    return this.authenticatedJsonRequest<BaseLessonsResponse>('/api/v1/base-lessons', {
+      method: 'GET',
+      ...(signal === undefined ? {} : { signal }),
+    });
+  }
+
+  public async updateLessonProgress(
+    lessonId: string,
+    data: UpdateLessonProgressRequest,
+  ): Promise<LessonProgressResponse> {
+    return this.authenticatedJsonRequest<LessonProgressResponse>(
+      `/api/v1/base-lessons/${encodeURIComponent(lessonId)}/progress`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(data),
+        keepalive: true,
+      },
+    );
+  }
+
+  public async completeBaseProgram(): Promise<MeResponse> {
+    return this.authenticatedJsonRequest<MeResponse>('/api/v1/base-lessons/complete-program', {
       method: 'PUT',
     });
   }
@@ -289,5 +319,12 @@ export const fetchMe = (signal?: AbortSignal): Promise<MeResponse> => apiClient.
 export const saveSurvey = (survey: SurveySubmission): Promise<MeResponse> =>
   apiClient.saveSurvey(survey);
 export const completeOnboarding = (): Promise<MeResponse> => apiClient.completeOnboarding();
+export const getBaseLessons = (signal?: AbortSignal): Promise<BaseLessonsResponse> =>
+  apiClient.getBaseLessons(signal);
+export const updateLessonProgress = (
+  lessonId: string,
+  data: UpdateLessonProgressRequest,
+): Promise<LessonProgressResponse> => apiClient.updateLessonProgress(lessonId, data);
+export const completeBaseProgram = (): Promise<MeResponse> => apiClient.completeBaseProgram();
 export const fetchHealth = (signal: AbortSignal): Promise<HealthResponse> =>
   apiClient.fetchHealth(signal);
