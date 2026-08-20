@@ -106,3 +106,49 @@ test('concurrent bootstrap calls share one refresh rotation', async () => {
   assert.deepEqual(await Promise.all([first, second]), [true, true]);
   assert.equal(refreshCount, 1);
 });
+
+test('onboarding completion uses an authenticated idempotent PUT endpoint', async () => {
+  const calls: Array<{
+    readonly path: string;
+    readonly method: string;
+    readonly authorization: string | null;
+    readonly body: BodyInit | null | undefined;
+  }> = [];
+
+  const client = new ApiClient({
+    baseUrl: 'http://api.test',
+    fetchImpl: async (input, init) => {
+      const url = new URL(String(input));
+      const headers = new Headers(init?.headers);
+      calls.push({
+        path: url.pathname,
+        method: init?.method ?? 'GET',
+        authorization: headers.get('authorization'),
+        body: init?.body,
+      });
+
+      if (url.pathname === '/api/v1/auth/refresh') {
+        return Response.json(session('onboarding-token'));
+      }
+
+      if (url.pathname === '/api/v1/me/onboarding-complete') {
+        return Response.json({
+          ...profile,
+          user: { ...profile.user, onboardingStatus: 'base_lessons' },
+        });
+      }
+
+      throw new Error(`Unexpected request ${url.pathname}`);
+    },
+  });
+
+  assert.equal(await client.bootstrapSession(), true);
+  const completed = await client.completeOnboarding();
+  assert.equal(completed.user.onboardingStatus, 'base_lessons');
+  assert.deepEqual(calls.at(-1), {
+    path: '/api/v1/me/onboarding-complete',
+    method: 'PUT',
+    authorization: 'Bearer onboarding-token',
+    body: undefined,
+  });
+});

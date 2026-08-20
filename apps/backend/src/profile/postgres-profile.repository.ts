@@ -194,6 +194,50 @@ export class PostgresProfileRepository implements ProfileRepository {
     }
   }
 
+  public async completeOnboarding(userId: string): Promise<UserProfileSnapshot | null> {
+    const client = await this.pool.connect();
+
+    try {
+      await client.query('BEGIN');
+
+      const user = await client.query<OnboardingRow>(
+        `
+          SELECT onboarding_status
+          FROM users
+          WHERE id = $1
+          FOR UPDATE
+        `,
+        [userId],
+      );
+
+      if (user.rowCount !== 1) {
+        await client.query('ROLLBACK');
+        return null;
+      }
+
+      if (user.rows[0]?.onboarding_status === 'onboarding_pending') {
+        await client.query(
+          `
+            UPDATE users
+            SET onboarding_status = 'base_lessons',
+                updated_at = NOW()
+            WHERE id = $1
+          `,
+          [userId],
+        );
+      }
+
+      const profile = await this.loadProfile(client, userId);
+      await client.query('COMMIT');
+      return profile;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   private async loadProfile(
     client: PoolClient,
     userId: string,

@@ -137,6 +137,12 @@ export class ApiClient {
     });
   }
 
+  public async completeOnboarding(): Promise<MeResponse> {
+    return this.authenticatedJsonRequest<MeResponse>('/api/v1/me/onboarding-complete', {
+      method: 'PUT',
+    });
+  }
+
   public async fetchHealth(signal: AbortSignal): Promise<HealthResponse> {
     const response = await this.safeFetch('/health', {
       headers: { Accept: 'application/json' },
@@ -282,5 +288,6 @@ export const logout = (): Promise<void> => apiClient.logout();
 export const fetchMe = (signal?: AbortSignal): Promise<MeResponse> => apiClient.fetchMe(signal);
 export const saveSurvey = (survey: SurveySubmission): Promise<MeResponse> =>
   apiClient.saveSurvey(survey);
+export const completeOnboarding = (): Promise<MeResponse> => apiClient.completeOnboarding();
 export const fetchHealth = (signal: AbortSignal): Promise<HealthResponse> =>
   apiClient.fetchHealth(signal);

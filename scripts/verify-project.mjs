@@ -49,13 +49,17 @@ const requiredFiles = [
   'README.md',
   'docs/T02_AUTH_API.md',
   'docs/T04_PROFILE_SURVEY.md',
+  'docs/T05_ONBOARDING_CAROUSEL.md',
   'apps/frontend/index.html',
   'apps/frontend/src/features/auth/LoginScreen.tsx',
   'apps/frontend/src/features/survey/SurveyWizard.tsx',
   'apps/frontend/src/features/survey/model.ts',
+  'apps/frontend/src/features/onboarding/OnboardingCarousel.tsx',
+  'apps/frontend/src/features/onboarding/model.ts',
   'apps/frontend/src/routing.ts',
   'apps/frontend/test/api-session.test.ts',
   'apps/frontend/test/survey-routing.test.ts',
+  'apps/frontend/test/onboarding.test.ts',
   'apps/frontend/public/manifest.webmanifest',
   'apps/frontend/public/service-worker.js',
   'apps/frontend/public/offline.html',
@@ -399,6 +403,16 @@ expectIncludes(
 );
 expectIncludes(
   ciWorkflow,
+  "grep -F 'KINETRA_T05_POSTGRES_INTEGRATION=PASS'",
+  'CI proves that the T05 PostgreSQL integration test executed',
+);
+expectIncludes(
+  ciWorkflow,
+  "grep -F 'KINETRA_T05_BROWSER_E2E=PASS'",
+  'CI proves that the T05 browser acceptance test executed',
+);
+expectIncludes(
+  ciWorkflow,
   "find /tmp -maxdepth 1 -type d -name 'kinetra-browser-*'",
   'CI rejects leftover browser profile directories',
 );
@@ -442,6 +456,11 @@ expectMatches(
   'T04 PUT /api/v1/me/survey route exists',
 );
 expectIncludes(profileRouter, 'requireAuthenticatedPrincipal', 'T04 routes require JWT principal');
+expectMatches(
+  profileRouter,
+  /router\.put\(\s*['"]\/onboarding-complete['"]/u,
+  'T05 PUT /api/v1/me/onboarding-complete route exists',
+);
 
 const surveySchema = await readText('apps/backend/src/profile/schema.ts');
 expectIncludes(surveySchema, '.strict()', 'T04 survey payload rejects unknown fields');
@@ -460,6 +479,16 @@ expectIncludes(
   profileRepository,
   "WHEN onboarding_status = 'survey_pending' THEN 'onboarding_pending'",
   'T04 advances onboarding status after the first survey',
+);
+expectIncludes(
+  profileRepository,
+  "onboarding_status === 'onboarding_pending'",
+  'T05 only advances an onboarding-pending profile',
+);
+expectIncludes(
+  profileRepository,
+  "SET onboarding_status = 'base_lessons'",
+  'T05 advances onboarding atomically to base lessons',
 );
 
 const frontendApi = await readText('apps/frontend/src/lib/api.ts');
@@ -486,6 +515,11 @@ if (frontendApi.includes('localStorage.setItem')) {
 } else {
   pass('frontend never writes access tokens to localStorage');
 }
+expectIncludes(
+  frontendApi,
+  "'/api/v1/me/onboarding-complete'",
+  'T05 frontend calls the protected completion endpoint',
+);
 
 const frontendApp = await readText('apps/frontend/src/App.tsx');
 expectIncludes(frontendApp, '<LoginScreen', 'frontend has an access-token handoff from login');
@@ -496,6 +530,48 @@ expectIncludes(
   'frontend routes by server onboarding status',
 );
 expectIncludes(frontendApp, 'logout().finally', 'frontend revokes the refresh session on logout');
+expectIncludes(frontendApp, '<OnboardingCarousel', 'T05 route renders the onboarding carousel');
+
+const onboardingModel = await readText('apps/frontend/src/features/onboarding/model.ts');
+expectIncludes(
+  onboardingModel,
+  "'kinetra.onboarding.slide'",
+  'T05 slide position is scoped to session storage',
+);
+expectIncludes(
+  onboardingModel,
+  "'kinetra.onboarding.user'",
+  'T05 slide position is isolated by authenticated user',
+);
+expectIncludes(
+  onboardingModel,
+  'ONBOARDING_SWIPE_THRESHOLD = 48',
+  'T05 swipe threshold is defined',
+);
+expectIncludes(onboardingModel, "title: 'Готовы начать?'", 'T05 has the sixth completion slide');
+expectIncludes(onboardingModel, "label: 'Нейрогимнастика'", 'T05 lists all weekly rhythms');
+expectIncludes(
+  onboardingModel,
+  "ONBOARDING_COMPLETE_LABEL = 'К базовым урокам'",
+  'T05 defines the final completion action',
+);
+
+const onboardingCarousel = await readText(
+  'apps/frontend/src/features/onboarding/OnboardingCarousel.tsx',
+);
+expectIncludes(onboardingCarousel, 'window.sessionStorage.setItem', 'T05 persists slide progress');
+expectIncludes(onboardingCarousel, 'onPointerMove', 'T05 supports pointer swipe navigation');
+expectIncludes(onboardingCarousel, 'aria-current', 'T05 exposes the active progress dot');
+expectIncludes(
+  onboardingCarousel,
+  'onSessionExpired',
+  'T05 exits an expired authenticated session',
+);
+expectIncludes(
+  onboardingCarousel,
+  'ONBOARDING_COMPLETE_LABEL',
+  'T05 renders the final completion action',
+);
 
 const surveyWizard = await readText('apps/frontend/src/features/survey/SurveyWizard.tsx');
 expectIncludes(surveyWizard, 'Шаг {step + 1}', 'survey displays five-step progress');
@@ -527,11 +603,23 @@ for (const color of ['#080909', '#181c1c', '#c8f169', '#f4f6f2', '#a8b0ac']) {
   expectIncludes(frontendStyles.toLowerCase(), color, `T04 design color: ${color}`);
 }
 expectIncludes(frontendStyles, 'min-height: 48px', 'T04 controls exceed 44px touch target');
+expectIncludes(frontendStyles, 'touch-action: pan-y', 'T05 preserves vertical touch scrolling');
+expectIncludes(frontendStyles, 'env(safe-area-inset-bottom)', 'T05 respects mobile safe areas');
+expectIncludes(frontendStyles, 'prefers-reduced-motion: reduce', 'T05 respects reduced motion');
 expectIncludes(indexHtml, 'fonts.googleapis.com', 'Inter stylesheet is connected');
 expectIncludes(indexHtml, 'family=Inter', 'Inter font family is requested');
 
 const browserTest = await readText('scripts/test-frontend-browser.mjs');
 expectIncludes(browserTest, 'KINETRA_T04_BROWSER_E2E=PASS', 'T04 browser acceptance test exists');
+expectIncludes(browserTest, 'KINETRA_T05_BROWSER_E2E=PASS', 'T05 browser acceptance test exists');
+expectIncludes(browserTest, 'Input.dispatchTouchEvent', 'T05 browser test uses native touch input');
+expectIncludes(browserTest, 'Input.dispatchMouseEvent', 'T05 browser test uses native mouse input');
+expectIncludes(browserTest, 'mobile: true', 'T05 browser test uses a mobile viewport');
+expectIncludes(
+  browserTest,
+  'login after expired onboarding session',
+  'T05 browser test covers refresh-session expiry',
+);
 expectIncludes(
   browserTest,
   "localStorage.getItem('kinetra.accessToken')",
@@ -631,18 +719,35 @@ expectIncludes(
   'KINETRA_T04_POSTGRES_INTEGRATION=PASS',
   'T04 PostgreSQL test emits an execution marker',
 );
+expectIncludes(
+  profilePostgresTests,
+  'KINETRA_T05_POSTGRES_INTEGRATION=PASS',
+  'T05 PostgreSQL test emits an execution marker',
+);
 
-for (const temporaryWorkflow of [
+const onboardingTests = await readText('apps/frontend/test/onboarding.test.ts');
+expectIncludes(
+  onboardingTests,
+  'onboardingSlides.length, 6',
+  'T05 unit test fixes the slide count',
+);
+expectIncludes(onboardingTests, 'slideAfterSwipe', 'T05 unit test covers swipe boundaries');
+
+for (const temporaryArtifact of [
   '.github/workflows/apply-t04-fixes.yml',
+  '.github/workflows/apply-t05.yml',
   '.github/workflows/export-dev-env.yml',
   '.github/workflows/export-full-env.yml',
   '.github/workflows/export-source.yml',
+  '.t05-bootstrap',
+  'docs/.probe',
+  'docs/.t05-pr-trigger',
 ]) {
   try {
-    await access(resolve(root, temporaryWorkflow));
-    fail(`temporary workflow is absent: ${temporaryWorkflow}`);
+    await access(resolve(root, temporaryArtifact));
+    fail(`temporary bootstrap artifact is absent: ${temporaryArtifact}`);
   } catch {
-    pass(`temporary workflow is absent: ${temporaryWorkflow}`);
+    pass(`temporary bootstrap artifact is absent: ${temporaryArtifact}`);
   }
 }
 

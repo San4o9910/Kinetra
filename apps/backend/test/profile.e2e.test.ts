@@ -152,6 +152,53 @@ test('GET /api/v1/me requires a valid access JWT and restores server progress', 
   }
 });
 
+test('PUT /api/v1/me/onboarding-complete is JWT-protected and idempotent', async () => {
+  const harness = await startHarness();
+
+  try {
+    const unauthenticated = await requestJson(harness, '/api/v1/me/onboarding-complete', {
+      method: 'PUT',
+      token: null,
+    });
+    assert.equal(unauthenticated.status, 401);
+
+    const surveyPending = await requestJson(harness, '/api/v1/me/onboarding-complete', {
+      method: 'PUT',
+    });
+    assert.equal(surveyPending.status, 200);
+    assert.equal(asObject(asObject(surveyPending.body).user).onboardingStatus, 'survey_pending');
+
+    const survey = await requestJson(harness, '/api/v1/me/survey', {
+      method: 'PUT',
+      body: validSurvey,
+    });
+    assert.equal(survey.status, 200);
+    assert.equal(asObject(asObject(survey.body).user).onboardingStatus, 'onboarding_pending');
+
+    const completed = await requestJson(harness, '/api/v1/me/onboarding-complete', {
+      method: 'PUT',
+      body: { userId: randomUUID() },
+    });
+    assert.equal(completed.status, 200);
+    assert.equal(asObject(asObject(completed.body).user).onboardingStatus, 'base_lessons');
+
+    const repeated = await requestJson(harness, '/api/v1/me/onboarding-complete', {
+      method: 'PUT',
+    });
+    assert.equal(repeated.status, 200);
+    assert.equal(asObject(asObject(repeated.body).user).onboardingStatus, 'base_lessons');
+
+    harness.repository.setOnboardingStatus('active');
+    const active = await requestJson(harness, '/api/v1/me/onboarding-complete', {
+      method: 'PUT',
+    });
+    assert.equal(active.status, 200);
+    assert.equal(asObject(asObject(active.body).user).onboardingStatus, 'active');
+  } finally {
+    await harness.close();
+  }
+});
+
 test('survey validation rejects invalid ranges, incomplete injuries, and body userId overrides', async () => {
   const harness = await startHarness();
 

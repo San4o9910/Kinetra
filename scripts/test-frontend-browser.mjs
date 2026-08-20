@@ -75,10 +75,12 @@ const counters = {
   refresh: 0,
   meUnauthorized: 0,
   surveySave: 0,
+  onboardingComplete: 0,
   logout: 0,
 };
 
 let surveyVersion = 0;
+let rejectNextRefresh = false;
 let profile = {
   user: {
     id: '00000000-0000-4000-8000-000000000001',
@@ -194,6 +196,15 @@ const createMockApiServer = () =>
       }
 
       counters.refresh += 1;
+
+      if (rejectNextRefresh) {
+        rejectNextRefresh = false;
+        json(response, 401, {
+          error: { code: 'REFRESH_TOKEN_REVOKED', message: 'Refresh session has expired.' },
+        });
+        return;
+      }
+
       json(
         response,
         200,
@@ -271,6 +282,49 @@ const createMockApiServer = () =>
           created_at: new Date().toISOString(),
         },
       };
+      json(response, 200, profile);
+      return;
+    }
+
+    if (request.method === 'PUT' && request.url === '/api/v1/me/onboarding-complete') {
+      if (!hasValidAccessToken(request)) {
+        json(response, 401, {
+          error: { code: 'AUTHENTICATION_REQUIRED', message: 'A valid access token is required.' },
+        });
+        return;
+      }
+
+      counters.onboardingComplete += 1;
+
+      if (counters.onboardingComplete === 1) {
+        rejectNextRefresh = true;
+        json(response, 401, {
+          error: { code: 'AUTHENTICATION_REQUIRED', message: 'A valid access token is required.' },
+        });
+        return;
+      }
+
+      if (counters.onboardingComplete === 2) {
+        json(response, 503, {
+          error: {
+            code: 'ONBOARDING_TEMPORARILY_UNAVAILABLE',
+            message: 'Не удалось завершить онбординг. Попробуйте ещё раз.',
+          },
+        });
+        return;
+      }
+
+      if (profile.user.onboardingStatus === 'onboarding_pending') {
+        profile = {
+          ...profile,
+          user: {
+            ...profile.user,
+            onboardingStatus: 'base_lessons',
+            updatedAt: new Date().toISOString(),
+          },
+        };
+      }
+
       json(response, 200, profile);
       return;
     }
@@ -590,6 +644,19 @@ const runBrowserScenario = async () => {
     await cdp.connect();
     await cdp.send('Runtime.enable');
     await cdp.send('Page.enable');
+    await cdp.send('Network.enable');
+    await cdp.send('Network.setBlockedURLs', {
+      urls: ['https://fonts.googleapis.com/*', 'https://fonts.gstatic.com/*'],
+    });
+    await cdp.send('Emulation.setDeviceMetricsOverride', {
+      width: 390,
+      height: 844,
+      screenWidth: 390,
+      screenHeight: 844,
+      deviceScaleFactor: 1,
+      mobile: true,
+    });
+    await cdp.send('Page.navigate', { url: `${frontendOrigin}/login` });
 
     const exists = (testId) =>
       cdp.evaluate(`document.querySelector(${JSON.stringify(selector(testId))}) !== null`);
@@ -610,6 +677,134 @@ const runBrowserScenario = async () => {
       cdp.evaluate(`document.querySelector(${JSON.stringify(selector(testId))})?.value ?? null`);
     const click = (testId) =>
       cdp.evaluate(`document.querySelector(${JSON.stringify(selector(testId))})?.click()`);
+    const doubleClick = (testId) =>
+      cdp.evaluate(`(() => {
+        const button = document.querySelector(${JSON.stringify(selector(testId))});
+        if (!(button instanceof HTMLButtonElement)) {
+          throw new Error('Button not found: ${testId}');
+        }
+        button.click();
+        button.click();
+      })()`);
+    const pressOnboardingKey = (key) =>
+      cdp.evaluate(`(() => {
+        const element = document.querySelector(${JSON.stringify(selector('onboarding-viewport'))});
+        if (!(element instanceof HTMLElement)) {
+          throw new Error('Onboarding keyboard viewport was not found.');
+        }
+        element.dispatchEvent(new KeyboardEvent('keydown', {
+          bubbles: true,
+          cancelable: true,
+          key: ${JSON.stringify(key)},
+        }));
+      })()`);
+    const swipeOnboarding = async ({ fromX, fromY, toX, toY, pointerType = 'touch' }) => {
+      const rect = await cdp.evaluate(`(() => {
+        const element = document.querySelector(${JSON.stringify(selector('onboarding-viewport'))});
+        if (!(element instanceof HTMLElement)) {
+          throw new Error('Onboarding swipe viewport was not found.');
+        }
+        const bounds = element.getBoundingClientRect();
+        return { left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height };
+      })()`);
+      const x = (offset) => rect.left + Math.max(2, Math.min(offset, rect.width - 2));
+      const y = (offset) => rect.top + Math.max(2, Math.min(offset, rect.height - 2));
+      const start = { x: x(fromX), y: y(fromY) };
+      const middle = { x: x((fromX + toX) / 2), y: y((fromY + toY) / 2) };
+      const end = { x: x(toX), y: y(toY) };
+
+      if (pointerType === 'mouse') {
+        await cdp.send('Input.dispatchMouseEvent', {
+          type: 'mousePressed',
+          ...start,
+          button: 'left',
+          buttons: 1,
+          clickCount: 1,
+        });
+        await cdp.send('Input.dispatchMouseEvent', {
+          type: 'mouseMoved',
+          ...middle,
+          button: 'left',
+          buttons: 1,
+        });
+        await cdp.send('Input.dispatchMouseEvent', {
+          type: 'mouseMoved',
+          ...end,
+          button: 'left',
+          buttons: 1,
+        });
+        await cdp.send('Input.dispatchMouseEvent', {
+          type: 'mouseReleased',
+          ...end,
+          button: 'left',
+          buttons: 0,
+          clickCount: 1,
+        });
+        return;
+      }
+
+      await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+      try {
+        await cdp.send('Input.dispatchTouchEvent', {
+          type: 'touchStart',
+          touchPoints: [{ ...start, id: 1 }],
+        });
+        await cdp.send('Input.dispatchTouchEvent', {
+          type: 'touchMove',
+          touchPoints: [{ ...middle, id: 1 }],
+        });
+        await cdp.send('Input.dispatchTouchEvent', {
+          type: 'touchMove',
+          touchPoints: [{ ...end, id: 1 }],
+        });
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      } finally {
+        await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+      }
+    };
+    const assertOnboardingLayout = async (width) => {
+      await cdp.send('Emulation.setDeviceMetricsOverride', {
+        width,
+        height: 820,
+        screenWidth: width,
+        screenHeight: 820,
+        deviceScaleFactor: 1,
+        mobile: true,
+      });
+      const metrics = await cdp.evaluate(`(() => {
+        const card = document.querySelector(${JSON.stringify('.onboarding-card')});
+        const targets = [
+          ...document.querySelectorAll(${JSON.stringify(
+            '.onboarding-dot, .onboarding-settings, .onboarding-next, .onboarding-back, .onboarding-complete',
+          )}),
+        ];
+        const cardRect = card?.getBoundingClientRect();
+        const targetSizes = targets.map((target) => {
+          const rect = target.getBoundingClientRect();
+          return { width: rect.width, height: rect.height };
+        });
+        return {
+          innerWidth: window.innerWidth,
+          scrollWidth: document.documentElement.scrollWidth,
+          cardLeft: cardRect?.left ?? -1,
+          cardRight: cardRect?.right ?? window.innerWidth + 1,
+          targetSizes,
+        };
+      })()`);
+      assert.equal(metrics.innerWidth, width);
+      assert.ok(metrics.scrollWidth <= width, `Horizontal overflow at ${width}px.`);
+      assert.ok(
+        metrics.cardLeft >= 0 && metrics.cardRight <= width,
+        `Card overflow at ${width}px.`,
+      );
+      assert.ok(metrics.targetSizes.length >= 8, `Touch targets missing at ${width}px.`);
+      assert.ok(
+        metrics.targetSizes.every(
+          ({ width: targetWidth, height }) => targetWidth >= 44 && height >= 44,
+        ),
+        `Touch target below 44px at ${width}px: ${JSON.stringify(metrics.targetSizes)}`,
+      );
+    };
     const setValue = (testId, nextValue) =>
       cdp.evaluate(`(() => {
         const element = document.querySelector(${JSON.stringify(selector(testId))});
@@ -638,15 +833,34 @@ const runBrowserScenario = async () => {
       await click('survey-next');
       await waitStep(currentStep + 1);
     };
+    const submitLogin = async () => {
+      await setValue('login-identifier', 'browser-test@example.com');
+      await setValue('login-password', 'correct-password');
+      await waitFor('enabled login button', async () => !(await disabled('login-submit')));
+      await click('login-submit');
+    };
+    const waitOnboardingSlide = (slide) =>
+      waitFor(
+        `onboarding slide ${slide}`,
+        async () =>
+          (await attribute(`onboarding-dot-${slide}`, 'aria-current')) === 'step' &&
+          (await text(`onboarding-slide-${slide}`))?.includes(
+            [
+              'Добро пожаловать в Kinetra',
+              'Активность не тратит энергию. Она её создаёт',
+              '7 ритмов недели',
+              'Изучите базу',
+              'Вы сможете двигаться свободно и без боли',
+              'Готовы начать?',
+            ][slide - 1],
+          ),
+      );
 
     await waitFor('login screen', () => exists('login-screen'));
     assert.equal(await pathname(), '/login');
     assert.equal(await cdp.evaluate("localStorage.getItem('kinetra.accessToken')"), null);
 
-    await setValue('login-identifier', 'browser-test@example.com');
-    await setValue('login-password', 'correct-password');
-    await waitFor('enabled login button', async () => !(await disabled('login-submit')));
-    await click('login-submit');
+    await submitLogin();
 
     await waitFor('survey after login and refresh retry', () => exists('survey-screen'));
     assert.equal(await pathname(), '/survey');
@@ -681,8 +895,14 @@ const runBrowserScenario = async () => {
     await waitFor('enabled save button', async () => !(await disabled('survey-save')));
     await click('survey-save');
 
-    await waitFor('onboarding route after survey save', () => exists('journey-onboarding_pending'));
+    await waitFor('onboarding route after survey save', () => exists('onboarding-screen'));
     assert.equal(await pathname(), '/onboarding');
+    await waitOnboardingSlide(1);
+    assert.equal(await attribute('onboarding-slide-1', 'aria-label'), '1 из 6');
+    assert.equal(await attribute('onboarding-dot-1', 'aria-current'), 'step');
+
+    await assertOnboardingLayout(320);
+    await assertOnboardingLayout(428);
 
     await click('open-settings');
     await waitFor('settings route', () => exists('settings-screen'));
@@ -705,21 +925,88 @@ const runBrowserScenario = async () => {
     await cdp.evaluate('window.history.back()');
     await waitFor('settings after browser back', () => exists('settings-screen'));
     await click('close-settings');
-    await waitFor('onboarding before reload', () => exists('journey-onboarding_pending'));
+    await waitFor('onboarding after settings', () => exists('onboarding-screen'));
+    await waitOnboardingSlide(1);
+
+    assert.equal(await text('onboarding-next'), 'Далее');
+    await click('onboarding-next');
+    await waitOnboardingSlide(2);
+
+    await swipeOnboarding({ fromX: 300, fromY: 220, toX: 110, toY: 224 });
+    await waitOnboardingSlide(3);
+    assert.equal(await cdp.evaluate("sessionStorage.getItem('kinetra.onboarding.slide')"), '2');
+    assert.ok((await text('onboarding-rhythms'))?.includes('СбНейрогимнастика'));
+
+    await swipeOnboarding({ fromX: 220, fromY: 300, toX: 225, toY: 150 });
+    await waitOnboardingSlide(3);
+
+    await pressOnboardingKey('ArrowRight');
+    await waitOnboardingSlide(4);
+    await pressOnboardingKey('ArrowLeft');
+    await waitOnboardingSlide(3);
+
+    await swipeOnboarding({
+      fromX: 110,
+      fromY: 224,
+      toX: 300,
+      toY: 220,
+      pointerType: 'mouse',
+    });
+    await waitOnboardingSlide(2);
+    await click('onboarding-next');
+    await waitOnboardingSlide(3);
+
+    await click('onboarding-back');
+    await waitOnboardingSlide(2);
+    await click('onboarding-next');
+    await waitOnboardingSlide(3);
+    await click('onboarding-dot-4');
+    await waitOnboardingSlide(4);
+    assert.equal(await cdp.evaluate("sessionStorage.getItem('kinetra.onboarding.slide')"), '3');
 
     await cdp.send('Page.reload', { ignoreCache: true });
-    await waitFor('server progress restored after reload', () =>
-      exists('journey-onboarding_pending'),
-    );
+    await waitFor('server progress restored after reload', () => exists('onboarding-screen'));
     assert.equal(await pathname(), '/onboarding');
+    await waitOnboardingSlide(4);
     assert.equal(await cdp.evaluate("localStorage.getItem('kinetra.accessToken')"), null);
 
-    profile = {
-      ...profile,
-      user: { ...profile.user, onboardingStatus: 'base_lessons' },
-    };
+    await click('onboarding-next');
+    await waitOnboardingSlide(5);
+    await click('onboarding-next');
+    await waitOnboardingSlide(6);
+    assert.equal(await text('onboarding-complete'), 'К базовым урокам');
+
+    await doubleClick('onboarding-complete');
+    await waitFor('login after expired onboarding session', () => exists('login-screen'));
+    assert.equal(counters.onboardingComplete, 1);
+    assert.equal(await pathname(), '/login');
+    assert.equal(await cdp.evaluate("sessionStorage.getItem('kinetra.onboarding.slide')"), '5');
+    assert.equal(
+      await cdp.evaluate("sessionStorage.getItem('kinetra.onboarding.user')"),
+      profile.user.id,
+    );
+
+    await submitLogin();
+    await waitFor('onboarding after reauthentication', () => exists('onboarding-screen'));
+    await waitOnboardingSlide(6);
+
+    await doubleClick('onboarding-complete');
+    await waitFor('recoverable onboarding completion error', () => exists('onboarding-error'));
+    assert.equal(counters.onboardingComplete, 2);
+    assert.equal(await pathname(), '/onboarding');
+    assert.equal(await disabled('onboarding-complete'), false);
+    assert.equal(await cdp.evaluate("sessionStorage.getItem('kinetra.onboarding.slide')"), '5');
+
+    await click('onboarding-complete');
+    await waitFor('base lessons route after onboarding completion', () =>
+      exists('journey-base_lessons'),
+    );
+    assert.equal(await pathname(), '/base-lessons');
+    assert.equal(await cdp.evaluate("sessionStorage.getItem('kinetra.onboarding.slide')"), null);
+    assert.equal(await cdp.evaluate("sessionStorage.getItem('kinetra.onboarding.user')"), null);
+
     await cdp.send('Page.reload', { ignoreCache: true });
-    await waitFor('base lessons route', () => exists('journey-base_lessons'));
+    await waitFor('base lessons restored after reload', () => exists('journey-base_lessons'));
     assert.equal(await pathname(), '/base-lessons');
 
     profile = {
@@ -737,16 +1024,18 @@ const runBrowserScenario = async () => {
     assert.equal(await pathname(), '/login');
     assert.equal(await cdp.evaluate("localStorage.getItem('kinetra.accessToken')"), null);
 
-    assert.equal(counters.login, 1);
+    assert.equal(counters.login, 2);
     assert.ok(
       counters.refresh >= 4,
       `Expected at least 4 refreshes, received ${counters.refresh}.`,
     );
     assert.ok(counters.meUnauthorized >= 1);
     assert.equal(counters.surveySave, 1);
+    assert.equal(counters.onboardingComplete, 3);
     assert.equal(counters.logout, 1);
 
     console.log('KINETRA_T04_BROWSER_E2E=PASS');
+    console.log('KINETRA_T05_BROWSER_E2E=PASS');
   } catch (error) {
     if (cdp !== null) {
       try {

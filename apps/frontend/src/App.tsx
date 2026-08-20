@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import type { MeResponse, OnboardingStatus } from '@kinetra/shared';
 
 import { LoginScreen } from './features/auth/LoginScreen';
+import { OnboardingCarousel } from './features/onboarding/OnboardingCarousel';
 import { SurveyWizard } from './features/survey/SurveyWizard';
 import { ApiRequestError, bootstrapSession, fetchMe, logout } from './lib/api';
 import {
@@ -18,12 +19,10 @@ interface StageCopy {
   readonly description: string;
 }
 
-const stageCopy: Record<Exclude<OnboardingStatus, 'survey_pending'>, StageCopy> = {
-  onboarding_pending: {
-    eyebrow: 'СЛЕДУЮЩИЙ ЭТАП · T05',
-    title: 'Познакомимся с программой',
-    description: 'Анкета сохранена. Следующим экраном будет короткая карусель о подходе Kinetra.',
-  },
+const stageCopy: Record<
+  Exclude<OnboardingStatus, 'survey_pending' | 'onboarding_pending'>,
+  StageCopy
+> = {
   base_lessons: {
     eyebrow: 'БАЗОВЫЕ УРОКИ · T06',
     title: 'Подготовьте основу',
@@ -45,7 +44,7 @@ interface JourneyPlaceholderProps {
 const JourneyPlaceholder = ({ profile, onOpenSettings }: JourneyPlaceholderProps): ReactNode => {
   const status = profile.user.onboardingStatus;
 
-  if (status === 'survey_pending') {
+  if (status === 'survey_pending' || status === 'onboarding_pending') {
     return null;
   }
 
@@ -380,6 +379,24 @@ export const App = (): ReactNode => {
         onSaved={(updated) => {
           setSession({ kind: 'authenticated', profile: updated });
           navigate(routeForOnboardingStatus(updated.user.onboardingStatus), true);
+        }}
+      />
+    );
+  }
+
+  if (profile.user.onboardingStatus === 'onboarding_pending') {
+    return (
+      <OnboardingCarousel
+        key={profile.user.id}
+        userId={profile.user.id}
+        onCompleted={(updated) => {
+          setSession({ kind: 'authenticated', profile: updated });
+          navigate(routeForOnboardingStatus(updated.user.onboardingStatus), true);
+        }}
+        onOpenSettings={() => navigate(appRoutes.settings)}
+        onSessionExpired={() => {
+          setSession({ kind: 'unauthenticated' });
+          navigate(appRoutes.login, true);
         }}
       />
     );

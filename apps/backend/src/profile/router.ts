@@ -29,17 +29,14 @@ export const createProfileRouter = ({
   router.use(disableCaching);
   router.use(authMiddleware);
 
-  router.get(
-    '/',
-    (request: Request, response: Response<MeResponse>, next: NextFunction): void => {
-      const { userId } = requireAuthenticatedPrincipal(request);
+  router.get('/', (request: Request, response: Response<MeResponse>, next: NextFunction): void => {
+    const { userId } = requireAuthenticatedPrincipal(request);
 
-      void service
-        .getProfile(userId)
-        .then((profile) => response.status(200).json(profile))
-        .catch(next);
-    },
-  );
+    void service
+      .getProfile(userId)
+      .then((profile) => response.status(200).json(profile))
+      .catch(next);
+  });
 
   router.put(
     '/survey',
@@ -52,6 +49,18 @@ export const createProfileRouter = ({
 
       void service
         .saveSurvey(userId, request.body)
+        .then((profile) => response.status(200).json(profile))
+        .catch(next);
+    },
+  );
+
+  router.put(
+    '/onboarding-complete',
+    (request: Request, response: Response<MeResponse>, next: NextFunction): void => {
+      const { userId } = requireAuthenticatedPrincipal(request);
+
+      void service
+        .completeOnboarding(userId)
         .then((profile) => response.status(200).json(profile))
         .catch(next);
     },
