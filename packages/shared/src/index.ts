@@ -67,22 +67,12 @@ export interface MessageResponse {
   readonly message: string;
 }
 
-export type OnboardingStatus =
-  | 'survey_pending'
-  | 'onboarding_pending'
-  | 'base_lessons'
-  | 'active';
+export type OnboardingStatus = 'survey_pending' | 'onboarding_pending' | 'base_lessons' | 'active';
 
 export type SurveyGender = 'male' | 'female';
 export type SurveyAgeRange = '18-25' | '26-35' | '36-45' | '46-55' | '55+';
 export type SurveyGoal = 'flexibility' | 'strength' | 'awareness' | 'general_health';
-export type SurveyInjury =
-  | 'none'
-  | 'knees'
-  | 'lower_back'
-  | 'shoulders'
-  | 'neck'
-  | 'other';
+export type SurveyInjury = 'none' | 'knees' | 'lower_back' | 'shoulders' | 'neck' | 'other';
 export type SurveyExperience = 'beginner' | 'novice' | 'experienced';
 
 export interface SurveySubmission {
@@ -108,12 +98,7 @@ export interface SurveyAnswer {
 }
 
 export type SubscriptionProvider = 'yukassa' | 'tribute';
-export type SubscriptionStatus =
-  | 'pending'
-  | 'active'
-  | 'expired'
-  | 'cancelled'
-  | 'refunded';
+export type SubscriptionStatus = 'pending' | 'active' | 'expired' | 'cancelled' | 'refunded';
 export type ProfileSubscriptionStatus = SubscriptionStatus | 'none';
 
 export interface ProfileUser {
@@ -146,4 +131,40 @@ export interface MeResponse {
   readonly user: ProfileUser;
   readonly survey: SurveyAnswer | null;
   readonly subscription: ProfileSubscription;
+}
+
+export interface BaseLessonProgress {
+  readonly completion_percent: number;
+  readonly completed: boolean;
+}
+
+export interface BaseLesson {
+  readonly id: string;
+  readonly slug: string;
+  readonly title: string;
+  readonly description: string | null;
+  readonly duration_seconds: number;
+  readonly order_index: number;
+  readonly poster_url: string | null;
+  readonly video_url: string | null;
+  readonly progress: BaseLessonProgress;
+}
+
+export interface BaseLessonsResponse {
+  readonly lessons: readonly BaseLesson[];
+  readonly total_completed: number;
+  readonly unlock_threshold: number;
+  readonly program_unlocked: boolean;
+}
+
+export interface UpdateLessonProgressRequest {
+  readonly position_seconds: number;
+  readonly completion_percent: number;
+}
+
+export interface LessonProgressResponse {
+  readonly position_seconds: number;
+  readonly completion_percent: number;
+  readonly completed: boolean;
+  readonly completed_at: string | null;
 }

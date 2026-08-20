@@ -18,6 +18,8 @@
   },
   "dependencies": {
     "@kinetra/shared": "*",
+    "@aws-sdk/client-s3": "^3.1114.0",
+    "@aws-sdk/s3-request-presigner": "^3.1114.0",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
     "dotenv": "^17.4.2",

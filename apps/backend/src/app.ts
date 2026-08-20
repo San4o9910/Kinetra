@@ -6,16 +6,19 @@ import { randomUUID } from 'node:crypto';
 import { HttpError } from './auth/errors.js';
 import { createAuthRouter } from './auth/router.js';
 import { createProductionAuthRuntime, type AuthRuntime } from './auth/runtime.js';
+import { createBaseLessonsRouter } from './base-lessons/router.js';
+import {
+  createProductionBaseLessonsRuntime,
+  type BaseLessonsRuntime,
+} from './base-lessons/runtime.js';
 import { env } from './config/env.js';
 import { createProfileRouter } from './profile/router.js';
-import {
-  createProductionProfileRuntime,
-  type ProfileRuntime,
-} from './profile/runtime.js';
+import { createProductionProfileRuntime, type ProfileRuntime } from './profile/runtime.js';
 
 export interface CreateAppOptions {
   readonly authRuntime?: AuthRuntime;
   readonly profileRuntime?: ProfileRuntime;
+  readonly baseLessonsRuntime?: BaseLessonsRuntime;
 }
 
 const requestIdFrom = (response: Response): string =>
@@ -31,6 +34,7 @@ export const createApp = (options: CreateAppOptions = {}) => {
   const app = express();
   const authRuntime = options.authRuntime ?? createProductionAuthRuntime();
   const profileRuntime = options.profileRuntime ?? createProductionProfileRuntime();
+  const baseLessonsRuntime = options.baseLessonsRuntime ?? createProductionBaseLessonsRuntime();
 
   app.disable('x-powered-by');
 
@@ -71,6 +75,7 @@ export const createApp = (options: CreateAppOptions = {}) => {
   );
 
   app.use('/api/v1/me', createProfileRouter(profileRuntime));
+  app.use('/api/v1/base-lessons', createBaseLessonsRouter(baseLessonsRuntime));
 
   app.use((request: Request, response: Response<ApiErrorResponse>) => {
     response.status(404).json({

@@ -11,8 +11,7 @@ const repositoryRoot = resolve(backendRoot, '../..');
 loadEnv({ path: resolve(repositoryRoot, '.env'), quiet: true });
 
 const databaseUrl =
-  process.env.DATABASE_URL ??
-  'postgresql://kinetra:kinetra_local_only@localhost:5432/kinetra';
+  process.env.DATABASE_URL ?? 'postgresql://kinetra:kinetra_local_only@localhost:5432/kinetra';
 
 const requiredTables = [
   'videos',
@@ -31,6 +30,8 @@ const requiredConstraints = [
   'videos_type_valid',
   'videos_schedule_fields_valid',
   'videos_status_valid',
+  'videos_storage_key_not_blank',
+  'videos_workout_storage_key_required',
   'program_weeks_number_unique',
   'program_weeks_number_valid',
   'program_weeks_status_valid',
@@ -44,6 +45,7 @@ const requiredConstraints = [
   'video_progress_user_fk',
   'video_progress_video_fk',
   'video_progress_completion_valid',
+  'video_progress_completed_state_valid',
   'workout_completions_user_fk',
   'workout_completions_video_fk',
   'workout_completions_user_video_week_unique',
@@ -65,6 +67,7 @@ const requiredIndexes = [
   'subscriptions_provider_external_unique_idx',
   'subscriptions_user_status_expires_idx',
   'video_progress_video_completion_idx',
+  'video_progress_user_completed_idx',
   'workout_completions_user_date_idx',
   'workout_completions_video_idx',
   'weekly_metrics_week_idx',
@@ -172,7 +175,16 @@ try {
           SELECT COUNT(*)::integer
           FROM achievements
           WHERE code = ANY($1::text[])
-        ) AS achievements
+        ) AS achievements,
+        (
+          SELECT COUNT(*)::integer
+          FROM videos
+          WHERE type = 'base_lesson'
+            AND (
+              storage_key ~ '^videos/base-lessons/0[1-7]\\.mp4$'
+              OR poster_key ~ '^posters/base-lessons/0[1-7]\\.jpg$'
+            )
+        ) AS legacy_base_lesson_placeholders
     `,
     [seededAchievementCodes],
   );
@@ -184,6 +196,42 @@ try {
   assert(counts?.workouts === 84, 'Expected 84 valid workout videos.');
   assert(counts?.workout_slots === 84, 'Expected 84 unique workout schedule slots.');
   assert(counts?.achievements === 5, 'Expected 5 seeded achievements.');
+  assert(
+    counts?.legacy_base_lesson_placeholders === 0,
+    'Known T03 base lesson placeholder storage keys must be null or replaced with real keys.',
+  );
+
+  const baseLessonConstraintResult = await client.query(
+    `
+      SELECT conname, pg_get_constraintdef(oid) AS definition
+      FROM pg_catalog.pg_constraint
+      WHERE conname = ANY($1::text[])
+    `,
+    [
+      'videos_storage_key_not_blank',
+      'videos_workout_storage_key_required',
+      'video_progress_completed_state_valid',
+    ],
+  );
+  const constraintDefinitions = new Map(
+    baseLessonConstraintResult.rows.map((row) => [row.conname, row.definition]),
+  );
+  assert(
+    constraintDefinitions.get('videos_storage_key_not_blank')?.includes('storage_key IS NULL'),
+    'Base lessons must allow a null storage key.',
+  );
+  assert(
+    constraintDefinitions
+      .get('videos_workout_storage_key_required')
+      ?.includes('storage_key IS NOT NULL'),
+    'Workout videos must retain a required storage key.',
+  );
+  assert(
+    /completion_percent\s*>=\s*\(?90\)?/u.test(
+      constraintDefinitions.get('video_progress_completed_state_valid') ?? '',
+    ),
+    'Completed progress must use the 90 percent threshold.',
+  );
 
   const scheduleResult = await client.query(`
     SELECT
