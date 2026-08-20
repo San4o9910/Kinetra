@@ -1,0 +1,127 @@
+name: Finalize T04 100-point correction v2
+
+on:
+  push:
+    branches: [automation/t04-100]
+    paths:
+      - '.github/workflows/finalize-t04-100-v2.yml'
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: kinetra_test
+          POSTGRES_USER: kinetra
+          POSTGRES_PASSWORD: kinetra_test_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U kinetra -d kinetra_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://kinetra:kinetra_test_ci@localhost:5432/kinetra_test
+      JWT_ACCESS_SECRET: ci-test-access-secret-not-real-32-bytes
+      JWT_REFRESH_SECRET: ci-test-refresh-secret-not-real-32-bytes
+      NODE_ENV: test
+      PORT: 3000
+      HOST: 0.0.0.0
+      CORS_ORIGIN: http://localhost:5173
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: automation/t04-100
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Apply final T04 corrections
+        run: python .t04-final/apply.py
+
+      - name: Install and lock dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+
+      - name: Format corrected sources
+        run: >-
+          npx prettier --write
+          apps/frontend/src
+          apps/frontend/package.json
+          apps/frontend/vitest.config.ts
+          apps/backend/test/survey-constraints.postgres.test.ts
+          scripts/verify-t04.mjs
+          docs/T04_PROFILE_SURVEY.md
+          package.json
+          package-lock.json
+
+      - name: Full acceptance on clean PostgreSQL
+        run: |
+          npm run verify:structure
+          npm run typecheck
+          npm run lint
+          npm run db:migrate
+          npm run db:seed
+          npm run db:seed
+          npm run db:verify-content
+          npm run test
+          npm run build
+
+      - name: Add acceptance record
+        shell: bash
+        run: |
+          cat > docs/T04_ACCEPTANCE.md <<'EOF'
+          # T04 acceptance record
+
+          The canonical T04 feature commit is accepted only after all of the following complete in GitHub Actions on PostgreSQL 17:
+
+          - T01–T04 structure verification
+          - strict TypeScript typecheck
+          - ESLint
+          - migrations 001, 002 and 003 on a clean database
+          - idempotent T03 seed executed twice
+          - T03 database verification
+          - backend auth/profile/PostgreSQL tests
+          - frontend session, routing and survey component tests
+          - backend, shared and frontend production builds
+
+          Access tokens are memory-only; refresh rotation uses the HttpOnly cookie; database constraints mirror the survey Zod schema.
+          EOF
+
+      - name: Publish canonical one-commit feature tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .t04-final
+          find .github/workflows -maxdepth 1 -type f ! -name ci.yml -delete
+          find . -type f \
+            ! -path './.git/*' \
+            ! -path '*/node_modules/*' \
+            ! -path '*/dist/*' \
+            ! -path '*/coverage/*' \
+            ! -name MANIFEST.sha256 \
+            -print0 | sort -z | xargs -0 sha256sum > MANIFEST.sha256
+          sha256sum -c MANIFEST.sha256
+
+          git fetch origin develop
+          git reset --mixed origin/develop
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'feat: T04 profile, survey and resilient session flow' \
+            -m 'JWT-protected profile APIs, versioned survey persistence, memory-only access tokens with refresh rotation, server-driven routing, bundled Inter and full frontend/database acceptance.'
+          git push --force origin HEAD:feature/t04-profile-survey
+
+      - name: Request canonical CI run
+        continue-on-error: true
+        run: gh workflow run ci.yml --ref feature/t04-profile-survey
