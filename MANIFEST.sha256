@@ -88,6 +88,6 @@ c9d0cf795704aff86ec30a193714a58313fca9c0f6f3d6536eb37ddcd6083882  ./eslint.confi
 1226b52db0d0863828daae249e0b8ba56452f40c4d6ebc4dab1f6bb40e532da8  ./packages/shared/package.json
 6b6da405716477ac8b77edde24c3dc9d17c1d0c22677ce4c4f27d935c95562e9  ./packages/shared/src/index.ts
 c8171db33a1b645b8c36d542cf4bfc5c47073df8842b846f91a6ebf083973c5e  ./packages/shared/tsconfig.json
-f03c0960e7d1445e1a8b556c55e7d350be38b39442795ff40dd1835f23fde9d7  ./scripts/test-frontend-browser.mjs
+f4b9a333d838629d314d52a0a8e55c01a1c85ce6ae5585b2ae598aeca6e28fce  ./scripts/test-frontend-browser.mjs
 6195303367275830d716ca36fdde2fda90a0b0a5f9b58b15b198b8b1e535b5d1  ./scripts/verify-project.mjs
 2b67887209f3334ebdc96426f5c2cb87480fb85ff2f75c0d42b0a944dae7922a  ./tsconfig.base.json

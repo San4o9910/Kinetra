@@ -616,7 +616,7 @@ const runBrowserScenario = async () => {
         '--mute-audio',
         `--remote-debugging-port=${debugPort}`,
         `--user-data-dir=${profileDirectory}`,
-        'about:blank',
+        `${frontendOrigin}/login`,
       ],
       { stdio: ['ignore', 'ignore', 'pipe'] },
     );
@@ -630,7 +630,10 @@ const runBrowserScenario = async () => {
       try {
         const response = await fetch(`http://127.0.0.1:${debugPort}/json/list`);
         const targets = await response.json();
-        target = targets.find((item) => item.type === 'page') ?? null;
+        target =
+          targets.find(
+            (item) => item.type === 'page' && String(item.url).startsWith(frontendOrigin),
+          ) ?? null;
         return target?.webSocketDebuggerUrl !== undefined;
       } catch {
         return false;
