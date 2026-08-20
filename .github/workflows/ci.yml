@@ -59,6 +59,8 @@ jobs:
       PORT: 3000
       HOST: 0.0.0.0
       CORS_ORIGIN: http://localhost:5173
+      CI: 'true'
+      KINETRA_REQUIRE_POSTGRES_TEST: 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -82,8 +84,34 @@ jobs:
       - name: Verify content model
         run: npm run db:verify-content
 
+      - name: Confirm PostgreSQL integration test prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${DATABASE_URL:-}"
+          echo 'KINETRA_T04_POSTGRES_PREREQUISITES=PASS'
+
       - name: Run tests
-        run: npm run test
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run test 2>&1 | tee /tmp/kinetra-test.log
+          grep -F 'KINETRA_T04_POSTGRES_INTEGRATION=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T04_BROWSER_E2E=PASS' /tmp/kinetra-test.log
+          echo 'KINETRA_T04_TEST_SUITE=PASS'
+
+      - name: Verify browser profile cleanup
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          leftovers="$(find /tmp -maxdepth 1 -type d -name 'kinetra-browser-*' -print)"
+          if [[ -n "$leftovers" ]]; then
+            echo 'Browser profile directories were not removed:' >&2
+            echo "$leftovers" >&2
+            exit 1
+          fi
+          echo 'KINETRA_BROWSER_TMP_CLEANUP=PASS'
 
   structure:
     name: Structure Verification

@@ -66,3 +66,84 @@ export interface VerifyEmailRequest {
 export interface MessageResponse {
   readonly message: string;
 }
+
+export type OnboardingStatus =
+  | 'survey_pending'
+  | 'onboarding_pending'
+  | 'base_lessons'
+  | 'active';
+
+export type SurveyGender = 'male' | 'female';
+export type SurveyAgeRange = '18-25' | '26-35' | '36-45' | '46-55' | '55+';
+export type SurveyGoal = 'flexibility' | 'strength' | 'awareness' | 'general_health';
+export type SurveyInjury =
+  | 'none'
+  | 'knees'
+  | 'lower_back'
+  | 'shoulders'
+  | 'neck'
+  | 'other';
+export type SurveyExperience = 'beginner' | 'novice' | 'experienced';
+
+export interface SurveySubmission {
+  readonly gender: SurveyGender;
+  readonly age_range: SurveyAgeRange;
+  readonly goal: SurveyGoal;
+  readonly injuries: readonly SurveyInjury[];
+  readonly injuries_detail?: string;
+  readonly experience: SurveyExperience;
+}
+
+export interface SurveyAnswer {
+  readonly id: string;
+  readonly version: number;
+  readonly gender: SurveyGender;
+  readonly age_range: SurveyAgeRange;
+  readonly goal: SurveyGoal;
+  readonly injuries: readonly SurveyInjury[];
+  readonly injuries_detail: string | null;
+  readonly experience: SurveyExperience;
+  readonly is_current: boolean;
+  readonly created_at: string;
+}
+
+export type SubscriptionProvider = 'yukassa' | 'tribute';
+export type SubscriptionStatus =
+  | 'pending'
+  | 'active'
+  | 'expired'
+  | 'cancelled'
+  | 'refunded';
+export type ProfileSubscriptionStatus = SubscriptionStatus | 'none';
+
+export interface ProfileUser {
+  readonly id: string;
+  readonly email: string | null;
+  readonly phone: string | null;
+  readonly emailVerified: boolean;
+  readonly avatarUrl: string | null;
+  readonly username: string | null;
+  readonly firstName: string | null;
+  readonly onboardingStatus: OnboardingStatus;
+  readonly notificationEnabled: boolean;
+  readonly level: 'beginner' | 'intermediate' | 'advanced';
+  readonly timezone: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export interface ProfileSubscription {
+  readonly provider: SubscriptionProvider | null;
+  readonly status: ProfileSubscriptionStatus;
+  readonly isActive: boolean;
+  readonly startsAt: string | null;
+  readonly expiresAt: string | null;
+  readonly amountMinor: number | null;
+  readonly currency: string | null;
+}
+
+export interface MeResponse {
+  readonly user: ProfileUser;
+  readonly survey: SurveyAnswer | null;
+  readonly subscription: ProfileSubscription;
+}

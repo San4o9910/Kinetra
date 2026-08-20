@@ -7,9 +7,15 @@ import { HttpError } from './auth/errors.js';
 import { createAuthRouter } from './auth/router.js';
 import { createProductionAuthRuntime, type AuthRuntime } from './auth/runtime.js';
 import { env } from './config/env.js';
+import { createProfileRouter } from './profile/router.js';
+import {
+  createProductionProfileRuntime,
+  type ProfileRuntime,
+} from './profile/runtime.js';
 
 export interface CreateAppOptions {
   readonly authRuntime?: AuthRuntime;
+  readonly profileRuntime?: ProfileRuntime;
 }
 
 const requestIdFrom = (response: Response): string =>
@@ -24,6 +30,7 @@ const isMalformedJsonError = (error: unknown): boolean =>
 export const createApp = (options: CreateAppOptions = {}) => {
   const app = express();
   const authRuntime = options.authRuntime ?? createProductionAuthRuntime();
+  const profileRuntime = options.profileRuntime ?? createProductionProfileRuntime();
 
   app.disable('x-powered-by');
 
@@ -49,7 +56,7 @@ export const createApp = (options: CreateAppOptions = {}) => {
     response.status(200).json({
       status: 'ok',
       service: 'kinetra-backend',
-      version: '0.2.0',
+      version: '0.4.0',
       timestamp: new Date().toISOString(),
     });
   });
@@ -62,6 +69,8 @@ export const createApp = (options: CreateAppOptions = {}) => {
       passwordResetRateLimiter: authRuntime.passwordResetRateLimiter,
     }),
   );
+
+  app.use('/api/v1/me', createProfileRouter(profileRuntime));
 
   app.use((request: Request, response: Response<ApiErrorResponse>) => {
     response.status(404).json({
