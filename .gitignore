@@ -10,4 +10,4 @@ coverage/
 .vscode/
 .idea/
 *.local
-# Bootstrap baseline branch; removed by the bootstrap workflow.
+# Trigger corrected baseline bootstrap workflow.
