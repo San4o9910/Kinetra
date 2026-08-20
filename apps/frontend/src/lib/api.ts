@@ -6,18 +6,14 @@ import type {
   SurveySubmission,
 } from '@kinetra/shared';
 
-const runtimeEnv = (
-  import.meta as ImportMeta & {
-    readonly env?: { readonly VITE_API_URL?: string };
-  }
-).env;
-
+const configuredApiUrl =
+  typeof import.meta.env === 'object' ? import.meta.env.VITE_API_URL : undefined;
 const defaultApiUrl =
   typeof window === 'undefined'
     ? 'http://localhost:3000'
     : `${window.location.protocol}//${window.location.hostname}:3000`;
 
-export const apiBaseUrl = (runtimeEnv?.VITE_API_URL ?? defaultApiUrl).replace(/\/$/u, '');
+export const apiBaseUrl = (configuredApiUrl ?? defaultApiUrl).replace(/\/$/u, '');
 
 export type ApiErrorKind = 'auth' | 'validation' | 'network' | 'server' | 'request';
 
