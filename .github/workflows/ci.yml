@@ -53,8 +53,8 @@ jobs:
           --health-retries 10
     env:
       DATABASE_URL: postgresql://kinetra:kinetra_test_ci@localhost:5432/kinetra_test
-      JWT_ACCESS_SECRET: ci-test-access-secret-not-real
-      JWT_REFRESH_SECRET: ci-test-refresh-secret-not-real
+      JWT_ACCESS_SECRET: ci-test-access-secret-not-real-32-bytes
+      JWT_REFRESH_SECRET: ci-test-refresh-secret-not-real-32-bytes
       NODE_ENV: test
       PORT: 3000
       HOST: 0.0.0.0
@@ -72,6 +72,15 @@ jobs:
 
       - name: Run migrations
         run: npm run db:migrate
+
+      - name: Seed content model
+        run: npm run db:seed
+
+      - name: Verify idempotent seed
+        run: npm run db:seed
+
+      - name: Verify content model
+        run: npm run db:verify-content
 
       - name: Run tests
         run: npm run test
