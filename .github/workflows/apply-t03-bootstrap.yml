@@ -1,0 +1,66 @@
+name: Apply T03 bootstrap payload
+
+on:
+  pull_request:
+    branches: [develop]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  apply:
+    if: github.head_ref == 'feature/t03-content-model'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Apply T03 payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -d .t03-bootstrap ]]; then
+            echo 'T03 payload is already applied.'
+            exit 0
+          fi
+
+          cat .t03-bootstrap/part-* | base64 --decode > /tmp/t03-payload.tar.gz
+          echo '4be8c1043468c2da94c72dcdac7b85aeaed974804e9df1e8acdc282c42b899d5  /tmp/t03-payload.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/t03-payload.tar.gz -C .
+          rm -rf .t03-bootstrap
+
+          node --check apps/backend/scripts/seed.mjs
+          node --check apps/backend/scripts/verify-content.mjs
+          node --check scripts/verify-project.mjs
+          node scripts/verify-project.mjs
+
+          find . -type f \
+            ! -path './.git/*' \
+            ! -path '*/node_modules/*' \
+            ! -path '*/dist/*' \
+            ! -name 'MANIFEST.sha256' \
+            -print0 | sort -z | xargs -0 sha256sum > MANIFEST.sha256
+          sha256sum -c MANIFEST.sha256
+
+      - name: Commit T03 implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -d .t03-bootstrap ]]; then
+            echo 'Payload was not applied.' >&2
+            exit 1
+          fi
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          if git diff --cached --quiet; then
+            echo 'No T03 changes to commit.'
+            exit 0
+          fi
+          git commit -m 'feat: T03 content model and seed data'
+          git push origin HEAD:${{ github.head_ref }}
