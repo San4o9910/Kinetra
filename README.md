@@ -2,11 +2,16 @@
 
 Kinetra — фитнес-приложение с React/Vite frontend и Express/PostgreSQL backend.
 
-В репозитории завершены два этапа:
+В репозитории завершены этапы T01–T06:
 
 - **T01:** каркас монорепо, PWA, PostgreSQL в Docker Compose, health endpoint и transport Socket.IO;
 - **T02:** регистрация и авторизация по email/паролю, опциональный телефон, refresh-сессии,
-  logout, password reset и опциональная верификация email.
+  logout, password reset и опциональная верификация email;
+- **T03:** модель контента, 12 недель, 84 тренировки, 7 базовых уроков и достижения;
+- **T04:** профиль, версионируемая анкета и серверный onboarding routing;
+- **T05:** адаптивная онбординг-карусель и атомарный переход к базовым урокам;
+- **T06:** список базовых уроков, плеер/placeholder, прогресс и серверная разблокировка
+  программы после четырёх завершённых уроков.
 
 ## Структура
 
@@ -17,8 +22,7 @@ kinetra/
 │   └── backend/           @kinetra/backend — Express + TypeScript + PostgreSQL
 ├── packages/
 │   └── shared/            @kinetra/shared — общие API-типы
-├── docs/
-│   └── T02_AUTH_API.md    Контракт auth API и сценарии
+├── docs/                 Контракты и сценарии T02–T06
 ├── scripts/               Структурная проверка проекта
 ├── docker-compose.yml     PostgreSQL 17
 └── .env.example           Шаблон переменных без реальных секретов
@@ -56,19 +60,41 @@ npm run dev:frontend
 npm run dev:backend
 ```
 
+## Onboarding и базовые уроки
+
+Серверный `onboarding_status` задаёт единственный допустимый frontend-маршрут:
+
+```text
+survey_pending -> /survey
+onboarding_pending -> /onboarding
+base_lessons -> /base-lessons
+active -> /
+```
+
+T06 добавляет защищённые endpoints:
+
+| Метод | Путь                                      | Назначение                                     |
+| ----- | ----------------------------------------- | ---------------------------------------------- |
+| GET   | `/api/v1/base-lessons`                    | Семь уроков с прогрессом текущего пользователя |
+| PUT   | `/api/v1/base-lessons/:lessonId/progress` | Upsert позиции и процента просмотра            |
+| PUT   | `/api/v1/base-lessons/complete-program`   | Серверная проверка порога и переход в `active` |
+
+При отсутствующем S3-ключе URL равен `null`, а UI показывает placeholder. Полный
+контракт, ошибки и матрица проверок: [`docs/T06_BASE_LESSONS.md`](docs/T06_BASE_LESSONS.md).
+
 ## Auth API T02
 
 Базовый путь: `/api/v1/auth`.
 
-| Метод | Путь | Назначение |
-|---|---|---|
-| POST | `/register` | Регистрация по email/паролю; телефон можно добавить как альтернативу |
-| POST | `/login` | Вход по email или телефону и паролю |
-| POST | `/refresh` | Ротация refresh token и выпуск нового access JWT |
-| POST | `/logout` | Отзыв текущей refresh-сессии |
-| POST | `/password-reset/request` | Запрос одноразового reset token |
-| POST | `/password-reset/confirm` | Смена пароля по reset token |
-| POST | `/verify-email` | Появляется только при включённой email-верификации |
+| Метод | Путь                      | Назначение                                                           |
+| ----- | ------------------------- | -------------------------------------------------------------------- |
+| POST  | `/register`               | Регистрация по email/паролю; телефон можно добавить как альтернативу |
+| POST  | `/login`                  | Вход по email или телефону и паролю                                  |
+| POST  | `/refresh`                | Ротация refresh token и выпуск нового access JWT                     |
+| POST  | `/logout`                 | Отзыв текущей refresh-сессии                                         |
+| POST  | `/password-reset/request` | Запрос одноразового reset token                                      |
+| POST  | `/password-reset/confirm` | Смена пароля по reset token                                          |
+| POST  | `/verify-email`           | Появляется только при включённой email-верификации                   |
 
 Access token возвращается в JSON. Refresh token хранится в `HttpOnly` cookie и не возвращается
 в теле ответа. Для запросов frontend должен использовать `credentials: 'include'`.
@@ -184,13 +210,14 @@ email не блокируется этой проверкой.
 npm run db:migrate
 ```
 
-Миграция создаёт:
+Миграции разделены по этапам:
 
-- `users`;
-- `refresh_tokens`;
-- `password_reset_tokens`;
-- `email_verification_tokens`;
-- `schema_migrations` создаётся самим runner.
+- `001_auth.sql` — пользователи и auth tokens;
+- `002_content.sql` — видео, программа, подписки, прогресс и достижения;
+- `003_survey.sql` — версионируемые ответы анкеты;
+- `004_base_lessons.sql` — placeholder-ключи и порог завершения базового урока.
+
+`schema_migrations` создаётся самим runner.
 
 Runner использует advisory lock, SHA-256 миграций и не позволяет молча изменить уже применённый
 SQL-файл.
@@ -203,6 +230,7 @@ npm run typecheck
 npm run lint
 npm run test
 npm run build
+sha256sum -c MANIFEST.sha256
 ```
 
 Все проверки одной командой:
@@ -211,12 +239,12 @@ npm run build
 npm run check
 ```
 
-E2E-набор покрывает положительные и отрицательные сценарии: email login, неверный пароль,
-phone-only configuration, refresh rotation/reuse/logout, одноразовый и просроченный reset token,
-неразглашение существования email, отзыв сессий после смены пароля, email verification, rate limit
-и запрет user ID из body.
+E2E-набор покрывает auth, профиль/анкету, онбординг-карусель и T06: JWT-защиту базовых уроков,
+валидацию прогресса, PostgreSQL upsert, порог четырёх уроков, placeholder, десятисекундное
+сохранение, system Back, динамическую CTA и переход в `active`. CI также сравнивает
+`MANIFEST.sha256` со всеми tracked-файлами и запрещает bootstrap/payload artifacts.
 
-## Граница T02
+## Границы текущего этапа
 
-В T02 не входят UI-формы авторизации, настоящий email/SMS provider, OAuth/social login,
-Telegram auth, восстановление через Telegram, S3-видео, YooKassa и доменная логика чата.
+В T06 не входят загрузка настоящих S3-видео, платежи YooKassa, каталог тренеров и доменная логика
+чата. Telegram-интеграции нет: продукт остаётся самостоятельной PWA.

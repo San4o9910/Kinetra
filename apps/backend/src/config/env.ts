@@ -12,8 +12,17 @@ type NodeEnvironment = 'development' | 'test' | 'production';
 type SameSiteMode = 'lax' | 'strict' | 'none';
 type TokenDeliveryMode = 'console' | 'disabled';
 
-const DEVELOPMENT_ACCESS_SECRET =
-  'local-development-only-change-this-kinetra-access-secret-2026';
+export interface S3Environment {
+  readonly endpoint: string | null;
+  readonly region: string;
+  readonly bucket: string;
+  readonly accessKeyId: string;
+  readonly secretAccessKey: string;
+  readonly forcePathStyle: boolean;
+  readonly presignedUrlTtlSeconds: number;
+}
+
+const DEVELOPMENT_ACCESS_SECRET = 'local-development-only-change-this-kinetra-access-secret-2026';
 
 const parseInteger = (
   name: string,
@@ -73,6 +82,71 @@ const parseOrigins = (rawValue: string | undefined): string[] => {
   return origins;
 };
 
+const trimmedOrNull = (rawValue: string | undefined): string | null => {
+  const value = rawValue?.trim();
+  return value === undefined || value.length === 0 ? null : value;
+};
+
+const parseS3Environment = (nodeEnvironment: NodeEnvironment): Readonly<S3Environment> | null => {
+  const endpoint = trimmedOrNull(process.env.S3_ENDPOINT);
+  const region = trimmedOrNull(process.env.S3_REGION);
+  const bucket = trimmedOrNull(process.env.S3_BUCKET);
+  const accessKeyId = trimmedOrNull(process.env.S3_ACCESS_KEY_ID);
+  const secretAccessKey = trimmedOrNull(process.env.S3_SECRET_ACCESS_KEY);
+  const configuredValues = { region, bucket, accessKeyId, secretAccessKey } as const;
+  const hasConfiguration = endpoint !== null || Object.values(configuredValues).some(Boolean);
+
+  if (!hasConfiguration) {
+    return null;
+  }
+
+  const missing = Object.entries(configuredValues)
+    .filter(([, value]) => value === null)
+    .map(([name]) => name);
+
+  if (missing.length > 0) {
+    throw new Error(`S3 configuration is incomplete. Missing: ${missing.join(', ')}.`);
+  }
+
+  if (endpoint !== null) {
+    let parsedEndpoint: URL;
+
+    try {
+      parsedEndpoint = new URL(endpoint);
+    } catch {
+      throw new Error('S3_ENDPOINT must be a valid HTTP or HTTPS URL.');
+    }
+
+    if (!['http:', 'https:'].includes(parsedEndpoint.protocol)) {
+      throw new Error('S3_ENDPOINT must be a valid HTTP or HTTPS URL.');
+    }
+
+    if (nodeEnvironment === 'production' && parsedEndpoint.protocol !== 'https:') {
+      throw new Error('S3_ENDPOINT must use HTTPS in production.');
+    }
+  }
+
+  return Object.freeze({
+    endpoint,
+    region: region as string,
+    bucket: bucket as string,
+    accessKeyId: accessKeyId as string,
+    secretAccessKey: secretAccessKey as string,
+    forcePathStyle: parseBoolean(
+      'S3_FORCE_PATH_STYLE',
+      process.env.S3_FORCE_PATH_STYLE,
+      endpoint !== null,
+    ),
+    presignedUrlTtlSeconds: parseInteger(
+      'S3_PRESIGNED_URL_TTL_SECONDS',
+      process.env.S3_PRESIGNED_URL_TTL_SECONDS,
+      900,
+      60,
+      86_400,
+    ),
+  });
+};
+
 const nodeEnv = parseEnum<NodeEnvironment>('NODE_ENV', process.env.NODE_ENV, 'development', [
   'development',
   'test',
@@ -109,9 +183,7 @@ const jwtAccessSecret = process.env.JWT_ACCESS_SECRET ?? DEVELOPMENT_ACCESS_SECR
 const refreshCookieName = process.env.AUTH_REFRESH_COOKIE_NAME?.trim() || 'kinetra_refresh';
 
 if (phoneOnlyRegistrationEnabled && !phoneLoginEnabled) {
-  throw new Error(
-    'AUTH_PHONE_ONLY_REGISTRATION_ENABLED requires AUTH_PHONE_LOGIN_ENABLED=true.',
-  );
+  throw new Error('AUTH_PHONE_ONLY_REGISTRATION_ENABLED requires AUTH_PHONE_LOGIN_ENABLED=true.');
 }
 
 if (!/^[A-Za-z0-9_-]{1,64}$/u.test(refreshCookieName)) {
@@ -141,8 +213,8 @@ export const env = Object.freeze({
   corsOrigins: parseOrigins(process.env.CORS_ORIGIN),
   trustProxyHops: parseInteger('TRUST_PROXY_HOPS', process.env.TRUST_PROXY_HOPS, 0, 0, 10),
   databaseUrl:
-    process.env.DATABASE_URL ??
-    'postgresql://kinetra:kinetra_local_only@localhost:5432/kinetra',
+    process.env.DATABASE_URL ?? 'postgresql://kinetra:kinetra_local_only@localhost:5432/kinetra',
+  s3: parseS3Environment(nodeEnv),
   auth: Object.freeze({
     jwtAccessSecret,
     jwtAccessTtlSeconds: parseInteger(

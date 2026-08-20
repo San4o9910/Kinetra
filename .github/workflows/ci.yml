@@ -100,8 +100,12 @@ jobs:
           grep -F 'KINETRA_T04_BROWSER_E2E=PASS' /tmp/kinetra-test.log
           grep -F 'KINETRA_T05_POSTGRES_INTEGRATION=PASS' /tmp/kinetra-test.log
           grep -F 'KINETRA_T05_BROWSER_E2E=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T06_BACKEND_E2E=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T06_POSTGRES_INTEGRATION=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T06_BROWSER_E2E=PASS' /tmp/kinetra-test.log
           echo 'KINETRA_T04_TEST_SUITE=PASS'
           echo 'KINETRA_T05_TEST_SUITE=PASS'
+          echo 'KINETRA_T06_TEST_SUITE=PASS'
 
       - name: Verify browser profile cleanup
         if: always()
@@ -129,3 +133,11 @@ jobs:
 
       - name: Verify project structure
         run: node scripts/verify-project.mjs
+
+      - name: Verify source manifest
+        shell: bash
+        run: |
+          diff -u \
+            <(git ls-files | sed '/^MANIFEST\.sha256$/d' | sed 's#^#./#' | LC_ALL=C sort) \
+            <(awk '{ print $2 }' MANIFEST.sha256 | LC_ALL=C sort)
+          sha256sum -c MANIFEST.sha256

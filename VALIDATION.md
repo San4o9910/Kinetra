@@ -1,127 +1,110 @@
-# Kinetra T02 — Validation report
+# Kinetra T06 — отчёт проверки
 
-**Дата проверки:** 2026-08-19  
-**Пакет:** Kinetra standalone PWA monorepo, версия `0.2.0`  
-**Задача:** T02 — регистрация и авторизация по email/паролю с опциональным телефоном
+**Дата локальной проверки:** 2026-08-20
 
-## Итог
+**Ветка:** `feature/t06-base-lessons` от актуального `develop`
 
-Структура T02 собрана. Реализованы auth API, SQL-миграция, конфигурация, общие типы,
-положительные и отрицательные E2E-тесты, документация и защита токенов/сессий.
+**Объём:** T01–T06, standalone PWA monorepo
 
-В доступной среде пройдены офлайн-проверки структуры, синтаксиса, TypeScript и сервисной
-логики. Полная проверка с реальными npm-пакетами и PostgreSQL должна быть выполнена после
-`npm install` на машине с доступом к npm registry и Docker/PostgreSQL.
+## Результат
 
-## Пройденные проверки
+T06 реализован обычными исходными файлами TypeScript/TSX/SQL/CSS/Markdown. В репозитории нет
+bootstrap, encoded payload, временных apply-workflows и Telegram runtime-интеграций.
 
-### 1. Структурная проверка проекта
+Локально пройдены структурная проверка, TypeScript, ESLint, backend/frontend tests и production
+builds. PostgreSQL integration и полноценный Chrome acceptance оставлены fail-closed проверками
+CI, потому что в рабочей sandbox-среде нет PostgreSQL server/Docker и Chrome binary.
 
-Команда:
+## Локально пройдено
 
-```bash
-npm run verify:structure
-```
-
-Результат:
+### Структура и защита исходников
 
 ```text
-125 structural checks passed.
+node scripts/verify-project.mjs
+450 structural checks passed.
 ```
 
-Проверены, в частности:
+Verifier проверяет API/SQL/UI-контракты T01–T06, отсутствие реального `.env`, forbidden runtime
+интеграций и подозрительных путей `bootstrap`, `payload`, `*.b64`, `*.base64`, `*.encoded` и
+`.tNN-pr-trigger`.
 
-- точные workspace-имена `@kinetra/frontend`, `@kinetra/backend`, `@kinetra/shared`;
-- наличие всех семи auth endpoints;
-- конфигурационное включение `/verify-email`;
-- bcrypt hash/compare и ограничение bcrypt в 72 UTF-8 байта;
-- короткоживущий access JWT, алгоритм HS256, подпись и проверка;
-- случайные opaque refresh/reset/verification tokens и SHA-256 hash-only storage;
-- refresh rotation, replacement chain, logout/revocation и reuse detection;
-- одноразовый reset token, TTL, rate limit и отзыв всех refresh-сессий после смены пароля;
-- одинаковый reset-request ответ для существующего и неизвестного аккаунта;
-- нормализация email и телефона;
-- запрет использования `userId`/`user_id` из request body;
-- PostgreSQL-транзакции, row locks и параметризованные запросы;
-- отсутствие реального `.env`, legacy-брендинга и запрещённой auth-интеграции.
+CI дополнительно сравнивает список путей `MANIFEST.sha256` с полным `git ls-files` (кроме самого
+manifest), после чего запускает `sha256sum -c`. Поэтому лишний tracked payload не может обойти
+проверку простым отсутствием в manifest.
 
-### 2. JSON и JavaScript
-
-- Все 11 JSON-файлов успешно разобраны через `JSON.parse`.
-- `node --check` пройден для:
-  - `scripts/verify-project.mjs`;
-  - `apps/backend/scripts/migrate.mjs`;
-  - `apps/frontend/public/service-worker.js`.
-
-### 3. TypeScript
-
-Использован доступный в среде TypeScript `5.8.3` и временные локальные declaration stubs,
-которые не входят в итоговый архив.
-
-Успешно проверены:
+### TypeScript и ESLint
 
 ```text
-packages/shared/tsconfig.json          PASS
-apps/backend/tsconfig.json             PASS
-apps/backend/tsconfig.test.json        PASS
-apps/frontend/tsconfig.json            PASS
+packages/shared/tsconfig.json      PASS
+apps/backend/tsconfig.json         PASS
+apps/backend/tsconfig.test.json    PASS
+apps/frontend/tsconfig.json        PASS
+ESLint apps/packages/scripts       PASS
 ```
 
-Компилятор работал со строгими настройками, включая `strict`, `noUncheckedIndexedAccess`,
-`exactOptionalPropertyTypes`, `noUnusedLocals` и `noUnusedParameters`.
-
-### 4. Auth service smoke test
-
-Результат:
+### Backend tests
 
 ```text
-KINETRA_T02_SERVICE_SMOKE=PASS
+tests 19
+pass 17
+fail 0
+skipped 2 (PostgreSQL: DATABASE_URL не настроен локально)
+KINETRA_T06_BACKEND_E2E=PASS
 ```
 
-Покрыты сценарии:
+T06 HTTP E2E проверяет JWT, семь упорядоченных placeholder-уроков, точный progress в повторном
+GET, строгую валидацию, int32 boundary, монотонный completion, порог четырёх уроков,
+идемпотентность и запрет обхода предыдущего onboarding state.
 
-- email registration/login и нормализация регистра;
-- реальный bcrypt-формат хэша через системную bcrypt-совместимую проверку;
-- неверный пароль;
-- phone alternative и конфигурационно разрешённый phone-only сценарий;
-- выпуск, проверка, подмена подписи и истечение access JWT;
-- refresh rotation, reuse detection и отзыв replacement-сессии;
-- reset request для существующего/неизвестного аккаунта;
-- хранение reset token только по SHA-256 хэшу;
-- одноразовое использование и отклонение просроченного reset token;
-- отзыв refresh-сессий и смена действующего пароля;
-- опциональная email verification и запрет повторного применения token.
-
-Smoke test проверяет доменную логику без HTTP/Express и PostgreSQL. Для него использовались
-временные совместимые runtime stubs; они удалены из выдаваемого пакета и не заменяют запуск
-официального E2E-набора с реальными зависимостями.
-
-## Что не было выполнено в этой среде
-
-### npm-зависимости и полная команда `npm run check`
-
-Доступ к npm registry отсутствовал:
+### Frontend unit/API tests
 
 ```text
-EAI_AGAIN getaddrinfo registry.npmjs.org
+tests 25
+pass 25
+fail 0
 ```
 
-Поэтому здесь не запускались с реальными установленными пакетами:
+Проверены все API-запросы, keepalive progress PUT, семь точных названий, completed/in-progress/
+not-started карточки, placeholder, динамическая CTA, optimistic update, защита от устаревшего GET
+и сериализация periodic/final progress без гонки перед refetch.
 
-- `npm install`;
-- `npm run lint`;
-- `npm run test`;
-- `npm run build`;
-- полная команда `npm run check`.
+### Production builds
 
-### PostgreSQL
+```text
+@kinetra/shared    PASS
+@kinetra/backend   PASS
+@kinetra/frontend  PASS
+```
 
-В среде отсутствовали Docker, `psql` и PostgreSQL server. Поэтому миграция
-`apps/backend/migrations/001_auth.sql` не применялась к живой базе данных.
+Frontend Vite build: 41 module, основной JS bundle около 240 kB (74 kB gzip).
 
-## Финальная локальная приёмка
+## Обязательные CI-проверки
 
-После распаковки выполните:
+CI поднимает PostgreSQL, применяет миграции `001`–`004`, выполняет seed/verify-content и требует
+реального запуска PostgreSQL integration. Затем установленный Chrome проходит единый browser
+journey T04–T06 на ширинах 320/428 px.
+
+T06 browser acceptance проверяет:
+
+- семь уроков и три визуальных состояния карточки;
+- placeholder без фиктивного прогресса и system Back при неуспешном background GET;
+- реальный десятисекундный progress PUT на 45% и отдельный final PUT;
+- четыре завершённых урока, динамическую CTA и переход `base_lessons -> active`;
+- сохранение `active` после reload и очистку временного Chrome profile.
+
+Fail-closed маркеры:
+
+```text
+KINETRA_T06_BACKEND_E2E=PASS
+KINETRA_T06_POSTGRES_INTEGRATION=PASS
+KINETRA_T06_PERIODIC_PROGRESS=PASS
+KINETRA_T06_CARD_STATES=PASS
+KINETRA_T06_SYSTEM_BACK=PASS
+KINETRA_T06_BROWSER_E2E=PASS
+KINETRA_T06_TEST_SUITE=PASS
+```
+
+## Команды воспроизведения
 
 ```bash
 cp .env.example .env
@@ -129,23 +112,8 @@ npm install
 docker compose up -d postgres
 npm run db:migrate
 npm run check
-npm run dev
+sha256sum -c MANIFEST.sha256
 ```
 
-Для PowerShell:
-
-```powershell
-Copy-Item .env.example .env
-npm install
-docker compose up -d postgres
-npm run db:migrate
-npm run check
-npm run dev
-```
-
-Ожидаемый результат:
-
-- migration runner применяет `001_auth.sql`;
-- `typecheck`, `lint`, E2E tests и production builds проходят;
-- `GET /health` возвращает `200`;
-- auth API доступен по `/api/v1/auth`.
+Для production необходимо задать собственный JWT secret, secure refresh-cookie и HTTPS. Если
+указан custom `S3_ENDPOINT`, production-конфигурация принимает только `https:`.

@@ -11,8 +11,7 @@ const repositoryRoot = resolve(backendRoot, '../..');
 loadEnv({ path: resolve(repositoryRoot, '.env'), quiet: true });
 
 const databaseUrl =
-  process.env.DATABASE_URL ??
-  'postgresql://kinetra:kinetra_local_only@localhost:5432/kinetra';
+  process.env.DATABASE_URL ?? 'postgresql://kinetra:kinetra_local_only@localhost:5432/kinetra';
 
 const daySchedule = [
   {
@@ -176,9 +175,7 @@ const workoutSlugs = [];
 
 try {
   await client.query('BEGIN');
-  await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
-    'kinetra-content-seed',
-  ]);
+  await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['kinetra-content-seed']);
 
   for (let weekNumber = 1; weekNumber <= 12; weekNumber += 1) {
     const weekStatus = weekNumber === 1 ? 'active' : 'locked';
@@ -197,12 +194,7 @@ try {
           status = EXCLUDED.status
         RETURNING id
       `,
-      [
-        weekNumber,
-        `Неделя ${weekNumber}`,
-        `Тренировочная неделя ${weekNumber} из 12.`,
-        weekStatus,
-      ],
+      [weekNumber, `Неделя ${weekNumber}`, `Тренировочная неделя ${weekNumber} из 12.`, weekStatus],
     );
 
     const programWeekId = weekResult.rows[0]?.id;
@@ -290,8 +282,6 @@ try {
   }
 
   for (const [index, lesson] of baseLessons.entries()) {
-    const lessonNumber = String(index + 1).padStart(2, '0');
-
     await client.query(
       `
         INSERT INTO videos (
@@ -307,7 +297,7 @@ try {
           status,
           order_index
         )
-        VALUES ($1, $2, $3, 'base_lesson', NULL, NULL, $4, $5, $6, 'published', $7)
+        VALUES ($1, $2, $3, 'base_lesson', NULL, NULL, $4, NULL, NULL, 'published', $5)
         ON CONFLICT (slug) DO UPDATE SET
           title = EXCLUDED.title,
           description = EXCLUDED.description,
@@ -315,20 +305,10 @@ try {
           day_of_week = EXCLUDED.day_of_week,
           week_number = EXCLUDED.week_number,
           duration_seconds = EXCLUDED.duration_seconds,
-          storage_key = EXCLUDED.storage_key,
-          poster_key = EXCLUDED.poster_key,
           status = EXCLUDED.status,
           order_index = EXCLUDED.order_index
       `,
-      [
-        lesson.slug,
-        lesson.title,
-        lesson.description,
-        lesson.durationSeconds,
-        `videos/base-lessons/${lessonNumber}.mp4`,
-        `posters/base-lessons/${lessonNumber}.jpg`,
-        index + 1,
-      ],
+      [lesson.slug, lesson.title, lesson.description, lesson.durationSeconds, index + 1],
     );
   }
 

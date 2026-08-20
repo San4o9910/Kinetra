@@ -50,16 +50,23 @@ const requiredFiles = [
   'docs/T02_AUTH_API.md',
   'docs/T04_PROFILE_SURVEY.md',
   'docs/T05_ONBOARDING_CAROUSEL.md',
+  'docs/T06_BASE_LESSONS.md',
   'apps/frontend/index.html',
   'apps/frontend/src/features/auth/LoginScreen.tsx',
   'apps/frontend/src/features/survey/SurveyWizard.tsx',
   'apps/frontend/src/features/survey/model.ts',
   'apps/frontend/src/features/onboarding/OnboardingCarousel.tsx',
   'apps/frontend/src/features/onboarding/model.ts',
+  'apps/frontend/src/features/base-lessons/BaseLessonsScreen.tsx',
+  'apps/frontend/src/features/base-lessons/BaseLessonsView.tsx',
+  'apps/frontend/src/features/base-lessons/LessonPlayer.tsx',
+  'apps/frontend/src/features/base-lessons/model.ts',
   'apps/frontend/src/routing.ts',
   'apps/frontend/test/api-session.test.ts',
   'apps/frontend/test/survey-routing.test.ts',
   'apps/frontend/test/onboarding.test.ts',
+  'apps/frontend/test/base-lessons-api.test.ts',
+  'apps/frontend/test/base-lessons.test.ts',
   'apps/frontend/public/manifest.webmanifest',
   'apps/frontend/public/service-worker.js',
   'apps/frontend/public/offline.html',
@@ -70,6 +77,7 @@ const requiredFiles = [
   'apps/backend/migrations/001_auth.sql',
   'apps/backend/migrations/002_content.sql',
   'apps/backend/migrations/003_survey.sql',
+  'apps/backend/migrations/004_base_lessons.sql',
   'apps/backend/scripts/migrate.mjs',
   'apps/backend/scripts/seed.mjs',
   'apps/backend/scripts/verify-content.mjs',
@@ -88,9 +96,20 @@ const requiredFiles = [
   'apps/backend/src/profile/router.ts',
   'apps/backend/src/profile/schema.ts',
   'apps/backend/src/profile/service.ts',
+  'apps/backend/src/base-lessons/router.ts',
+  'apps/backend/src/base-lessons/schema.ts',
+  'apps/backend/src/base-lessons/service.ts',
+  'apps/backend/src/base-lessons/repository.ts',
+  'apps/backend/src/base-lessons/postgres-base-lessons.repository.ts',
+  'apps/backend/src/base-lessons/runtime.ts',
+  'apps/backend/src/base-lessons/storage.ts',
   'apps/backend/test/auth.e2e.test.ts',
   'apps/backend/test/profile.e2e.test.ts',
   'apps/backend/test/profile.postgres.test.ts',
+  'apps/backend/test/base-lessons.e2e.test.ts',
+  'apps/backend/test/base-lessons.postgres.test.ts',
+  'apps/backend/test/support/fake-object-url-signer.ts',
+  'apps/backend/test/support/in-memory-base-lessons.repository.ts',
   'scripts/test-frontend-browser.mjs',
   'packages/shared/src/index.ts',
 ];
@@ -128,6 +147,14 @@ for (const dependency of ['bcrypt', 'express', 'jose', 'pg', 'socket.io']) {
     pass(`backend dependency: ${dependency}`);
   } else {
     fail(`backend dependency: ${dependency}`);
+  }
+}
+
+for (const dependency of ['@aws-sdk/client-s3', '@aws-sdk/s3-request-presigner']) {
+  if (backendPackage.dependencies?.[dependency]) {
+    pass(`T06 backend dependency: ${dependency}`);
+  } else {
+    fail(`T06 backend dependency: ${dependency}`);
   }
 }
 
@@ -370,12 +397,33 @@ expectIncludes(contentSeed, 'workoutSlugs', 'seed creates workout videos');
 expectIncludes(contentSeed, 'achievements', 'seed defines initial achievements');
 expectIncludes(contentSeed, 'ON CONFLICT', 'seed is idempotent');
 expectIncludes(contentSeed, 'KINETRA_CONTENT_SEED=PASS', 'seed performs count verification');
+expectIncludes(
+  contentSeed,
+  "'base_lesson', NULL, NULL, $4, NULL, NULL, 'published'",
+  'T06 seed creates base lessons without fake media keys',
+);
 
 const contentVerifier = await readText('apps/backend/scripts/verify-content.mjs');
 expectIncludes(
   contentVerifier,
   'KINETRA_T03_DATABASE_VERIFICATION=PASS',
   'T03 database verification script is present',
+);
+for (const databaseInvariant of [
+  'videos_workout_storage_key_required',
+  'video_progress_completed_state_valid',
+  'video_progress_user_completed_idx',
+]) {
+  expectIncludes(
+    contentVerifier,
+    databaseInvariant,
+    `T06 database verifier checks ${databaseInvariant}`,
+  );
+}
+expectMatches(
+  contentVerifier,
+  /WHERE conname = ANY\(\$1::text\[\]\)[\s\S]*?\[\s*\[\s*'videos_storage_key_not_blank'/u,
+  'T06 database verifier binds constraint names as one PostgreSQL array parameter',
 );
 
 const ciWorkflow = await readText('.github/workflows/ci.yml');
@@ -410,6 +458,36 @@ expectIncludes(
   ciWorkflow,
   "grep -F 'KINETRA_T05_BROWSER_E2E=PASS'",
   'CI proves that the T05 browser acceptance test executed',
+);
+expectIncludes(
+  ciWorkflow,
+  "grep -F 'KINETRA_T06_BACKEND_E2E=PASS'",
+  'CI proves that the T06 HTTP E2E test executed',
+);
+expectIncludes(
+  ciWorkflow,
+  "grep -F 'KINETRA_T06_POSTGRES_INTEGRATION=PASS'",
+  'CI proves that the T06 PostgreSQL integration test executed',
+);
+expectIncludes(
+  ciWorkflow,
+  "grep -F 'KINETRA_T06_BROWSER_E2E=PASS'",
+  'CI proves that the T06 browser acceptance test executed',
+);
+expectIncludes(
+  ciWorkflow,
+  'sha256sum -c MANIFEST.sha256',
+  'CI verifies the checked-in source manifest',
+);
+expectIncludes(
+  ciWorkflow,
+  'git ls-files',
+  'CI proves that the source manifest covers every tracked file',
+);
+expectIncludes(
+  ciWorkflow,
+  "awk '{ print $2 }' MANIFEST.sha256",
+  'CI compares manifest entries before validating hashes',
 );
 expectIncludes(
   ciWorkflow,
@@ -491,6 +569,150 @@ expectIncludes(
   'T05 advances onboarding atomically to base lessons',
 );
 
+const baseLessonsMigration = await readText('apps/backend/migrations/004_base_lessons.sql');
+expectIncludes(
+  baseLessonsMigration,
+  'ALTER COLUMN storage_key DROP NOT NULL',
+  'T06 permits base lesson video placeholders',
+);
+expectIncludes(
+  baseLessonsMigration,
+  "type = 'base_lesson' OR storage_key IS NOT NULL",
+  'T06 keeps workout storage keys mandatory',
+);
+expectIncludes(
+  baseLessonsMigration,
+  'completed_at IS NULL OR completion_percent >= 90',
+  'T06 completion timestamp accepts the ninety-percent threshold',
+);
+expectIncludes(
+  baseLessonsMigration,
+  'video_progress_user_completed_idx',
+  'T06 completion lookup has a user-scoped partial index',
+);
+
+expectIncludes(
+  backendApp,
+  "'/api/v1/base-lessons'",
+  'T06 base lessons router is mounted under /api/v1/base-lessons',
+);
+
+const baseLessonsRouter = await readText('apps/backend/src/base-lessons/router.ts');
+expectMatches(baseLessonsRouter, /router\.get\(\s*['"]\/['"]/u, 'T06 GET lesson list route exists');
+expectMatches(
+  baseLessonsRouter,
+  /router\.put\(\s*['"]\/complete-program['"]/u,
+  'T06 complete-program route exists',
+);
+expectMatches(
+  baseLessonsRouter,
+  /router\.put\(\s*['"]\/:lessonId\/progress['"]/u,
+  'T06 progress route exists',
+);
+expectIncludes(baseLessonsRouter, 'router.use(authMiddleware)', 'T06 routes require access JWT');
+expectIncludes(baseLessonsRouter, "'Cache-Control', 'no-store'", 'T06 responses disable caching');
+
+const baseLessonsSchema = await readText('apps/backend/src/base-lessons/schema.ts');
+expectIncludes(baseLessonsSchema, ".uuid('lessonId", 'T06 validates lesson UUIDs');
+expectIncludes(baseLessonsSchema, '.int(', 'T06 requires integer playback positions');
+expectIncludes(baseLessonsSchema, '.min(0', 'T06 rejects negative progress');
+expectIncludes(baseLessonsSchema, '.max(100', 'T06 caps completion at one hundred percent');
+expectIncludes(baseLessonsSchema, '.strict()', 'T06 progress payload rejects unknown fields');
+
+const baseLessonsRepository = await readText(
+  'apps/backend/src/base-lessons/postgres-base-lessons.repository.ts',
+);
+expectIncludes(
+  baseLessonsRepository,
+  "video.type = 'base_lesson'",
+  'T06 repository is scoped to base lessons',
+);
+expectIncludes(
+  baseLessonsRepository,
+  "video.status = 'published'",
+  'T06 repository exposes only published lessons',
+);
+expectIncludes(
+  baseLessonsRepository,
+  'ORDER BY video.order_index',
+  'T06 lessons have stable order',
+);
+expectIncludes(
+  baseLessonsRepository,
+  'ON CONFLICT (user_id, video_id) DO UPDATE',
+  'T06 progress uses PostgreSQL upsert',
+);
+expectIncludes(baseLessonsRepository, 'GREATEST(', 'T06 stale progress cannot reduce completion');
+expectIncludes(baseLessonsRepository, 'FOR UPDATE', 'T06 activation locks the user profile');
+expectIncludes(
+  baseLessonsRepository,
+  'progress.completion_percent >= 90',
+  'T06 activation counts server-side completed lessons',
+);
+expectIncludes(
+  baseLessonsRepository,
+  "SET onboarding_status = 'active'",
+  'T06 activation persists the active onboarding status',
+);
+
+const baseLessonsService = await readText('apps/backend/src/base-lessons/service.ts');
+expectIncludes(
+  baseLessonsService,
+  'BASE_LESSON_UNLOCK_THRESHOLD = 4',
+  'T06 server owns the four-lesson unlock threshold',
+);
+expectIncludes(
+  baseLessonsService,
+  "'INSUFFICIENT_LESSONS'",
+  'T06 rejects premature program completion',
+);
+expectIncludes(
+  baseLessonsService,
+  'this.objectUrlFor(lesson.storageKey)',
+  'T06 returns a null video URL for placeholder lessons',
+);
+expectIncludes(
+  baseLessonsService,
+  'this.objectUrlFor(lesson.posterKey)',
+  'T06 returns a null poster URL for placeholder lessons',
+);
+expectIncludes(
+  baseLessonsService,
+  'return key === null || key.trim().length === 0',
+  'T06 keeps missing and empty object keys as null URLs',
+);
+
+const baseLessonsStorage = await readText('apps/backend/src/base-lessons/storage.ts');
+expectIncludes(baseLessonsStorage, 'GetObjectCommand', 'T06 signs S3 object reads');
+expectIncludes(baseLessonsStorage, 'getSignedUrl', 'T06 creates presigned media URLs');
+expectIncludes(
+  baseLessonsStorage,
+  'presignedUrlTtlSeconds',
+  'T06 presigned media URLs have a bounded TTL',
+);
+
+const backendEnvironment = await readText('apps/backend/src/config/env.ts');
+expectIncludes(backendEnvironment, 'parseS3Environment', 'T06 validates S3 configuration');
+expectIncludes(
+  backendEnvironment,
+  "'S3_PRESIGNED_URL_TTL_SECONDS'",
+  'T06 validates the presigned URL TTL',
+);
+
+const baseLessonsDocumentation = await readText('docs/T06_BASE_LESSONS.md');
+for (const contract of [
+  'GET /api/v1/base-lessons',
+  'PUT /api/v1/base-lessons/:lessonId/progress',
+  'PUT /api/v1/base-lessons/complete-program',
+  'INSUFFICIENT_LESSONS',
+  'Видео скоро будет доступно',
+  'KINETRA_T06_BACKEND_E2E=PASS',
+  'KINETRA_T06_POSTGRES_INTEGRATION=PASS',
+  'KINETRA_T06_BROWSER_E2E=PASS',
+]) {
+  expectIncludes(baseLessonsDocumentation, contract, `T06 documented contract: ${contract}`);
+}
+
 const frontendApi = await readText('apps/frontend/src/lib/api.ts');
 expectIncludes(frontendApi, "credentials: 'include'", 'frontend sends refresh cookies');
 expectIncludes(frontendApi, "'/api/v1/auth/refresh'", 'frontend refreshes access tokens');
@@ -520,6 +742,21 @@ expectIncludes(
   "'/api/v1/me/onboarding-complete'",
   'T05 frontend calls the protected completion endpoint',
 );
+expectIncludes(
+  frontendApi,
+  "'/api/v1/base-lessons'",
+  'T06 frontend fetches the protected lesson list',
+);
+expectIncludes(
+  frontendApi,
+  '/api/v1/base-lessons/${encodeURIComponent(lessonId)}/progress',
+  'T06 frontend updates progress for the selected lesson',
+);
+expectIncludes(
+  frontendApi,
+  "'/api/v1/base-lessons/complete-program'",
+  'T06 frontend calls server-side program completion',
+);
 
 const frontendApp = await readText('apps/frontend/src/App.tsx');
 expectIncludes(frontendApp, '<LoginScreen', 'frontend has an access-token handoff from login');
@@ -531,6 +768,98 @@ expectIncludes(
 );
 expectIncludes(frontendApp, 'logout().finally', 'frontend revokes the refresh session on logout');
 expectIncludes(frontendApp, '<OnboardingCarousel', 'T05 route renders the onboarding carousel');
+expectIncludes(frontendApp, '<BaseLessonsScreen', 'T06 route renders the base lessons screen');
+
+const baseLessonsModel = await readText('apps/frontend/src/features/base-lessons/model.ts');
+expectIncludes(
+  baseLessonsModel,
+  'PROGRESS_SYNC_INTERVAL_MS = 10_000',
+  'T06 progress sync interval is ten seconds',
+);
+expectIncludes(baseLessonsModel, "'Перейти к программе'", 'T06 model defines the unlocked CTA');
+expectIncludes(
+  baseLessonsModel,
+  'LessonProgressReporter',
+  'T06 serializes periodic and final progress writes',
+);
+
+const baseLessonsScreen = await readText(
+  'apps/frontend/src/features/base-lessons/BaseLessonsScreen.tsx',
+);
+expectIncludes(baseLessonsScreen, 'getBaseLessons', 'T06 screen restores server lesson progress');
+expectIncludes(
+  baseLessonsScreen,
+  'completeBaseProgram',
+  'T06 screen completes the program through the API client',
+);
+expectIncludes(
+  baseLessonsScreen,
+  'loadLessons(controller.signal)',
+  'T06 screen refetches aggregate progress in the background after closing a lesson',
+);
+expectIncludes(
+  baseLessonsScreen,
+  'mergeSavedLessonProgress',
+  'T06 screen closes immediately with authoritative saved progress',
+);
+expectIncludes(
+  baseLessonsScreen,
+  'backgroundRefreshGuard',
+  'T06 stale background responses cannot regress visible progress',
+);
+expectIncludes(
+  baseLessonsScreen,
+  'program_unlocked',
+  'T06 screen respects the server unlock decision',
+);
+
+const baseLessonsView = await readText(
+  'apps/frontend/src/features/base-lessons/BaseLessonsView.tsx',
+);
+for (const testId of [
+  'base-lessons-screen',
+  'base-lessons-progress',
+  'base-lesson-card-',
+  'base-lessons-complete',
+]) {
+  expectIncludes(baseLessonsView, testId, `T06 lesson list test hook: ${testId}`);
+}
+expectIncludes(baseLessonsView, 'Базовые движения', 'T06 renders the prescribed heading');
+expectIncludes(
+  baseLessonsView,
+  'Изучите основы, чтобы тренировки были безопасными и эффективными',
+  'T06 renders the prescribed subtitle',
+);
+expectIncludes(
+  baseLessonsView,
+  'disabled={!response.program_unlocked || isCompleting}',
+  'T06 keeps the CTA disabled until the server unlocks it',
+);
+
+const lessonPlayer = await readText('apps/frontend/src/features/base-lessons/LessonPlayer.tsx');
+for (const testId of [
+  'base-lesson-player',
+  'base-lesson-video-placeholder',
+  'base-lesson-video',
+  'base-lesson-back',
+]) {
+  expectIncludes(lessonPlayer, testId, `T06 player test hook: ${testId}`);
+}
+expectIncludes(
+  lessonPlayer,
+  'Видео скоро будет доступно',
+  'T06 renders the missing-video placeholder',
+);
+expectIncludes(lessonPlayer, 'window.setInterval', 'T06 sends periodic playback progress');
+expectIncludes(
+  lessonPlayer,
+  'PROGRESS_SYNC_INTERVAL_MS',
+  'T06 player uses the ten-second progress interval',
+);
+expectIncludes(lessonPlayer, 'reporter.flush', 'T06 Back performs a final serialized progress PUT');
+expectIncludes(lessonPlayer, "window.addEventListener('pagehide'", 'T06 saves before page exit');
+expectIncludes(lessonPlayer, "window.addEventListener('popstate'", 'T06 handles system Back');
+expectIncludes(frontendApi, 'keepalive: true', 'T06 exit progress PUT is keepalive-enabled');
 
 const onboardingModel = await readText('apps/frontend/src/features/onboarding/model.ts');
 expectIncludes(
@@ -606,12 +935,52 @@ expectIncludes(frontendStyles, 'min-height: 48px', 'T04 controls exceed 44px tou
 expectIncludes(frontendStyles, 'touch-action: pan-y', 'T05 preserves vertical touch scrolling');
 expectIncludes(frontendStyles, 'env(safe-area-inset-bottom)', 'T05 respects mobile safe areas');
 expectIncludes(frontendStyles, 'prefers-reduced-motion: reduce', 'T05 respects reduced motion');
+for (const selectorFragment of [
+  '.base-lesson-card',
+  '.base-lessons-progress',
+  '.base-lessons-fixed-action',
+  '.base-lesson-video-placeholder',
+]) {
+  expectIncludes(frontendStyles, selectorFragment, `T06 style surface: ${selectorFragment}`);
+}
+expectMatches(
+  frontendStyles,
+  /\.base-lessons-fixed-action\s*\{[^}]*position:\s*fixed/isu,
+  'T06 CTA is fixed to the viewport',
+);
+expectIncludes(
+  frontendStyles,
+  'calc(148px + env(safe-area-inset-bottom))',
+  'T06 list reserves room for the fixed safe-area CTA',
+);
+expectIncludes(frontendStyles, 'color: #6b7370', 'T06 disabled CTA uses the prescribed text color');
+expectIncludes(
+  frontendStyles,
+  'background: linear-gradient(135deg, #181c1c, #202525)',
+  'T06 poster uses the prescribed placeholder gradient',
+);
 expectIncludes(indexHtml, 'fonts.googleapis.com', 'Inter stylesheet is connected');
 expectIncludes(indexHtml, 'family=Inter', 'Inter font family is requested');
 
 const browserTest = await readText('scripts/test-frontend-browser.mjs');
 expectIncludes(browserTest, 'KINETRA_T04_BROWSER_E2E=PASS', 'T04 browser acceptance test exists');
 expectIncludes(browserTest, 'KINETRA_T05_BROWSER_E2E=PASS', 'T05 browser acceptance test exists');
+expectIncludes(browserTest, 'KINETRA_T06_BROWSER_E2E=PASS', 'T06 browser acceptance test exists');
+expectIncludes(
+  browserTest,
+  'KINETRA_T06_PERIODIC_PROGRESS=PASS',
+  'T06 browser scenario proves the ten-second periodic PUT',
+);
+expectIncludes(
+  browserTest,
+  'KINETRA_T06_CARD_STATES=PASS',
+  'T06 browser scenario proves all three visual lesson-card states',
+);
+expectIncludes(
+  browserTest,
+  'KINETRA_T06_SYSTEM_BACK=PASS',
+  'T06 browser scenario proves standalone-PWA system Back',
+);
 expectIncludes(browserTest, 'Input.dispatchTouchEvent', 'T05 browser test uses native touch input');
 expectIncludes(browserTest, 'Input.dispatchMouseEvent', 'T05 browser test uses native mouse input');
 expectIncludes(browserTest, 'mobile: true', 'T05 browser test uses a mobile viewport');
@@ -632,6 +1001,36 @@ expectIncludes(
 );
 expectIncludes(browserTest, 'base lessons route', 'browser test checks base-lessons routing');
 expectIncludes(browserTest, 'active route', 'browser test checks active routing');
+expectIncludes(
+  browserTest,
+  "request.url === '/api/v1/base-lessons'",
+  'T06 browser mock serves the base lesson list',
+);
+expectIncludes(
+  browserTest,
+  '/api/v1/base-lessons/complete-program',
+  'T06 browser mock validates program completion',
+);
+expectIncludes(
+  browserTest,
+  'base-lesson-video-placeholder',
+  'T06 browser scenario opens the missing-video placeholder',
+);
+expectIncludes(
+  browserTest,
+  "Object.defineProperty(video, 'currentTime'",
+  'T06 browser scenario measures final playback progress',
+);
+expectIncludes(
+  browserTest,
+  'assertBaseLessonsLayout(320)',
+  'T06 browser scenario covers the minimum mobile width',
+);
+expectIncludes(
+  browserTest,
+  'counters.lessonProgress, 6',
+  'T06 browser scenario completes four distinct lessons',
+);
 expectIncludes(
   browserTest,
   'VITE_API_URL: browserApiOrigin',
@@ -672,6 +1071,21 @@ expectIncludes(
   'const frontendOrigin = browserApiOrigin',
   'browser test serves the frontend and mock API from one loopback origin',
 );
+expectIncludes(
+  browserTest,
+  'String(item.url).startsWith(frontendOrigin)',
+  'browser test attaches only to the Kinetra frontend target',
+);
+if (browserTest.includes('about:blank')) {
+  fail('browser test launches Chrome directly on the frontend instead of about:blank');
+} else {
+  pass('browser test launches Chrome directly on the frontend instead of about:blank');
+}
+if ((browserTest.match(/`\$\{frontendOrigin\}\/login`/gu) ?? []).length >= 2) {
+  pass('browser test launches and navigates Chrome on the frontend login route');
+} else {
+  fail('browser test launches and navigates Chrome on the frontend login route');
+}
 
 for (const script of [
   'test:backend',
@@ -733,15 +1147,110 @@ expectIncludes(
 );
 expectIncludes(onboardingTests, 'slideAfterSwipe', 'T05 unit test covers swipe boundaries');
 
+const baseLessonsBackendTests = await readText('apps/backend/test/base-lessons.e2e.test.ts');
+for (const scenario of [
+  'require JWT',
+  'seven ordered placeholder lessons',
+  'completion is monotonic at 90 percent',
+  'enforces four lessons',
+  'cannot bypass an earlier onboarding state',
+]) {
+  expectIncludes(baseLessonsBackendTests, scenario, `T06 backend scenario: ${scenario}`);
+}
+expectIncludes(
+  baseLessonsBackendTests,
+  'KINETRA_T06_BACKEND_E2E=PASS',
+  'T06 HTTP E2E emits an execution marker',
+);
+
+const baseLessonsPostgresTests = await readText('apps/backend/test/base-lessons.postgres.test.ts');
+expectIncludes(
+  baseLessonsPostgresTests,
+  "process.env.KINETRA_REQUIRE_POSTGRES_TEST === 'true'",
+  'T06 PostgreSQL test fails closed when required by CI',
+);
+expectIncludes(
+  baseLessonsPostgresTests,
+  'video_progress_completed_state_valid',
+  'T06 PostgreSQL test proves the completion constraint',
+);
+expectIncludes(
+  baseLessonsPostgresTests,
+  'KINETRA_T06_POSTGRES_INTEGRATION=PASS',
+  'T06 PostgreSQL test emits an execution marker',
+);
+
+const baseLessonsFrontendTests = await readText('apps/frontend/test/base-lessons.test.ts');
+expectIncludes(
+  baseLessonsFrontendTests,
+  'renders all seven exact lesson cards in order',
+  'T06 frontend test covers the seven-card list',
+);
+expectIncludes(
+  baseLessonsFrontendTests,
+  'button is disabled below four lessons',
+  'T06 frontend test covers the locked CTA',
+);
+expectIncludes(
+  baseLessonsFrontendTests,
+  'button becomes active after four completed lessons',
+  'T06 frontend test covers the unlocked CTA',
+);
+expectIncludes(
+  baseLessonsFrontendTests,
+  'Видео скоро будет доступно',
+  'T06 frontend test covers the missing-video placeholder',
+);
+expectIncludes(
+  baseLessonsFrontendTests,
+  'PROGRESS_SYNC_INTERVAL_MS, 10_000',
+  'T06 frontend test fixes the ten-second sync interval',
+);
+expectIncludes(
+  baseLessonsFrontendTests,
+  'serializes writes, coalesces pending updates',
+  'T06 frontend test covers progress write ordering',
+);
+expectIncludes(
+  baseLessonsFrontendTests,
+  'renders completed, in-progress and not-started visual card states',
+  'T06 frontend test renders every prescribed lesson-card state',
+);
+expectIncludes(
+  baseLessonsFrontendTests,
+  'flush waits until a late periodic write is fully drained',
+  'T06 frontend test prevents final-progress/refetch races',
+);
+
+const baseLessonsFrontendApiTests = await readText('apps/frontend/test/base-lessons-api.test.ts');
+expectIncludes(
+  baseLessonsFrontendApiTests,
+  'sends authenticated GET, progress PUT and complete-program PUT',
+  'T06 frontend API test covers every base-lessons request',
+);
+expectIncludes(
+  baseLessonsFrontendApiTests,
+  "authorization: 'Bearer base-lessons-token'",
+  'T06 frontend API test proves the access JWT is attached',
+);
+expectIncludes(
+  baseLessonsFrontendApiTests,
+  'preserves the INSUFFICIENT_LESSONS server error',
+  'T06 frontend API test preserves the unlock failure contract',
+);
+
 for (const temporaryArtifact of [
   '.github/workflows/apply-t04-fixes.yml',
   '.github/workflows/apply-t05.yml',
+  '.github/workflows/apply-t06.yml',
   '.github/workflows/export-dev-env.yml',
   '.github/workflows/export-full-env.yml',
   '.github/workflows/export-source.yml',
   '.t05-bootstrap',
+  '.t06-bootstrap',
   'docs/.probe',
   'docs/.t05-pr-trigger',
+  'docs/.t06-pr-trigger',
 ]) {
   try {
     await access(resolve(root, temporaryArtifact));
@@ -749,6 +1258,42 @@ for (const temporaryArtifact of [
   } catch {
     pass(`temporary bootstrap artifact is absent: ${temporaryArtifact}`);
   }
+}
+
+const collectProjectPaths = async (directory) => {
+  const entries = await readdir(directory, { withFileTypes: true });
+  const paths = [];
+
+  for (const entry of entries) {
+    if (entry.name === 'node_modules' || entry.name === 'dist' || entry.name === '.git') {
+      continue;
+    }
+
+    const absolutePath = resolve(directory, entry.name);
+    paths.push(absolutePath);
+
+    if (entry.isDirectory()) {
+      paths.push(...(await collectProjectPaths(absolutePath)));
+    }
+  }
+
+  return paths;
+};
+
+const suspiciousArtifactPatterns = [
+  /(?:^|\/)[^/]*(?:bootstrap|payload)[^/]*(?:\/|$)/iu,
+  /(?:^|\/)[^/]+\.(?:b64|base64|encoded)$/iu,
+  /(?:^|\/)\.t\d+-pr-trigger$/iu,
+  /^\.github\/workflows\/(?:apply-t\d+(?:-[^/]*)?|export-(?:dev-env|full-env|source))\.ya?ml$/iu,
+];
+const suspiciousArtifact = (await collectProjectPaths(root))
+  .map((absolutePath) => relative(root, absolutePath))
+  .find((relativePath) => suspiciousArtifactPatterns.some((pattern) => pattern.test(relativePath)));
+
+if (suspiciousArtifact === undefined) {
+  pass('no bootstrap, payload, encoded-source, or PR-trigger artifact paths exist');
+} else {
+  fail(`suspicious bootstrap/payload artifact path exists: ${suspiciousArtifact}`);
 }
 
 const rateLimiter = await readText('apps/backend/src/auth/rate-limit.ts');
@@ -768,6 +1313,18 @@ for (const key of [
   'AUTH_PASSWORD_RESET_RATE_LIMIT_MAX',
 ]) {
   expectMatches(envExample, new RegExp(`^${key}=`, 'mu'), `environment option: ${key}`);
+}
+
+for (const key of [
+  'S3_ENDPOINT',
+  'S3_REGION',
+  'S3_BUCKET',
+  'S3_ACCESS_KEY_ID',
+  'S3_SECRET_ACCESS_KEY',
+  'S3_FORCE_PATH_STYLE',
+  'S3_PRESIGNED_URL_TTL_SECONDS',
+]) {
+  expectMatches(envExample, new RegExp(`^${key}=`, 'mu'), `T06 storage option: ${key}`);
 }
 
 try {
@@ -865,8 +1422,7 @@ if (forbiddenBrand === null) {
 // contain its dependencies, SDK imports, endpoints, or environment variables.
 const runtimeFiles = textFiles.filter(
   (absolutePath) =>
-    !relative(root, absolutePath).startsWith('docs/') &&
-    relative(root, absolutePath) !== 'README.md' &&
+    extname(relative(root, absolutePath)).toLowerCase() !== '.md' &&
     relative(root, absolutePath) !== 'scripts/verify-project.mjs',
 );
 let forbiddenMessengerRuntimeReference = null;

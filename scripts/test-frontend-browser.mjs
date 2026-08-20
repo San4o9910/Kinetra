@@ -76,7 +76,51 @@ const counters = {
   meUnauthorized: 0,
   surveySave: 0,
   onboardingComplete: 0,
+  baseLessonsGet: 0,
+  lessonProgress: 0,
+  baseProgramComplete: 0,
   logout: 0,
+};
+
+const baseLessonTitles = [
+  'Как понять правильно ли я дышу?',
+  'Как правильно отжиматься?',
+  'Как научиться подтягиваться?',
+  'Как приседать?',
+  'Как и зачем делать становую тягу?',
+  'Я не хочу заниматься каждый день!',
+  'Что я ем?',
+];
+
+let baseLessons = baseLessonTitles.map((title, index) => ({
+  id: `10000000-0000-4000-8000-00000000000${index + 1}`,
+  slug: `browser-base-lesson-${index + 1}`,
+  title,
+  description: `Браузерная фикстура базового урока ${index + 1}.`,
+  duration_seconds: 600,
+  order_index: index + 1,
+  poster_url: null,
+  video_url: index < 4 ? `${frontendOrigin}/browser-test-video.mp4?lesson=${index + 1}` : null,
+  progress: {
+    completion_percent: 0,
+    completed: false,
+  },
+}));
+
+const lessonProgressUpdates = [];
+let failNextBaseLessonsGet = false;
+
+const baseLessonsPayload = () => {
+  const totalCompleted = baseLessons.filter(
+    ({ progress }) => progress.completion_percent >= 90,
+  ).length;
+
+  return {
+    lessons: baseLessons,
+    total_completed: totalCompleted,
+    unlock_threshold: 4,
+    program_unlocked: totalCompleted >= 4,
+  };
 };
 
 let surveyVersion = 0;
@@ -156,6 +200,15 @@ const createMockApiServer = () =>
 
     if (request.method === 'GET' && request.url === '/browser-test-health') {
       json(response, 200, { status: 'ok' });
+      return;
+    }
+
+    if (request.method === 'GET' && (request.url ?? '').startsWith('/browser-test-video.mp4')) {
+      response.writeHead(204, {
+        'Content-Type': 'video/mp4',
+        'Cache-Control': 'no-store',
+      });
+      response.end();
       return;
     }
 
@@ -320,6 +373,122 @@ const createMockApiServer = () =>
           user: {
             ...profile.user,
             onboardingStatus: 'base_lessons',
+            updatedAt: new Date().toISOString(),
+          },
+        };
+      }
+
+      json(response, 200, profile);
+      return;
+    }
+
+    if (request.method === 'GET' && request.url === '/api/v1/base-lessons') {
+      if (!hasValidAccessToken(request)) {
+        json(response, 401, {
+          error: { code: 'AUTHENTICATION_REQUIRED', message: 'A valid access token is required.' },
+        });
+        return;
+      }
+
+      counters.baseLessonsGet += 1;
+
+      if (failNextBaseLessonsGet) {
+        failNextBaseLessonsGet = false;
+        json(response, 503, {
+          error: {
+            code: 'BASE_LESSONS_TEMPORARILY_UNAVAILABLE',
+            message: 'Base lessons are temporarily unavailable.',
+          },
+        });
+        return;
+      }
+
+      json(response, 200, baseLessonsPayload());
+      return;
+    }
+
+    const lessonProgressMatch = (request.url ?? '').match(
+      /^\/api\/v1\/base-lessons\/([^/]+)\/progress$/u,
+    );
+
+    if (request.method === 'PUT' && lessonProgressMatch !== null) {
+      if (!hasValidAccessToken(request)) {
+        json(response, 401, {
+          error: { code: 'AUTHENTICATION_REQUIRED', message: 'A valid access token is required.' },
+        });
+        return;
+      }
+
+      const lessonId = decodeURIComponent(lessonProgressMatch[1] ?? '');
+      const lessonIndex = baseLessons.findIndex(({ id }) => id === lessonId);
+
+      if (lessonIndex < 0) {
+        json(response, 404, {
+          error: { code: 'BASE_LESSON_NOT_FOUND', message: 'Base lesson was not found.' },
+        });
+        return;
+      }
+
+      const body = await readJsonBody(request);
+      assert.equal(Number.isInteger(body.position_seconds), true);
+      assert.ok(body.position_seconds >= 0);
+      assert.equal(typeof body.completion_percent, 'number');
+      assert.ok(body.completion_percent >= 0 && body.completion_percent <= 100);
+      assert.deepEqual(Object.keys(body).sort(), ['completion_percent', 'position_seconds']);
+
+      const lesson = baseLessons[lessonIndex];
+      assert.notEqual(lesson, undefined);
+      const completedAt = '2026-08-20T12:00:00.000Z';
+      const completionPercent = Math.max(
+        lesson?.progress.completion_percent ?? 0,
+        body.completion_percent,
+      );
+      const progress = {
+        completion_percent: completionPercent,
+        completed: completionPercent >= 90,
+      };
+      baseLessons = baseLessons.map((current, index) =>
+        index === lessonIndex ? { ...current, progress } : current,
+      );
+      counters.lessonProgress += 1;
+      lessonProgressUpdates.push({ lessonId, ...body });
+
+      json(response, 200, {
+        position_seconds: body.position_seconds,
+        completion_percent: completionPercent,
+        completed: progress.completed,
+        completed_at: progress.completed ? completedAt : null,
+      });
+      return;
+    }
+
+    if (request.method === 'PUT' && request.url === '/api/v1/base-lessons/complete-program') {
+      if (!hasValidAccessToken(request)) {
+        json(response, 401, {
+          error: { code: 'AUTHENTICATION_REQUIRED', message: 'A valid access token is required.' },
+        });
+        return;
+      }
+
+      counters.baseProgramComplete += 1;
+      const { total_completed: totalCompleted } = baseLessonsPayload();
+
+      if (totalCompleted < 4) {
+        json(response, 400, {
+          error: {
+            code: 'INSUFFICIENT_LESSONS',
+            message: 'Complete at least 4 base lessons before opening the program.',
+          },
+        });
+        return;
+      }
+
+      if (profile.user.onboardingStatus === 'base_lessons') {
+        profile = {
+          ...profile,
+          user: {
+            ...profile.user,
+            onboardingStatus: 'active',
             updatedAt: new Date().toISOString(),
           },
         };
@@ -805,6 +974,59 @@ const runBrowserScenario = async () => {
         `Touch target below 44px at ${width}px: ${JSON.stringify(metrics.targetSizes)}`,
       );
     };
+    const assertBaseLessonsLayout = async (width) => {
+      await cdp.send('Emulation.setDeviceMetricsOverride', {
+        width,
+        height: 820,
+        screenWidth: width,
+        screenHeight: 820,
+        deviceScaleFactor: 1,
+        mobile: true,
+      });
+      await cdp.evaluate(`new Promise((resolve) => {
+        window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'auto' });
+        requestAnimationFrame(() => requestAnimationFrame(resolve));
+      })`);
+      const metrics = await cdp.evaluate(`(() => {
+        const cards = [
+          ...document.querySelectorAll(${JSON.stringify('[data-testid^="base-lesson-card-"]')})
+        ];
+        const footer = document.querySelector(${JSON.stringify('.base-lessons-fixed-action')});
+        const complete = document.querySelector(${JSON.stringify(selector('base-lessons-complete'))});
+        const lastCard = cards.at(-1);
+        const footerRect = footer?.getBoundingClientRect();
+        const completeRect = complete?.getBoundingClientRect();
+        const lastCardRect = lastCard?.getBoundingClientRect();
+        return {
+          innerWidth: window.innerWidth,
+          innerHeight: window.innerHeight,
+          scrollWidth: document.documentElement.scrollWidth,
+          cardCount: cards.length,
+          cardsInsideViewport: cards.every((card) => {
+            const rect = card.getBoundingClientRect();
+            return rect.left >= 0 && rect.right <= window.innerWidth && rect.height >= 44;
+          }),
+          footerBottom: footerRect?.bottom ?? -1,
+          completeHeight: completeRect?.height ?? 0,
+          lastCardBottom: lastCardRect?.bottom ?? window.innerHeight + 1,
+          footerTop: footerRect?.top ?? -1,
+        };
+      })()`);
+      assert.equal(metrics.innerWidth, width);
+      assert.ok(metrics.scrollWidth <= width, `Base lessons horizontal overflow at ${width}px.`);
+      assert.equal(metrics.cardCount, 7);
+      assert.equal(metrics.cardsInsideViewport, true, `Base lesson card overflow at ${width}px.`);
+      assert.ok(
+        Math.abs(metrics.footerBottom - metrics.innerHeight) <= 1,
+        `Fixed footer is not pinned to the viewport at ${width}px.`,
+      );
+      assert.ok(metrics.completeHeight >= 44, `Base lesson CTA is below 44px at ${width}px.`);
+      assert.ok(
+        metrics.lastCardBottom <= metrics.footerTop,
+        `Fixed CTA overlaps the final lesson at ${width}px.`,
+      );
+      await cdp.evaluate("window.scrollTo({ top: 0, behavior: 'auto' })");
+    };
     const setValue = (testId, nextValue) =>
       cdp.evaluate(`(() => {
         const element = document.querySelector(${JSON.stringify(selector(testId))});
@@ -999,22 +1221,220 @@ const runBrowserScenario = async () => {
 
     await click('onboarding-complete');
     await waitFor('base lessons route after onboarding completion', () =>
-      exists('journey-base_lessons'),
+      exists('base-lessons-screen'),
     );
     assert.equal(await pathname(), '/base-lessons');
     assert.equal(await cdp.evaluate("sessionStorage.getItem('kinetra.onboarding.slide')"), null);
     assert.equal(await cdp.evaluate("sessionStorage.getItem('kinetra.onboarding.user')"), null);
 
-    await cdp.send('Page.reload', { ignoreCache: true });
-    await waitFor('base lessons restored after reload', () => exists('journey-base_lessons'));
-    assert.equal(await pathname(), '/base-lessons');
+    await waitFor(
+      'seven base lessons with initial progress',
+      async () =>
+        (await attribute('base-lessons-progress', 'aria-valuetext')) === 'Пройдено 0 из 7' &&
+        (await cdp.evaluate(
+          `document.querySelectorAll(${JSON.stringify('[data-testid^="base-lesson-card-"]')}).length`,
+        )) === 7,
+    );
+    const renderedLessonCards = await cdp.evaluate(`[
+      ...document.querySelectorAll(${JSON.stringify('[data-testid^="base-lesson-card-"]')})
+    ].map((card) => card.textContent?.replace(/\\s+/gu, ' ').trim() ?? '')`);
+    assert.equal(renderedLessonCards.length, 7);
+    for (const [index, title] of baseLessonTitles.entries()) {
+      assert.ok(
+        renderedLessonCards[index]?.includes(title),
+        `Base lesson ${index + 1} does not contain its expected title.`,
+      );
+    }
+    const initialLessonStates = await cdp.evaluate(`[
+      ...document.querySelectorAll(${JSON.stringify('[data-testid^="base-lesson-status-"]')})
+    ].map((status) => ({
+      state: status.getAttribute('data-state'),
+      hasEmptyCircle: status.querySelector('.base-lesson-empty-circle') !== null,
+    }))`);
+    assert.deepEqual(
+      initialLessonStates,
+      Array.from({ length: 7 }, () => ({ state: 'not-started', hasEmptyCircle: true })),
+    );
+    assert.equal(await disabled('base-lessons-complete'), true);
+    assert.equal(await text('base-lessons-complete'), 'Пройдите ещё 4 уроков');
+    await assertBaseLessonsLayout(320);
+    await assertBaseLessonsLayout(428);
 
-    profile = {
-      ...profile,
-      user: { ...profile.user, onboardingStatus: 'active' },
-    };
+    await click('base-lesson-card-7');
+    await waitFor('base lesson video placeholder', () => exists('base-lesson-video-placeholder'));
+    assert.equal(await pathname(), '/base-lessons');
+    assert.ok(
+      (await text('base-lesson-video-placeholder'))?.includes('Видео скоро будет доступно'),
+    );
+    await waitFor('base lesson history entry', () =>
+      cdp.evaluate(
+        `window.history.state?.kinetraBaseLessonId === ${JSON.stringify(baseLessons[6]?.id)}`,
+      ),
+    );
+    const baseLessonGetsBeforePlaceholderBack = counters.baseLessonsGet;
+    failNextBaseLessonsGet = true;
+    await cdp.evaluate('window.history.back()');
+    await waitFor('base lesson list after placeholder despite a failed refetch', () =>
+      exists('base-lessons-screen'),
+    );
+    await waitFor(
+      'failed placeholder background refetch',
+      () => counters.baseLessonsGet === baseLessonGetsBeforePlaceholderBack + 1,
+    );
+    assert.equal(counters.lessonProgress, 0);
+    console.log('KINETRA_T06_SYSTEM_BACK=PASS');
+
+    await click('base-lesson-card-1');
+    await waitFor('video player for periodic progress', () => exists('base-lesson-video'));
+    const periodicVideoProgress = await cdp.evaluate(`(() => {
+      const video = document.querySelector(${JSON.stringify(selector('base-lesson-video'))});
+      if (!(video instanceof HTMLVideoElement)) {
+        throw new Error('Base lesson video was not found.');
+      }
+      Object.defineProperties(video, {
+        duration: { configurable: true, value: 100 },
+        currentTime: { configurable: true, writable: true, value: 45 },
+        paused: { configurable: true, value: false },
+        ended: { configurable: true, value: false },
+      });
+      return { currentTime: video.currentTime, duration: video.duration, paused: video.paused };
+    })()`);
+    assert.deepEqual(periodicVideoProgress, { currentTime: 45, duration: 100, paused: false });
+    await waitFor(
+      'ten-second periodic progress PUT',
+      () => lessonProgressUpdates.length === 1,
+      13_000,
+    );
+    assert.deepEqual(lessonProgressUpdates[0], {
+      lessonId: baseLessons[0]?.id,
+      position_seconds: 45,
+      completion_percent: 45,
+    });
+    const pausedAfterPeriodicPut = await cdp.evaluate(`(() => {
+      const video = document.querySelector(${JSON.stringify(selector('base-lesson-video'))});
+      if (!(video instanceof HTMLVideoElement)) {
+        throw new Error('Base lesson video was not found.');
+      }
+      Object.defineProperty(video, 'paused', { configurable: true, value: true });
+      return video.paused;
+    })()`);
+    assert.equal(pausedAfterPeriodicPut, true);
+    console.log('KINETRA_T06_PERIODIC_PROGRESS=PASS');
+
+    await click('base-lesson-back');
+    await waitFor('final in-progress PUT on Back', () => lessonProgressUpdates.length === 2);
+    await waitFor('in-progress lesson list', () => exists('base-lessons-screen'));
+    assert.equal(await attribute('base-lesson-status-1', 'data-state'), 'in-progress');
+    const inProgressVisual = await cdp.evaluate(`(() => {
+      const status = document.querySelector(${JSON.stringify(selector('base-lesson-status-1'))});
+      const bar = status?.querySelector('.base-lesson-card-progress > span');
+      return {
+        text: status?.textContent?.replace(/\\s+/gu, ' ').trim() ?? '',
+        width: bar instanceof HTMLElement ? bar.style.width : null,
+      };
+    })()`);
+    assert.ok(inProgressVisual.text.includes('45%'));
+    assert.equal(inProgressVisual.width, '45%');
+    assert.equal(await disabled('base-lessons-complete'), true);
+    assert.equal(await text('base-lessons-complete'), 'Пройдите ещё 4 уроков');
+
+    await click('base-lesson-card-1');
+    await waitFor('first lesson player for completion', () => exists('base-lesson-video'));
+    const completedFirstVideoProgress = await cdp.evaluate(`(() => {
+      const video = document.querySelector(${JSON.stringify(selector('base-lesson-video'))});
+      if (!(video instanceof HTMLVideoElement)) {
+        throw new Error('Base lesson video was not found.');
+      }
+      Object.defineProperty(video, 'duration', { configurable: true, value: 100 });
+      Object.defineProperty(video, 'currentTime', {
+        configurable: true,
+        writable: true,
+        value: 95,
+      });
+      return { currentTime: video.currentTime, duration: video.duration };
+    })()`);
+    assert.deepEqual(completedFirstVideoProgress, { currentTime: 95, duration: 100 });
+    await click('base-lesson-back');
+    await waitFor('completed first lesson PUT', () => lessonProgressUpdates.length === 3);
+    await waitFor(
+      'first lesson aggregate progress',
+      async () =>
+        (await attribute('base-lessons-progress', 'aria-valuetext')) === 'Пройдено 1 из 7',
+    );
+    assert.equal(await attribute('base-lesson-status-1', 'data-state'), 'completed');
+    const completedVisual = await cdp.evaluate(`(() => {
+      const status = document.querySelector(${JSON.stringify(selector('base-lesson-status-1'))});
+      return {
+        text: status?.textContent?.trim() ?? '',
+        hasCheck: status?.querySelector('svg') !== null,
+      };
+    })()`);
+    assert.deepEqual(completedVisual, { text: 'Пройден', hasCheck: true });
+
+    for (let orderIndex = 2; orderIndex <= 4; orderIndex += 1) {
+      await click(`base-lesson-card-${orderIndex}`);
+      await waitFor(`video player for base lesson ${orderIndex}`, async () =>
+        exists('base-lesson-player'),
+      );
+      await waitFor(`video element for base lesson ${orderIndex}`, () =>
+        exists('base-lesson-video'),
+      );
+      const overriddenVideoProgress = await cdp.evaluate(`(() => {
+        const video = document.querySelector(${JSON.stringify(selector('base-lesson-video'))});
+        if (!(video instanceof HTMLVideoElement)) {
+          throw new Error('Base lesson video was not found.');
+        }
+        Object.defineProperty(video, 'duration', { configurable: true, value: 100 });
+        Object.defineProperty(video, 'currentTime', {
+          configurable: true,
+          writable: true,
+          value: 95,
+        });
+        return { currentTime: video.currentTime, duration: video.duration };
+      })()`);
+      assert.deepEqual(overriddenVideoProgress, { currentTime: 95, duration: 100 });
+
+      await click('base-lesson-back');
+      await waitFor(
+        `final progress PUT for base lesson ${orderIndex}`,
+        () => lessonProgressUpdates.length === orderIndex + 2,
+      );
+      await waitFor(`base lesson list refreshed after lesson ${orderIndex}`, () =>
+        exists('base-lessons-screen'),
+      );
+      await waitFor(
+        `base lesson aggregate progress ${orderIndex} of 7`,
+        async () =>
+          (await attribute('base-lessons-progress', 'aria-valuetext')) ===
+          `Пройдено ${orderIndex} из 7`,
+      );
+
+      const remaining = 4 - orderIndex;
+      if (remaining > 0) {
+        assert.equal(await disabled('base-lessons-complete'), true);
+        assert.equal(await text('base-lessons-complete'), `Пройдите ещё ${remaining} уроков`);
+      } else {
+        assert.equal(await disabled('base-lessons-complete'), false);
+        assert.equal(await text('base-lessons-complete'), 'Перейти к программе');
+      }
+    }
+
+    assert.deepEqual(
+      lessonProgressUpdates.map(({ lessonId }) => lessonId),
+      [
+        baseLessons[0]?.id,
+        baseLessons[0]?.id,
+        baseLessons[0]?.id,
+        ...baseLessons.slice(1, 4).map(({ id }) => id),
+      ],
+    );
+    console.log('KINETRA_T06_CARD_STATES=PASS');
+    await click('base-lessons-complete');
+    await waitFor('active route after base lesson completion', () => exists('journey-active'));
+    assert.equal(await pathname(), '/');
+
     await cdp.send('Page.reload', { ignoreCache: true });
-    await waitFor('active route', () => exists('journey-active'));
+    await waitFor('active route restored after reload', () => exists('journey-active'));
     assert.equal(await pathname(), '/');
 
     await click('open-settings');
@@ -1032,10 +1452,14 @@ const runBrowserScenario = async () => {
     assert.ok(counters.meUnauthorized >= 1);
     assert.equal(counters.surveySave, 1);
     assert.equal(counters.onboardingComplete, 3);
+    assert.ok(counters.baseLessonsGet >= 7);
+    assert.equal(counters.lessonProgress, 6);
+    assert.equal(counters.baseProgramComplete, 1);
     assert.equal(counters.logout, 1);
 
     console.log('KINETRA_T04_BROWSER_E2E=PASS');
     console.log('KINETRA_T05_BROWSER_E2E=PASS');
+    console.log('KINETRA_T06_BROWSER_E2E=PASS');
   } catch (error) {
     if (cdp !== null) {
       try {
