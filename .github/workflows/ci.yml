@@ -1,0 +1,91 @@
+name: Kinetra CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  quality:
+    name: Lint, Typecheck & Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+  test:
+    name: Unit & E2E Tests
+    runs-on: ubuntu-latest
+    needs: quality
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: kinetra_test
+          POSTGRES_USER: kinetra
+          POSTGRES_PASSWORD: kinetra_test_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U kinetra -d kinetra_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://kinetra:kinetra_test_ci@localhost:5432/kinetra_test
+      JWT_ACCESS_SECRET: ci-test-access-secret-not-real
+      JWT_REFRESH_SECRET: ci-test-refresh-secret-not-real
+      NODE_ENV: test
+      PORT: 3000
+      HOST: 0.0.0.0
+      CORS_ORIGIN: http://localhost:5173
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run migrations
+        run: npm run db:migrate
+
+      - name: Run tests
+        run: npm run test
+
+  structure:
+    name: Structure Verification
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Verify project structure
+        run: node scripts/verify-project.mjs
