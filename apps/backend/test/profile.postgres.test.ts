@@ -157,7 +157,20 @@ test(
       const restored = await repository.findByUserId(userId);
       assert.equal(restored?.survey?.version, 2);
       assert.equal(restored?.onboardingStatus, 'onboarding_pending');
+
+      const completed = await repository.completeOnboarding(userId);
+      assert.equal(completed?.onboardingStatus, 'base_lessons');
+
+      const completedAgain = await repository.completeOnboarding(userId);
+      assert.equal(completedAgain?.onboardingStatus, 'base_lessons');
+
+      const statusResult = await pool.query<{ readonly onboarding_status: string }>(
+        'SELECT onboarding_status FROM users WHERE id = $1',
+        [userId],
+      );
+      assert.equal(statusResult.rows[0]?.onboarding_status, 'base_lessons');
       console.log('KINETRA_T04_POSTGRES_INTEGRATION=PASS');
+      console.log('KINETRA_T05_POSTGRES_INTEGRATION=PASS');
     } finally {
       await pool.query('DELETE FROM users WHERE id = $1', [userId]);
       await pool.end();

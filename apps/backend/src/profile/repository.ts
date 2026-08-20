@@ -56,4 +56,5 @@ export interface UserProfileSnapshot {
 export interface ProfileRepository {
   findByUserId(userId: string): Promise<UserProfileSnapshot | null>;
   saveSurveyVersion(userId: string, input: SurveyInput): Promise<UserProfileSnapshot | null>;
+  completeOnboarding(userId: string): Promise<UserProfileSnapshot | null>;
 }

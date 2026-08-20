@@ -64,6 +64,22 @@ export class InMemoryProfileRepository implements ProfileRepository {
     return this.snapshot();
   }
 
+  public async completeOnboarding(userId: string): Promise<UserProfileSnapshot | null> {
+    if (userId !== this.userId) {
+      return null;
+    }
+
+    if (this.onboardingStatus === 'onboarding_pending') {
+      this.onboardingStatus = 'base_lessons';
+    }
+
+    return this.snapshot();
+  }
+
+  public setOnboardingStatus(status: OnboardingStatus): void {
+    this.onboardingStatus = status;
+  }
+
   public peekSurveyVersions(): readonly SurveySnapshot[] {
     return this.surveys.map((survey) => ({
       ...survey,

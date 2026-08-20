@@ -76,6 +76,16 @@ export class ProfileService {
     return toResponse(profile);
   }
 
+  public async completeOnboarding(userId: string): Promise<MeResponse> {
+    const profile = await this.repository.completeOnboarding(userId);
+
+    if (profile === null) {
+      throw profileNotFound();
+    }
+
+    return toResponse(profile);
+  }
+
   public async saveSurvey(userId: string, body: unknown): Promise<MeResponse> {
     const parsed = surveySubmissionSchema.safeParse(body);
 
