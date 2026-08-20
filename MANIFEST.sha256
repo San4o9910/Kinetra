@@ -1,6 +1,6 @@
 a6b98ea7cb6d61ed8d430dd0dffa46c87012b5cf859d4ce7207898954951fdcd  ./.editorconfig
 2cc5ccdcaefe94c9fbcf5afb411f78214aef11ffda9fd4a8b8aa0840381996c7  ./.env.example
-5e331d655f8fcdb39955cd194adcfc7bcf9d7fd7432d47f79a3b2966c273fcab  ./.github/workflows/bootstrap-project.yml
+e4ebece5583ecf972b0f9cb961eec12c156ff03d0db251addf0730ee7e4b2b1d  ./.github/workflows/ci.yml
 cfd42d58b59b1374120ba1643e14ed5039101ec9d3d271c8b1414326d4e14675  ./.gitignore
 177d20030d4dcc37eae9ef92865ec54dadce60e8f19e9a34a5d4f37502195a36  ./.nvmrc
 019a6ff828333978e4ecceae4a881852c6f850fbc6d86755f5e4c9c068727ec8  ./.prettierignore
