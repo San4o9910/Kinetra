@@ -2,11 +2,13 @@ import type {
   ApiErrorResponse,
   AuthSessionResponse,
   BaseLessonsResponse,
+  CompleteWorkoutRequest,
   HealthResponse,
   LessonProgressResponse,
   MeResponse,
   SurveySubmission,
   UpdateLessonProgressRequest,
+  WeekResponse,
 } from '@kinetra/shared';
 
 const configuredApiUrl =
@@ -38,11 +40,11 @@ interface ApiClientOptions {
 }
 
 const errorKindForStatus = (status: number): ApiErrorKind => {
-  if (status === 401 || status === 403) {
+  if (status === 401) {
     return 'auth';
   }
 
-  if (status === 400 || status === 409 || status === 422 || status === 429) {
+  if (status === 400 || status === 409 || status === 422 || status === 429 || status === 403) {
     return 'validation';
   }
 
@@ -170,6 +172,30 @@ export class ApiClient {
   public async completeBaseProgram(): Promise<MeResponse> {
     return this.authenticatedJsonRequest<MeResponse>('/api/v1/base-lessons/complete-program', {
       method: 'PUT',
+    });
+  }
+
+  public async getCurrentWeek(signal?: AbortSignal): Promise<WeekResponse> {
+    return this.authenticatedJsonRequest<WeekResponse>('/api/v1/program/current-week', {
+      method: 'GET',
+      ...(signal === undefined ? {} : { signal }),
+    });
+  }
+
+  public async getWeek(weekNumber: number, signal?: AbortSignal): Promise<WeekResponse> {
+    return this.authenticatedJsonRequest<WeekResponse>(
+      `/api/v1/program/weeks/${encodeURIComponent(String(weekNumber))}`,
+      {
+        method: 'GET',
+        ...(signal === undefined ? {} : { signal }),
+      },
+    );
+  }
+
+  public async completeWorkout(data: CompleteWorkoutRequest): Promise<WeekResponse> {
+    return this.authenticatedJsonRequest<WeekResponse>('/api/v1/program/complete-workout', {
+      method: 'PUT',
+      body: JSON.stringify(data),
     });
   }
 
@@ -326,5 +352,11 @@ export const updateLessonProgress = (
   data: UpdateLessonProgressRequest,
 ): Promise<LessonProgressResponse> => apiClient.updateLessonProgress(lessonId, data);
 export const completeBaseProgram = (): Promise<MeResponse> => apiClient.completeBaseProgram();
+export const getCurrentWeek = (signal?: AbortSignal): Promise<WeekResponse> =>
+  apiClient.getCurrentWeek(signal);
+export const getWeek = (weekNumber: number, signal?: AbortSignal): Promise<WeekResponse> =>
+  apiClient.getWeek(weekNumber, signal);
+export const completeWorkout = (data: CompleteWorkoutRequest): Promise<WeekResponse> =>
+  apiClient.completeWorkout(data);
 export const fetchHealth = (signal: AbortSignal): Promise<HealthResponse> =>
   apiClient.fetchHealth(signal);

@@ -6,6 +6,8 @@ export const appRoutes = Object.freeze({
   onboarding: '/onboarding',
   baseLessons: '/base-lessons',
   home: '/',
+  schedule: '/schedule',
+  progress: '/progress',
   settings: '/settings',
   editSurvey: '/settings/survey',
 } as const);
@@ -34,3 +36,9 @@ export const normalizeAppRoute = (pathname: string): AppRoute => {
 
 export const isSettingsRoute = (route: AppRoute): boolean =>
   route === appRoutes.settings || route === appRoutes.editSurvey;
+
+export const isActiveAppRoute = (route: AppRoute): boolean =>
+  route === appRoutes.home ||
+  route === appRoutes.schedule ||
+  route === appRoutes.progress ||
+  isSettingsRoute(route);
