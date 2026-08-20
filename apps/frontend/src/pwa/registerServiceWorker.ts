@@ -1,0 +1,15 @@
+export const registerServiceWorker = (): void => {
+  if (!import.meta.env.PROD || !('serviceWorker' in navigator)) {
+    return;
+  }
+
+  window.addEventListener(
+    'load',
+    () => {
+      void navigator.serviceWorker.register('/service-worker.js').catch((error: unknown) => {
+        console.error('Kinetra service worker registration failed.', error);
+      });
+    },
+    { once: true },
+  );
+};

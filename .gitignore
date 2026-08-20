@@ -10,4 +10,3 @@ coverage/
 .vscode/
 .idea/
 *.local
-# Trigger corrected baseline bootstrap workflow.

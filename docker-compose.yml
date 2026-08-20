@@ -1,0 +1,23 @@
+name: kinetra
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-kinetra}
+      POSTGRES_USER: ${POSTGRES_USER:-kinetra}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kinetra_local_only}
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - kinetra_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-kinetra} -d ${POSTGRES_DB:-kinetra}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+volumes:
+  kinetra_postgres_data:

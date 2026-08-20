@@ -1,0 +1,43 @@
+{
+  "name": "kinetra",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Kinetra standalone PWA monorepo",
+  "type": "module",
+  "packageManager": "npm@10.9.2",
+  "engines": {
+    "node": ">=22.12.0",
+    "npm": ">=10.0.0"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently --names backend,frontend --prefix-colors auto \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:frontend": "npm run dev -w @kinetra/frontend",
+    "dev:backend": "npm run dev -w @kinetra/backend",
+    "db:migrate": "npm run db:migrate -w @kinetra/backend",
+    "build": "npm run build -w @kinetra/shared && npm run build -w @kinetra/backend && npm run build -w @kinetra/frontend",
+    "typecheck": "npm run typecheck -w @kinetra/shared && npm run typecheck -w @kinetra/backend && npm run typecheck -w @kinetra/frontend",
+    "test": "npm run test -w @kinetra/backend",
+    "lint": "eslint apps packages scripts",
+    "lint:fix": "npm run lint -- --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "verify:structure": "node scripts/verify-project.mjs",
+    "check": "npm run verify:structure && npm run typecheck && npm run lint && npm run test && npm run build",
+    "preview:frontend": "npm run preview -w @kinetra/frontend"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "concurrently": "^9.2.1",
+    "eslint": "^9.39.1",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.4.24",
+    "globals": "^16.5.0",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.4"
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "id": "/",
+  "name": "Kinetra",
+  "short_name": "Kinetra",
+  "description": "Персональные тренировки, уроки и прогресс в standalone PWA.",
+  "lang": "ru-RU",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#090c10",
+  "theme_color": "#b7f36b",
+  "categories": [
+    "fitness",
+    "health",
+    "lifestyle"
+  ],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
