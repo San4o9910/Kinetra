@@ -208,9 +208,11 @@ try {
       WHERE conname = ANY($1::text[])
     `,
     [
-      'videos_storage_key_not_blank',
-      'videos_workout_storage_key_required',
-      'video_progress_completed_state_valid',
+      [
+        'videos_storage_key_not_blank',
+        'videos_workout_storage_key_required',
+        'video_progress_completed_state_valid',
+      ],
     ],
   );
   const constraintDefinitions = new Map(

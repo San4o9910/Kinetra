@@ -6,7 +6,7 @@ bf0b9f2976cc6caa82bd0268fc6c19b11d72a7bf17624cf1fb866462e3811e31  ./.gitignore
 019a6ff828333978e4ecceae4a881852c6f850fbc6d86755f5e4c9c068727ec8  ./.prettierignore
 8d5d037d37c473731493478d381854fd597aa00d7d2d0eb1cce972975ee26327  ./.prettierrc.json
 bbe066bd69ccd019c732b919d1a97d66d1bfdcf53649c8da1ff3328bab77c9d0  ./README.md
-620d161d2121e2ad80ce94d5fee478950af217e2e820efc635fdfd9e7f463898  ./VALIDATION.md
+267892ed257461269c3c5ee78781f1b7d6f148ce602c7281c67abc438f7a3028  ./VALIDATION.md
 a1dc8f7c0bfd1dbe0f2692349ec1f5fd66e8bfbebc7faf16ddd8bd4b481ac786  ./apps/backend/migrations/001_auth.sql
 1cd2a247a646081b8eda1fc955c276a664c1820b47ce209aecbf6bfd3151cae6  ./apps/backend/migrations/002_content.sql
 6b6373b47ab05a889ad4c86c1df1e61ccd49c44d2298393e6e1bb55bbc074739  ./apps/backend/migrations/003_survey.sql
@@ -14,7 +14,7 @@ fc1b1fb9184d937c8595f8ab878c34223e747726a01d092c58837e1adcdc0650  ./apps/backend
 95ac14ec496cc6cccbc0692a41243965c88f692812ad4c79f4668c4f89dfa2e4  ./apps/backend/package.json
 7f6ee59410d5c1f9e642e547fb2430db62f4f551f9890982cef5b7d29ec34662  ./apps/backend/scripts/migrate.mjs
 4fec2f31e725f0df1113f7c18e5315cf6c16fb2ee9a8409e14d9987b3077cf98  ./apps/backend/scripts/seed.mjs
-776c48b0be24bee5b5d0d81aa394b0a33dbd64ab944fe6ea4f54d57ad17f1d1a  ./apps/backend/scripts/verify-content.mjs
+1a5750e3a435a86700ccdabb9c4672f2003310b41aa7bb25a02bd71d954ac9a4  ./apps/backend/scripts/verify-content.mjs
 449ebd06f13ff3290192e6a92936568572f6ce32b47046270972bf46329022f1  ./apps/backend/src/app.ts
 43c2f9a6a86c48678c003094e151053260a4e6964a8df8b75f429f461d09926e  ./apps/backend/src/auth/cookies.ts
 9f300a549a4e89cbce6bf1e5a60c4352393d540b873b871de182574e955da911  ./apps/backend/src/auth/delivery.ts
@@ -108,5 +108,5 @@ c9d0cf795704aff86ec30a193714a58313fca9c0f6f3d6536eb37ddcd6083882  ./eslint.confi
 9b618bea45315ffa8c87b9af74a564eb9b8e4e09db0fc38a44821daffa69245c  ./packages/shared/src/index.ts
 c8171db33a1b645b8c36d542cf4bfc5c47073df8842b846f91a6ebf083973c5e  ./packages/shared/tsconfig.json
 3692263a8af53f52a95c5688a7222b83643f38c11c97f39063e88bb847646741  ./scripts/test-frontend-browser.mjs
-5c6ae1f6b565e66b66d548787f14407271c052c6bcb357cca9a8da2221034d4d  ./scripts/verify-project.mjs
+89e5796e574c39cabccf8ac0914e474cf83c589ecb14394acba26419a5d7d031  ./scripts/verify-project.mjs
 2b67887209f3334ebdc96426f5c2cb87480fb85ff2f75c0d42b0a944dae7922a  ./tsconfig.base.json

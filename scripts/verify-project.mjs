@@ -420,6 +420,11 @@ for (const databaseInvariant of [
     `T06 database verifier checks ${databaseInvariant}`,
   );
 }
+expectMatches(
+  contentVerifier,
+  /WHERE conname = ANY\(\$1::text\[\]\)[\s\S]*?\[\s*\[\s*'videos_storage_key_not_blank'/u,
+  'T06 database verifier binds constraint names as one PostgreSQL array parameter',
+);
 
 const ciWorkflow = await readText('.github/workflows/ci.yml');
 expectIncludes(ciWorkflow, 'run: npm run db:seed', 'CI executes the T03 seed');

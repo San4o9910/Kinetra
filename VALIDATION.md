@@ -21,7 +21,7 @@ CI, потому что в рабочей sandbox-среде нет PostgreSQL s
 
 ```text
 node scripts/verify-project.mjs
-449 structural checks passed.
+450 structural checks passed.
 ```
 
 Verifier проверяет API/SQL/UI-контракты T01–T06, отсутствие реального `.env`, forbidden runtime
