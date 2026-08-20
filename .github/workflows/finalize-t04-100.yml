@@ -1,0 +1,74 @@
+name: Finalize T04 100-point correction
+
+on:
+  push:
+    branches: [automation/t04-100]
+    paths:
+      - '.github/workflows/finalize-t04-100.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: automation/t04-100
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Apply final T04 corrections
+        run: python .t04-final/apply.py
+
+      - name: Install and lock dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+
+      - name: Format corrected sources
+        run: >-
+          npx prettier --write
+          apps/frontend/src
+          apps/frontend/package.json
+          apps/frontend/vitest.config.ts
+          apps/backend/test/survey-constraints.postgres.test.ts
+          scripts/verify-t04.mjs
+          docs/T04_PROFILE_SURVEY.md
+          package.json
+          package-lock.json
+
+      - name: Static acceptance
+        run: |
+          npm run verify:structure
+          npm run typecheck
+          npm run lint
+          npm run test
+          npm run build
+
+      - name: Prepare canonical one-commit feature tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .t04-final
+          find .github/workflows -maxdepth 1 -type f ! -name ci.yml -delete
+          find . -type f \
+            ! -path './.git/*' \
+            ! -path '*/node_modules/*' \
+            ! -path '*/dist/*' \
+            ! -path '*/coverage/*' \
+            ! -name MANIFEST.sha256 \
+            -print0 | sort -z | xargs -0 sha256sum > MANIFEST.sha256
+          sha256sum -c MANIFEST.sha256
+
+          git fetch origin develop
+          git reset --mixed origin/develop
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'feat: T04 profile, survey and resilient session flow' \
+            -m 'JWT-protected profile APIs, versioned survey persistence, memory-only access tokens with refresh rotation, server-driven routing, bundled Inter and automated frontend/database acceptance.'
+          git push --force origin HEAD:feature/t04-profile-survey
