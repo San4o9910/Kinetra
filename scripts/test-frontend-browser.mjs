@@ -1310,11 +1310,15 @@ const runBrowserScenario = async () => {
       position_seconds: 45,
       completion_percent: 45,
     });
-    await cdp.evaluate(`Object.defineProperty(
-      document.querySelector(${JSON.stringify(selector('base-lesson-video'))}),
-      'paused',
-      { configurable: true, value: true }
-    )`);
+    const pausedAfterPeriodicPut = await cdp.evaluate(`(() => {
+      const video = document.querySelector(${JSON.stringify(selector('base-lesson-video'))});
+      if (!(video instanceof HTMLVideoElement)) {
+        throw new Error('Base lesson video was not found.');
+      }
+      Object.defineProperty(video, 'paused', { configurable: true, value: true });
+      return video.paused;
+    })()`);
+    assert.equal(pausedAfterPeriodicPut, true);
     console.log('KINETRA_T06_PERIODIC_PROGRESS=PASS');
 
     await click('base-lesson-back');
