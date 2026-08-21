@@ -53,6 +53,7 @@ const requiredFiles = [
   'docs/T06_BASE_LESSONS.md',
   'docs/T07_MAIN_SCREEN.md',
   'docs/T08_SCHEDULE.md',
+  'docs/T09_PROGRESS.md',
   'apps/frontend/index.html',
   'apps/frontend/src/features/auth/LoginScreen.tsx',
   'apps/frontend/src/features/survey/SurveyWizard.tsx',
@@ -64,13 +65,17 @@ const requiredFiles = [
   'apps/frontend/src/features/base-lessons/LessonPlayer.tsx',
   'apps/frontend/src/features/base-lessons/model.ts',
   'apps/frontend/src/features/navigation/TabBar.tsx',
-  'apps/frontend/src/features/program/ComingSoonScreen.tsx',
   'apps/frontend/src/features/program/ProgramScreen.tsx',
   'apps/frontend/src/features/program/ProgramWeekView.tsx',
   'apps/frontend/src/features/program/WorkoutPlayer.tsx',
   'apps/frontend/src/features/program/model.ts',
   'apps/frontend/src/features/schedule/ScheduleScreen.tsx',
   'apps/frontend/src/features/schedule/ScheduleView.tsx',
+  'apps/frontend/src/features/progress/ProgressDialogs.tsx',
+  'apps/frontend/src/features/progress/ProgressLineChart.tsx',
+  'apps/frontend/src/features/progress/ProgressScreen.tsx',
+  'apps/frontend/src/features/progress/ProgressView.tsx',
+  'apps/frontend/src/features/progress/model.ts',
   'apps/frontend/src/routing.ts',
   'apps/frontend/test/api-session.test.ts',
   'apps/frontend/test/survey-routing.test.ts',
@@ -81,6 +86,8 @@ const requiredFiles = [
   'apps/frontend/test/program-api.test.ts',
   'apps/frontend/test/schedule-api.test.ts',
   'apps/frontend/test/schedule.test.ts',
+  'apps/frontend/test/progress-api.test.ts',
+  'apps/frontend/test/progress.test.ts',
   'apps/frontend/public/manifest.webmanifest',
   'apps/frontend/public/service-worker.js',
   'apps/frontend/public/offline.html',
@@ -94,6 +101,7 @@ const requiredFiles = [
   'apps/backend/migrations/004_base_lessons.sql',
   'apps/backend/migrations/005_program_media_availability.sql',
   'apps/backend/migrations/006_schedule_copy.sql',
+  'apps/backend/migrations/007_progress_data_contract.sql',
   'apps/backend/scripts/migrate.mjs',
   'apps/backend/scripts/seed.mjs',
   'apps/backend/scripts/verify-content.mjs',
@@ -125,6 +133,12 @@ const requiredFiles = [
   'apps/backend/src/program/repository.ts',
   'apps/backend/src/program/postgres-program.repository.ts',
   'apps/backend/src/program/runtime.ts',
+  'apps/backend/src/progress/postgres-progress.repository.ts',
+  'apps/backend/src/progress/repository.ts',
+  'apps/backend/src/progress/router.ts',
+  'apps/backend/src/progress/runtime.ts',
+  'apps/backend/src/progress/schema.ts',
+  'apps/backend/src/progress/service.ts',
   'apps/backend/test/auth.e2e.test.ts',
   'apps/backend/test/profile.e2e.test.ts',
   'apps/backend/test/profile.postgres.test.ts',
@@ -132,9 +146,12 @@ const requiredFiles = [
   'apps/backend/test/base-lessons.postgres.test.ts',
   'apps/backend/test/program.e2e.test.ts',
   'apps/backend/test/program.postgres.test.ts',
+  'apps/backend/test/progress.e2e.test.ts',
+  'apps/backend/test/progress.postgres.test.ts',
   'apps/backend/test/support/fake-object-url-signer.ts',
   'apps/backend/test/support/in-memory-base-lessons.repository.ts',
   'apps/backend/test/support/in-memory-program.repository.ts',
+  'apps/backend/test/support/in-memory-progress.repository.ts',
   'scripts/test-frontend-browser.mjs',
   'packages/shared/src/index.ts',
 ];
@@ -1028,7 +1045,7 @@ expectIncludes(frontendApp, '<OnboardingCarousel', 'T05 route renders the onboar
 expectIncludes(frontendApp, '<BaseLessonsScreen', 'T06 route renders the base lessons screen');
 expectIncludes(frontendApp, '<ProgramScreen', 'T07 active route renders the weekly program');
 expectIncludes(frontendApp, '<TabBar', 'T07 active routes render the bottom tab bar');
-expectIncludes(frontendApp, '<ComingSoonScreen', 'T07 renders schedule/progress placeholders');
+expectIncludes(frontendApp, '<ProgressScreen', 'T09 progress route renders the real dashboard');
 
 const baseLessonsModel = await readText('apps/frontend/src/features/base-lessons/model.ts');
 expectIncludes(
@@ -1196,9 +1213,6 @@ expectIncludes(programWeekView, "isToday ? 'is-today'", 'T07 applies the today h
 for (const status of ['Пройдено', 'Доступно', 'Заблокировано']) {
   expectIncludes(programWeekView, status, `T07 workout status copy: ${status}`);
 }
-
-const comingSoonScreen = await readText('apps/frontend/src/features/program/ComingSoonScreen.tsx');
-expectIncludes(comingSoonScreen, 'Скоро', 'T07 schedule/progress placeholder copy is present');
 
 const workoutPlayer = await readText('apps/frontend/src/features/program/WorkoutPlayer.tsx');
 for (const testId of [
@@ -1993,12 +2007,301 @@ for (const marker of [
   expectIncludes(browserTest, marker, `T08 browser marker: ${marker}`);
 }
 
+// T09 — protected progress dashboard, data contract, lightweight charts and acceptance.
+const progressMigration = await readText('apps/backend/migrations/007_progress_data_contract.sql');
+for (const contract of [
+  'weekly_metrics_note_length_valid',
+  'char_length(note) <= 500',
+  'NOT VALID',
+  'VALIDATE CONSTRAINT weekly_metrics_note_length_valid',
+]) {
+  expectIncludes(progressMigration, contract, `T09 progress migration contract: ${contract}`);
+}
+
+const canonicalAchievements = [
+  ['first_base_lesson', 'Первый шаг', 'Просмотрен первый базовый урок', '🎯'],
+  ['base_unlocked', 'База пройдена', '4 базовых урока завершены', '🔓'],
+  ['first_workout', 'Первая тренировка', 'Первая тренировка из программы', '💪'],
+  ['week_complete', 'Неделя завершена', 'Все 7 дней за неделю', '🏆'],
+  ['streak_3', 'Три подряд', '3 тренировки подряд', '🔥'],
+];
+for (const achievement of canonicalAchievements) {
+  for (const field of achievement) {
+    expectIncludes(progressMigration, field, `T09 migration achievement field: ${field}`);
+    expectIncludes(contentSeed, field, `T09 seed achievement field: ${field}`);
+    expectIncludes(contentVerifier, field, `T09 verifier achievement field: ${field}`);
+  }
+}
+expectIncludes(
+  contentVerifier,
+  'convalidated',
+  'T09 database verifier requires a validated weekly-note constraint',
+);
+expectIncludes(
+  contentVerifier,
+  'Expected 5 seeded achievements.',
+  'T09 database verifier rejects extra achievement rows',
+);
+
+expectIncludes(
+  backendApp,
+  "app.use('/api/v1/progress'",
+  'T09 backend mounts the protected progress router',
+);
+const progressRouter = await readText('apps/backend/src/progress/router.ts');
+for (const routeContract of [
+  'router.use(disableCaching)',
+  'router.use(authMiddleware)',
+  "router.get(\n    '/'",
+  "'/weekly-metrics'",
+  "'/goal'",
+  "response.setHeader('Cache-Control', 'no-store')",
+]) {
+  expectIncludes(progressRouter, routeContract, `T09 router contract: ${routeContract}`);
+}
+
+const progressSchema = await readText('apps/backend/src/progress/schema.ts');
+for (const validationContract of [
+  'z.number().int().min(1).max(10)',
+  'z.number().int().min(1).max(12)',
+  'z.string().trim().max(500).optional()',
+  'surveyGoalSchema',
+  '.strict()',
+]) {
+  expectIncludes(
+    progressSchema,
+    validationContract,
+    `T09 strict validation: ${validationContract}`,
+  );
+}
+
+const progressRepository = await readText(
+  'apps/backend/src/progress/postgres-progress.repository.ts',
+);
+for (const repositoryContract of [
+  'ORDER BY program_week',
+  'ON CONFLICT ON CONSTRAINT weekly_metrics_user_week_unique',
+  'FOR UPDATE',
+  'BEGIN ISOLATION LEVEL REPEATABLE READ',
+  'INSERT INTO user_achievements',
+  'ON CONFLICT (user_id, achievement_id) DO NOTHING',
+  'ranked_base_lessons',
+  'ranked_streak_dates',
+  'COUNT(DISTINCT day_of_week)',
+  'completion.workout_date <= CURRENT_DATE',
+  'SUM(duration_seconds)',
+]) {
+  expectIncludes(
+    progressRepository,
+    repositoryContract,
+    `T09 PostgreSQL repository contract: ${repositoryContract}`,
+  );
+}
+
+const progressService = await readText('apps/backend/src/progress/service.ts');
+for (const serviceContract of [
+  'this.programRepository.getProgress(userId)',
+  'pending_survey: !history.some',
+  'SURVEY_REQUIRED',
+  'INVALID_WEEKLY_METRICS',
+  'INVALID_PROGRESS_GOAL',
+  'goalLabels[survey.goal]',
+]) {
+  expectIncludes(progressService, serviceContract, `T09 service contract: ${serviceContract}`);
+}
+
+for (const contract of [
+  'ProgressGoal',
+  'ProgressParams',
+  'WeeklyMetric',
+  'ProgressMetrics',
+  'UnlockedAchievement',
+  'LockedAchievement',
+  'ProgressAchievements',
+  'ProgressStats',
+  'ProgressResponse',
+  'WeeklyMetricsInput',
+  'MetricsResponse',
+  'GoalResponse',
+]) {
+  expectIncludes(sharedContracts, contract, `T09 shared contract: ${contract}`);
+}
+
+for (const endpoint of [
+  "'/api/v1/progress'",
+  "'/api/v1/progress/weekly-metrics'",
+  "'/api/v1/progress/goal'",
+]) {
+  expectIncludes(frontendApi, endpoint, `T09 frontend API endpoint: ${endpoint}`);
+}
+
+const progressScreen = await readText('apps/frontend/src/features/progress/ProgressScreen.tsx');
+for (const screenContract of [
+  'getProgress(controller.signal)',
+  'requestControllerRef.current?.abort()',
+  'submitWeeklyMetrics(input)',
+  'updateGoal(goal)',
+  'fetchMe()',
+  "error.kind === 'auth'",
+  '<ProgressView',
+  '<GoalDialog',
+  '<WeeklyMetricsDialog',
+]) {
+  expectIncludes(progressScreen, screenContract, `T09 progress screen contract: ${screenContract}`);
+}
+
+const progressView = await readText('apps/frontend/src/features/progress/ProgressView.tsx');
+for (const viewContract of [
+  'progress-goal-section',
+  'progress-metrics-section',
+  'progress-stats-section',
+  'progress-achievements-section',
+  'Моя цель',
+  'Как вы себя чувствуете?',
+  'Ваши достижения в цифрах',
+  'Достижения',
+  'aria-pressed',
+  '<ProgressLineChart',
+]) {
+  expectIncludes(progressView, viewContract, `T09 progress view contract: ${viewContract}`);
+}
+
+const progressChart = await readText('apps/frontend/src/features/progress/ProgressLineChart.tsx');
+for (const chartContract of [
+  '<svg',
+  'role="img"',
+  '<title',
+  '<desc',
+  '<polyline',
+  '<circle',
+  'Заполните самооценку минимум за 2 недели, чтобы увидеть динамику',
+  '((10 - metricValue(point, metric.key)) / 9)',
+]) {
+  expectIncludes(progressChart, chartContract, `T09 lightweight SVG chart: ${chartContract}`);
+}
+
+const progressDialogs = await readText('apps/frontend/src/features/progress/ProgressDialogs.tsx');
+for (const dialogContract of [
+  '<dialog',
+  'dialog.showModal()',
+  'type="radio"',
+  'type="range"',
+  'min={1}',
+  'max={10}',
+  'step={1}',
+  'maxLength={500}',
+  'aria-valuetext',
+]) {
+  expectIncludes(
+    progressDialogs,
+    dialogContract,
+    `T09 accessible dialog contract: ${dialogContract}`,
+  );
+}
+
+for (const styleContract of [
+  '.progress-shell',
+  '.progress-section',
+  '.progress-chart-line',
+  '.progress-achievement-row.is-locked',
+  '.progress-dialog::backdrop',
+  "input[type='range']",
+  'min-height: 44px',
+  'opacity: 0.3',
+  'font-size: 28px',
+  'env(safe-area-inset-bottom)',
+]) {
+  expectIncludes(frontendStyles, styleContract, `T09 prescribed style: ${styleContract}`);
+}
+
+const progressBackendTests = await readText('apps/backend/test/progress.e2e.test.ts');
+const progressPostgresTests = await readText('apps/backend/test/progress.postgres.test.ts');
+const progressFrontendTests = await readText('apps/frontend/test/progress.test.ts');
+const progressFrontendApiTests = await readText('apps/frontend/test/progress-api.test.ts');
+for (const testContract of [
+  'weekly metrics validate strictly',
+  'pending survey follows the authoritative current program week',
+  'goal update creates a new current survey version',
+  'KINETRA_T09_BACKEND_E2E=PASS',
+]) {
+  expectIncludes(progressBackendTests, testContract, `T09 backend E2E: ${testContract}`);
+}
+for (const testContract of [
+  'weekly_metrics_note_length_valid',
+  'Historical achievements must retain the source event time',
+  'KINETRA_T09_POSTGRES_INTEGRATION=PASS',
+]) {
+  expectIncludes(progressPostgresTests, testContract, `T09 PostgreSQL test: ${testContract}`);
+}
+for (const testContract of [
+  'exactly four dashboard sections',
+  'accessible SVG',
+  'native controls with canonical bounds',
+]) {
+  expectIncludes(progressFrontendTests, testContract, `T09 frontend unit test: ${testContract}`);
+}
+expectIncludes(
+  progressFrontendApiTests,
+  '/api/v1/progress/weekly-metrics',
+  'T09 frontend API test fixes the metrics endpoint',
+);
+expectIncludes(
+  progressFrontendApiTests,
+  "authorization: 'Bearer progress-token'",
+  'T09 frontend API test proves access JWT attachment',
+);
+
+const progressDocumentation = await readText('docs/T09_PROGRESS.md');
+for (const documentationContract of [
+  'GET /api/v1/progress',
+  'PUT /api/v1/progress/weekly-metrics',
+  'PUT /api/v1/progress/goal',
+  'Cache-Control: no-store',
+  'current_streak',
+  'unlocked_at',
+  'KINETRA_T09_BROWSER_E2E=PASS',
+]) {
+  expectIncludes(
+    progressDocumentation,
+    documentationContract,
+    `T09 documented contract: ${documentationContract}`,
+  );
+}
+
+for (const marker of [
+  'KINETRA_T09_PROGRESS_CONTENT=PASS',
+  'KINETRA_T09_GOAL_UPDATE=PASS',
+  'KINETRA_T09_WEEKLY_METRICS=PASS',
+  'KINETRA_T09_CHARTS=PASS',
+  'KINETRA_T09_BROWSER_E2E=PASS',
+]) {
+  expectIncludes(browserTest, marker, `T09 browser marker: ${marker}`);
+}
+
+for (const marker of [
+  'KINETRA_T09_BACKEND_E2E=PASS',
+  'KINETRA_T09_POSTGRES_INTEGRATION=PASS',
+  'KINETRA_T09_PROGRESS_CONTENT=PASS',
+  'KINETRA_T09_GOAL_UPDATE=PASS',
+  'KINETRA_T09_WEEKLY_METRICS=PASS',
+  'KINETRA_T09_CHARTS=PASS',
+  'KINETRA_T09_BROWSER_E2E=PASS',
+]) {
+  expectIncludes(ciWorkflow, `grep -F '${marker}'`, `CI requires T09 marker: ${marker}`);
+}
+expectIncludes(
+  ciWorkflow,
+  "echo 'KINETRA_T09_TEST_SUITE=PASS'",
+  'CI emits the T09 suite completion marker',
+);
+
 for (const temporaryArtifact of [
   '.github/workflows/apply-t04-fixes.yml',
   '.github/workflows/apply-t05.yml',
   '.github/workflows/apply-t06.yml',
   '.github/workflows/apply-t07.yml',
   '.github/workflows/apply-t08.yml',
+  '.github/workflows/apply-t09.yml',
   '.github/workflows/export-dev-env.yml',
   '.github/workflows/export-full-env.yml',
   '.github/workflows/export-source.yml',
@@ -2006,11 +2309,13 @@ for (const temporaryArtifact of [
   '.t06-bootstrap',
   '.t07-bootstrap',
   '.t08-bootstrap',
+  '.t09-bootstrap',
   'docs/.probe',
   'docs/.t05-pr-trigger',
   'docs/.t06-pr-trigger',
   'docs/.t07-pr-trigger',
   'docs/.t08-pr-trigger',
+  'docs/.t09-pr-trigger',
 ]) {
   try {
     await access(resolve(root, temporaryArtifact));

@@ -80,6 +80,9 @@ const counters = {
   baseProgramComplete: 0,
   currentWeekGet: 0,
   scheduleGet: 0,
+  progressGet: 0,
+  weeklyMetricsPut: 0,
+  goalPut: 0,
   weekGet: 0,
   workoutComplete: 0,
   logout: 0,
@@ -300,6 +303,105 @@ const scheduleWeekPayload = (weekNumber, includeCompletions) => {
 const schedulePayload = () => ({
   current_week: scheduleWeekPayload(1, true),
   next_week: scheduleWeekPayload(2, false),
+});
+
+let progressGoal = {
+  current_goal: 'general_health',
+  goal_label: 'Хочу поддерживать форму и здоровье',
+  set_at: '2026-08-20T08:00:00.000Z',
+};
+
+let progressParams = {
+  gender: 'male',
+  age_range: '26-35',
+  experience: 'novice',
+  injuries: ['knees', 'other'],
+  survey_updated_at: '2026-08-20T08:00:00.000Z',
+};
+
+let progressMetrics = {
+  current_week: 3,
+  history: [
+    {
+      program_week: 1,
+      energy: 6,
+      sleep: 5,
+      mood: 7,
+      body_satisfaction: 5,
+      note: 'Было тяжело, но интересно',
+      created_at: '2026-08-04T09:00:00.000Z',
+    },
+    {
+      program_week: 2,
+      energy: 7,
+      sleep: 6,
+      mood: 7,
+      body_satisfaction: 6,
+      note: null,
+      created_at: '2026-08-11T09:00:00.000Z',
+    },
+  ],
+  pending_survey: true,
+};
+
+const progressAchievements = {
+  unlocked: [
+    {
+      code: 'first_base_lesson',
+      title: 'Первый шаг',
+      description: 'Просмотрен первый базовый урок',
+      icon_key: '🎯',
+      unlocked_at: '2026-08-18T09:00:00.000Z',
+    },
+    {
+      code: 'base_unlocked',
+      title: 'База пройдена',
+      description: '4 базовых урока завершены',
+      icon_key: '🔓',
+      unlocked_at: '2026-08-19T09:00:00.000Z',
+    },
+  ],
+  locked: [
+    {
+      code: 'first_workout',
+      title: 'Первая тренировка',
+      description: 'Первая тренировка из программы',
+      icon_key: '💪',
+      progress: '0/1',
+    },
+    {
+      code: 'week_complete',
+      title: 'Неделя завершена',
+      description: 'Все 7 дней за неделю',
+      icon_key: '🏆',
+      progress: '0/7',
+    },
+    {
+      code: 'streak_3',
+      title: 'Три подряд',
+      description: '3 тренировки подряд',
+      icon_key: '🔥',
+      progress: '0/3',
+    },
+  ],
+  total_unlocked: 2,
+  total_available: 5,
+};
+
+const progressStats = {
+  total_workouts: 15,
+  total_weeks_completed: 2,
+  current_streak: 3,
+  best_streak: 5,
+  total_minutes_trained: 450,
+};
+
+const progressPayload = () => ({
+  goal: progressGoal,
+  params: progressParams,
+  metrics: progressMetrics,
+  achievements: progressAchievements,
+  stats: progressStats,
 });
 
 const baseLessonsPayload = () => {
@@ -713,6 +815,89 @@ const createMockApiServer = () =>
 
       counters.scheduleGet += 1;
       json(response, 200, schedulePayload());
+      return;
+    }
+
+    if (request.method === 'GET' && request.url === '/api/v1/progress') {
+      if (!hasValidAccessToken(request)) {
+        json(response, 401, {
+          error: { code: 'AUTHENTICATION_REQUIRED', message: 'A valid access token is required.' },
+        });
+        return;
+      }
+
+      counters.progressGet += 1;
+      json(response, 200, progressPayload());
+      return;
+    }
+
+    if (request.method === 'PUT' && request.url === '/api/v1/progress/weekly-metrics') {
+      if (!hasValidAccessToken(request)) {
+        json(response, 401, {
+          error: { code: 'AUTHENTICATION_REQUIRED', message: 'A valid access token is required.' },
+        });
+        return;
+      }
+
+      const body = await readJsonBody(request);
+      assert.deepEqual(body, {
+        program_week: 3,
+        energy: 8,
+        sleep: 7,
+        mood: 8,
+        body_satisfaction: 7,
+        note: 'Чувствую прилив сил',
+      });
+      counters.weeklyMetricsPut += 1;
+      progressMetrics = {
+        current_week: 3,
+        history: [
+          ...progressMetrics.history.filter(({ program_week: programWeek }) => programWeek !== 3),
+          {
+            ...body,
+            created_at: '2026-08-21T10:00:00.000Z',
+          },
+        ].sort((left, right) => left.program_week - right.program_week),
+        pending_survey: false,
+      };
+      json(response, 200, progressMetrics);
+      return;
+    }
+
+    if (request.method === 'PUT' && request.url === '/api/v1/progress/goal') {
+      if (!hasValidAccessToken(request)) {
+        json(response, 401, {
+          error: { code: 'AUTHENTICATION_REQUIRED', message: 'A valid access token is required.' },
+        });
+        return;
+      }
+
+      const body = await readJsonBody(request);
+      assert.deepEqual(body, { goal: 'strength' });
+      assert.notEqual(profile.survey, null, 'Goal update requires the browser survey fixture.');
+      counters.goalPut += 1;
+      surveyVersion += 1;
+      progressGoal = {
+        current_goal: 'strength',
+        goal_label: 'Хочу стать сильнее и выносливее',
+        set_at: '2026-08-21T09:30:00.000Z',
+      };
+      progressParams = {
+        ...progressParams,
+        survey_updated_at: progressGoal.set_at,
+      };
+      profile = {
+        ...profile,
+        survey: {
+          ...profile.survey,
+          id: `00000000-0000-4000-8000-00000000000${surveyVersion + 1}`,
+          version: surveyVersion,
+          goal: 'strength',
+          is_current: true,
+          created_at: progressGoal.set_at,
+        },
+      };
+      json(response, 200, progressGoal);
       return;
     }
 
@@ -1447,6 +1632,152 @@ const runBrowserScenario = async () => {
       );
       await cdp.evaluate("window.scrollTo({ top: 0, behavior: 'auto' })");
     };
+    const assertProgressLayout = async (width) => {
+      await cdp.send('Emulation.setDeviceMetricsOverride', {
+        width,
+        height: 820,
+        screenWidth: width,
+        screenHeight: 820,
+        deviceScaleFactor: 1,
+        mobile: true,
+      });
+      await cdp.evaluate(`new Promise((resolve) => {
+        window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'auto' });
+        requestAnimationFrame(() => requestAnimationFrame(resolve));
+      })`);
+      const metrics = await cdp.evaluate(`(() => {
+        const sectionIds = [
+          'progress-goal-section',
+          'progress-metrics-section',
+          'progress-stats-section',
+          'progress-achievements-section',
+        ];
+        const sections = sectionIds
+          .map((testId) => document.querySelector('[data-testid="' + testId + '"]'))
+          .filter((section) => section instanceof HTMLElement);
+        const chart = document.querySelector(${JSON.stringify(selector('progress-chart'))});
+        const controls = [
+          document.querySelector(${JSON.stringify(selector('progress-edit-goal'))}),
+          document.querySelector(${JSON.stringify(selector('progress-weekly-open'))}),
+          ...document.querySelectorAll(${JSON.stringify('.progress-metric-switch button')}),
+        ].filter((control) => control instanceof HTMLElement);
+        const tabBar = document.querySelector(${JSON.stringify(selector('tab-bar'))});
+        const tabs = [
+          ...document.querySelectorAll(${JSON.stringify('[data-testid^="tab-"]')})
+        ].filter((tab) => tab.getAttribute('data-testid') !== 'tab-bar');
+        const lastAchievement = document.querySelector(
+          ${JSON.stringify('[data-testid="progress-achievement-streak_3"]')}
+        );
+        const chartRect = chart?.getBoundingClientRect();
+        const tabBarRect = tabBar?.getBoundingClientRect();
+        const lastAchievementRect = lastAchievement?.getBoundingClientRect();
+        return {
+          innerWidth: window.innerWidth,
+          innerHeight: window.innerHeight,
+          scrollWidth: document.documentElement.scrollWidth,
+          sectionCount: sections.length,
+          sectionsInsideViewport: sections.every((section) => {
+            const rect = section.getBoundingClientRect();
+            return rect.left >= 0 && rect.right <= window.innerWidth;
+          }),
+          chartInsideViewport:
+            chartRect !== undefined && chartRect.left >= 0 && chartRect.right <= window.innerWidth,
+          controlCount: controls.length,
+          controlsAreLargeEnough: controls.every((control) => {
+            const rect = control.getBoundingClientRect();
+            return rect.width >= 44 && rect.height >= 44;
+          }),
+          tabCount: tabs.length,
+          tabTargetsAreLargeEnough: tabs.every((tab) => {
+            const rect = tab.getBoundingClientRect();
+            return rect.width >= 44 && rect.height >= 44;
+          }),
+          tabBarBottom: tabBarRect?.bottom ?? -1,
+          tabBarTop: tabBarRect?.top ?? -1,
+          lastAchievementBottom: lastAchievementRect?.bottom ?? window.innerHeight + 1,
+        };
+      })()`);
+      assert.equal(metrics.innerWidth, width);
+      assert.ok(metrics.scrollWidth <= width, `Progress horizontal overflow at ${width}px.`);
+      assert.equal(metrics.sectionCount, 4);
+      assert.equal(
+        metrics.sectionsInsideViewport,
+        true,
+        `Progress section overflow at ${width}px.`,
+      );
+      assert.equal(metrics.chartInsideViewport, true, `Progress chart overflow at ${width}px.`);
+      assert.equal(metrics.controlCount, 6);
+      assert.equal(
+        metrics.controlsAreLargeEnough,
+        true,
+        `Progress control below 44px at ${width}px.`,
+      );
+      assert.equal(metrics.tabCount, 4);
+      assert.equal(
+        metrics.tabTargetsAreLargeEnough,
+        true,
+        `Progress tab target below 44px at ${width}px.`,
+      );
+      assert.ok(
+        Math.abs(metrics.tabBarBottom - metrics.innerHeight) <= 1,
+        `Tab bar is not pinned on Progress at ${width}px.`,
+      );
+      assert.ok(
+        metrics.lastAchievementBottom <= metrics.tabBarTop,
+        `Tab bar overlaps the final achievement at ${width}px.`,
+      );
+      await cdp.evaluate("window.scrollTo({ top: 0, behavior: 'auto' })");
+    };
+    const assertWeeklyMetricsDialogLayout = async (width) => {
+      await cdp.send('Emulation.setDeviceMetricsOverride', {
+        width,
+        height: 820,
+        screenWidth: width,
+        screenHeight: 820,
+        deviceScaleFactor: 1,
+        mobile: true,
+      });
+      await cdp.evaluate('new Promise((resolve) => requestAnimationFrame(resolve))');
+      const metrics = await cdp.evaluate(`(() => {
+        const dialog = document.querySelector(${JSON.stringify(selector('progress-metrics-dialog'))});
+        if (!(dialog instanceof HTMLDialogElement)) {
+          throw new Error('Weekly metrics dialog was not found.');
+        }
+        const ranges = [...dialog.querySelectorAll('input[type="range"]')];
+        const actions = [...dialog.querySelectorAll('.progress-dialog-actions button')];
+        const rect = dialog.getBoundingClientRect();
+        return {
+          innerWidth: window.innerWidth,
+          scrollWidth: document.documentElement.scrollWidth,
+          open: dialog.open,
+          dialogInsideViewport:
+            rect.left >= 0 &&
+            rect.right <= window.innerWidth &&
+            rect.top >= 0 &&
+            rect.bottom <= window.innerHeight,
+          scrollIsContained: dialog.scrollHeight >= dialog.clientHeight,
+          rangeCount: ranges.length,
+          rangesAreLargeEnough: ranges.every((range) => range.getBoundingClientRect().height >= 44),
+          actionCount: actions.length,
+          actionsAreLargeEnough: actions.every(
+            (action) => action.getBoundingClientRect().height >= 44,
+          ),
+        };
+      })()`);
+      assert.equal(metrics.innerWidth, width);
+      assert.ok(metrics.scrollWidth <= width, `Progress dialog overflow at ${width}px.`);
+      assert.equal(metrics.open, true);
+      assert.equal(metrics.dialogInsideViewport, true, `Progress dialog is clipped at ${width}px.`);
+      assert.equal(metrics.scrollIsContained, true);
+      assert.equal(metrics.rangeCount, 4);
+      assert.equal(metrics.rangesAreLargeEnough, true, `Progress range below 44px at ${width}px.`);
+      assert.equal(metrics.actionCount, 2);
+      assert.equal(
+        metrics.actionsAreLargeEnough,
+        true,
+        `Progress dialog action below 44px at ${width}px.`,
+      );
+    };
     const setValue = (testId, nextValue) =>
       cdp.evaluate(`(() => {
         const element = document.querySelector(${JSON.stringify(selector(testId))});
@@ -2009,11 +2340,194 @@ const runBrowserScenario = async () => {
     );
     await click('tab-progress');
     await waitFor(
-      'progress tab placeholder',
-      async () => (await pathname()) === '/progress' && (await exists('progress-screen')),
+      'T09 progress dashboard with four blocks',
+      async () =>
+        (await pathname()) === '/progress' &&
+        (await exists('progress-goal-section')) &&
+        (await exists('progress-metrics-section')) &&
+        (await exists('progress-stats-section')) &&
+        (await exists('progress-achievements-section')) &&
+        counters.progressGet >= 1,
     );
     assert.equal(await attribute('tab-progress', 'aria-current'), 'page');
-    assert.ok((await text('progress-screen'))?.includes('Скоро'));
+    assert.equal((await text('progress-screen'))?.includes('Скоро'), false);
+    assert.equal(await text('progress-goal-label'), 'Хочу поддерживать форму и здоровье');
+    assert.equal(await exists('progress-weekly-open'), true);
+    assert.equal(await attribute('progress-chart', 'data-metric'), 'energy');
+    assert.equal(
+      await cdp.evaluate(
+        `document.querySelectorAll(${JSON.stringify(selector('progress-chart-point'))}).length`,
+      ),
+      2,
+    );
+    assert.ok((await text('progress-chart'))?.includes('Нед 1'));
+    assert.ok((await text('progress-chart'))?.includes('Нед 2'));
+
+    for (const [testId, expected] of [
+      ['progress-stat-total-workouts', '15'],
+      ['progress-stat-weeks', '2'],
+      ['progress-stat-current-streak', '3 дня'],
+      ['progress-stat-best-streak', '5 дней'],
+      ['progress-stat-minutes', '7ч 30мин'],
+    ]) {
+      assert.ok((await text(testId))?.includes(expected), `${testId} must include ${expected}.`);
+    }
+
+    assert.equal(await text('progress-achievement-count'), '2/5');
+    for (const achievement of progressAchievements.unlocked) {
+      const testId = `progress-achievement-${achievement.code}`;
+      const copy = await text(testId);
+      const expectedDate = achievement.code === 'first_base_lesson' ? '18.08.2026' : '19.08.2026';
+      assert.equal(await attribute(testId, 'data-state'), 'unlocked');
+      assert.ok(copy?.includes(achievement.icon_key));
+      assert.ok(copy?.includes(achievement.title));
+      assert.ok(copy?.includes(achievement.description));
+      assert.ok(copy?.includes('Получено'));
+      assert.ok(copy?.includes(expectedDate));
+    }
+    for (const achievement of progressAchievements.locked) {
+      const testId = `progress-achievement-${achievement.code}`;
+      const copy = await text(testId);
+      assert.equal(await attribute(testId, 'data-state'), 'locked');
+      assert.ok(copy?.includes(achievement.icon_key));
+      assert.ok(copy?.includes(achievement.title));
+      assert.ok(copy?.includes(achievement.description));
+      assert.ok(copy?.includes(achievement.progress));
+      assert.equal(copy?.includes('Получено'), false);
+    }
+    const achievementPresentation = await cdp.evaluate(`(() => ({
+      unlockedOpacity: getComputedStyle(
+        document.querySelector(${JSON.stringify(selector('progress-achievement-first_base_lesson'))})
+      ).opacity,
+      unlockedHasDate: document.querySelector(
+        ${JSON.stringify(`${selector('progress-achievement-first_base_lesson')} time`)}
+      ) !== null,
+      lockedOpacity: getComputedStyle(
+        document.querySelector(${JSON.stringify(selector('progress-achievement-first_workout'))})
+      ).opacity,
+      lockedHasDate: document.querySelector(
+        ${JSON.stringify(`${selector('progress-achievement-first_workout')} time`)}
+      ) !== null,
+    }))()`);
+    assert.deepEqual(achievementPresentation, {
+      unlockedOpacity: '1',
+      unlockedHasDate: true,
+      lockedOpacity: '0.3',
+      lockedHasDate: false,
+    });
+    await assertProgressLayout(320);
+    await assertProgressLayout(428);
+    console.log('KINETRA_T09_PROGRESS_CONTENT=PASS');
+
+    await click('progress-edit-goal');
+    await waitFor('T09 goal dialog', () =>
+      cdp.evaluate(
+        `document.querySelector(${JSON.stringify(selector('progress-goal-dialog'))})?.open === true`,
+      ),
+    );
+    assert.equal(await attribute('progress-goal-dialog', 'aria-modal'), 'true');
+    const goalDialogOptions = await cdp.evaluate(`[
+      ...document.querySelectorAll(${JSON.stringify(
+        `${selector('progress-goal-dialog')} input[name="progress-goal"]`,
+      )})
+    ].map((input) => ({ value: input.value, label: input.closest('label')?.textContent?.trim() }))`);
+    assert.deepEqual(goalDialogOptions, [
+      { value: 'flexibility', label: 'Хочу быть гибким и подвижным' },
+      { value: 'strength', label: 'Хочу стать сильнее и выносливее' },
+      { value: 'awareness', label: 'Хочу лучше чувствовать своё тело' },
+      { value: 'general_health', label: '✓Хочу поддерживать форму и здоровье' },
+    ]);
+    await click('progress-goal-option-strength');
+    await waitFor('T09 strength goal selected', () =>
+      cdp.evaluate(
+        `document.querySelector(${JSON.stringify(
+          `${selector('progress-goal-option-strength')} input`,
+        )})?.checked === true`,
+      ),
+    );
+    await click('progress-goal-save');
+    await waitFor(
+      'T09 goal update applied',
+      async () =>
+        counters.goalPut === 1 &&
+        !(await exists('progress-goal-dialog')) &&
+        (await text('progress-goal-label')) === 'Хочу стать сильнее и выносливее',
+    );
+    console.log('KINETRA_T09_GOAL_UPDATE=PASS');
+
+    await click('progress-weekly-open');
+    await waitFor('T09 weekly metrics dialog', () =>
+      cdp.evaluate(
+        `document.querySelector(${JSON.stringify(selector('progress-metrics-dialog'))})?.open === true`,
+      ),
+    );
+    const rangeContract = await cdp.evaluate(`[
+      'weekly-energy',
+      'weekly-sleep',
+      'weekly-mood',
+      'weekly-body-satisfaction',
+    ].map((testId) => {
+      const input = document.querySelector('[data-testid="' + testId + '"]');
+      return {
+        testId,
+        type: input?.getAttribute('type'),
+        min: input?.getAttribute('min'),
+        max: input?.getAttribute('max'),
+        step: input?.getAttribute('step'),
+        value: input?.value,
+      };
+    })`);
+    assert.deepEqual(
+      rangeContract,
+      ['weekly-energy', 'weekly-sleep', 'weekly-mood', 'weekly-body-satisfaction'].map(
+        (testId) => ({ testId, type: 'range', min: '1', max: '10', step: '1', value: '5' }),
+      ),
+    );
+    assert.equal(await attribute('weekly-note', 'maxlength'), '500');
+    await assertWeeklyMetricsDialogLayout(320);
+    await setValue('weekly-energy', '8');
+    await setValue('weekly-sleep', '7');
+    await setValue('weekly-mood', '8');
+    await setValue('weekly-body-satisfaction', '7');
+    await setValue('weekly-note', 'Чувствую прилив сил');
+    await waitFor(
+      'T09 weekly metric controls updated',
+      async () =>
+        (await text('weekly-energy-value')) === '8' &&
+        (await text('weekly-sleep-value')) === '7' &&
+        (await text('weekly-mood-value')) === '8' &&
+        (await text('weekly-body-satisfaction-value')) === '7' &&
+        (await value('weekly-note')) === 'Чувствую прилив сил',
+    );
+    await click('weekly-save');
+    await waitFor(
+      'T09 weekly metrics update applied',
+      async () =>
+        counters.weeklyMetricsPut === 1 &&
+        !(await exists('progress-metrics-dialog')) &&
+        !(await exists('progress-weekly-open')) &&
+        (await cdp.evaluate(
+          `document.querySelectorAll(${JSON.stringify(selector('progress-chart-point'))}).length`,
+        )) === 3 &&
+        (await text('progress-chart'))?.includes('Нед 3'),
+    );
+    console.log('KINETRA_T09_WEEKLY_METRICS=PASS');
+
+    for (const metric of ['energy', 'sleep', 'mood', 'body-satisfaction']) {
+      await click(`progress-chart-tab-${metric}`);
+      await waitFor(`T09 ${metric} chart`, async () => {
+        const dataMetric = metric === 'body-satisfaction' ? 'body_satisfaction' : metric;
+        return (
+          (await attribute(`progress-chart-tab-${metric}`, 'aria-pressed')) === 'true' &&
+          (await attribute('progress-chart', 'data-metric')) === dataMetric &&
+          (await cdp.evaluate(
+            `document.querySelectorAll(${JSON.stringify(selector('progress-chart-point'))}).length`,
+          )) === 3
+        );
+      });
+    }
+    console.log('KINETRA_T09_CHARTS=PASS');
+
     await click('tab-home');
     await waitFor(
       'main screen after tab navigation',
@@ -2327,6 +2841,9 @@ const runBrowserScenario = async () => {
     assert.equal(counters.baseProgramComplete, 1);
     assert.ok(counters.currentWeekGet >= 2);
     assert.ok(counters.scheduleGet >= 3);
+    assert.ok(counters.progressGet >= 1);
+    assert.equal(counters.weeklyMetricsPut, 1);
+    assert.equal(counters.goalPut, 1);
     assert.equal(counters.weekGet, 4);
     assert.equal(counters.workoutComplete, 1);
     assert.equal(counters.logout, 1);
@@ -2336,6 +2853,7 @@ const runBrowserScenario = async () => {
     console.log('KINETRA_T06_BROWSER_E2E=PASS');
     console.log('KINETRA_T07_BROWSER_E2E=PASS');
     console.log('KINETRA_T08_BROWSER_E2E=PASS');
+    console.log('KINETRA_T09_BROWSER_E2E=PASS');
   } catch (error) {
     if (cdp !== null) {
       try {

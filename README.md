@@ -2,7 +2,7 @@
 
 Kinetra — фитнес-приложение с React/Vite frontend и Express/PostgreSQL backend.
 
-В репозитории завершены этапы T01–T08:
+В репозитории завершены этапы T01–T09:
 
 - **T01:** каркас монорепо, PWA, PostgreSQL в Docker Compose, health endpoint и transport Socket.IO;
 - **T02:** регистрация и авторизация по email/паролю, опциональный телефон, refresh-сессии,
@@ -14,6 +14,7 @@ Kinetra — фитнес-приложение с React/Vite frontend и Express/
   программы после четырёх завершённых уроков.
 - **T07:** главный экран 12-недельной программы, workout player, completion и нижняя навигация;
 - **T08:** расписание текущей/следующей недели с полными описаниями и статусом выполнения.
+- **T09:** dashboard прогресса с целью, самооценкой, SVG-графиками, статистикой и достижениями.
 
 ## Структура
 
@@ -24,7 +25,7 @@ kinetra/
 │   └── backend/           @kinetra/backend — Express + TypeScript + PostgreSQL
 ├── packages/
 │   └── shared/            @kinetra/shared — общие API-типы
-├── docs/                 Контракты и сценарии T02–T08
+├── docs/                  Контракты и сценарии T02–T09
 ├── scripts/               Структурная проверка проекта
 ├── docker-compose.yml     PostgreSQL 17
 └── .env.example           Шаблон переменных без реальных секретов
@@ -97,6 +98,19 @@ T06 добавляет защищённые endpoints:
 
 Главный экран описан в [`docs/T07_MAIN_SCREEN.md`](docs/T07_MAIN_SCREEN.md), а компактный API и
 UI расписания — в [`docs/T08_SCHEDULE.md`](docs/T08_SCHEDULE.md).
+
+## Прогресс
+
+Вкладка `/progress` использует три защищённых endpoint:
+
+| Метод | Путь                              | Назначение                                       |
+| ----- | --------------------------------- | ------------------------------------------------ |
+| GET   | `/api/v1/progress`                | Цель, параметры, метрики, достижения, статистика |
+| PUT   | `/api/v1/progress/weekly-metrics` | Строгий upsert еженедельной самооценки           |
+| PUT   | `/api/v1/progress/goal`           | Новая версионированная цель анкеты               |
+
+API, правила агрегатов и streak, пять canonical-достижений, UI и acceptance-маркеры описаны в
+[`docs/T09_PROGRESS.md`](docs/T09_PROGRESS.md).
 
 ## Auth API T02
 
@@ -234,6 +248,7 @@ npm run db:migrate
 - `004_base_lessons.sql` — placeholder-ключи и порог завершения базового урока.
 - `005_program_media_availability.sql` — явная доступность workout media до выдачи S3 URL.
 - `006_schedule_copy.sql` — канонические названия и описания семи дней расписания.
+- `007_progress_data_contract.sql` — лимит заметки и canonical-контракт пяти достижений.
 
 `schema_migrations` создаётся самим runner.
 
@@ -257,12 +272,12 @@ sha256sum -c MANIFEST.sha256
 npm run check
 ```
 
-E2E-набор покрывает auth, профиль/анкету, онбординг-карусель, базовые уроки, главный экран и T08:
-JWT-защиту расписания, точные семь дней, completion state, следующую/финальную неделю,
-сегментированное переключение и переход с карточки на главную. CI также сравнивает
+E2E-набор покрывает auth, профиль/анкету, онбординг-карусель, базовые уроки, главный экран,
+расписание и T09: JWT/no-store, строгую валидацию и upsert метрик, версионирование цели,
+статистику, materialized achievements, четыре UI-блока, SVG-графики и обе модалки. CI сравнивает
 `MANIFEST.sha256` со всеми tracked-файлами и запрещает bootstrap/payload artifacts.
 
 ## Границы текущего этапа
 
-В T08 не входят загрузка настоящих S3-видео, платежи YooKassa, каталог тренеров и доменная логика
+В T09 не входят загрузка настоящих S3-видео, платежи YooKassa, каталог тренеров и доменная логика
 чата. Telegram-интеграции нет: продукт остаётся самостоятельной PWA.
