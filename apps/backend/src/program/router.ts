@@ -1,4 +1,4 @@
-import type { ApiErrorResponse, WeekResponse } from '@kinetra/shared';
+import type { ApiErrorResponse, ScheduleResponse, WeekResponse } from '@kinetra/shared';
 import {
   Router,
   type NextFunction,
@@ -28,6 +28,18 @@ export const createProgramRouter = ({
 
   router.use(disableCaching);
   router.use(authMiddleware);
+
+  router.get(
+    '/schedule',
+    (request: Request, response: Response<ScheduleResponse>, next: NextFunction): void => {
+      const { userId } = requireAuthenticatedPrincipal(request);
+
+      void service
+        .getSchedule(userId)
+        .then((schedule) => response.status(200).json(schedule))
+        .catch(next);
+    },
+  );
 
   router.get(
     '/current-week',

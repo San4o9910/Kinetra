@@ -38,6 +38,65 @@ const errorCode = (body: unknown): string => {
   return error.code as string;
 };
 
+const expectedScheduleDays = [
+  {
+    direction: 'breathing',
+    day_label: 'Понедельник',
+    title: 'Дыхательная практика',
+    description: 'Настройка нервной системы, учимся дышать животом.',
+    icon: '🧘',
+    duration_minutes: 25,
+  },
+  {
+    direction: 'strength',
+    day_label: 'Вторник',
+    title: 'Силовая тренировка',
+    description: 'Приседания, тяги, жимы. 3 круга.',
+    icon: '💪',
+    duration_minutes: 35,
+  },
+  {
+    direction: 'body_therapy',
+    day_label: 'Среда',
+    title: 'Тело мой дом',
+    description: 'Снимаем зажимы, работаем с телом.',
+    icon: '🌿',
+    duration_minutes: 30,
+  },
+  {
+    direction: 'functional',
+    day_label: 'Четверг',
+    title: 'Функциональная тренировка',
+    description: 'Динамика, координация, баланс.',
+    icon: '⚡',
+    duration_minutes: 35,
+  },
+  {
+    direction: 'stretching',
+    day_label: 'Пятница',
+    title: 'Растяжка',
+    description: 'Восстанавливаем длину мышц.',
+    icon: '🧘‍♂️',
+    duration_minutes: 30,
+  },
+  {
+    direction: 'neuro',
+    day_label: 'Суббота',
+    title: 'Нейрогимнастика',
+    description: 'Упражнения для мозга и координации.',
+    icon: '🧠',
+    duration_minutes: 15,
+  },
+  {
+    direction: 'recovery',
+    day_label: 'Воскресенье',
+    title: 'Восстановление',
+    description: 'Самомассаж и полезное блюдо.',
+    icon: '🍲',
+    duration_minutes: 20,
+  },
+] as const;
+
 const closeServer = async (server: Server): Promise<void> => {
   await new Promise<void>((resolve, reject) => {
     server.close((error) => {
@@ -128,6 +187,7 @@ test('program endpoints require an access token', async () => {
 
   try {
     for (const [method, path, body] of [
+      ['GET', '/api/v1/program/schedule', undefined],
       ['GET', '/api/v1/program/current-week', undefined],
       ['GET', '/api/v1/program/weeks/1', undefined],
       [
@@ -141,6 +201,103 @@ test('program endpoints require an access token', async () => {
       assert.equal(errorCode(response.body), 'AUTHENTICATION_REQUIRED');
       assert.equal(response.cacheControl, 'no-store');
     }
+  } finally {
+    await harness.close();
+  }
+});
+
+test('schedule exposes canonical current and next weeks with completion state', async () => {
+  const harness = await startHarness();
+  const firstVideoId = harness.repository.videoIdsForWeek(1)[0] as string;
+
+  try {
+    const completed = await requestJson(harness, '/api/v1/program/complete-workout', {
+      method: 'PUT',
+      body: { video_id: firstVideoId, program_week: 1 },
+    });
+    assert.equal(completed.status, 200);
+
+    const response = await requestJson(harness, '/api/v1/program/schedule');
+    assert.equal(response.status, 200);
+    assert.equal(response.cacheControl, 'no-store');
+    const body = asObject(response.body);
+    const currentWeek = asObject(body.current_week);
+    const nextWeek = asObject(body.next_week);
+    assert.equal(currentWeek.week_number, 1);
+    assert.equal(currentWeek.title, 'Неделя 1');
+    assert.equal(currentWeek.days_completed, 1);
+    assert.equal(currentWeek.total_days, 7);
+    assert.equal(nextWeek.week_number, 2);
+    assert.equal(nextWeek.title, 'Неделя 2');
+    assert.equal(nextWeek.days_completed, 0);
+    assert.equal(nextWeek.total_days, 7);
+
+    const currentDays = currentWeek.days as Record<string, unknown>[];
+    const nextDays = nextWeek.days as Record<string, unknown>[];
+    assert.equal(currentDays.length, 7);
+    assert.equal(nextDays.length, 7);
+    assert.deepEqual(
+      currentDays.map(({ direction, day_label, title, description, icon, duration_minutes }) => ({
+        direction,
+        day_label,
+        title,
+        description,
+        icon,
+        duration_minutes,
+      })),
+      expectedScheduleDays,
+    );
+    assert.deepEqual(
+      nextDays.map(({ direction, day_label, title, description, icon, duration_minutes }) => ({
+        direction,
+        day_label,
+        title,
+        description,
+        icon,
+        duration_minutes,
+      })),
+      expectedScheduleDays,
+    );
+    assert.deepEqual(
+      currentDays.map((day) => day.day_of_week),
+      [1, 2, 3, 4, 5, 6, 7],
+    );
+    assert.deepEqual(
+      currentDays.map((day) => day.completed),
+      [true, false, false, false, false, false, false],
+    );
+    assert.equal(
+      nextDays.every((day) => day.completed === false),
+      true,
+    );
+    assert.equal(harness.signer.requestedKeys.length, 0);
+  } finally {
+    await harness.close();
+  }
+});
+
+test('schedule omits the next week at the twelve-week program boundary', async () => {
+  const harness = await startHarness();
+
+  try {
+    for (let weekNumber = 1; weekNumber <= 11; weekNumber += 1) {
+      for (const videoId of harness.repository.videoIdsForWeek(weekNumber)) {
+        const completed = await requestJson(harness, '/api/v1/program/complete-workout', {
+          method: 'PUT',
+          body: { video_id: videoId, program_week: weekNumber },
+        });
+        assert.equal(completed.status, 200);
+      }
+    }
+
+    const response = await requestJson(harness, '/api/v1/program/schedule');
+    assert.equal(response.status, 200);
+    const body = asObject(response.body);
+    const currentWeek = asObject(body.current_week);
+    assert.equal(currentWeek.week_number, 12);
+    assert.equal((currentWeek.days as readonly unknown[]).length, 7);
+    assert.equal(body.next_week, null);
+    console.log('KINETRA_T08_BACKEND_E2E=PASS');
   } finally {
     await harness.close();
   }

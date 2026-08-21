@@ -1,23 +1,24 @@
-# Kinetra T07 — отчёт проверки
+# Kinetra T08 — отчёт проверки
 
-**Дата локальной проверки:** 2026-08-20
+**Дата локальной проверки:** 2026-08-21
 
-**Ветка:** `feature/t07-main-screen` от актуального `develop`
+**Ветка:** `feature/t08-schedule` от `develop@01f9c49`
 
-**Объём:** T01–T07, standalone PWA monorepo
+**Объём:** T01–T08, standalone PWA monorepo
 
 ## Результат
 
-T07 реализован обычными исходными файлами TypeScript/TSX/SQL/CSS/Markdown. Главный экран
-показывает текущую и доступную preview-неделю, семь тренировок, progress, Today, player или
-placeholder и fixed tab bar. Backend вычисляет неделю по `workout_completions`, ограничивает
-будущие недели и идемпотентно записывает completion от JWT-пользователя.
+T08 реализован обычными исходными файлами TypeScript/TSX/SQL/CSS/Markdown. Заглушка
+`/schedule` заменена защищённым расписанием: текущая и следующая недели, семь полных карточек,
+канонический текст, completion state, сегментированное переключение и финальное состояние недели 12. Нажатие карточки возвращает пользователя на главную вкладку.
+
+Backend вычисляет текущую неделю той же логикой, что T07, читает завершения из
+`workout_completions`, не выдаёт video IDs/S3 URLs и возвращает `next_week: null` только на
+финальной неделе. Миграция `006_schedule_copy.sql` обновляет существующие базы, seed остаётся
+идемпотентным, а content verifier фиксирует точный текст во всех 12 неделях.
 
 В репозитории нет bootstrap, encoded payload, временных apply-workflows и запрещённых runtime
-интеграций. Локально пройдены structure, TypeScript, ESLint, backend/frontend tests, production
-builds и статический visual QA реальных React-компонентов в Chromium 149. PostgreSQL integration
-и полный Chrome journey оставлены обязательными fail-closed проверками CI: в sandbox нет
-PostgreSQL server/Docker, а изолированный Chromium не получает HTTP-доступ к loopback mock server.
+интеграций.
 
 ## Локально пройдено
 
@@ -25,17 +26,15 @@ PostgreSQL server/Docker, а изолированный Chromium не получ
 
 ```text
 node scripts/verify-project.mjs
-654 structural checks passed.
+770 structural checks passed.
 ```
 
-Verifier проверяет API/SQL/UI-контракты T01–T07, canonical workout icons, explicit
-`media_available`, browser markers и отсутствие подозрительных путей `bootstrap`, `payload`,
-`*.b64`, `*.base64`, `*.encoded` и `.tNN-pr-trigger`.
+Verifier проверяет API/SQL/UI-контракты T01–T08, route `/schedule`, JWT/no-store, русские weekday
+labels, канонический seed/migration, schedule DTO, screen states, ARIA, responsive CSS, unit/browser
+markers и отсутствие подозрительных путей `bootstrap`, `payload`, `*.b64`, `*.base64`,
+`*.encoded`, apply-workflows и `.tNN-pr-trigger`.
 
-CI сравнивает полный `git ls-files` (кроме manifest) со списком путей `MANIFEST.sha256`, затем
-выполняет `sha256sum -c`. Лишний tracked payload не может обойти проверку отсутствием в manifest.
-
-### TypeScript и ESLint
+### TypeScript, ESLint и форматирование
 
 ```text
 npm run typecheck    PASS
@@ -48,33 +47,33 @@ npm run lint         PASS
 ### Backend tests
 
 ```text
-tests 26
-pass 23
+tests 28
+pass 25
 fail 0
 skipped 3 (PostgreSQL: DATABASE_URL не настроен локально)
-KINETRA_T06_BACKEND_E2E=PASS
-KINETRA_T07_BACKEND_E2E=PASS
+KINETRA_T08_BACKEND_E2E=PASS
 ```
 
-T07 HTTP E2E проверяет 401, неделю 1 по умолчанию, семь упорядоченных дней и emoji, preview
-`current + 1`, запрет далёкого будущего, media availability, строгую Zod-валидацию,
-user/video/week membership, идемпотентность и переход после 7/7 вплоть до недели 12.
+T08 HTTP E2E проверяет:
 
-Migration `005_program_media_availability.sql` сохраняет будущие S3 object keys, но по умолчанию
-возвращает `null` URLs. URL подписывается только после `media_available = true`; locked-неделя
-никогда не раскрывает media URL.
+- `401 AUTHENTICATION_REQUIRED` и `Cache-Control: no-store`;
+- текущую неделю 1 и следующую неделю 2;
+- семь упорядоченных дней с точными weekday/title/description/icon/duration/direction;
+- persisted completion и `days_completed`;
+- отсутствие S3 signing и video identity в компактном ответе;
+- `next_week: null` после перехода на неделю 12.
 
 ### Frontend unit/API tests
 
 ```text
-tests 34
-pass 34
+tests 39
+pass 39
 fail 0
 ```
 
-T07 тесты фиксируют семь направлений, emoji и длительности, `X/7`, границы стрелок, три состояния
-карточек, Today в timezone пользователя, четыре вкладки, placeholder, threshold 90% и все три
-authenticated program API requests. Доменный `PROGRAM_WEEK_LOCKED` не завершает JWT-сессию.
+Пять T08-тестов фиксируют authenticated `GET /api/v1/program/schedule`, семь текущих карточек,
+полные описания, `Выполнено X из 7`, `✅`, следующую неделю без completion status и финальное
+сообщение недели 12.
 
 ### Production builds
 
@@ -84,46 +83,40 @@ authenticated program API requests. Доменный `PROGRAM_WEEK_LOCKED` не 
 @kinetra/frontend  PASS
 ```
 
-Frontend Vite build: 47 modules, основной JS bundle около 258 kB (79 kB gzip), CSS около 31 kB.
+Frontend Vite build: 49 modules, JS около 265 kB (80 kB gzip), CSS около 36 kB (7 kB gzip).
 
-### Visual QA
+### Browser acceptance
 
-`ProgramWeekView` и `TabBar` отрендерены из production-компонентов в Chromium 149 при ширинах
-320 и 428 px. Проверено: семь карточек, отсутствие горизонтального overflow
-(`scrollWidth = viewport width`), fixed tab bar, targets стрелок 44×44 px, вкладок не меньше
-79×56 px и карточек не меньше 296×82 px. Вычисленные цвета совпали с контрактом: фон
-`rgb(8, 9, 9)`, accent `rgb(200, 241, 105)`.
+`scripts/test-frontend-browser.mjs` расширен единым T04–T08 journey и проходит syntax,
+Prettier/ESLint, production build, mock health и cleanup. Сценарий проверяет:
+
+- семь текущих карточек и точный текст каждого дня;
+- segmented Current → Next → Current и ARIA selected state;
+- отсутствие completion status у следующей недели;
+- 320/428 px без horizontal overflow, touch targets не меньше 44 px и отсутствие перекрытия
+  фиксированной tab bar;
+- переход с карточки расписания на `/`;
+- обновление `0/7 → 1/7`, `✅` и лаймовую границу после реального T07 workout completion.
+
+Локальный контейнер не содержит Chrome/Chromium, а облачный браузер не открывает loopback preview,
+поэтому полный CDP journey и visual runtime остаются обязательной fail-closed проверкой CI, где
+Chrome устанавливается workflow. В обоих локальных путях cleanup выполнен безопасно.
 
 ## Обязательные CI-проверки
 
-CI поднимает PostgreSQL 17, применяет migrations `001`–`005`, выполняет seed дважды,
-`db:verify-content` и требует реального PostgreSQL integration marker. Затем установленный Chrome
-проходит единый mobile journey T04–T07 на ширинах 320/428 px.
+CI поднимает PostgreSQL 17, применяет migrations `001`–`006`, запускает seed дважды,
+`db:verify-content`, требует реальные PostgreSQL integration markers, затем выполняет полный
+Chrome journey. Source manifest сравнивается с `git ls-files` до проверки SHA-256.
 
-T07 browser acceptance проверяет:
-
-- семь доступных карточек, progress, Today highlight и touch targets;
-- Schedule → Progress → Home и `aria-current` каждой вкладки;
-- preview недели 2, ровно семь locked-карточек и границы стрелок;
-- Today player/placeholder и возврат системным Back с очисткой history state;
-- закрытие player через Home/Schedule и чистый Back без скрытой same-URL записи;
-- восстановление player через reload/Forward и блокировку вкладок во время saving;
-- placeholder для отсутствующего workout media;
-- отсутствие PUT на 89% и один `complete-workout` PUT на 95% через реальный `timeupdate`;
-- возврат к списку, `completed`, `1/7`, reload persistence и переход в Settings.
-
-Fail-closed markers:
+Fail-closed маркеры T08:
 
 ```text
-KINETRA_T07_BACKEND_E2E=PASS
-KINETRA_T07_POSTGRES_INTEGRATION=PASS
-KINETRA_T07_TAB_NAVIGATION=PASS
-KINETRA_T07_SYSTEM_BACK=PASS
-KINETRA_T07_PLAYER_TAB_HISTORY=PASS
-KINETRA_T07_WEEK_NAVIGATION=PASS
-KINETRA_T07_WORKOUT_COMPLETION=PASS
-KINETRA_T07_BROWSER_E2E=PASS
-KINETRA_T07_TEST_SUITE=PASS
+KINETRA_T08_BACKEND_E2E=PASS
+KINETRA_T08_SCHEDULE_CONTENT=PASS
+KINETRA_T08_CARD_NAVIGATION=PASS
+KINETRA_T08_COMPLETION_STATE=PASS
+KINETRA_T08_BROWSER_E2E=PASS
+KINETRA_T08_TEST_SUITE=PASS
 ```
 
 ## Команды воспроизведения
@@ -137,6 +130,5 @@ npm run check
 sha256sum -c MANIFEST.sha256
 ```
 
-Перед включением workout media uploader должен сначала загрузить объект в S3 и только после
-успешной загрузки выставить `media_available = true`. Для production также нужны собственные JWT
-secrets, secure refresh-cookie и HTTPS; custom `S3_ENDPOINT` допускается только с `https:`.
+Для production нужны собственные JWT secrets, HTTPS, secure refresh-cookie и реальные S3
+credentials. Workout media остаётся недоступным, пока uploader явно не подтвердит загрузку.

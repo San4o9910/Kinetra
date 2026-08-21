@@ -7,6 +7,7 @@ import { TabBar } from './features/navigation/TabBar';
 import { OnboardingCarousel } from './features/onboarding/OnboardingCarousel';
 import { ComingSoonScreen } from './features/program/ComingSoonScreen';
 import { ProgramScreen } from './features/program/ProgramScreen';
+import { ScheduleScreen } from './features/schedule/ScheduleScreen';
 import { SurveyWizard } from './features/survey/SurveyWizard';
 import { ApiRequestError, bootstrapSession, fetchMe, logout } from './lib/api';
 import {
@@ -421,7 +422,10 @@ export const App = (): ReactNode => {
 
   const activeContent =
     route === appRoutes.schedule ? (
-      <ComingSoonScreen kind="schedule" />
+      <ScheduleScreen
+        onOpenHome={() => navigate(appRoutes.home)}
+        onSessionExpired={handleActiveSessionExpired}
+      />
     ) : route === appRoutes.progress ? (
       <ComingSoonScreen kind="progress" />
     ) : (

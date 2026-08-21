@@ -247,21 +247,29 @@ try {
     SELECT
       day_of_week,
       direction,
+      title,
+      description,
       duration_minutes,
       COUNT(*)::integer AS occurrences
     FROM program_days
-    GROUP BY day_of_week, direction, duration_minutes
+    GROUP BY day_of_week, direction, title, description, duration_minutes
     ORDER BY day_of_week
   `);
 
   const expectedSchedule = [
-    [1, 'breathing', 25],
-    [2, 'strength', 35],
-    [3, 'body_therapy', 30],
-    [4, 'functional', 35],
-    [5, 'stretching', 30],
-    [6, 'neuro', 15],
-    [7, 'recovery', 20],
+    [
+      1,
+      'breathing',
+      'Дыхательная практика',
+      'Настройка нервной системы, учимся дышать животом.',
+      25,
+    ],
+    [2, 'strength', 'Силовая тренировка', 'Приседания, тяги, жимы. 3 круга.', 35],
+    [3, 'body_therapy', 'Тело мой дом', 'Снимаем зажимы, работаем с телом.', 30],
+    [4, 'functional', 'Функциональная тренировка', 'Динамика, координация, баланс.', 35],
+    [5, 'stretching', 'Растяжка', 'Восстанавливаем длину мышц.', 30],
+    [6, 'neuro', 'Нейрогимнастика', 'Упражнения для мозга и координации.', 15],
+    [7, 'recovery', 'Восстановление', 'Самомассаж и полезное блюдо.', 20],
   ];
 
   assert(scheduleResult.rowCount === expectedSchedule.length, 'Unexpected schedule variants.');
@@ -270,7 +278,9 @@ try {
     const row = scheduleResult.rows[index];
     assert(row?.day_of_week === expected[0], `Unexpected day at schedule row ${index}.`);
     assert(row?.direction === expected[1], `Unexpected direction at schedule row ${index}.`);
-    assert(row?.duration_minutes === expected[2], `Unexpected duration at schedule row ${index}.`);
+    assert(row?.title === expected[2], `Unexpected title at schedule row ${index}.`);
+    assert(row?.description === expected[3], `Unexpected description at schedule row ${index}.`);
+    assert(row?.duration_minutes === expected[4], `Unexpected duration at schedule row ${index}.`);
     assert(row?.occurrences === 12, `Expected schedule row ${index} in all 12 weeks.`);
   }
 

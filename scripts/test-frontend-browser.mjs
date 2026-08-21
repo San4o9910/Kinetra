@@ -79,6 +79,7 @@ const counters = {
   lessonProgress: 0,
   baseProgramComplete: 0,
   currentWeekGet: 0,
+  scheduleGet: 0,
   weekGet: 0,
   workoutComplete: 0,
   logout: 0,
@@ -164,6 +165,72 @@ const workoutSchedule = [
   },
 ];
 
+const scheduleDays = [
+  {
+    day_of_week: 1,
+    day_label: 'Понедельник',
+    direction: 'breathing',
+    icon: '🧘',
+    title: 'Дыхательная практика',
+    description: 'Настройка нервной системы, учимся дышать животом.',
+    duration_minutes: 25,
+  },
+  {
+    day_of_week: 2,
+    day_label: 'Вторник',
+    direction: 'strength',
+    icon: '💪',
+    title: 'Силовая тренировка',
+    description: 'Приседания, тяги, жимы. 3 круга.',
+    duration_minutes: 35,
+  },
+  {
+    day_of_week: 3,
+    day_label: 'Среда',
+    direction: 'body_therapy',
+    icon: '🌿',
+    title: 'Тело мой дом',
+    description: 'Снимаем зажимы, работаем с телом.',
+    duration_minutes: 30,
+  },
+  {
+    day_of_week: 4,
+    day_label: 'Четверг',
+    direction: 'functional',
+    icon: '⚡',
+    title: 'Функциональная тренировка',
+    description: 'Динамика, координация, баланс.',
+    duration_minutes: 35,
+  },
+  {
+    day_of_week: 5,
+    day_label: 'Пятница',
+    direction: 'stretching',
+    icon: '🧘‍♂️',
+    title: 'Растяжка',
+    description: 'Восстанавливаем длину мышц.',
+    duration_minutes: 30,
+  },
+  {
+    day_of_week: 6,
+    day_label: 'Суббота',
+    direction: 'neuro',
+    icon: '🧠',
+    title: 'Нейрогимнастика',
+    description: 'Упражнения для мозга и координации.',
+    duration_minutes: 15,
+  },
+  {
+    day_of_week: 7,
+    day_label: 'Воскресенье',
+    direction: 'recovery',
+    icon: '🍲',
+    title: 'Восстановление',
+    description: 'Самомассаж и полезное блюдо.',
+    duration_minutes: 20,
+  },
+];
+
 const completedWorkoutIds = new Set();
 const workoutCompletionUpdates = [];
 let holdWorkoutCompletionResponse = false;
@@ -213,6 +280,27 @@ const programWeekPayload = (weekNumber) => {
     },
   };
 };
+
+const scheduleWeekPayload = (weekNumber, includeCompletions) => {
+  const days = scheduleDays.map((day) => ({
+    ...day,
+    completed:
+      includeCompletions && completedWorkoutIds.has(workoutVideoId(weekNumber, day.day_of_week)),
+  }));
+
+  return {
+    week_number: weekNumber,
+    title: `Неделя ${weekNumber}`,
+    days,
+    days_completed: days.filter(({ completed }) => completed).length,
+    total_days: 7,
+  };
+};
+
+const schedulePayload = () => ({
+  current_week: scheduleWeekPayload(1, true),
+  next_week: scheduleWeekPayload(2, false),
+});
 
 const baseLessonsPayload = () => {
   const totalCompleted = baseLessons.filter(
@@ -612,6 +700,19 @@ const createMockApiServer = () =>
 
       counters.currentWeekGet += 1;
       json(response, 200, programWeekPayload(1));
+      return;
+    }
+
+    if (request.method === 'GET' && request.url === '/api/v1/program/schedule') {
+      if (!hasValidAccessToken(request)) {
+        json(response, 401, {
+          error: { code: 'AUTHENTICATION_REQUIRED', message: 'A valid access token is required.' },
+        });
+        return;
+      }
+
+      counters.scheduleGet += 1;
+      json(response, 200, schedulePayload());
       return;
     }
 
@@ -1278,6 +1379,74 @@ const runBrowserScenario = async () => {
       );
       await cdp.evaluate("window.scrollTo({ top: 0, behavior: 'auto' })");
     };
+    const assertScheduleLayout = async (width) => {
+      await cdp.send('Emulation.setDeviceMetricsOverride', {
+        width,
+        height: 820,
+        screenWidth: width,
+        screenHeight: 820,
+        deviceScaleFactor: 1,
+        mobile: true,
+      });
+      await cdp.evaluate(`new Promise((resolve) => {
+        window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'auto' });
+        requestAnimationFrame(() => requestAnimationFrame(resolve));
+      })`);
+      const metrics = await cdp.evaluate(`(() => {
+        const cards = [...document.querySelectorAll(${JSON.stringify('.schedule-day-card')})];
+        const segments = [
+          ...document.querySelectorAll(${JSON.stringify('.schedule-segmented button')})
+        ];
+        const tabBar = document.querySelector(${JSON.stringify(selector('tab-bar'))});
+        const panel = document.querySelector(${JSON.stringify('.schedule-panel')});
+        const lastCard = cards.at(-1);
+        const tabBarRect = tabBar?.getBoundingClientRect();
+        const panelRect = panel?.getBoundingClientRect();
+        const lastCardRect = lastCard?.getBoundingClientRect();
+        return {
+          innerWidth: window.innerWidth,
+          innerHeight: window.innerHeight,
+          scrollWidth: document.documentElement.scrollWidth,
+          cardCount: cards.length,
+          cardsInsideViewport: cards.every((card) => {
+            const rect = card.getBoundingClientRect();
+            return rect.left >= 0 && rect.right <= window.innerWidth && rect.height >= 44;
+          }),
+          segmentCount: segments.length,
+          segmentTargetsAreLargeEnough: segments.every((segment) => {
+            const rect = segment.getBoundingClientRect();
+            return rect.width >= 44 && rect.height >= 44;
+          }),
+          panelInsideViewport:
+            panelRect !== undefined &&
+            panelRect.left >= 0 &&
+            panelRect.right <= window.innerWidth,
+          tabBarBottom: tabBarRect?.bottom ?? -1,
+          tabBarTop: tabBarRect?.top ?? -1,
+          lastCardBottom: lastCardRect?.bottom ?? window.innerHeight + 1,
+        };
+      })()`);
+      assert.equal(metrics.innerWidth, width);
+      assert.ok(metrics.scrollWidth <= width, `Schedule horizontal overflow at ${width}px.`);
+      assert.equal(metrics.cardCount, 7);
+      assert.equal(metrics.cardsInsideViewport, true, `Schedule card overflow at ${width}px.`);
+      assert.equal(metrics.segmentCount, 2);
+      assert.equal(
+        metrics.segmentTargetsAreLargeEnough,
+        true,
+        `Schedule segment target below 44px at ${width}px.`,
+      );
+      assert.equal(metrics.panelInsideViewport, true, `Schedule panel overflow at ${width}px.`);
+      assert.ok(
+        Math.abs(metrics.tabBarBottom - metrics.innerHeight) <= 1,
+        `Tab bar is not pinned on Schedule at ${width}px.`,
+      );
+      assert.ok(
+        metrics.lastCardBottom <= metrics.tabBarTop,
+        `Tab bar overlaps the final schedule card at ${width}px.`,
+      );
+      await cdp.evaluate("window.scrollTo({ top: 0, behavior: 'auto' })");
+    };
     const setValue = (testId, nextValue) =>
       cdp.evaluate(`(() => {
         const element = document.querySelector(${JSON.stringify(selector(testId))});
@@ -1745,11 +1914,99 @@ const runBrowserScenario = async () => {
 
     await click('tab-schedule');
     await waitFor(
-      'schedule tab placeholder',
-      async () => (await pathname()) === '/schedule' && (await exists('schedule-screen')),
+      'T08 current schedule with seven days',
+      async () =>
+        (await pathname()) === '/schedule' &&
+        (await exists('schedule-panel-current')) &&
+        (await attribute('schedule-progress', 'aria-valuenow')) === '0' &&
+        (await cdp.evaluate(
+          `document.querySelectorAll(${JSON.stringify('[data-testid^="schedule-current-day-"]')}).length`,
+        )) === 7,
     );
     assert.equal(await attribute('tab-schedule', 'aria-current'), 'page');
-    assert.ok((await text('schedule-screen'))?.includes('Скоро'));
+    assert.equal(await attribute('schedule-segmented', 'role'), 'tablist');
+    assert.equal(await attribute('schedule-segment-current', 'aria-selected'), 'true');
+    assert.equal(await attribute('schedule-segment-next', 'aria-selected'), 'false');
+    assert.equal(await text('schedule-current-week-heading'), 'Текущая неделя · 1');
+    assert.equal(await attribute('schedule-progress', 'aria-valuemax'), '7');
+    assert.equal(await attribute('schedule-progress', 'aria-valuetext'), 'Выполнено 0 из 7');
+
+    const currentScheduleCards = await cdp.evaluate(`[
+      ...document.querySelectorAll(${JSON.stringify('[data-testid^="schedule-current-day-"]')})
+    ].map((card) => ({
+      testId: card.getAttribute('data-testid'),
+      completed: card.getAttribute('data-completed'),
+      hasCompletion: card.querySelector(${JSON.stringify('[data-testid^="schedule-completed-"]')}) !== null,
+      text: card.textContent?.replace(/\\s+/gu, ' ').trim() ?? '',
+    }))`);
+    assert.equal(currentScheduleCards.length, 7);
+    for (const [index, expectedDay] of scheduleDays.entries()) {
+      const renderedDay = currentScheduleCards[index];
+      assert.equal(renderedDay?.testId, `schedule-current-day-${expectedDay.day_of_week}`);
+      assert.equal(renderedDay?.completed, 'false');
+      assert.equal(renderedDay?.hasCompletion, false);
+      assert.ok(renderedDay?.text.includes(expectedDay.day_label));
+      assert.ok(renderedDay?.text.includes(expectedDay.title));
+      assert.ok(renderedDay?.text.includes(expectedDay.description));
+      assert.ok(renderedDay?.text.includes(`${expectedDay.duration_minutes} мин`));
+      assert.ok(renderedDay?.text.includes(expectedDay.icon));
+    }
+    await assertScheduleLayout(320);
+    await assertScheduleLayout(428);
+
+    await click('schedule-segment-next');
+    await waitFor(
+      'T08 next schedule segment with seven days',
+      async () =>
+        (await exists('schedule-panel-next')) &&
+        (await attribute('schedule-segment-next', 'aria-selected')) === 'true' &&
+        (await cdp.evaluate(
+          `document.querySelectorAll(${JSON.stringify('[data-testid^="schedule-next-day-"]')}).length`,
+        )) === 7,
+    );
+    assert.equal(await exists('schedule-panel-current'), false);
+    assert.equal(await text('schedule-next-week-heading'), 'Следующая неделя · 2');
+    assert.equal(await attribute('schedule-segment-current', 'aria-selected'), 'false');
+
+    const nextScheduleCards = await cdp.evaluate(`[
+      ...document.querySelectorAll(${JSON.stringify('[data-testid^="schedule-next-day-"]')})
+    ].map((card) => ({
+      testId: card.getAttribute('data-testid'),
+      completed: card.getAttribute('data-completed'),
+      hasCompletion: card.querySelector(${JSON.stringify('[data-testid^="schedule-completed-"]')}) !== null,
+      text: card.textContent?.replace(/\\s+/gu, ' ').trim() ?? '',
+    }))`);
+    assert.equal(nextScheduleCards.length, 7);
+    for (const [index, expectedDay] of scheduleDays.entries()) {
+      const renderedDay = nextScheduleCards[index];
+      assert.equal(renderedDay?.testId, `schedule-next-day-${expectedDay.day_of_week}`);
+      assert.equal(renderedDay?.completed, 'false');
+      assert.equal(renderedDay?.hasCompletion, false);
+      assert.ok(renderedDay?.text.includes(expectedDay.day_label));
+      assert.ok(renderedDay?.text.includes(expectedDay.title));
+      assert.ok(renderedDay?.text.includes(expectedDay.description));
+      assert.ok(renderedDay?.text.includes(`${expectedDay.duration_minutes} мин`));
+      assert.ok(renderedDay?.text.includes(expectedDay.icon));
+    }
+    await assertScheduleLayout(320);
+    await assertScheduleLayout(428);
+
+    await click('schedule-segment-current');
+    await waitFor('T08 current segment restored', () => exists('schedule-panel-current'));
+    console.log('KINETRA_T08_SCHEDULE_CONTENT=PASS');
+
+    await click('schedule-current-day-4');
+    await waitFor(
+      'T08 schedule card opens Home',
+      async () => (await pathname()) === '/' && (await exists('main-screen')),
+    );
+    assert.equal(await attribute('tab-home', 'aria-current'), 'page');
+    console.log('KINETRA_T08_CARD_NAVIGATION=PASS');
+
+    await click('tab-schedule');
+    await waitFor('schedule restored before continuing tab navigation', () =>
+      exists('schedule-panel-current'),
+    );
     await click('tab-progress');
     await waitFor(
       'progress tab placeholder',
@@ -2005,6 +2262,44 @@ const runBrowserScenario = async () => {
     assert.ok((await text('workout-status-1'))?.includes('Пройдено'));
     console.log('KINETRA_T07_WORKOUT_COMPLETION=PASS');
 
+    await click('tab-schedule');
+    await waitFor(
+      'T08 completed workout reflected in Schedule',
+      async () =>
+        (await pathname()) === '/schedule' &&
+        (await exists('schedule-panel-current')) &&
+        (await attribute('schedule-progress', 'aria-valuenow')) === '1' &&
+        (await attribute('schedule-current-day-1', 'data-completed')) === 'true' &&
+        (await exists('schedule-completed-1')),
+    );
+    assert.equal(await attribute('schedule-progress', 'aria-valuetext'), 'Выполнено 1 из 7');
+    assert.ok((await text('schedule-completed-1'))?.includes('✅'));
+    assert.ok((await text('schedule-completed-1'))?.includes('Выполнено'));
+    const completedScheduleStyle = await cdp.evaluate(`(() => {
+      const card = document.querySelector(${JSON.stringify(selector('schedule-current-day-1'))});
+      if (!(card instanceof HTMLElement)) {
+        throw new Error('Completed schedule card was not found.');
+      }
+      const style = getComputedStyle(card);
+      return {
+        completedClass: card.classList.contains('is-completed'),
+        borderLeftColor: style.borderLeftColor,
+        borderLeftWidth: style.borderLeftWidth,
+      };
+    })()`);
+    assert.deepEqual(completedScheduleStyle, {
+      completedClass: true,
+      borderLeftColor: 'rgb(200, 241, 105)',
+      borderLeftWidth: '3px',
+    });
+    console.log('KINETRA_T08_COMPLETION_STATE=PASS');
+
+    await click('tab-home');
+    await waitFor(
+      'main route after T08 completion-state check',
+      async () => (await pathname()) === '/' && (await exists('main-screen')),
+    );
+
     await cdp.send('Page.reload', { ignoreCache: true });
     await waitFor('T07 main route restored after reload', () => exists('main-screen'));
     assert.equal(await pathname(), '/');
@@ -2031,6 +2326,7 @@ const runBrowserScenario = async () => {
     assert.equal(counters.lessonProgress, 6);
     assert.equal(counters.baseProgramComplete, 1);
     assert.ok(counters.currentWeekGet >= 2);
+    assert.ok(counters.scheduleGet >= 3);
     assert.equal(counters.weekGet, 4);
     assert.equal(counters.workoutComplete, 1);
     assert.equal(counters.logout, 1);
@@ -2039,6 +2335,7 @@ const runBrowserScenario = async () => {
     console.log('KINETRA_T05_BROWSER_E2E=PASS');
     console.log('KINETRA_T06_BROWSER_E2E=PASS');
     console.log('KINETRA_T07_BROWSER_E2E=PASS');
+    console.log('KINETRA_T08_BROWSER_E2E=PASS');
   } catch (error) {
     if (cdp !== null) {
       try {
