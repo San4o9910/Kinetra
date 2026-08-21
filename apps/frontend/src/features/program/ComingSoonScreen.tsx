@@ -1,11 +1,11 @@
 import type { ReactNode } from 'react';
 
 export interface ComingSoonScreenProps {
-  readonly kind: 'schedule' | 'progress';
+  readonly kind: 'progress';
 }
 
 export const ComingSoonScreen = ({ kind }: ComingSoonScreenProps): ReactNode => {
-  const title = kind === 'schedule' ? 'Расписание' : 'Прогресс';
+  const title = 'Прогресс';
 
   return (
     <main className="coming-soon-shell" data-testid={`${kind}-screen`}>

@@ -6,6 +6,7 @@ import type {
   HealthResponse,
   LessonProgressResponse,
   MeResponse,
+  ScheduleResponse,
   SurveySubmission,
   UpdateLessonProgressRequest,
   WeekResponse,
@@ -177,6 +178,13 @@ export class ApiClient {
 
   public async getCurrentWeek(signal?: AbortSignal): Promise<WeekResponse> {
     return this.authenticatedJsonRequest<WeekResponse>('/api/v1/program/current-week', {
+      method: 'GET',
+      ...(signal === undefined ? {} : { signal }),
+    });
+  }
+
+  public async getSchedule(signal?: AbortSignal): Promise<ScheduleResponse> {
+    return this.authenticatedJsonRequest<ScheduleResponse>('/api/v1/program/schedule', {
       method: 'GET',
       ...(signal === undefined ? {} : { signal }),
     });
@@ -354,6 +362,8 @@ export const updateLessonProgress = (
 export const completeBaseProgram = (): Promise<MeResponse> => apiClient.completeBaseProgram();
 export const getCurrentWeek = (signal?: AbortSignal): Promise<WeekResponse> =>
   apiClient.getCurrentWeek(signal);
+export const getSchedule = (signal?: AbortSignal): Promise<ScheduleResponse> =>
+  apiClient.getSchedule(signal);
 export const getWeek = (weekNumber: number, signal?: AbortSignal): Promise<WeekResponse> =>
   apiClient.getWeek(weekNumber, signal);
 export const completeWorkout = (data: CompleteWorkoutRequest): Promise<WeekResponse> =>
