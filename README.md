@@ -2,7 +2,7 @@
 
 Kinetra — фитнес-приложение с React/Vite frontend и Express/PostgreSQL backend.
 
-В репозитории завершены этапы T01–T09:
+В репозитории завершены этапы T01–T10:
 
 - **T01:** каркас монорепо, PWA, PostgreSQL в Docker Compose, health endpoint и transport Socket.IO;
 - **T02:** регистрация и авторизация по email/паролю, опциональный телефон, refresh-сессии,
@@ -15,6 +15,8 @@ Kinetra — фитнес-приложение с React/Vite frontend и Express/
 - **T07:** главный экран 12-недельной программы, workout player, completion и нижняя навигация;
 - **T08:** расписание текущей/следующей недели с полными описаниями и статусом выполнения.
 - **T09:** dashboard прогресса с целью, самооценкой, SVG-графиками, статистикой и достижениями.
+- **T10:** полноценные настройки подписки, уведомлений, профиля и аккаунта, а также системная,
+  светлая и тёмная тема приложения.
 
 ## Структура
 
@@ -25,7 +27,7 @@ kinetra/
 │   └── backend/           @kinetra/backend — Express + TypeScript + PostgreSQL
 ├── packages/
 │   └── shared/            @kinetra/shared — общие API-типы
-├── docs/                  Контракты и сценарии T02–T09
+├── docs/                  Контракты и сценарии T02–T10
 ├── scripts/               Структурная проверка проекта
 ├── docker-compose.yml     PostgreSQL 17
 └── .env.example           Шаблон переменных без реальных секретов
@@ -111,6 +113,22 @@ UI расписания — в [`docs/T08_SCHEDULE.md`](docs/T08_SCHEDULE.md).
 
 API, правила агрегатов и streak, пять canonical-достижений, UI и acceptance-маркеры описаны в
 [`docs/T09_PROGRESS.md`](docs/T09_PROGRESS.md).
+
+## Настройки и тема
+
+Вкладка `/settings` использует четыре JWT-защищённых no-store endpoint:
+
+| Метод  | Путь                             | Назначение                                      |
+| ------ | -------------------------------- | ----------------------------------------------- |
+| GET    | `/api/v1/settings/profile`       | Шапка профиля и настройки уведомлений           |
+| GET    | `/api/v1/settings/subscription`  | Текущее состояние подписки                      |
+| PUT    | `/api/v1/settings/notifications` | Строгое сохранение полного notification payload |
+| DELETE | `/api/v1/settings/account`       | Необратимое удаление после точного `DELETE`     |
+
+Экран содержит подписку, уведомления, профиль, оформление, поддержку и danger zone аккаунта.
+Preference темы имеет ровно три значения — `system`, `light`, `dark` — и применяется глобально до
+первого React render. Backend/UI/theme contracts, корректная миграция `008` и честные границы
+placeholder отмены автопродления описаны в [`docs/T10_SETTINGS.md`](docs/T10_SETTINGS.md).
 
 ## Auth API T02
 
@@ -249,6 +267,8 @@ npm run db:migrate
 - `005_program_media_availability.sql` — явная доступность workout media до выдачи S3 URL.
 - `006_schedule_copy.sql` — канонические названия и описания семи дней расписания.
 - `007_progress_data_contract.sql` — лимит заметки и canonical-контракт пяти достижений.
+- `008_notifications.sql` — notification JSON, legacy backfill, `auto_renew` и индексы каскадного
+  удаления auth tokens.
 
 `schema_migrations` создаётся самим runner.
 
@@ -273,11 +293,12 @@ npm run check
 ```
 
 E2E-набор покрывает auth, профиль/анкету, онбординг-карусель, базовые уроки, главный экран,
-расписание и T09: JWT/no-store, строгую валидацию и upsert метрик, версионирование цели,
-статистику, materialized achievements, четыре UI-блока, SVG-графики и обе модалки. CI сравнивает
+расписание, прогресс и T10 settings: JWT/no-store, строгие payload, PostgreSQL migration/backfill,
+debounced уведомления, три режима темы, logout и двухэтапное удаление аккаунта. CI сравнивает
 `MANIFEST.sha256` со всеми tracked-файлами и запрещает bootstrap/payload artifacts.
 
 ## Границы текущего этапа
 
-В T09 не входят загрузка настоящих S3-видео, платежи YooKassa, каталог тренеров и доменная логика
-чата. Telegram-интеграции нет: продукт остаётся самостоятельной PWA.
+В T10 не входят проведение платежа, вызов API отмены автопродления, каталог тренеров и доменная
+логика чата. Кнопка отмены честно открывает информационный placeholder до отдельной интеграции с
+платёжным провайдером. Telegram-интеграции нет: продукт остаётся самостоятельной PWA.

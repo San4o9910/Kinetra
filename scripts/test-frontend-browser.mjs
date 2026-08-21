@@ -83,6 +83,10 @@ const counters = {
   progressGet: 0,
   weeklyMetricsPut: 0,
   goalPut: 0,
+  settingsProfileGet: 0,
+  subscriptionGet: 0,
+  notificationsPut: 0,
+  accountDelete: 0,
   weekGet: 0,
   workoutComplete: 0,
   logout: 0,
@@ -404,6 +408,33 @@ const progressPayload = () => ({
   stats: progressStats,
 });
 
+let notificationPreferences = {
+  workout_reminders: true,
+  reminder_time: '09:00',
+  weekly_survey_reminder: true,
+};
+
+const notificationUpdates = [];
+
+const settingsProfilePayload = () => ({
+  email: profile.user.email,
+  phone: profile.user.phone,
+  created_at: profile.user.createdAt,
+  onboarding_status: profile.user.onboardingStatus,
+  notification_preferences: notificationPreferences,
+});
+
+const subscriptionPayload = {
+  status: 'active',
+  provider: 'yukassa',
+  starts_at: '2026-07-27T00:00:00.000Z',
+  expires_at: '2026-08-27T00:00:00.000Z',
+  amount: 799,
+  currency: 'RUB',
+  auto_renew: true,
+  days_remaining: 6,
+};
+
 const baseLessonsPayload = () => {
   const totalCompleted = baseLessons.filter(
     ({ progress }) => progress.completion_percent >= 90,
@@ -476,7 +507,7 @@ const createMockApiServer = () =>
     response.setHeader('Access-Control-Allow-Origin', frontendOrigin);
     response.setHeader('Access-Control-Allow-Credentials', 'true');
     response.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
-    response.setHeader('Access-Control-Allow-Methods', 'GET, PUT, POST, OPTIONS');
+    response.setHeader('Access-Control-Allow-Methods', 'GET, PUT, POST, DELETE, OPTIONS');
     response.setHeader('Access-Control-Allow-Private-Network', 'true');
     response.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     response.setHeader('Vary', 'Origin, Access-Control-Request-Private-Network');
@@ -593,6 +624,87 @@ const createMockApiServer = () =>
       }
 
       json(response, 200, profile);
+      return;
+    }
+
+    if (request.method === 'GET' && request.url === '/api/v1/settings/profile') {
+      if (!hasValidAccessToken(request)) {
+        json(response, 401, {
+          error: { code: 'AUTHENTICATION_REQUIRED', message: 'A valid access token is required.' },
+        });
+        return;
+      }
+
+      counters.settingsProfileGet += 1;
+      json(response, 200, settingsProfilePayload());
+      return;
+    }
+
+    if (request.method === 'GET' && request.url === '/api/v1/settings/subscription') {
+      if (!hasValidAccessToken(request)) {
+        json(response, 401, {
+          error: { code: 'AUTHENTICATION_REQUIRED', message: 'A valid access token is required.' },
+        });
+        return;
+      }
+
+      counters.subscriptionGet += 1;
+      json(response, 200, subscriptionPayload);
+      return;
+    }
+
+    if (request.method === 'PUT' && request.url === '/api/v1/settings/notifications') {
+      if (!hasValidAccessToken(request)) {
+        json(response, 401, {
+          error: { code: 'AUTHENTICATION_REQUIRED', message: 'A valid access token is required.' },
+        });
+        return;
+      }
+
+      const body = await readJsonBody(request);
+      assert.deepEqual(Object.keys(body).sort(), [
+        'reminder_time',
+        'weekly_survey_reminder',
+        'workout_reminders',
+      ]);
+      assert.deepEqual(
+        body,
+        counters.notificationsPut === 0
+          ? {
+              workout_reminders: false,
+              reminder_time: '10:30',
+              weekly_survey_reminder: false,
+            }
+          : {
+              workout_reminders: false,
+              reminder_time: '10:30',
+              weekly_survey_reminder: true,
+            },
+      );
+      counters.notificationsPut += 1;
+      notificationPreferences = body;
+      notificationUpdates.push(body);
+      response.writeHead(204, { 'Cache-Control': 'no-store' });
+      response.end();
+      return;
+    }
+
+    if (request.method === 'DELETE' && request.url === '/api/v1/settings/account') {
+      if (!hasValidAccessToken(request)) {
+        json(response, 401, {
+          error: { code: 'AUTHENTICATION_REQUIRED', message: 'A valid access token is required.' },
+        });
+        return;
+      }
+
+      const body = await readJsonBody(request);
+      assert.deepEqual(body, { confirm: 'DELETE' });
+      counters.accountDelete += 1;
+      response.writeHead(204, {
+        'Cache-Control': 'no-store',
+        'Set-Cookie': 'kinetra_refresh=; HttpOnly; Path=/api/v1/auth; Max-Age=0; SameSite=Lax',
+      });
+      response.end();
       return;
     }
 
@@ -1293,6 +1405,10 @@ const runBrowserScenario = async () => {
     await cdp.send('Network.setBlockedURLs', {
       urls: ['https://fonts.googleapis.com/*', 'https://fonts.gstatic.com/*'],
     });
+    await cdp.send('Emulation.setEmulatedMedia', {
+      media: '',
+      features: [{ name: 'prefers-color-scheme', value: 'dark' }],
+    });
     await cdp.send('Emulation.setDeviceMetricsOverride', {
       width: 390,
       height: 844,
@@ -1728,6 +1844,85 @@ const runBrowserScenario = async () => {
       );
       await cdp.evaluate("window.scrollTo({ top: 0, behavior: 'auto' })");
     };
+    const assertSettingsLayout = async (width) => {
+      await cdp.send('Emulation.setDeviceMetricsOverride', {
+        width,
+        height: 820,
+        screenWidth: width,
+        screenHeight: 820,
+        deviceScaleFactor: 1,
+        mobile: true,
+      });
+      await cdp.evaluate(`new Promise((resolve) => {
+        window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'auto' });
+        requestAnimationFrame(() => requestAnimationFrame(resolve));
+      })`);
+      const metrics = await cdp.evaluate(`(() => {
+        const sectionIds = [
+          'settings-subscription-section',
+          'settings-notifications-section',
+          'settings-profile-section',
+          'settings-appearance-section',
+          'settings-support-section',
+          'settings-account-section',
+        ];
+        const sections = sectionIds
+          .map((testId) => document.querySelector('[data-testid="' + testId + '"]'))
+          .filter((section) => section instanceof HTMLElement);
+        const controls = [
+          ...document.querySelectorAll(${JSON.stringify(
+            '.settings-row, .settings-theme-option, .settings-subscription-actions > *',
+          )}),
+        ].filter((control) => control instanceof HTMLElement);
+        const tabBar = document.querySelector(${JSON.stringify(selector('tab-bar'))});
+        const accountSection = document.querySelector(
+          ${JSON.stringify(selector('settings-account-section'))}
+        );
+        const tabBarRect = tabBar?.getBoundingClientRect();
+        const accountRect = accountSection?.getBoundingClientRect();
+        return {
+          innerWidth: window.innerWidth,
+          innerHeight: window.innerHeight,
+          scrollWidth: document.documentElement.scrollWidth,
+          sectionCount: sections.length,
+          sectionsInsideViewport: sections.every((section) => {
+            const rect = section.getBoundingClientRect();
+            return rect.left >= 0 && rect.right <= window.innerWidth;
+          }),
+          controlCount: controls.length,
+          controlsAreLargeEnough: controls.every((control) => {
+            const rect = control.getBoundingClientRect();
+            return rect.width >= 44 && rect.height >= 44;
+          }),
+          tabBarBottom: tabBarRect?.bottom ?? -1,
+          tabBarTop: tabBarRect?.top ?? -1,
+          accountBottom: accountRect?.bottom ?? window.innerHeight + 1,
+        };
+      })()`);
+      assert.equal(metrics.innerWidth, width);
+      assert.ok(metrics.scrollWidth <= width, `Settings horizontal overflow at ${width}px.`);
+      assert.equal(metrics.sectionCount, 6);
+      assert.equal(
+        metrics.sectionsInsideViewport,
+        true,
+        `Settings section overflow at ${width}px.`,
+      );
+      assert.ok(metrics.controlCount >= 14, `Settings controls missing at ${width}px.`);
+      assert.equal(
+        metrics.controlsAreLargeEnough,
+        true,
+        `Settings control below 44px at ${width}px.`,
+      );
+      assert.ok(
+        Math.abs(metrics.tabBarBottom - metrics.innerHeight) <= 1,
+        `Tab bar is not pinned on Settings at ${width}px.`,
+      );
+      assert.ok(
+        metrics.accountBottom <= metrics.tabBarTop,
+        `Tab bar overlaps the account section at ${width}px.`,
+      );
+      await cdp.evaluate("window.scrollTo({ top: 0, behavior: 'auto' })");
+    };
     const assertWeeklyMetricsDialogLayout = async (width) => {
       await cdp.send('Emulation.setDeviceMetricsOverride', {
         width,
@@ -1781,12 +1976,16 @@ const runBrowserScenario = async () => {
     const setValue = (testId, nextValue) =>
       cdp.evaluate(`(() => {
         const element = document.querySelector(${JSON.stringify(selector(testId))});
-        if (!(element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement)) {
+        if (!(element instanceof HTMLInputElement ||
+          element instanceof HTMLTextAreaElement ||
+          element instanceof HTMLSelectElement)) {
           throw new Error('Input not found: ${testId}');
         }
         const prototype = element instanceof HTMLTextAreaElement
           ? HTMLTextAreaElement.prototype
-          : HTMLInputElement.prototype;
+          : element instanceof HTMLSelectElement
+            ? HTMLSelectElement.prototype
+            : HTMLInputElement.prototype;
         const setter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
         setter?.call(element, ${JSON.stringify(nextValue)});
         element.dispatchEvent(new Event('input', { bubbles: true }));
@@ -1878,7 +2077,10 @@ const runBrowserScenario = async () => {
     await assertOnboardingLayout(428);
 
     await click('open-settings');
-    await waitFor('settings route', () => exists('settings-screen'));
+    await waitFor(
+      'settings route',
+      async () => (await exists('edit-survey')) && (await exists('close-settings')),
+    );
     assert.equal(await pathname(), '/settings');
     await click('edit-survey');
     await waitFor('survey edit route', () => exists('survey-screen'));
@@ -1896,7 +2098,10 @@ const runBrowserScenario = async () => {
     assert.equal(await value('injuries-detail'), 'Старая травма голеностопа');
 
     await cdp.evaluate('window.history.back()');
-    await waitFor('settings after browser back', () => exists('settings-screen'));
+    await waitFor(
+      'settings after browser back',
+      async () => (await exists('close-settings')) && (await exists('edit-survey')),
+    );
     await click('close-settings');
     await waitFor('onboarding after settings', () => exists('onboarding-screen'));
     await waitOnboardingSlide(1);
@@ -2820,15 +3025,356 @@ const runBrowserScenario = async () => {
     assert.equal(await attribute('workout-status-1', 'data-state'), 'completed');
 
     await click('tab-settings');
-    await waitFor('settings before logout', () => exists('settings-screen'));
+    await waitFor(
+      'T10 settings content',
+      async () =>
+        (await pathname()) === '/settings' &&
+        (await exists('settings-subscription-section')) &&
+        (await exists('settings-notifications-section')) &&
+        (await exists('settings-profile-section')) &&
+        (await exists('settings-appearance-section')) &&
+        (await exists('settings-support-section')) &&
+        (await exists('settings-account-section')),
+    );
     assert.equal(await pathname(), '/settings');
     assert.equal(await attribute('tab-settings', 'aria-current'), 'page');
-    await click('logout');
-    await waitFor('login after logout', () => exists('login-screen'));
-    assert.equal(await pathname(), '/login');
-    assert.equal(await cdp.evaluate("localStorage.getItem('kinetra.accessToken')"), null);
+    assert.ok((await text('settings-screen'))?.includes('Подписка'));
+    assert.ok((await text('settings-screen'))?.includes('Уведомления'));
+    assert.ok((await text('settings-screen'))?.includes('Профиль'));
+    assert.ok((await text('settings-screen'))?.includes('Оформление'));
+    assert.ok((await text('settings-screen'))?.includes('Поддержка'));
+    assert.ok((await text('settings-screen'))?.includes('Аккаунт'));
+    assert.ok((await text('settings-screen'))?.includes('browser-test@example.com'));
+    assert.equal(await text('settings-member-since'), 'С нами с августа 2026');
+    assert.equal(await attribute('settings-subscription-card', 'data-status'), 'active');
+    assert.equal(await text('settings-subscription-status'), 'Активна до 27 августа 2026');
+    assert.ok((await text('settings-subscription-provider'))?.includes('ЮKassa'));
+    assert.ok((await text('settings-subscription-provider'))?.includes('799 ₽'));
+    assert.equal(await exists('settings-renew-subscription'), true);
+    assert.equal(await exists('settings-cancel-auto-renew'), true);
+    assert.equal(await attribute('settings-contact-coach', 'href'), 'mailto:coach@kinetra.app');
+    assert.equal(await disabled('edit-survey'), false);
+    await assertSettingsLayout(320);
+    await assertSettingsLayout(428);
+    console.log('KINETRA_T10_SETTINGS_CONTENT=PASS');
 
-    assert.equal(counters.login, 2);
+    const notificationPutsBeforeChanges = counters.notificationsPut;
+    await setValue('settings-reminder-time', '10:30');
+    await waitFor(
+      'T10 reminder time changed before debounce',
+      async () => (await value('settings-reminder-time')) === '10:30',
+    );
+    await click('settings-weekly-survey-reminder');
+    await waitFor('T10 weekly reminder disabled', () =>
+      cdp.evaluate(
+        `document.querySelector(${JSON.stringify(selector('settings-weekly-survey-reminder'))})?.checked === false`,
+      ),
+    );
+    await click('settings-workout-reminders');
+    await waitFor(
+      'T10 workout reminders disabled with pending autosave',
+      async () =>
+        (await cdp.evaluate(
+          `document.querySelector(${JSON.stringify(selector('settings-workout-reminders'))})?.checked === false`,
+        )) &&
+        !(await exists('settings-reminder-time')) &&
+        (await text('settings-notification-save-status')) === 'Сохраняем…',
+    );
+    assert.equal(counters.notificationsPut, notificationPutsBeforeChanges);
+    await waitFor(
+      'T10 debounced notification preferences saved once',
+      async () =>
+        counters.notificationsPut === notificationPutsBeforeChanges + 1 &&
+        (await text('settings-notification-save-status')) === 'Сохранено',
+    );
+    assert.deepEqual(notificationUpdates, [
+      {
+        workout_reminders: false,
+        reminder_time: '10:30',
+        weekly_survey_reminder: false,
+      },
+    ]);
+
+    await click('settings-weekly-survey-reminder');
+    await click('close-settings');
+    await waitFor(
+      'T10 pending notification preferences flushed on settings unmount',
+      async () =>
+        counters.notificationsPut === notificationPutsBeforeChanges + 2 &&
+        (await pathname()) === '/' &&
+        (await exists('main-screen')),
+    );
+    assert.deepEqual(notificationUpdates, [
+      {
+        workout_reminders: false,
+        reminder_time: '10:30',
+        weekly_survey_reminder: false,
+      },
+      {
+        workout_reminders: false,
+        reminder_time: '10:30',
+        weekly_survey_reminder: true,
+      },
+    ]);
+    await click('tab-settings');
+    await waitFor('T10 settings restored after unmount notification flush', () =>
+      exists('settings-appearance-section'),
+    );
+    assert.equal(
+      await cdp.evaluate(
+        `document.querySelector(${JSON.stringify(
+          selector('settings-weekly-survey-reminder'),
+        )})?.checked === true`,
+      ),
+      true,
+    );
+    console.log('KINETRA_T10_NOTIFICATIONS=PASS');
+
+    const readThemeState = () =>
+      cdp.evaluate(`(() => {
+        const root = document.documentElement;
+        const selected = document.querySelector('input[name="kinetra-theme"]:checked');
+        return {
+          preference: root.dataset.themePreference ?? null,
+          resolved: root.dataset.theme ?? null,
+          stored: localStorage.getItem('kinetra.theme.v1'),
+          selected: selected instanceof HTMLInputElement ? selected.value : null,
+          themeColor: document.querySelector('meta[name="theme-color"]')?.getAttribute('content') ?? null,
+          colorScheme: getComputedStyle(root).colorScheme,
+          backgroundToken: getComputedStyle(root).getPropertyValue('--background').trim(),
+          bodyBackground: getComputedStyle(document.body).backgroundColor,
+        };
+      })()`);
+    assert.deepEqual(await readThemeState(), {
+      preference: 'system',
+      resolved: 'dark',
+      stored: 'system',
+      selected: 'system',
+      themeColor: '#080909',
+      colorScheme: 'dark',
+      backgroundToken: '#080909',
+      bodyBackground: 'rgb(8, 9, 9)',
+    });
+
+    await click('settings-theme-light');
+    await waitFor(
+      'T10 explicit light theme',
+      async () => (await readThemeState()).resolved === 'light',
+    );
+    assert.deepEqual(await readThemeState(), {
+      preference: 'light',
+      resolved: 'light',
+      stored: 'light',
+      selected: 'light',
+      themeColor: '#F4F6F2',
+      colorScheme: 'light',
+      backgroundToken: '#f4f6f2',
+      bodyBackground: 'rgb(244, 246, 242)',
+    });
+
+    await click('close-settings');
+    await waitFor(
+      'T10 light theme applies to the main program outside settings',
+      async () => (await pathname()) === '/' && (await exists('main-screen')),
+    );
+    assert.deepEqual(
+      await cdp.evaluate(`(() => {
+        const main = document.querySelector(${JSON.stringify(selector('main-screen'))});
+        const heading = document.querySelector(${JSON.stringify(selector('week-heading'))});
+        return {
+          preference: document.documentElement.dataset.themePreference ?? null,
+          resolved: document.documentElement.dataset.theme ?? null,
+          background: main instanceof HTMLElement ? getComputedStyle(main).backgroundColor : null,
+          headingColor:
+            heading instanceof HTMLElement ? getComputedStyle(heading).color : null,
+        };
+      })()`),
+      {
+        preference: 'light',
+        resolved: 'light',
+        background: 'rgb(244, 246, 242)',
+        headingColor: 'rgb(17, 20, 20)',
+      },
+    );
+    await click('tab-settings');
+    await waitFor(
+      'T10 light preference remains selected after returning to settings',
+      async () =>
+        (await exists('settings-appearance-section')) &&
+        (await readThemeState()).preference === 'light',
+    );
+
+    await click('settings-theme-dark');
+    await waitFor(
+      'T10 explicit dark theme',
+      async () => (await readThemeState()).resolved === 'dark',
+    );
+    assert.deepEqual(await readThemeState(), {
+      preference: 'dark',
+      resolved: 'dark',
+      stored: 'dark',
+      selected: 'dark',
+      themeColor: '#080909',
+      colorScheme: 'dark',
+      backgroundToken: '#080909',
+      bodyBackground: 'rgb(8, 9, 9)',
+    });
+
+    await cdp.send('Page.reload', { ignoreCache: true });
+    await waitFor(
+      'T10 explicit dark preference restored after reload',
+      async () =>
+        (await exists('settings-appearance-section')) &&
+        (await readThemeState()).preference === 'dark',
+    );
+    assert.equal((await readThemeState()).stored, 'dark');
+
+    await click('settings-theme-system');
+    await waitFor('T10 system theme follows emulated dark mode', async () => {
+      const theme = await readThemeState();
+      return theme.preference === 'system' && theme.resolved === 'dark';
+    });
+    await cdp.send('Emulation.setEmulatedMedia', {
+      media: '',
+      features: [{ name: 'prefers-color-scheme', value: 'light' }],
+    });
+    await waitFor('T10 system theme reacts to light mode', async () => {
+      const theme = await readThemeState();
+      return theme.preference === 'system' && theme.resolved === 'light';
+    });
+    assert.deepEqual(await readThemeState(), {
+      preference: 'system',
+      resolved: 'light',
+      stored: 'system',
+      selected: 'system',
+      themeColor: '#F4F6F2',
+      colorScheme: 'light',
+      backgroundToken: '#f4f6f2',
+      bodyBackground: 'rgb(244, 246, 242)',
+    });
+    await cdp.send('Emulation.setEmulatedMedia', {
+      media: '',
+      features: [{ name: 'prefers-color-scheme', value: 'dark' }],
+    });
+    await waitFor(
+      'T10 system theme reacts back to dark mode',
+      async () => (await readThemeState()).resolved === 'dark',
+    );
+    await cdp.send('Page.reload', { ignoreCache: true });
+    await waitFor(
+      'T10 system preference restored after reload',
+      async () =>
+        (await exists('settings-appearance-section')) &&
+        (await readThemeState()).preference === 'system' &&
+        (await readThemeState()).resolved === 'dark',
+    );
+    assert.deepEqual(await readThemeState(), {
+      preference: 'system',
+      resolved: 'dark',
+      stored: 'system',
+      selected: 'system',
+      themeColor: '#080909',
+      colorScheme: 'dark',
+      backgroundToken: '#080909',
+      bodyBackground: 'rgb(8, 9, 9)',
+    });
+    console.log('KINETRA_T10_THEME_MODES=PASS');
+
+    const dialogIsOpen = (testId) =>
+      cdp.evaluate(`document.querySelector(${JSON.stringify(selector(testId))})?.open === true`);
+    const closeDialogFromBackdrop = async (testId) => {
+      await click(testId);
+      await waitFor(`${testId} closed from backdrop`, async () => !(await dialogIsOpen(testId)));
+    };
+
+    await click('settings-change-level');
+    await waitFor('T10 level dialog', () => dialogIsOpen('settings-level-dialog'));
+    assert.ok((await text('settings-level-dialog'))?.includes('Мастерство'));
+    assert.ok((await text('settings-level-dialog'))?.includes('Пик'));
+    await closeDialogFromBackdrop('settings-level-dialog');
+
+    await click('settings-about');
+    await waitFor('T10 about dialog', () => dialogIsOpen('settings-about-dialog'));
+    assert.equal(await text('settings-app-version'), '0.4.0');
+    assert.ok((await text('settings-about-dialog'))?.includes('Политика конфиденциальности'));
+    await closeDialogFromBackdrop('settings-about-dialog');
+
+    await click('settings-cancel-auto-renew');
+    await waitFor('T10 renewal dialog', () => dialogIsOpen('settings-renewal-dialog'));
+    assert.ok((await text('settings-renewal-dialog'))?.includes('Управление автопродлением'));
+    assert.ok((await text('settings-renewal-dialog'))?.includes('свяжитесь с тренером'));
+    await closeDialogFromBackdrop('settings-renewal-dialog');
+
+    const accountDeletesBeforeCancel = counters.accountDelete;
+    await click('settings-delete-account');
+    await waitFor('T10 account deletion warning', () => dialogIsOpen('settings-delete-dialog'));
+    assert.ok((await text('settings-delete-dialog'))?.includes('Удалить аккаунт?'));
+    await click('settings-delete-continue');
+    await waitFor('T10 account deletion second stage', () =>
+      exists('settings-delete-confirmation'),
+    );
+    assert.equal(await disabled('settings-delete-confirm'), true);
+    await setValue('settings-delete-confirmation', 'delete');
+    assert.equal(await disabled('settings-delete-confirm'), true);
+    await setValue('settings-delete-confirmation', 'DELETE');
+    await waitFor(
+      'T10 exact account deletion confirmation accepted',
+      async () => !(await disabled('settings-delete-confirm')),
+    );
+    await closeDialogFromBackdrop('settings-delete-dialog');
+    assert.equal(counters.accountDelete, accountDeletesBeforeCancel);
+    assert.equal(await exists('settings-delete-confirmation'), false);
+
+    await click('settings-delete-account');
+    await waitFor('T10 account deletion reopened', () => dialogIsOpen('settings-delete-dialog'));
+    await click('settings-delete-continue');
+    await waitFor('T10 account deletion confirmation input restored', () =>
+      exists('settings-delete-confirmation'),
+    );
+    await setValue('settings-delete-confirmation', 'DELETE');
+    await waitFor(
+      'T10 account deletion enabled',
+      async () => !(await disabled('settings-delete-confirm')),
+    );
+    await click('settings-delete-confirm');
+    await waitFor(
+      'T10 account deletion redirects to login',
+      async () =>
+        counters.accountDelete === accountDeletesBeforeCancel + 1 &&
+        (await pathname()) === '/login' &&
+        (await exists('login-screen')),
+    );
+    assert.equal(await cdp.evaluate("localStorage.getItem('kinetra.accessToken')"), null);
+    console.log('KINETRA_T10_ACCOUNT_DELETION=PASS');
+
+    await submitLogin();
+    await waitFor(
+      'T10 active app after reauthentication following deletion mock',
+      async () => (await pathname()) === '/' && (await exists('main-screen')),
+    );
+    await click('tab-settings');
+    await waitFor('T10 settings before confirmed logout', () => exists('settings-account-section'));
+    const logoutsBeforeConfirmation = counters.logout;
+    await click('logout');
+    await waitFor('T10 logout confirmation dialog', () => dialogIsOpen('settings-logout-dialog'));
+    assert.equal(counters.logout, logoutsBeforeConfirmation);
+    assert.ok((await text('settings-logout-dialog'))?.includes('Выйти из аккаунта?'));
+    await closeDialogFromBackdrop('settings-logout-dialog');
+    assert.equal(counters.logout, logoutsBeforeConfirmation);
+    await click('logout');
+    await waitFor('T10 logout confirmation reopened', () => dialogIsOpen('settings-logout-dialog'));
+    await click('logout-confirm');
+    await waitFor(
+      'login after confirmed logout',
+      async () =>
+        counters.logout === logoutsBeforeConfirmation + 1 &&
+        (await pathname()) === '/login' &&
+        (await exists('login-screen')),
+    );
+    assert.equal(await cdp.evaluate("localStorage.getItem('kinetra.accessToken')"), null);
+    console.log('KINETRA_T10_LOGOUT=PASS');
+
+    assert.equal(counters.login, 3);
     assert.ok(
       counters.refresh >= 4,
       `Expected at least 4 refreshes, received ${counters.refresh}.`,
@@ -2844,6 +3390,10 @@ const runBrowserScenario = async () => {
     assert.ok(counters.progressGet >= 1);
     assert.equal(counters.weeklyMetricsPut, 1);
     assert.equal(counters.goalPut, 1);
+    assert.ok(counters.settingsProfileGet >= 5);
+    assert.ok(counters.subscriptionGet >= 5);
+    assert.equal(counters.notificationsPut, 2);
+    assert.equal(counters.accountDelete, 1);
     assert.equal(counters.weekGet, 4);
     assert.equal(counters.workoutComplete, 1);
     assert.equal(counters.logout, 1);
@@ -2854,6 +3404,7 @@ const runBrowserScenario = async () => {
     console.log('KINETRA_T07_BROWSER_E2E=PASS');
     console.log('KINETRA_T08_BROWSER_E2E=PASS');
     console.log('KINETRA_T09_BROWSER_E2E=PASS');
+    console.log('KINETRA_T10_BROWSER_E2E=PASS');
   } catch (error) {
     if (cdp !== null) {
       try {

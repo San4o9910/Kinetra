@@ -1,136 +1,98 @@
-# Kinetra T09 — отчёт проверки
+# Kinetra T10 — план и отчёт проверки
 
-**Дата локальной проверки:** 2026-08-21
+**Дата:** 2026-08-21
 
-**Ветка:** `feature/t09-progress` от `develop@5b49c33`
+**Ветка:** `feature/t10-settings`
 
-**Объём:** T01–T09, standalone PWA monorepo
+**Объём:** T01–T10, standalone PWA monorepo
 
-## Результат
+## Текущий статус
 
-T09 реализован обычными исходными файлами TypeScript/TSX/SQL/CSS/Markdown. Заглушка «Скоро»
-удалена; `/progress` теперь показывает цель, самооценку с лёгким SVG-графиком, пять статистических
-агрегатов и пять достижений. Две native-модалки обновляют цель и метрики без перезагрузки.
+T10 подготовлен обычными TypeScript/TSX/SQL/CSS/Markdown исходниками. Добавлены защищённые
+settings API, полноценный экран настроек и три режима глобальной темы. Миграция называется
+`008_notifications.sql`: номер `004` из исходного задания уже занят применённой T06-миграцией и
+не может быть переиспользован в append-only журнале.
 
-Backend добавляет три JWT-защищённых no-store endpoint, строгую Zod-валидацию, upsert метрик,
-транзакционную версию анкеты и агрегаты из валидных workout completion. Миграция `007` безопасно
-нормализует legacy-заметки до 500 символов, валидирует constraint и фиксирует canonical copy
-достижений. Идемпотентный achievement backfill сохраняет время фактического события.
+Итоговая проверка T10 ещё выполняется. Ниже `PASS` ставится только после фактического запуска;
+непрогнанные команды явно оставлены `PENDING`.
 
-В репозитории нет bootstrap, encoded payload, временных apply-workflows и запрещённых runtime
-интеграций.
+## Матрица локальной проверки
 
-## Локально пройдено
+| Проверка                          | Статус                  | Команда / условие                                       |
+| --------------------------------- | ----------------------- | ------------------------------------------------------- |
+| Структурные T01–T10 contracts     | PASS — 1196 checks      | `node scripts/verify-project.mjs`                       |
+| TypeScript                        | PASS                    | shared, backend production/tests, frontend              |
+| ESLint                            | PASS                    | `eslint apps packages scripts`                          |
+| Backend + frontend unit/E2E       | PASS local              | backend 38 pass + 5 PG skip; frontend 52 pass           |
+| Production build                  | PASS                    | shared, backend, frontend Vite (61 modules)             |
+| PostgreSQL migrations/integration | PENDING CI              | нужен PostgreSQL и `KINETRA_REQUIRE_POSTGRES_TEST=true` |
+| Chrome browser acceptance         | PENDING CI              | локальный Chrome/Chromium отсутствует                   |
+| Tracked source manifest           | PASS — 177 source files | exact path set + `sha256sum -c MANIFEST.sha256`         |
 
-### Структура и защита исходников
+Все изменённые форматируемые файлы проходят targeted Prettier check. Общий `prettier --check .`
+также показывает 14 существовавших до T10 style warnings в неизменённых baseline-файлах; T10 их
+не переписывает. Предыдущий T09 baseline был зелёным в CI, но он не заменяет новые T10 проверки и
+не используется как доказательство результата T10.
 
-```text
-node scripts/verify-project.mjs
-977 structural checks passed.
-```
+## Что обязана доказать структура
 
-Verifier проверяет T01–T09 API/SQL/UI-контракты, migration/seed, canonical achievements,
-JWT/no-store, три progress route, shared DTO, четыре секции, SVG и dialogs, тестовые/CI-маркеры и
-отсутствие путей `bootstrap`, `payload`, `*.b64`, `*.base64`, `*.encoded`, apply-workflows и
-`.tNN-pr-trigger`.
+`scripts/verify-project.mjs` проверяет существование обычных T10 source files, миграцию `008`,
+JWT/no-store settings router, строгие Zod payload, PostgreSQL contracts, shared DTO и четыре
+frontend API-метода. Для UI фиксируются шесть секций, 33 времени, debounce, dialogs, theme
+provider, ранний `/theme-init.js`, semantic light/dark tokens, tests и fail-closed CI markers.
 
-### TypeScript и ESLint
+Отдельно запрещены `.t10-bootstrap`, `.github/workflows/apply-t10.yml`,
+`docs/.t10-pr-trigger`, а общий рекурсивный gate продолжает запрещать bootstrap/payload,
+`*.b64`, `*.base64`, `*.encoded`, apply/export workflows и encoded-source paths.
 
-```text
-npm run typecheck    PASS
-npm run lint         PASS
-```
+## Backend acceptance
 
-Проверены shared, backend production/tests, frontend и все scripts.
+HTTP E2E должен подтвердить:
 
-### Backend tests
+- `401` и `Cache-Control: no-store` для неавторизованных settings requests;
+- `none` subscription с nullable полями и вычисление active/pending/expired/cancelled;
+- строгий notification payload, валидный `HH:MM`, успешный `204` и ошибки `400`;
+- точное `{ "confirm": "DELETE" }`, отклонение отсутствующего/лишнего/неверного подтверждения;
+- очистку refresh cookie после удаления.
 
-```text
-tests 37
-pass 33
-fail 0
-skipped 4 (PostgreSQL: DATABASE_URL не настроен локально)
-KINETRA_T09_BACKEND_E2E=PASS
-```
+PostgreSQL integration должен применить `001`–`008` и подтвердить legacy backfill/default/not-null
+notification JSON, `auto_renew`, deterministic subscription selection, реальный upsert, CASCADE
+всех пользовательских данных, недействительный refresh token и невозможность повторного login.
+Integration marker не должен печататься при skip.
 
-T09 HTTP E2E проверяет `401`, `Cache-Control: no-store`, пустую историю, строгую матрицу
-невалидных payload, upsert, authoritative `pending_survey`, версионирование цели, статистику,
-unlocked/locked achievements и идемпотентность materialization.
+## Frontend и тема
 
-PostgreSQL и Docker CLI в рабочем контейнере отсутствуют, поэтому migrations `001–007`, двойной
-seed, `db:verify-content` и четыре PostgreSQL integration suite остаются обязательной проверкой CI
-с `KINETRA_REQUIRE_POSTGRES_TEST=true`.
+Unit/API tests должны подтвердить:
 
-### Frontend unit/API tests
+- шесть settings sections, subscription states, support/about/level и survey entry;
+- два switch, 33 значения `06:00`–`22:00`, debounce только финального полного PUT payload;
+- logout и успешное удаление очищают in-memory access token;
+- два этапа danger-flow и точный ввод `DELETE`;
+- preference `system | light | dark`, безопасную localStorage-нормализацию и system resolution.
 
-```text
-tests 45
-pass 45
-fail 0
-```
+Browser journey должен проверить весь T10 flow при 320px и 428px, theme persistence после reload,
+динамическую системную тему, применение light/dark за пределами `/settings`, debounced
+notifications, отменённый и подтверждённый logout, затем отменённое и подтверждённое удаление.
+Финальный marker печатается только после сохранения T04–T09 journey.
 
-Шесть новых T09-тестов фиксируют три authenticated API request, четыре секции, точные goal labels,
-SVG с двумя и более точками, placeholder при короткой истории, пять stats, unlocked/locked
-состояния, aggregate counter, четыре radio, четыре range `1–10`, textarea 500 и чистые model
-helpers.
-
-### Production builds
-
-```text
-@kinetra/shared    PASS
-@kinetra/backend   PASS
-@kinetra/frontend  PASS
-```
-
-Frontend Vite build: 53 modules, JS `281.04 kB` (`84.82 kB` gzip), CSS `46.01 kB` (`8.53 kB`
-gzip).
-
-### Browser acceptance
-
-`scripts/test-frontend-browser.mjs` проходит syntax, Prettier и ESLint. Локальный запуск успешно
-выполнил production build, mock API health и полный cleanup:
+## Обязательные CI markers
 
 ```text
-KINETRA_BROWSER_MOCK_API=PASS
-KINETRA_BROWSER_PROFILE_CLEANUP=PASS
-KINETRA_BROWSER_TMP_CLEANUP=PASS
+KINETRA_T10_BACKEND_E2E=PASS
+KINETRA_T10_POSTGRES_INTEGRATION=PASS
+KINETRA_T10_SETTINGS_CONTENT=PASS
+KINETRA_T10_NOTIFICATIONS=PASS
+KINETRA_T10_THEME_MODES=PASS
+KINETRA_T10_LOGOUT=PASS
+KINETRA_T10_ACCOUNT_DELETION=PASS
+KINETRA_T10_BROWSER_E2E=PASS
+KINETRA_T10_TEST_SUITE=PASS
 ```
 
-Полный CDP journey не стартовал: в контейнере нет Chrome/Chromium. Дополнительная попытка через
-облачный Chrome не смогла открыть ни `127.0.0.1:4173`, ни `localhost:4173` и вернула
-`net::ERR_BLOCKED_BY_CLIENT`. Это ограничение loopback-инфраструктуры, а не ошибка приложения.
+CI обязан продолжать grep всех markers T04–T09 и дополнительно всех T10 markers; отсутствие любого
+из них завершает job ошибкой.
 
-Сценарий остаётся fail-closed в CI и проверяет:
-
-- четыре progress-секции, точные stats/copy и unlocked/locked presentation;
-- лёгкий SVG, две исходные и три точки после сохранения, все четыре metric switch;
-- goal PUT и точную смену label;
-- четыре sliders, note и точный weekly-metrics PUT payload;
-- отсутствие CTA после сохранения;
-- 320/428 px без horizontal overflow, touch targets не меньше 44 px и fixed tab bar;
-- возврат Home перед неизменённым продолжением T07/T08 journey;
-- GET не менее одного раза и оба mutation PUT ровно по одному разу.
-
-## Обязательные CI-проверки
-
-CI поднимает PostgreSQL 17, применяет migrations `001`–`007`, запускает seed дважды,
-`db:verify-content`, требует реальный T09 PostgreSQL marker и выполняет Chrome journey. Source
-manifest сравнивается с `git ls-files` до проверки SHA-256.
-
-Fail-closed маркеры T09:
-
-```text
-KINETRA_T09_BACKEND_E2E=PASS
-KINETRA_T09_POSTGRES_INTEGRATION=PASS
-KINETRA_T09_PROGRESS_CONTENT=PASS
-KINETRA_T09_GOAL_UPDATE=PASS
-KINETRA_T09_WEEKLY_METRICS=PASS
-KINETRA_T09_CHARTS=PASS
-KINETRA_T09_BROWSER_E2E=PASS
-KINETRA_T09_TEST_SUITE=PASS
-```
-
-## Команды воспроизведения
+## Команды полной проверки
 
 ```bash
 cp .env.example .env
@@ -141,8 +103,15 @@ npm run db:seed
 npm run db:seed
 npm run db:verify-content
 npm run check
+diff -u \
+  <(git ls-files | sed '/^MANIFEST\.sha256$/d' | sed 's#^#./#' | LC_ALL=C sort) \
+  <(awk '{ print $2 }' MANIFEST.sha256 | LC_ALL=C sort)
 sha256sum -c MANIFEST.sha256
 ```
 
-Для production нужны собственные JWT secrets, HTTPS, secure refresh-cookie и реальные S3
-credentials. Платежи, marketplace и чат не входят в T09.
+## Границы
+
+T10 не выполняет настоящий платёж и не отменяет auto-renew у провайдера. Кнопка отмены открывает
+честную информационную модалку и направляет к тренеру; платежный endpoint/webhook остаётся
+отдельным этапом. Для production также нужны реальные URLs политики, оплаты и поддержки,
+собственные JWT secrets, HTTPS, secure refresh cookie и S3 credentials.

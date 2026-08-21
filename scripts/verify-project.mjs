@@ -54,6 +54,7 @@ const requiredFiles = [
   'docs/T07_MAIN_SCREEN.md',
   'docs/T08_SCHEDULE.md',
   'docs/T09_PROGRESS.md',
+  'docs/T10_SETTINGS.md',
   'apps/frontend/index.html',
   'apps/frontend/src/features/auth/LoginScreen.tsx',
   'apps/frontend/src/features/survey/SurveyWizard.tsx',
@@ -76,6 +77,13 @@ const requiredFiles = [
   'apps/frontend/src/features/progress/ProgressScreen.tsx',
   'apps/frontend/src/features/progress/ProgressView.tsx',
   'apps/frontend/src/features/progress/model.ts',
+  'apps/frontend/src/features/settings/SettingsDialogs.tsx',
+  'apps/frontend/src/features/settings/SettingsIcons.tsx',
+  'apps/frontend/src/features/settings/SettingsScreen.tsx',
+  'apps/frontend/src/features/settings/SettingsView.tsx',
+  'apps/frontend/src/features/settings/model.ts',
+  'apps/frontend/src/features/theme/ThemeProvider.tsx',
+  'apps/frontend/src/features/theme/model.ts',
   'apps/frontend/src/routing.ts',
   'apps/frontend/test/api-session.test.ts',
   'apps/frontend/test/survey-routing.test.ts',
@@ -88,9 +96,13 @@ const requiredFiles = [
   'apps/frontend/test/schedule.test.ts',
   'apps/frontend/test/progress-api.test.ts',
   'apps/frontend/test/progress.test.ts',
+  'apps/frontend/test/settings-api.test.ts',
+  'apps/frontend/test/settings.test.ts',
+  'apps/frontend/test/theme.test.ts',
   'apps/frontend/public/manifest.webmanifest',
   'apps/frontend/public/service-worker.js',
   'apps/frontend/public/offline.html',
+  'apps/frontend/public/theme-init.js',
   'apps/frontend/public/icons/icon-192.png',
   'apps/frontend/public/icons/icon-512.png',
   'apps/frontend/public/icons/icon-maskable-512.png',
@@ -102,6 +114,7 @@ const requiredFiles = [
   'apps/backend/migrations/005_program_media_availability.sql',
   'apps/backend/migrations/006_schedule_copy.sql',
   'apps/backend/migrations/007_progress_data_contract.sql',
+  'apps/backend/migrations/008_notifications.sql',
   'apps/backend/scripts/migrate.mjs',
   'apps/backend/scripts/seed.mjs',
   'apps/backend/scripts/verify-content.mjs',
@@ -139,6 +152,12 @@ const requiredFiles = [
   'apps/backend/src/progress/runtime.ts',
   'apps/backend/src/progress/schema.ts',
   'apps/backend/src/progress/service.ts',
+  'apps/backend/src/settings/postgres-settings.repository.ts',
+  'apps/backend/src/settings/repository.ts',
+  'apps/backend/src/settings/router.ts',
+  'apps/backend/src/settings/runtime.ts',
+  'apps/backend/src/settings/schema.ts',
+  'apps/backend/src/settings/service.ts',
   'apps/backend/test/auth.e2e.test.ts',
   'apps/backend/test/profile.e2e.test.ts',
   'apps/backend/test/profile.postgres.test.ts',
@@ -148,10 +167,13 @@ const requiredFiles = [
   'apps/backend/test/program.postgres.test.ts',
   'apps/backend/test/progress.e2e.test.ts',
   'apps/backend/test/progress.postgres.test.ts',
+  'apps/backend/test/settings.e2e.test.ts',
+  'apps/backend/test/settings.postgres.test.ts',
   'apps/backend/test/support/fake-object-url-signer.ts',
   'apps/backend/test/support/in-memory-base-lessons.repository.ts',
   'apps/backend/test/support/in-memory-program.repository.ts',
   'apps/backend/test/support/in-memory-progress.repository.ts',
+  'apps/backend/test/support/in-memory-settings.repository.ts',
   'scripts/test-frontend-browser.mjs',
   'packages/shared/src/index.ts',
 ];
@@ -1040,7 +1062,11 @@ expectIncludes(
   'routeForOnboardingStatus',
   'frontend routes by server onboarding status',
 );
-expectIncludes(frontendApp, 'logout().finally', 'frontend revokes the refresh session on logout');
+expectIncludes(
+  frontendApi,
+  "'/api/v1/auth/logout'",
+  'frontend revokes the refresh session on logout',
+);
 expectIncludes(frontendApp, '<OnboardingCarousel', 'T05 route renders the onboarding carousel');
 expectIncludes(frontendApp, '<BaseLessonsScreen', 'T06 route renders the base lessons screen');
 expectIncludes(frontendApp, '<ProgramScreen', 'T07 active route renders the weekly program');
@@ -1366,11 +1392,15 @@ expectIncludes(
   'calc(148px + env(safe-area-inset-bottom))',
   'T06 list reserves room for the fixed safe-area CTA',
 );
-expectIncludes(frontendStyles, 'color: #6b7370', 'T06 disabled CTA uses the prescribed text color');
+expectMatches(
+  frontendStyles,
+  /\.base-lessons-complete:disabled\s*\{[^}]*color:\s*var\(--muted-strong\)/isu,
+  'T06 disabled CTA uses the prescribed semantic text color',
+);
 expectIncludes(
   frontendStyles,
-  'background: linear-gradient(135deg, #181c1c, #202525)',
-  'T06 poster uses the prescribed placeholder gradient',
+  'linear-gradient(135deg, var(--surface), var(--surface-raised))',
+  'T06 poster uses the theme-aware placeholder gradient',
 );
 for (const selectorFragment of [
   '.program-shell',
@@ -1397,16 +1427,24 @@ expectIncludes(
 );
 expectIncludes(
   frontendStyles,
-  'border-top: 1px solid #2a2f2f',
-  'T07 tab bar has the prescribed border',
+  'border-top: 1px solid var(--divider)',
+  'T07 tab bar has the prescribed theme-aware border',
 );
-expectIncludes(frontendStyles, 'background: #111414', 'T07 tab bar has the prescribed surface');
-expectIncludes(frontendStyles, 'color: #6b7370', 'T07 inactive tabs use the prescribed color');
+expectIncludes(
+  frontendStyles,
+  'background: var(--surface-inset)',
+  'T07 tab bar has the prescribed theme-aware surface',
+);
+expectIncludes(
+  frontendStyles,
+  'color: var(--muted-strong)',
+  'T07 inactive tabs use the prescribed semantic color',
+);
 expectIncludes(frontendStyles, 'min-height: 44px', 'T07 tab targets meet the minimum size');
 expectIncludes(
   frontendStyles,
-  'border-left: 3px solid #c8f169',
-  'T07 completed cards have an accent',
+  'border-left: 3px solid var(--accent)',
+  'T07 completed cards have a theme-aware accent',
 );
 expectIncludes(frontendStyles, 'opacity: 0.4', 'T07 locked cards use the prescribed opacity');
 expectIncludes(
@@ -1951,9 +1989,9 @@ for (const selector of [
   expectIncludes(frontendStyles, selector, `T08 style surface: ${selector}`);
 }
 for (const style of [
-  'background: #080909',
-  'background: #181c1c',
-  'background: #c8f169',
+  'background: var(--background)',
+  'background: var(--surface)',
+  'background: var(--accent)',
   'border-left: 3px solid transparent',
   '-webkit-line-clamp: 2',
   'min-height: 44px',
@@ -2295,6 +2333,398 @@ expectIncludes(
   'CI emits the T09 suite completion marker',
 );
 
+// T10 — protected settings, notification preferences, destructive account flow and global theme.
+const settingsMigration = await readText('apps/backend/migrations/008_notifications.sql');
+for (const migrationContract of [
+  'ADD COLUMN IF NOT EXISTS notification_preferences jsonb',
+  'jsonb_build_object(',
+  "ALTER COLUMN notification_preferences SET DEFAULT '{}'::jsonb",
+  'ALTER COLUMN notification_preferences SET NOT NULL',
+  'users_notification_preferences_object',
+  "jsonb_typeof(notification_preferences) = 'object'",
+  'VALIDATE CONSTRAINT users_notification_preferences_object',
+  'ADD COLUMN IF NOT EXISTS auto_renew boolean NOT NULL DEFAULT false',
+  'CREATE INDEX IF NOT EXISTS refresh_tokens_user_idx',
+  'CREATE INDEX IF NOT EXISTS password_reset_tokens_user_idx',
+  'CREATE INDEX IF NOT EXISTS email_verification_tokens_user_idx',
+]) {
+  expectIncludes(
+    settingsMigration,
+    migrationContract,
+    `T10 migration contract: ${migrationContract}`,
+  );
+}
+
+expectIncludes(
+  backendApp,
+  "app.use(\n    '/api/v1/settings'",
+  'T10 backend mounts the settings router',
+);
+
+const settingsRouter = await readText('apps/backend/src/settings/router.ts');
+for (const routerContract of [
+  'router.use(disableCaching)',
+  'router.use(authMiddleware)',
+  "router.get(\n    '/subscription'",
+  "router.get(\n    '/profile'",
+  "router.put(\n    '/notifications'",
+  "router.delete(\n    '/account'",
+  "response.setHeader('Cache-Control', 'no-store')",
+  'clearRefreshTokenCookie(response, refreshCookie)',
+  'response.status(204).send()',
+]) {
+  expectIncludes(settingsRouter, routerContract, `T10 settings router contract: ${routerContract}`);
+}
+
+const settingsSchema = await readText('apps/backend/src/settings/schema.ts');
+for (const schemaContract of [
+  '/^(?:[01]\\d|2[0-3]):[0-5]\\d$/u',
+  'workout_reminders: z.boolean()',
+  'reminder_time: reminderTimeSchema',
+  'weekly_survey_reminder: z.boolean()',
+  "confirm: z.literal('DELETE')",
+]) {
+  expectIncludes(settingsSchema, schemaContract, `T10 strict settings schema: ${schemaContract}`);
+}
+const strictSettingsSchemaCount = (settingsSchema.match(/\.strict\(\)/gu) ?? []).length;
+if (strictSettingsSchemaCount === 2) {
+  pass('T10 notification and account-deletion bodies are both strict');
+} else {
+  fail('T10 notification and account-deletion bodies are both strict');
+}
+
+const settingsRepository = await readText(
+  'apps/backend/src/settings/postgres-settings.repository.ts',
+);
+for (const repositoryContract of [
+  'LEFT JOIN LATERAL',
+  "status = 'active'",
+  'starts_at IS NULL OR starts_at <= $2',
+  'expires_at IS NULL OR expires_at > $2',
+  'created_at DESC',
+  'id DESC',
+  'SET notification_preferences = $2::jsonb',
+  'notification_enabled = $3',
+  'DELETE FROM users WHERE id = $1 RETURNING id',
+]) {
+  expectIncludes(
+    settingsRepository,
+    repositoryContract,
+    `T10 PostgreSQL settings contract: ${repositoryContract}`,
+  );
+}
+
+const settingsService = await readText('apps/backend/src/settings/service.ts');
+for (const serviceContract of [
+  "subscription.status === 'refunded'",
+  "return 'cancelled'",
+  "return 'expired'",
+  "return 'pending'",
+  'Math.max(0, Math.ceil(',
+  "status: 'none'",
+  'amount: subscription.amountMinor === null ? null : subscription.amountMinor / 100',
+  'notificationPreferencesSchema.safeParse(body)',
+  'deleteAccountSchema.safeParse(body)',
+  'INVALID_NOTIFICATION_PREFERENCES',
+  'ACCOUNT_DELETION_CONFIRMATION_REQUIRED',
+]) {
+  expectIncludes(
+    settingsService,
+    serviceContract,
+    `T10 settings service contract: ${serviceContract}`,
+  );
+}
+
+for (const sharedContract of [
+  'SettingsSubscriptionStatus',
+  'SubscriptionResponse',
+  'NotificationPreferences',
+  'SettingsProfileResponse',
+  'DeleteAccountRequest',
+]) {
+  expectIncludes(sharedContracts, sharedContract, `T10 shared contract: ${sharedContract}`);
+}
+
+for (const endpoint of [
+  "'/api/v1/settings/subscription'",
+  "'/api/v1/settings/profile'",
+  "'/api/v1/settings/notifications'",
+  "'/api/v1/settings/account'",
+]) {
+  expectIncludes(frontendApi, endpoint, `T10 frontend API endpoint: ${endpoint}`);
+}
+for (const apiContract of [
+  'getSubscription(signal?: AbortSignal)',
+  'getSettingsProfile(signal?: AbortSignal)',
+  'updateNotifications(data: NotificationPreferences)',
+  'deleteAccount(confirm: string)',
+  'authenticatedVoidRequest',
+  'keepalive: true',
+  'this.clearSession()',
+]) {
+  expectIncludes(frontendApi, apiContract, `T10 frontend API contract: ${apiContract}`);
+}
+
+const settingsScreen = await readText('apps/frontend/src/features/settings/SettingsScreen.tsx');
+for (const screenContract of [
+  'Promise.all([',
+  'getSettingsProfile(controller.signal)',
+  'getSubscription(controller.signal)',
+  'requestControllerRef.current?.abort()',
+  'SETTINGS_NOTIFICATION_DEBOUNCE_MS',
+  'window.setTimeout(',
+  'updateNotifications(snapshot)',
+  'saveQueueRef.current',
+  "window.addEventListener('pagehide', flushPendingNotifications)",
+  "window.removeEventListener('pagehide', flushPendingNotifications)",
+  'flushPendingNotifications()',
+  "deleteConfirmation !== 'DELETE'",
+  'deleteAccount(deleteConfirmation)',
+  'void logout()',
+  '.catch(() => undefined)',
+  '.finally(onSignedOut)',
+  '<SettingsView',
+  '<SettingsDialogs',
+]) {
+  expectIncludes(settingsScreen, screenContract, `T10 settings screen contract: ${screenContract}`);
+}
+
+const settingsModel = await readText('apps/frontend/src/features/settings/model.ts');
+for (const modelContract of [
+  '{ length: 33 }',
+  '6 * 60 + index * 30',
+  'SETTINGS_NOTIFICATION_DEBOUNCE_MS = 450',
+  'days_remaining <= 7',
+  'showCancelAutoRenew: subscription.auto_renew === true',
+]) {
+  expectIncludes(settingsModel, modelContract, `T10 settings model contract: ${modelContract}`);
+}
+
+const settingsView = await readText('apps/frontend/src/features/settings/SettingsView.tsx');
+for (const section of [
+  'settings-subscription-section',
+  'settings-notifications-section',
+  'settings-profile-section',
+  'settings-appearance-section',
+  'settings-support-section',
+  'settings-account-section',
+]) {
+  expectIncludes(settingsView, section, `T10 settings section: ${section}`);
+}
+for (const viewContract of [
+  'role="switch"',
+  'notificationTimeOptions.map',
+  'name="kinetra-theme"',
+  'themeOptions.map',
+  'Редактировать анкету',
+  'Сменить уровень',
+  'Связаться с тренером',
+  'О приложении',
+  'Выйти из аккаунта',
+  'Удалить аккаунт',
+  'Отменить автопродление',
+]) {
+  expectIncludes(settingsView, viewContract, `T10 settings view contract: ${viewContract}`);
+}
+
+const settingsDialogs = await readText('apps/frontend/src/features/settings/SettingsDialogs.tsx');
+for (const dialogContract of [
+  '<dialog',
+  'dialog.showModal()',
+  'Управление подпиской через кабинет провайдера появится в следующем обновлении.',
+  'Мастерство',
+  'Пик',
+  'Политика конфиденциальности',
+  "deleteStage === 1 ? 'Удалить аккаунт?' : 'Последнее подтверждение'",
+  'data-testid="settings-delete-confirmation"',
+  "deleteConfirmation !== 'DELETE'",
+  'Удалить навсегда',
+]) {
+  expectIncludes(
+    settingsDialogs,
+    dialogContract,
+    `T10 settings dialog contract: ${dialogContract}`,
+  );
+}
+
+const themeModel = await readText('apps/frontend/src/features/theme/model.ts');
+const themeProvider = await readText('apps/frontend/src/features/theme/ThemeProvider.tsx');
+const themeInit = await readText('apps/frontend/public/theme-init.js');
+const frontendIndex = await readText('apps/frontend/index.html');
+const frontendMain = await readText('apps/frontend/src/main.tsx');
+for (const themeContract of [
+  "ThemePreference = 'system' | 'light' | 'dark'",
+  "THEME_STORAGE_KEY = 'kinetra.theme.v1'",
+  "window.matchMedia('(prefers-color-scheme: dark)')",
+  'document.documentElement.dataset.theme = resolved',
+  'document.documentElement.dataset.themePreference = preference',
+  'document.documentElement.style.colorScheme = resolved',
+  'querySelector(\'meta[name="theme-color"]\')',
+]) {
+  expectIncludes(themeModel, themeContract, `T10 theme model contract: ${themeContract}`);
+}
+for (const providerContract of [
+  'applyThemePreference(preference, systemDark)',
+  'writeStoredThemePreference(preference)',
+  "media.addEventListener('change', updateFromSystem)",
+  "media.removeEventListener('change', updateFromSystem)",
+  "window.addEventListener('storage', syncAcrossTabs)",
+  "window.removeEventListener('storage', syncAcrossTabs)",
+]) {
+  expectIncludes(
+    themeProvider,
+    providerContract,
+    `T10 theme provider contract: ${providerContract}`,
+  );
+}
+for (const earlyThemeContract of [
+  "const storageKey = 'kinetra.theme.v1'",
+  "new Set(['system', 'light', 'dark'])",
+  "window.matchMedia('(prefers-color-scheme: dark)').matches",
+  'root.dataset.theme = resolved',
+  'root.dataset.themePreference = preference',
+  'root.style.colorScheme = resolved',
+]) {
+  expectIncludes(themeInit, earlyThemeContract, `T10 early theme contract: ${earlyThemeContract}`);
+}
+const earlyThemeScriptPosition = frontendIndex.indexOf('<script src="/theme-init.js"></script>');
+const reactEntryPosition = frontendIndex.indexOf(
+  '<script type="module" src="/src/main.tsx"></script>',
+);
+if (
+  earlyThemeScriptPosition >= 0 &&
+  reactEntryPosition >= 0 &&
+  earlyThemeScriptPosition < reactEntryPosition
+) {
+  pass('T10 theme initializer loads before the React entry');
+} else {
+  fail('T10 theme initializer loads before the React entry');
+}
+expectIncludes(frontendMain, '<ThemeProvider>', 'T10 wraps the full application in ThemeProvider');
+expectIncludes(
+  serviceWorker,
+  "'/theme-init.js'",
+  'T10 offline shell caches the early theme script',
+);
+
+for (const styleContract of [
+  ":root[data-theme='light']",
+  '--background: #080909',
+  '--surface: #181c1c',
+  '--accent: #c8f169',
+  '--text: #f4f6f2',
+  '--background: #f4f6f2',
+  '--surface: #ffffff',
+  '--focus-ring: #4e650d',
+  'outline: 3px solid var(--focus-ring)',
+  '.settings-section + .settings-section',
+  '.settings-toggle-row input:checked + .settings-toggle',
+  '.settings-theme-option.is-selected',
+  '.settings-menu-button.is-danger',
+  'min-height: 44px',
+  'env(safe-area-inset-bottom)',
+]) {
+  expectIncludes(frontendStyles, styleContract, `T10 theme/settings style: ${styleContract}`);
+}
+
+const settingsBackendTests = await readText('apps/backend/test/settings.e2e.test.ts');
+for (const testContract of [
+  'all settings endpoints require a valid access JWT',
+  'settings profile and an absent subscription use canonical defaults',
+  'subscription response converts minor units and computes remaining days',
+  'notification preferences validate strictly and persist as one object',
+  'account deletion requires exact confirmation and removes the authenticated profile',
+  'KINETRA_T10_BACKEND_E2E=PASS',
+]) {
+  expectIncludes(settingsBackendTests, testContract, `T10 backend E2E: ${testContract}`);
+}
+const settingsPostgresTests = await readText('apps/backend/test/settings.postgres.test.ts');
+for (const testContract of [
+  'PostgreSQL settings repository persists preferences and deletes account-owned data',
+  'users_notification_preferences_object',
+  'await authRepository.findUserByEmail(email), null',
+  'KINETRA_T10_POSTGRES_INTEGRATION=PASS',
+]) {
+  expectIncludes(settingsPostgresTests, testContract, `T10 PostgreSQL test: ${testContract}`);
+}
+const settingsFrontendTests = await readText('apps/frontend/test/settings.test.ts');
+for (const testContract of [
+  'T10 settings view renders all six sections and canonical controls',
+  'subscription card renders provider, amount, expiry and renewal actions',
+  'settings dialogs expose logout confirmation and two-stage destructive deletion',
+  'settings model fixes date, time, debounce and subscription-state contracts',
+]) {
+  expectIncludes(settingsFrontendTests, testContract, `T10 frontend unit test: ${testContract}`);
+}
+const settingsFrontendApiTests = await readText('apps/frontend/test/settings-api.test.ts');
+expectIncludes(
+  settingsFrontendApiTests,
+  'settings API client uses four exact protected routes and handles 204 responses',
+  'T10 frontend API test fixes authenticated void-response handling',
+);
+expectIncludes(
+  settingsFrontendApiTests,
+  "authorization: 'Bearer settings-token'",
+  'T10 frontend API test proves access JWT attachment',
+);
+const themeFrontendTests = await readText('apps/frontend/test/theme.test.ts');
+for (const testContract of [
+  'theme preference accepts exactly system, light and dark',
+  'system preference resolves from the current operating-system theme',
+]) {
+  expectIncludes(themeFrontendTests, testContract, `T10 theme unit test: ${testContract}`);
+}
+
+const settingsDocumentation = await readText('docs/T10_SETTINGS.md');
+for (const documentationContract of [
+  'GET /api/v1/settings/profile',
+  'GET /api/v1/settings/subscription',
+  'PUT /api/v1/settings/notifications',
+  'DELETE /api/v1/settings/account',
+  'Cache-Control: no-store',
+  '008_notifications.sql',
+  '004_base_lessons.sql',
+  'не меняет',
+  'system | light | dark',
+  'kinetra.theme.v1',
+  'KINETRA_T10_BROWSER_E2E=PASS',
+]) {
+  expectIncludes(
+    settingsDocumentation,
+    documentationContract,
+    `T10 documented contract: ${documentationContract}`,
+  );
+}
+
+for (const marker of [
+  'KINETRA_T10_SETTINGS_CONTENT=PASS',
+  'KINETRA_T10_NOTIFICATIONS=PASS',
+  'KINETRA_T10_THEME_MODES=PASS',
+  'KINETRA_T10_LOGOUT=PASS',
+  'KINETRA_T10_ACCOUNT_DELETION=PASS',
+  'KINETRA_T10_BROWSER_E2E=PASS',
+]) {
+  expectIncludes(browserTest, marker, `T10 browser marker: ${marker}`);
+}
+
+for (const marker of [
+  'KINETRA_T10_BACKEND_E2E=PASS',
+  'KINETRA_T10_POSTGRES_INTEGRATION=PASS',
+  'KINETRA_T10_SETTINGS_CONTENT=PASS',
+  'KINETRA_T10_NOTIFICATIONS=PASS',
+  'KINETRA_T10_THEME_MODES=PASS',
+  'KINETRA_T10_LOGOUT=PASS',
+  'KINETRA_T10_ACCOUNT_DELETION=PASS',
+  'KINETRA_T10_BROWSER_E2E=PASS',
+]) {
+  expectIncludes(ciWorkflow, `grep -F '${marker}'`, `CI requires T10 marker: ${marker}`);
+}
+expectIncludes(
+  ciWorkflow,
+  "echo 'KINETRA_T10_TEST_SUITE=PASS'",
+  'CI emits the T10 suite completion marker',
+);
+
 for (const temporaryArtifact of [
   '.github/workflows/apply-t04-fixes.yml',
   '.github/workflows/apply-t05.yml',
@@ -2302,6 +2732,7 @@ for (const temporaryArtifact of [
   '.github/workflows/apply-t07.yml',
   '.github/workflows/apply-t08.yml',
   '.github/workflows/apply-t09.yml',
+  '.github/workflows/apply-t10.yml',
   '.github/workflows/export-dev-env.yml',
   '.github/workflows/export-full-env.yml',
   '.github/workflows/export-source.yml',
@@ -2310,12 +2741,14 @@ for (const temporaryArtifact of [
   '.t07-bootstrap',
   '.t08-bootstrap',
   '.t09-bootstrap',
+  '.t10-bootstrap',
   'docs/.probe',
   'docs/.t05-pr-trigger',
   'docs/.t06-pr-trigger',
   'docs/.t07-pr-trigger',
   'docs/.t08-pr-trigger',
   'docs/.t09-pr-trigger',
+  'docs/.t10-pr-trigger',
 ]) {
   try {
     await access(resolve(root, temporaryArtifact));
