@@ -5,7 +5,7 @@ import { LoginScreen } from './features/auth/LoginScreen';
 import { BaseLessonsScreen } from './features/base-lessons/BaseLessonsScreen';
 import { TabBar } from './features/navigation/TabBar';
 import { OnboardingCarousel } from './features/onboarding/OnboardingCarousel';
-import { ComingSoonScreen } from './features/program/ComingSoonScreen';
+import { ProgressScreen } from './features/progress/ProgressScreen';
 import { ProgramScreen } from './features/program/ProgramScreen';
 import { ScheduleScreen } from './features/schedule/ScheduleScreen';
 import { SurveyWizard } from './features/survey/SurveyWizard';
@@ -427,7 +427,24 @@ export const App = (): ReactNode => {
         onSessionExpired={handleActiveSessionExpired}
       />
     ) : route === appRoutes.progress ? (
-      <ComingSoonScreen kind="progress" />
+      <ProgressScreen
+        timezone={profile.user.timezone}
+        onGoalChanged={(goal) => {
+          setSession((current) =>
+            current.kind === 'authenticated' && current.profile.survey !== null
+              ? {
+                  kind: 'authenticated',
+                  profile: {
+                    ...current.profile,
+                    survey: { ...current.profile.survey, goal },
+                  },
+                }
+              : current,
+          );
+        }}
+        onProfileUpdated={(updated) => setSession({ kind: 'authenticated', profile: updated })}
+        onSessionExpired={handleActiveSessionExpired}
+      />
     ) : (
       <ProgramScreen
         timezone={profile.user.timezone}
