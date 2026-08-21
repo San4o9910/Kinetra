@@ -8,7 +8,12 @@ import {
   toggleSurveyInjury,
   type SurveyDraft,
 } from '../src/features/survey/model.js';
-import { appRoutes, normalizeAppRoute, routeForOnboardingStatus } from '../src/routing.js';
+import {
+  appRoutes,
+  isActiveAppRoute,
+  normalizeAppRoute,
+  routeForOnboardingStatus,
+} from '../src/routing.js';
 
 const completeDraft = (): SurveyDraft => ({
   gender: 'male',
@@ -25,6 +30,13 @@ test('server onboarding statuses map to canonical browser routes', () => {
   assert.equal(routeForOnboardingStatus('base_lessons'), appRoutes.baseLessons);
   assert.equal(routeForOnboardingStatus('active'), appRoutes.home);
   assert.equal(normalizeAppRoute('/settings/'), appRoutes.settings);
+  assert.equal(normalizeAppRoute('/schedule/'), appRoutes.schedule);
+  assert.equal(normalizeAppRoute('/progress/'), appRoutes.progress);
+  assert.equal(isActiveAppRoute(appRoutes.home), true);
+  assert.equal(isActiveAppRoute(appRoutes.schedule), true);
+  assert.equal(isActiveAppRoute(appRoutes.progress), true);
+  assert.equal(isActiveAppRoute(appRoutes.settings), true);
+  assert.equal(isActiveAppRoute(appRoutes.baseLessons), false);
   assert.equal(normalizeAppRoute('/unknown'), appRoutes.login);
 });
 

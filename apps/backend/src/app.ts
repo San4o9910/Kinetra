@@ -14,11 +14,14 @@ import {
 import { env } from './config/env.js';
 import { createProfileRouter } from './profile/router.js';
 import { createProductionProfileRuntime, type ProfileRuntime } from './profile/runtime.js';
+import { createProgramRouter } from './program/router.js';
+import { createProductionProgramRuntime, type ProgramRuntime } from './program/runtime.js';
 
 export interface CreateAppOptions {
   readonly authRuntime?: AuthRuntime;
   readonly profileRuntime?: ProfileRuntime;
   readonly baseLessonsRuntime?: BaseLessonsRuntime;
+  readonly programRuntime?: ProgramRuntime;
 }
 
 const requestIdFrom = (response: Response): string =>
@@ -35,6 +38,7 @@ export const createApp = (options: CreateAppOptions = {}) => {
   const authRuntime = options.authRuntime ?? createProductionAuthRuntime();
   const profileRuntime = options.profileRuntime ?? createProductionProfileRuntime();
   const baseLessonsRuntime = options.baseLessonsRuntime ?? createProductionBaseLessonsRuntime();
+  const programRuntime = options.programRuntime ?? createProductionProgramRuntime();
 
   app.disable('x-powered-by');
 
@@ -76,6 +80,7 @@ export const createApp = (options: CreateAppOptions = {}) => {
 
   app.use('/api/v1/me', createProfileRouter(profileRuntime));
   app.use('/api/v1/base-lessons', createBaseLessonsRouter(baseLessonsRuntime));
+  app.use('/api/v1/program', createProgramRouter(programRuntime));
 
   app.use((request: Request, response: Response<ApiErrorResponse>) => {
     response.status(404).json({

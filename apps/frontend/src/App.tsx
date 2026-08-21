@@ -3,73 +3,20 @@ import type { MeResponse } from '@kinetra/shared';
 
 import { LoginScreen } from './features/auth/LoginScreen';
 import { BaseLessonsScreen } from './features/base-lessons/BaseLessonsScreen';
+import { TabBar } from './features/navigation/TabBar';
 import { OnboardingCarousel } from './features/onboarding/OnboardingCarousel';
+import { ComingSoonScreen } from './features/program/ComingSoonScreen';
+import { ProgramScreen } from './features/program/ProgramScreen';
 import { SurveyWizard } from './features/survey/SurveyWizard';
 import { ApiRequestError, bootstrapSession, fetchMe, logout } from './lib/api';
 import {
   appRoutes,
+  isActiveAppRoute,
   isSettingsRoute,
   normalizeAppRoute,
   routeForOnboardingStatus,
   type AppRoute,
 } from './routing';
-
-interface StageCopy {
-  readonly eyebrow: string;
-  readonly title: string;
-  readonly description: string;
-}
-
-const activeStageCopy: StageCopy = {
-  eyebrow: 'ГЛАВНАЯ · T08',
-  title: 'Ваше движение начинается здесь',
-  description: 'Главный экран будет показывать тренировку дня, прогресс недели и ключевые метрики.',
-};
-
-interface JourneyPlaceholderProps {
-  readonly profile: MeResponse;
-  readonly onOpenSettings: () => void;
-}
-
-const JourneyPlaceholder = ({ profile, onOpenSettings }: JourneyPlaceholderProps): ReactNode => {
-  return (
-    <main className="app-shell" data-testid="journey-active">
-      <section className="stage-card">
-        <header className="stage-topbar">
-          <div className="survey-brand">
-            <span className="survey-brand-mark" aria-hidden="true">
-              K
-            </span>
-            <span>KINETRA</span>
-          </div>
-          <button
-            className="ghost-button"
-            data-testid="open-settings"
-            type="button"
-            onClick={onOpenSettings}
-          >
-            Настройки
-          </button>
-        </header>
-
-        <div className="stage-content">
-          <p className="survey-kicker">{activeStageCopy.eyebrow}</p>
-          <h1>{activeStageCopy.title}</h1>
-          <p>{activeStageCopy.description}</p>
-
-          <div className="profile-summary">
-            <span>Статус программы</span>
-            <strong>{profile.user.onboardingStatus}</strong>
-            <span>Подписка</span>
-            <strong>
-              {profile.subscription.isActive ? 'Активна' : profile.subscription.status}
-            </strong>
-          </div>
-        </div>
-      </section>
-    </main>
-  );
-};
 
 interface SettingsProps {
   readonly profile: MeResponse;
@@ -170,6 +117,25 @@ const SystemState = ({ kind, message, onRetry }: SystemStateProps): ReactNode =>
   </main>
 );
 
+interface ActiveAppShellProps {
+  readonly route: AppRoute;
+  readonly navigationDisabled: boolean;
+  readonly onNavigate: (route: AppRoute) => void;
+  readonly children: ReactNode;
+}
+
+const ActiveAppShell = ({
+  route,
+  navigationDisabled,
+  onNavigate,
+  children,
+}: ActiveAppShellProps): ReactNode => (
+  <div className="active-app-shell">
+    <div className="active-app-content">{children}</div>
+    <TabBar route={route} disabled={navigationDisabled} onNavigate={onNavigate} />
+  </div>
+);
+
 type SessionState =
   | { readonly kind: 'booting' }
   | { readonly kind: 'unauthenticated' }
@@ -208,6 +174,34 @@ const useBrowserRoute = (): readonly [AppRoute, (route: AppRoute, replace?: bool
 export const App = (): ReactNode => {
   const [session, setSession] = useState<SessionState>({ kind: 'booting' });
   const [route, navigate] = useBrowserRoute();
+  const [workoutCompletionBusy, setWorkoutCompletionBusy] = useState(false);
+
+  const navigateActiveTab = useCallback(
+    (nextRoute: AppRoute): void => {
+      if (workoutCompletionBusy) {
+        return;
+      }
+
+      const workoutVideoId = window.history.state?.kinetraWorkoutVideoId;
+
+      if (typeof workoutVideoId === 'string') {
+        if (window.location.pathname === nextRoute) {
+          window.history.back();
+          return;
+        }
+
+        window.history.replaceState(null, '', nextRoute);
+      }
+
+      navigate(nextRoute);
+    },
+    [navigate, workoutCompletionBusy],
+  );
+
+  const handleActiveSessionExpired = useCallback((): void => {
+    setSession({ kind: 'unauthenticated' });
+    navigate(appRoutes.login, true);
+  }, [navigate]);
 
   const restoreSession = useCallback(async (signal?: AbortSignal): Promise<void> => {
     setSession({ kind: 'booting' });
@@ -277,6 +271,18 @@ export const App = (): ReactNode => {
       return;
     }
 
+    if (session.profile.user.onboardingStatus === 'active') {
+      if (route === appRoutes.editSurvey && session.profile.survey === null) {
+        navigate(appRoutes.settings, true);
+        return;
+      }
+
+      if (!isActiveAppRoute(route)) {
+        navigate(appRoutes.home, true);
+      }
+      return;
+    }
+
     if (isSettingsRoute(route)) {
       if (route === appRoutes.editSurvey && session.profile.survey === null) {
         navigate(appRoutes.settings, true);
@@ -324,9 +330,21 @@ export const App = (): ReactNode => {
   }
 
   const profile = session.profile;
+  const withActiveNavigation = (content: ReactNode): ReactNode =>
+    profile.user.onboardingStatus === 'active' ? (
+      <ActiveAppShell
+        route={route}
+        navigationDisabled={workoutCompletionBusy}
+        onNavigate={navigateActiveTab}
+      >
+        {content}
+      </ActiveAppShell>
+    ) : (
+      content
+    );
 
   if (route === appRoutes.editSurvey) {
-    return (
+    return withActiveNavigation(
       <SurveyWizard
         initialSurvey={profile.survey}
         onSaved={(updated) => {
@@ -334,12 +352,12 @@ export const App = (): ReactNode => {
           navigate(appRoutes.settings, true);
         }}
         onCancel={() => navigate(appRoutes.settings)}
-      />
+      />,
     );
   }
 
   if (route === appRoutes.settings) {
-    return (
+    return withActiveNavigation(
       <Settings
         profile={profile}
         onClose={() => navigate(routeForOnboardingStatus(profile.user.onboardingStatus))}
@@ -350,7 +368,7 @@ export const App = (): ReactNode => {
             navigate(appRoutes.login, true);
           });
         }}
-      />
+      />,
     );
   }
 
@@ -401,7 +419,26 @@ export const App = (): ReactNode => {
     );
   }
 
+  const activeContent =
+    route === appRoutes.schedule ? (
+      <ComingSoonScreen kind="schedule" />
+    ) : route === appRoutes.progress ? (
+      <ComingSoonScreen kind="progress" />
+    ) : (
+      <ProgramScreen
+        timezone={profile.user.timezone}
+        onWorkoutCompletionBusyChange={setWorkoutCompletionBusy}
+        onSessionExpired={handleActiveSessionExpired}
+      />
+    );
+
   return (
-    <JourneyPlaceholder profile={profile} onOpenSettings={() => navigate(appRoutes.settings)} />
+    <ActiveAppShell
+      route={route}
+      navigationDisabled={workoutCompletionBusy}
+      onNavigate={navigateActiveTab}
+    >
+      {activeContent}
+    </ActiveAppShell>
   );
 };
