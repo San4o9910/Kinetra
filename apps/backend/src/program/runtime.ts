@@ -1,10 +1,12 @@
 import type { RequestHandler } from 'express';
 
 import { createAuthMiddleware } from '../auth/middleware.js';
+import { SystemClock } from '../auth/service.js';
 import { HmacJwtAccessTokenService } from '../auth/tokens.js';
 import { S3ObjectUrlSigner, UnavailableObjectUrlSigner } from '../base-lessons/storage.js';
 import { env } from '../config/env.js';
 import { databasePool } from '../db/pool.js';
+import { PostgresSubscriptionAccessChecker } from '../payments/subscription-access.js';
 import { PostgresProgramRepository } from './postgres-program.repository.js';
 import { ProgramService } from './service.js';
 
@@ -24,7 +26,12 @@ export const createProductionProgramRuntime = (): ProgramRuntime => {
     env.s3 === null ? new UnavailableObjectUrlSigner() : new S3ObjectUrlSigner(env.s3);
 
   return {
-    service: new ProgramService(new PostgresProgramRepository(databasePool), objectUrlSigner),
+    service: new ProgramService(
+      new PostgresProgramRepository(databasePool),
+      objectUrlSigner,
+      new PostgresSubscriptionAccessChecker(databasePool),
+      new SystemClock(),
+    ),
     authMiddleware: createAuthMiddleware(verifier),
   };
 };
