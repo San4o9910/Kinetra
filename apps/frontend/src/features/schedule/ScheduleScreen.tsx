@@ -12,6 +12,7 @@ type ScheduleLoadState =
 export interface ScheduleScreenProps {
   readonly onOpenHome: () => void;
   readonly onSessionExpired: () => void;
+  readonly onSubscriptionRequired: () => void;
 }
 
 const ScheduleState = ({
@@ -51,6 +52,7 @@ const ScheduleState = ({
 export const ScheduleScreen = ({
   onOpenHome,
   onSessionExpired,
+  onSubscriptionRequired,
 }: ScheduleScreenProps): ReactNode => {
   const [state, setState] = useState<ScheduleLoadState>({ kind: 'loading' });
   const [activeSection, setActiveSection] = useState<ScheduleSection>('current');
@@ -80,6 +82,11 @@ export const ScheduleScreen = ({
         return;
       }
 
+      if (error instanceof ApiRequestError && error.code === 'SUBSCRIPTION_REQUIRED') {
+        onSubscriptionRequired();
+        return;
+      }
+
       if (requestControllerRef.current !== controller) {
         return;
       }
@@ -96,7 +103,7 @@ export const ScheduleScreen = ({
         requestControllerRef.current = null;
       }
     }
-  }, [onSessionExpired]);
+  }, [onSessionExpired, onSubscriptionRequired]);
 
   useEffect(() => {
     void loadSchedule();

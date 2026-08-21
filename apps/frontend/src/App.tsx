@@ -1,19 +1,27 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import type { MeResponse } from '@kinetra/shared';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import type { MeResponse, SubscriptionResponse } from '@kinetra/shared';
 
 import { LoginScreen } from './features/auth/LoginScreen';
 import { BaseLessonsScreen } from './features/base-lessons/BaseLessonsScreen';
 import { TabBar } from './features/navigation/TabBar';
 import { OnboardingCarousel } from './features/onboarding/OnboardingCarousel';
+import { PaymentCancelScreen } from './features/payments/PaymentCancelScreen';
+import { PaymentScreen } from './features/payments/PaymentScreen';
+import { PaymentSuccessScreen } from './features/payments/PaymentSuccessScreen';
+import { isSubscriptionActive } from './features/payments/model';
+import { SubscriptionLockedScreen } from './features/payments/SubscriptionLockedScreen';
+import { SubscriptionVerificationState } from './features/payments/SubscriptionVerificationState';
 import { ProgressScreen } from './features/progress/ProgressScreen';
+import { clearWorkoutHistorySentinel } from './features/program/history';
 import { ProgramScreen } from './features/program/ProgramScreen';
 import { ScheduleScreen } from './features/schedule/ScheduleScreen';
 import { SettingsScreen } from './features/settings/SettingsScreen';
 import { SurveyWizard } from './features/survey/SurveyWizard';
-import { ApiRequestError, bootstrapSession, fetchMe } from './lib/api';
+import { ApiRequestError, bootstrapSession, fetchMe, getSubscription } from './lib/api';
 import {
   appRoutes,
   isActiveAppRoute,
+  isPaymentRoute,
   isSettingsRoute,
   normalizeAppRoute,
   routeForOnboardingStatus,
@@ -78,6 +86,12 @@ type SessionState =
   | { readonly kind: 'server'; readonly message: string }
   | { readonly kind: 'authenticated'; readonly profile: MeResponse };
 
+type SubscriptionLoadState =
+  | { readonly kind: 'idle' }
+  | { readonly kind: 'loading' }
+  | { readonly kind: 'ready'; readonly subscription: SubscriptionResponse }
+  | { readonly kind: 'error'; readonly message: string };
+
 const routeAtStartup = (): AppRoute =>
   typeof window === 'undefined' ? appRoutes.login : normalizeAppRoute(window.location.pathname);
 
@@ -110,6 +124,11 @@ export const App = (): ReactNode => {
   const [session, setSession] = useState<SessionState>({ kind: 'booting' });
   const [route, navigate] = useBrowserRoute();
   const [workoutCompletionBusy, setWorkoutCompletionBusy] = useState(false);
+  const [subscriptionState, setSubscriptionState] = useState<SubscriptionLoadState>({
+    kind: 'idle',
+  });
+  const subscriptionControllerRef = useRef<AbortController | null>(null);
+  const subscriptionRequestVersionRef = useRef(0);
 
   const navigateActiveTab = useCallback(
     (nextRoute: AppRoute): void => {
@@ -134,9 +153,62 @@ export const App = (): ReactNode => {
   );
 
   const handleActiveSessionExpired = useCallback((): void => {
+    subscriptionControllerRef.current?.abort();
+    subscriptionRequestVersionRef.current += 1;
+    setSubscriptionState({ kind: 'idle' });
     setSession({ kind: 'unauthenticated' });
     navigate(appRoutes.login, true);
   }, [navigate]);
+
+  const loadSubscription = useCallback(
+    (announceLoading = true): void => {
+      subscriptionControllerRef.current?.abort();
+      const controller = new AbortController();
+      const version = ++subscriptionRequestVersionRef.current;
+      subscriptionControllerRef.current = controller;
+
+      if (announceLoading) {
+        setSubscriptionState({ kind: 'loading' });
+      }
+
+      void getSubscription(controller.signal)
+        .then((subscription) => {
+          if (!controller.signal.aborted && subscriptionRequestVersionRef.current === version) {
+            setSubscriptionState({ kind: 'ready', subscription });
+          }
+        })
+        .catch((error: unknown) => {
+          if (controller.signal.aborted || subscriptionRequestVersionRef.current !== version) {
+            return;
+          }
+
+          if (error instanceof ApiRequestError && error.kind === 'auth') {
+            handleActiveSessionExpired();
+            return;
+          }
+
+          setSubscriptionState({
+            kind: 'error',
+            message:
+              error instanceof ApiRequestError
+                ? error.message
+                : 'Не удалось проверить подписку. Попробуйте ещё раз.',
+          });
+        })
+        .finally(() => {
+          if (subscriptionControllerRef.current === controller) {
+            subscriptionControllerRef.current = null;
+          }
+        });
+    },
+    [handleActiveSessionExpired],
+  );
+
+  const handleSubscriptionUpdated = useCallback((subscription: SubscriptionResponse): void => {
+    subscriptionControllerRef.current?.abort();
+    subscriptionRequestVersionRef.current += 1;
+    setSubscriptionState({ kind: 'ready', subscription });
+  }, []);
 
   const restoreSession = useCallback(async (signal?: AbortSignal): Promise<void> => {
     setSession({ kind: 'booting' });
@@ -194,6 +266,47 @@ export const App = (): ReactNode => {
     return () => window.removeEventListener('online', retryWhenOnline);
   }, [restoreSession, session.kind]);
 
+  const authenticatedUserId = session.kind === 'authenticated' ? session.profile.user.id : null;
+
+  useEffect(() => {
+    if (authenticatedUserId === null) {
+      subscriptionControllerRef.current?.abort();
+      subscriptionRequestVersionRef.current += 1;
+      setSubscriptionState({ kind: 'idle' });
+      return;
+    }
+
+    loadSubscription();
+    return () => {
+      subscriptionControllerRef.current?.abort();
+      subscriptionRequestVersionRef.current += 1;
+    };
+  }, [authenticatedUserId, loadSubscription]);
+
+  useEffect(() => {
+    if (authenticatedUserId === null) {
+      return;
+    }
+
+    const refreshWhenVisible = (): void => {
+      if (document.visibilityState === 'visible') {
+        loadSubscription(false);
+      }
+    };
+
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    return () => document.removeEventListener('visibilitychange', refreshWhenVisible);
+  }, [authenticatedUserId, loadSubscription]);
+
+  useLayoutEffect(() => {
+    if (
+      subscriptionState.kind === 'ready' &&
+      !isSubscriptionActive(subscriptionState.subscription)
+    ) {
+      clearWorkoutHistorySentinel();
+    }
+  }, [subscriptionState]);
+
   useEffect(() => {
     if (session.kind === 'unauthenticated') {
       if (route !== appRoutes.login) {
@@ -203,6 +316,17 @@ export const App = (): ReactNode => {
     }
 
     if (session.kind !== 'authenticated') {
+      return;
+    }
+
+    if (isPaymentRoute(route)) {
+      if (
+        route === appRoutes.payment &&
+        subscriptionState.kind === 'ready' &&
+        isSubscriptionActive(subscriptionState.subscription)
+      ) {
+        navigate(routeForOnboardingStatus(session.profile.user.onboardingStatus), true);
+      }
       return;
     }
 
@@ -230,7 +354,7 @@ export const App = (): ReactNode => {
     if (route !== expectedRoute) {
       navigate(expectedRoute, true);
     }
-  }, [navigate, route, session]);
+  }, [navigate, route, session, subscriptionState]);
 
   if (session.kind === 'booting') {
     return (
@@ -265,6 +389,54 @@ export const App = (): ReactNode => {
   }
 
   const profile = session.profile;
+  const defaultAuthenticatedRoute = routeForOnboardingStatus(profile.user.onboardingStatus);
+
+  if (route === appRoutes.paymentSuccess) {
+    return (
+      <PaymentSuccessScreen
+        onActivated={handleSubscriptionUpdated}
+        onContinue={() => navigate(defaultAuthenticatedRoute, true)}
+        onSessionExpired={handleActiveSessionExpired}
+      />
+    );
+  }
+
+  if (route === appRoutes.paymentCancel) {
+    return (
+      <PaymentCancelScreen
+        onRetry={() => navigate(appRoutes.payment, true)}
+        onLater={() => navigate(defaultAuthenticatedRoute, true)}
+      />
+    );
+  }
+
+  if (route === appRoutes.payment) {
+    if (subscriptionState.kind === 'loading' || subscriptionState.kind === 'idle') {
+      return <SubscriptionVerificationState loading onRetry={() => loadSubscription()} />;
+    }
+
+    if (subscriptionState.kind === 'error') {
+      return (
+        <SubscriptionVerificationState
+          loading={false}
+          message={subscriptionState.message}
+          onRetry={() => loadSubscription()}
+        />
+      );
+    }
+
+    if (!isSubscriptionActive(subscriptionState.subscription)) {
+      return (
+        <PaymentScreen
+          onBack={() => navigate(defaultAuthenticatedRoute)}
+          onSessionExpired={handleActiveSessionExpired}
+        />
+      );
+    }
+
+    return <SubscriptionVerificationState loading onRetry={() => loadSubscription()} />;
+  }
+
   const withActiveNavigation = (content: ReactNode): ReactNode =>
     profile.user.onboardingStatus === 'active' ? (
       <ActiveAppShell
@@ -297,6 +469,8 @@ export const App = (): ReactNode => {
         hasSurvey={profile.survey !== null}
         onClose={() => navigate(routeForOnboardingStatus(profile.user.onboardingStatus))}
         onEditSurvey={() => navigate(appRoutes.editSurvey)}
+        onOpenPayment={() => navigate(appRoutes.payment)}
+        onSubscriptionUpdated={handleSubscriptionUpdated}
         onSignedOut={() => {
           setSession({ kind: 'unauthenticated' });
           navigate(appRoutes.login, true);
@@ -355,10 +529,26 @@ export const App = (): ReactNode => {
 
   const activeContent =
     route === appRoutes.schedule ? (
-      <ScheduleScreen
-        onOpenHome={() => navigate(appRoutes.home)}
-        onSessionExpired={handleActiveSessionExpired}
-      />
+      subscriptionState.kind === 'ready' ? (
+        isSubscriptionActive(subscriptionState.subscription) ? (
+          <ScheduleScreen
+            onOpenHome={() => navigate(appRoutes.home)}
+            onSessionExpired={handleActiveSessionExpired}
+            onSubscriptionRequired={loadSubscription}
+          />
+        ) : (
+          <SubscriptionLockedScreen
+            subscription={subscriptionState.subscription}
+            onOpenPayment={() => navigate(appRoutes.payment)}
+          />
+        )
+      ) : (
+        <SubscriptionVerificationState
+          loading={subscriptionState.kind === 'loading' || subscriptionState.kind === 'idle'}
+          {...(subscriptionState.kind === 'error' ? { message: subscriptionState.message } : {})}
+          onRetry={() => loadSubscription()}
+        />
+      )
     ) : route === appRoutes.progress ? (
       <ProgressScreen
         timezone={profile.user.timezone}
@@ -378,11 +568,27 @@ export const App = (): ReactNode => {
         onProfileUpdated={(updated) => setSession({ kind: 'authenticated', profile: updated })}
         onSessionExpired={handleActiveSessionExpired}
       />
+    ) : subscriptionState.kind === 'ready' ? (
+      isSubscriptionActive(subscriptionState.subscription) ? (
+        <ProgramScreen
+          timezone={profile.user.timezone}
+          subscription={subscriptionState.subscription}
+          onOpenPayment={() => navigate(appRoutes.payment)}
+          onSubscriptionRequired={loadSubscription}
+          onWorkoutCompletionBusyChange={setWorkoutCompletionBusy}
+          onSessionExpired={handleActiveSessionExpired}
+        />
+      ) : (
+        <SubscriptionLockedScreen
+          subscription={subscriptionState.subscription}
+          onOpenPayment={() => navigate(appRoutes.payment)}
+        />
+      )
     ) : (
-      <ProgramScreen
-        timezone={profile.user.timezone}
-        onWorkoutCompletionBusyChange={setWorkoutCompletionBusy}
-        onSessionExpired={handleActiveSessionExpired}
+      <SubscriptionVerificationState
+        loading={subscriptionState.kind === 'loading' || subscriptionState.kind === 'idle'}
+        {...(subscriptionState.kind === 'error' ? { message: subscriptionState.message } : {})}
+        onRetry={() => loadSubscription()}
       />
     );
 

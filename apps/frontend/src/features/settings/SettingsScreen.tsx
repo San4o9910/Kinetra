@@ -7,6 +7,7 @@ import React, { useCallback, useEffect, useRef, useState, type ReactNode } from 
 
 import {
   ApiRequestError,
+  cancelSubscription,
   deleteAccount,
   getSettingsProfile,
   getSubscription,
@@ -31,13 +32,14 @@ export interface SettingsScreenProps {
   readonly hasSurvey: boolean;
   readonly onClose: () => void;
   readonly onEditSurvey: () => void;
+  readonly onOpenPayment: () => void;
+  readonly onSubscriptionUpdated: (subscription: SubscriptionResponse) => void;
   readonly onSignedOut: () => void;
   readonly onSessionExpired: () => void;
 }
 
 const runtimeEnv = (typeof import.meta.env === 'object' ? import.meta.env : {}) as ImportMetaEnv;
 const supportEmail = runtimeEnv.VITE_SUPPORT_EMAIL ?? 'coach@kinetra.app';
-const paymentUrl = runtimeEnv.VITE_PAYMENT_URL ?? 'https://kinetra.app/subscribe';
 const privacyUrl = runtimeEnv.VITE_PRIVACY_URL ?? 'https://kinetra.app/privacy';
 const appVersion = runtimeEnv.VITE_APP_VERSION ?? '0.4.0';
 
@@ -68,6 +70,8 @@ export const SettingsScreen = ({
   hasSurvey,
   onClose,
   onEditSurvey,
+  onOpenPayment,
+  onSubscriptionUpdated,
   onSignedOut,
   onSessionExpired,
 }: SettingsScreenProps): ReactNode => {
@@ -171,6 +175,7 @@ export const SettingsScreen = ({
         setNotifications(profile.notification_preferences);
         setNotificationSaveStatus('idle');
         setLoadState({ kind: 'ready', profile, subscription });
+        onSubscriptionUpdated(subscription);
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted || requestVersion !== requestVersionRef.current) {
@@ -183,7 +188,7 @@ export const SettingsScreen = ({
         );
         setLoadState({ kind: 'error', message });
       });
-  }, [handleApiError]);
+  }, [handleApiError, onSubscriptionUpdated]);
 
   useEffect(() => {
     loadSettings();
@@ -276,6 +281,31 @@ export const SettingsScreen = ({
       .finally(onSignedOut);
   };
 
+  const confirmCancelSubscription = (): void => {
+    if (dialogBusy) {
+      return;
+    }
+
+    setDialogBusy(true);
+    setDialogError(null);
+    void cancelSubscription()
+      .then((subscription) => {
+        setLoadState((current) =>
+          current.kind === 'ready' ? { ...current, subscription } : current,
+        );
+        onSubscriptionUpdated(subscription);
+        setDialogBusy(false);
+        setActiveDialog(null);
+        setDialogError(null);
+      })
+      .catch((error: unknown) => {
+        setDialogBusy(false);
+        setDialogError(
+          handleApiError(error, 'Не удалось отменить автопродление. Попробуйте ещё раз.'),
+        );
+      });
+  };
+
   const confirmDelete = (): void => {
     if (dialogBusy || deleteConfirmation !== 'DELETE') {
       return;
@@ -314,13 +344,13 @@ export const SettingsScreen = ({
         themePreference={preference}
         resolvedTheme={resolvedTheme}
         supportEmail={supportEmail}
-        paymentUrl={paymentUrl}
         onClose={onClose}
         onNotificationsChange={setNotifications}
         onThemeChange={setPreference}
         onEditSurvey={onEditSurvey}
         onOpenLevel={() => openDialog('level')}
         onOpenAbout={() => openDialog('about')}
+        onOpenPayment={onOpenPayment}
         onOpenRenewalInfo={() => openDialog('renewal')}
         onOpenLogout={() => openDialog('logout')}
         onOpenDelete={() => openDialog('delete')}
@@ -336,6 +366,7 @@ export const SettingsScreen = ({
         onClose={closeDialog}
         onContinueDelete={() => setDeleteStage(2)}
         onDeleteConfirmationChange={setDeleteConfirmation}
+        onCancelSubscription={confirmCancelSubscription}
         onLogout={confirmLogout}
         onDelete={confirmDelete}
       />

@@ -3522,6 +3522,13 @@ h1 {
   font-weight: 600;
 }
 
+.settings-auto-renew-state {
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .settings-subscription-actions {
   flex-wrap: wrap;
   gap: 9px;
@@ -3962,5 +3969,398 @@ h1 {
   .settings-toggle,
   .settings-toggle span {
     transition: none;
+  }
+}
+
+/* T11 — payments, subscription verification and program paywall */
+.payment-shell,
+.payment-result-shell,
+.subscription-verification-shell {
+  min-width: 320px;
+  min-height: 100vh;
+  min-height: 100svh;
+  min-height: 100dvh;
+  color: var(--text);
+  background:
+    radial-gradient(circle at 18% -8%, rgba(200, 241, 105, 0.09), transparent 29rem),
+    var(--background);
+}
+
+.program-subscription-locked {
+  padding-bottom: calc(84px + env(safe-area-inset-bottom));
+}
+
+.payment-shell {
+  padding: max(24px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+    max(32px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+}
+
+.payment-layout {
+  width: min(560px, 100%);
+  margin: 0 auto;
+}
+
+.payment-topbar,
+.payment-brand,
+.payment-price,
+.payment-benefits li {
+  display: flex;
+  align-items: center;
+}
+
+.payment-topbar {
+  min-height: 52px;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 24px;
+}
+
+.payment-brand {
+  gap: 10px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+}
+
+.payment-brand > span {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 10px;
+  color: var(--accent-ink);
+  background: var(--accent-fill);
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+}
+
+.payment-back {
+  min-width: 72px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  color: var(--text);
+  background: var(--surface);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.payment-back:disabled {
+  cursor: wait;
+  opacity: 0.5;
+}
+
+.payment-card {
+  padding: 24px;
+  border: 1px solid var(--accent-fill);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: 0 28px 82px var(--shadow-soft);
+}
+
+.payment-card h1,
+.payment-result-card h1,
+.subscription-verification-card h1,
+.subscription-paywall h2 {
+  margin: 0;
+  color: var(--text);
+  font-weight: 650;
+  letter-spacing: -0.035em;
+}
+
+.payment-card h1 {
+  font-size: clamp(27px, 8vw, 36px);
+  line-height: 1.08;
+}
+
+.payment-price {
+  align-items: baseline;
+  gap: 8px;
+  margin: 18px 0 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.payment-price strong {
+  color: var(--text);
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.035em;
+}
+
+.payment-price span {
+  color: var(--muted);
+  font-size: 16px;
+  font-weight: 400;
+}
+
+.payment-benefits {
+  display: grid;
+  gap: 13px;
+  margin: 28px 0 0;
+  padding: 24px 0;
+  border-top: 1px solid var(--divider);
+  border-bottom: 1px solid var(--divider);
+  list-style: none;
+}
+
+.payment-benefits li {
+  align-items: flex-start;
+  gap: 11px;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+.payment-benefit-icon {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  margin-top: 1px;
+  fill: none;
+  stroke: var(--accent-text);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.payment-primary,
+.payment-secondary {
+  display: inline-flex;
+  width: 100%;
+  min-height: 52px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 18px;
+  border-radius: 12px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 750;
+  text-align: center;
+}
+
+.payment-primary {
+  border: 1px solid var(--accent-fill);
+  color: var(--accent-ink);
+  background: var(--accent-fill);
+}
+
+.payment-secondary {
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  background: transparent;
+}
+
+.payment-primary:disabled,
+.payment-secondary:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.payment-card > .payment-primary {
+  margin-top: 24px;
+}
+
+.payment-renewal-copy {
+  margin: 10px auto 0;
+  color: var(--muted-strong);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.payment-error {
+  margin: 18px 0 0;
+  color: var(--danger);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.payment-result-shell,
+.subscription-verification-shell {
+  display: grid;
+  place-items: center;
+  padding: max(24px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+    max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+}
+
+.payment-result-card,
+.subscription-verification-card {
+  width: min(520px, 100%);
+  padding: clamp(24px, 7vw, 36px);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: 0 28px 82px var(--shadow-soft);
+  text-align: center;
+}
+
+.payment-success-icon,
+.payment-cancel-icon,
+.subscription-paywall-mark {
+  display: grid;
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 22px;
+  place-items: center;
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--accent-fill) 14%, var(--surface));
+  font-size: 38px;
+  line-height: 1;
+}
+
+.payment-cancel-icon {
+  color: var(--muted);
+  background: var(--surface-raised);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 40px;
+  font-weight: 300;
+}
+
+.payment-result-card h1,
+.subscription-verification-card h1 {
+  font-size: clamp(28px, 8vw, 38px);
+  line-height: 1.08;
+}
+
+.payment-result-card > p,
+.subscription-verification-card > p {
+  margin: 15px 0 0;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1.55;
+}
+
+.payment-result-card > .payment-primary,
+.subscription-verification-card > .payment-primary {
+  margin-top: 26px;
+}
+
+.payment-result-card > .payment-secondary {
+  margin-top: 10px;
+}
+
+.subscription-verification-loader {
+  display: block;
+  width: 32px;
+  height: 32px;
+  margin: 24px auto 0;
+  border: 3px solid var(--divider);
+  border-top-color: var(--accent-text);
+  border-radius: 50%;
+  animation: subscription-verification-spin 800ms linear infinite;
+}
+
+@keyframes subscription-verification-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.subscription-paywall {
+  width: min(480px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  padding: 0;
+  border: 1px solid var(--border-emphasis);
+  border-radius: 16px;
+  color: var(--text);
+  background: var(--surface);
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.64);
+}
+
+.subscription-paywall::backdrop {
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+}
+
+.subscription-paywall-sheet {
+  padding: 24px;
+  text-align: center;
+}
+
+.subscription-paywall-mark {
+  width: 52px;
+  height: 52px;
+  margin-bottom: 18px;
+  color: var(--accent-ink);
+  background: var(--accent-fill);
+  font-size: 15px;
+  font-weight: 850;
+}
+
+.subscription-paywall h2 {
+  font-size: 26px;
+  line-height: 1.12;
+}
+
+.subscription-paywall p {
+  margin: 13px 0 0;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.subscription-paywall-actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+@media (max-width: 560px) {
+  .payment-topbar {
+    margin-bottom: 18px;
+  }
+
+  .payment-card {
+    padding: 22px 18px;
+  }
+
+  .payment-benefits {
+    margin-top: 24px;
+    padding: 21px 0;
+  }
+
+  .subscription-paywall {
+    width: 100%;
+    max-width: none;
+    max-height: min(88dvh, 680px);
+    margin: auto 0 0;
+    border-radius: 18px 18px 0 0;
+  }
+
+  .subscription-paywall-sheet {
+    padding: 24px 16px max(20px, env(safe-area-inset-bottom));
+  }
+}
+
+@media (max-width: 359px) {
+  .payment-shell,
+  .payment-result-shell,
+  .subscription-verification-shell {
+    padding-right: max(12px, env(safe-area-inset-right));
+    padding-left: max(12px, env(safe-area-inset-left));
+  }
+
+  .payment-brand {
+    letter-spacing: 0.12em;
+  }
+
+  .payment-back {
+    min-width: 62px;
+    padding: 0 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .subscription-verification-loader {
+    animation-duration: 1.8s;
   }
 }

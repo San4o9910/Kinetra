@@ -72,6 +72,7 @@ export interface SettingsDialogsProps {
   readonly onClose: () => void;
   readonly onContinueDelete: () => void;
   readonly onDeleteConfirmationChange: (value: string) => void;
+  readonly onCancelSubscription: () => void;
   readonly onLogout: () => void;
   readonly onDelete: () => void;
 }
@@ -87,6 +88,7 @@ export const SettingsDialogs = ({
   onClose,
   onContinueDelete,
   onDeleteConfirmationChange,
+  onCancelSubscription,
   onLogout,
   onDelete,
 }: SettingsDialogsProps): ReactNode => (
@@ -149,14 +151,32 @@ export const SettingsDialogs = ({
       describedBy="settings-renewal-description"
       onClose={onClose}
     >
-      <h2 id="settings-renewal-title">Управление автопродлением</h2>
+      <h2 id="settings-renewal-title">Отменить автопродление?</h2>
       <p id="settings-renewal-description">
-        Управление подпиской через кабинет провайдера появится в следующем обновлении. Пока
-        свяжитесь с тренером — мы поможем отменить автопродление.
+        Текущая подписка продолжит действовать до даты окончания. Новых списаний не будет.
       </p>
+      {error === null ? null : (
+        <p className="settings-dialog-error" role="alert">
+          {error}
+        </p>
+      )}
       <DialogActions>
-        <button className="settings-dialog-primary" type="button" onClick={onClose}>
-          Понятно
+        <button
+          className="settings-dialog-secondary"
+          type="button"
+          disabled={busy}
+          onClick={onClose}
+        >
+          Не отменять
+        </button>
+        <button
+          className="settings-dialog-primary"
+          data-testid="settings-cancel-auto-renew-confirm"
+          type="button"
+          disabled={busy}
+          onClick={onCancelSubscription}
+        >
+          {busy ? 'Отменяем…' : 'Отменить автопродление'}
         </button>
       </DialogActions>
     </ManagedDialog>

@@ -55,13 +55,13 @@ const renderSettings = (fixture: SubscriptionResponse = subscription): string =>
       themePreference: 'system',
       resolvedTheme: 'dark',
       supportEmail: 'coach@kinetra.app',
-      paymentUrl: 'https://kinetra.app/subscribe',
       onClose: () => undefined,
       onNotificationsChange: () => undefined,
       onThemeChange: () => undefined,
       onEditSurvey: () => undefined,
       onOpenLevel: () => undefined,
       onOpenAbout: () => undefined,
+      onOpenPayment: () => undefined,
       onOpenRenewalInfo: () => undefined,
       onOpenLogout: () => undefined,
       onOpenDelete: () => undefined,
@@ -94,12 +94,12 @@ test('T10 settings view renders all six sections and canonical controls', () => 
   assert.ok(markup.includes('data-testid="settings-delete-account"'));
 });
 
-test('subscription card renders provider, amount, expiry and renewal actions', () => {
+test('subscription card renders provider, amount, expiry and real T11 actions', () => {
   const markup = renderSettings();
   assert.ok(markup.includes('Активна до 15 февраля 2026'));
   assert.ok(markup.includes('ЮKassa'));
   assert.ok(markup.includes('799 ₽'));
-  assert.ok(markup.includes('Продлить'));
+  assert.equal(markup.includes('data-testid="settings-renew-subscription"'), false);
   assert.ok(markup.includes('Отменить автопродление'));
 
   const noneMarkup = renderSettings({
@@ -113,10 +113,39 @@ test('subscription card renders provider, amount, expiry and renewal actions', (
     days_remaining: null,
   });
   assert.ok(noneMarkup.includes('Нет подписки'));
+  assert.ok(noneMarkup.includes('Оформить подписку'));
+  assert.ok(noneMarkup.includes('data-testid="settings-renew-subscription"'));
   assert.equal(noneMarkup.includes('ЮKassa'), false);
+
+  const expiredMarkup = renderSettings({ ...subscription, status: 'expired', auto_renew: false });
+  assert.ok(expiredMarkup.includes('Продлить подписку'));
+
+  const canceledRenewalMarkup = renderSettings({ ...subscription, auto_renew: false });
+  assert.ok(canceledRenewalMarkup.includes('Автопродление отключено'));
 });
 
-test('settings dialogs expose logout confirmation and two-stage destructive deletion', () => {
+test('settings dialogs expose renewal cancellation and two-stage destructive deletion', () => {
+  const renewal = renderToStaticMarkup(
+    createElement(SettingsDialogs, {
+      activeDialog: 'renewal',
+      appVersion: '0.4.0',
+      privacyUrl: 'https://kinetra.app/privacy',
+      deleteStage: 1,
+      deleteConfirmation: '',
+      busy: false,
+      error: null,
+      onClose: () => undefined,
+      onContinueDelete: () => undefined,
+      onDeleteConfirmationChange: () => undefined,
+      onCancelSubscription: () => undefined,
+      onLogout: () => undefined,
+      onDelete: () => undefined,
+    }),
+  );
+  assert.ok(renewal.includes('Отменить автопродление?'));
+  assert.ok(renewal.includes('data-testid="settings-cancel-auto-renew-confirm"'));
+  assert.ok(renewal.includes('Новых списаний не будет'));
+
   const stageOne = renderToStaticMarkup(
     createElement(SettingsDialogs, {
       activeDialog: 'delete',
@@ -129,6 +158,7 @@ test('settings dialogs expose logout confirmation and two-stage destructive dele
       onClose: () => undefined,
       onContinueDelete: () => undefined,
       onDeleteConfirmationChange: () => undefined,
+      onCancelSubscription: () => undefined,
       onLogout: () => undefined,
       onDelete: () => undefined,
     }),
@@ -148,6 +178,7 @@ test('settings dialogs expose logout confirmation and two-stage destructive dele
       onClose: () => undefined,
       onContinueDelete: () => undefined,
       onDeleteConfirmationChange: () => undefined,
+      onCancelSubscription: () => undefined,
       onLogout: () => undefined,
       onDelete: () => undefined,
     }),
@@ -168,7 +199,11 @@ test('settings model fixes date, time, debounce and subscription-state contracts
   assert.equal(formatMemberSince(profile.created_at), 'С нами с января 2026');
   assert.equal(formatSubscriptionDate('2026-02-15T00:00:00.000Z'), '15 февраля 2026');
   assert.equal(formatSubscriptionAmount(subscription), '799 ₽');
-  assert.equal(subscriptionPresentation(subscription).showRenew, true);
+  assert.equal(subscriptionPresentation(subscription).showRenew, false);
   assert.equal(subscriptionPresentation({ ...subscription, status: 'expired' }).tone, 'danger');
+  assert.equal(
+    subscriptionPresentation({ ...subscription, status: 'expired' }).primaryActionLabel,
+    'Продлить подписку',
+  );
   assert.equal(subscriptionPresentation({ ...subscription, status: 'pending' }).showRenew, false);
 });

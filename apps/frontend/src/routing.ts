@@ -10,6 +10,9 @@ export const appRoutes = Object.freeze({
   progress: '/progress',
   settings: '/settings',
   editSurvey: '/settings/survey',
+  payment: '/payment',
+  paymentSuccess: '/payment/success',
+  paymentCancel: '/payment/cancel',
 } as const);
 
 export type AppRoute = (typeof appRoutes)[keyof typeof appRoutes];
@@ -36,6 +39,11 @@ export const normalizeAppRoute = (pathname: string): AppRoute => {
 
 export const isSettingsRoute = (route: AppRoute): boolean =>
   route === appRoutes.settings || route === appRoutes.editSurvey;
+
+export const isPaymentRoute = (route: AppRoute): boolean =>
+  route === appRoutes.payment ||
+  route === appRoutes.paymentSuccess ||
+  route === appRoutes.paymentCancel;
 
 export const isActiveAppRoute = (route: AppRoute): boolean =>
   route === appRoutes.home ||
