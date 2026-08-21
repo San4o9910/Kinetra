@@ -55,6 +55,7 @@ const requiredFiles = [
   'docs/T08_SCHEDULE.md',
   'docs/T09_PROGRESS.md',
   'docs/T10_SETTINGS.md',
+  'docs/T11_PAYMENTS.md',
   'apps/frontend/index.html',
   'apps/frontend/src/features/auth/LoginScreen.tsx',
   'apps/frontend/src/features/survey/SurveyWizard.tsx',
@@ -69,6 +70,7 @@ const requiredFiles = [
   'apps/frontend/src/features/program/ProgramScreen.tsx',
   'apps/frontend/src/features/program/ProgramWeekView.tsx',
   'apps/frontend/src/features/program/WorkoutPlayer.tsx',
+  'apps/frontend/src/features/program/history.ts',
   'apps/frontend/src/features/program/model.ts',
   'apps/frontend/src/features/schedule/ScheduleScreen.tsx',
   'apps/frontend/src/features/schedule/ScheduleView.tsx',
@@ -84,6 +86,14 @@ const requiredFiles = [
   'apps/frontend/src/features/settings/model.ts',
   'apps/frontend/src/features/theme/ThemeProvider.tsx',
   'apps/frontend/src/features/theme/model.ts',
+  'apps/frontend/src/features/payments/model.ts',
+  'apps/frontend/src/features/payments/PaymentView.tsx',
+  'apps/frontend/src/features/payments/PaymentScreen.tsx',
+  'apps/frontend/src/features/payments/PaymentSuccessScreen.tsx',
+  'apps/frontend/src/features/payments/PaymentCancelScreen.tsx',
+  'apps/frontend/src/features/payments/SubscriptionPaywallDialog.tsx',
+  'apps/frontend/src/features/payments/SubscriptionLockedScreen.tsx',
+  'apps/frontend/src/features/payments/SubscriptionVerificationState.tsx',
   'apps/frontend/src/routing.ts',
   'apps/frontend/test/api-session.test.ts',
   'apps/frontend/test/survey-routing.test.ts',
@@ -99,6 +109,8 @@ const requiredFiles = [
   'apps/frontend/test/settings-api.test.ts',
   'apps/frontend/test/settings.test.ts',
   'apps/frontend/test/theme.test.ts',
+  'apps/frontend/test/payments-api.test.ts',
+  'apps/frontend/test/payments.test.ts',
   'apps/frontend/public/manifest.webmanifest',
   'apps/frontend/public/service-worker.js',
   'apps/frontend/public/offline.html',
@@ -115,6 +127,7 @@ const requiredFiles = [
   'apps/backend/migrations/006_schedule_copy.sql',
   'apps/backend/migrations/007_progress_data_contract.sql',
   'apps/backend/migrations/008_notifications.sql',
+  'apps/backend/migrations/009_payments.sql',
   'apps/backend/scripts/migrate.mjs',
   'apps/backend/scripts/seed.mjs',
   'apps/backend/scripts/verify-content.mjs',
@@ -158,6 +171,17 @@ const requiredFiles = [
   'apps/backend/src/settings/runtime.ts',
   'apps/backend/src/settings/schema.ts',
   'apps/backend/src/settings/service.ts',
+  'apps/backend/src/payments/repository.ts',
+  'apps/backend/src/payments/postgres-payments.repository.ts',
+  'apps/backend/src/payments/schema.ts',
+  'apps/backend/src/payments/yookassa-client.ts',
+  'apps/backend/src/payments/webhook-source.ts',
+  'apps/backend/src/payments/service.ts',
+  'apps/backend/src/payments/router.ts',
+  'apps/backend/src/payments/runtime.ts',
+  'apps/backend/src/payments/renewal-service.ts',
+  'apps/backend/src/payments/run-renewals.ts',
+  'apps/backend/src/payments/subscription-access.ts',
   'apps/backend/test/auth.e2e.test.ts',
   'apps/backend/test/profile.e2e.test.ts',
   'apps/backend/test/profile.postgres.test.ts',
@@ -169,11 +193,17 @@ const requiredFiles = [
   'apps/backend/test/progress.postgres.test.ts',
   'apps/backend/test/settings.e2e.test.ts',
   'apps/backend/test/settings.postgres.test.ts',
+  'apps/backend/test/payments.e2e.test.ts',
+  'apps/backend/test/payments.postgres.test.ts',
+  'apps/backend/test/yookassa-client.test.ts',
   'apps/backend/test/support/fake-object-url-signer.ts',
+  'apps/backend/test/support/fake-subscription-access-checker.ts',
+  'apps/backend/test/support/fake-yookassa-client.ts',
   'apps/backend/test/support/in-memory-base-lessons.repository.ts',
   'apps/backend/test/support/in-memory-program.repository.ts',
   'apps/backend/test/support/in-memory-progress.repository.ts',
   'apps/backend/test/support/in-memory-settings.repository.ts',
+  'apps/backend/test/support/in-memory-payments.repository.ts',
   'scripts/test-frontend-browser.mjs',
   'packages/shared/src/index.ts',
 ];
@@ -222,6 +252,16 @@ for (const dependency of ['@aws-sdk/client-s3', '@aws-sdk/s3-request-presigner']
   }
 }
 
+if (
+  !Object.keys(backendPackage.dependencies ?? {}).some((dependency) =>
+    /yoo-?kassa|yookassa|yoomoney/iu.test(dependency),
+  )
+) {
+  pass('T11 uses the documented YooKassa REST API without an unofficial SDK dependency');
+} else {
+  fail('T11 uses the documented YooKassa REST API without an unofficial SDK dependency');
+}
+
 if (frontendPackage.dependencies?.['socket.io-client']) {
   pass('frontend dependency: socket.io-client');
 } else {
@@ -234,6 +274,12 @@ for (const script of ['db:migrate', 'db:seed', 'db:verify-content', 'test', 'typ
   } else {
     fail(`backend script: ${script}`);
   }
+}
+
+if (backendPackage.scripts?.['payments:renew'] === 'node dist/payments/run-renewals.js') {
+  pass('T11 backend exposes the built daily renewal command');
+} else {
+  fail('T11 backend exposes the built daily renewal command');
 }
 
 const manifest = await readJson('apps/frontend/public/manifest.webmanifest');
@@ -2494,7 +2540,7 @@ for (const modelContract of [
   '{ length: 33 }',
   '6 * 60 + index * 30',
   'SETTINGS_NOTIFICATION_DEBOUNCE_MS = 450',
-  'days_remaining <= 7',
+  "primaryActionLabel: 'Продлить подписку'",
   'showCancelAutoRenew: subscription.auto_renew === true',
 ]) {
   expectIncludes(settingsModel, modelContract, `T10 settings model contract: ${modelContract}`);
@@ -2531,7 +2577,7 @@ const settingsDialogs = await readText('apps/frontend/src/features/settings/Sett
 for (const dialogContract of [
   '<dialog',
   'dialog.showModal()',
-  'Управление подпиской через кабинет провайдера появится в следующем обновлении.',
+  'testId="settings-renewal-dialog"',
   'Мастерство',
   'Пик',
   'Политика конфиденциальности',
@@ -2650,8 +2696,8 @@ for (const testContract of [
 const settingsFrontendTests = await readText('apps/frontend/test/settings.test.ts');
 for (const testContract of [
   'T10 settings view renders all six sections and canonical controls',
-  'subscription card renders provider, amount, expiry and renewal actions',
-  'settings dialogs expose logout confirmation and two-stage destructive deletion',
+  'subscription card renders provider, amount, expiry and real T11 actions',
+  'settings dialogs expose renewal cancellation and two-stage destructive deletion',
   'settings model fixes date, time, debounce and subscription-state contracts',
 ]) {
   expectIncludes(settingsFrontendTests, testContract, `T10 frontend unit test: ${testContract}`);
@@ -2725,6 +2771,450 @@ expectIncludes(
   'CI emits the T10 suite completion marker',
 );
 
+const paymentsMigration = await readText('apps/backend/migrations/009_payments.sql');
+for (const migrationContract of [
+  'ADD COLUMN IF NOT EXISTS payment_method_id text',
+  'CREATE TABLE IF NOT EXISTS subscription_payment_attempts',
+  'CREATE TABLE IF NOT EXISTS payment_events',
+  'subscription_payment_attempts_idempotency_unique_idx',
+  'subscription_payment_attempts_open_initial_user_unique_idx',
+  'subscription_payment_attempts_open_renewal_unique_idx',
+  'payment_events_event_id_unique_idx',
+  "WHERE status = 'active' AND auto_renew = true",
+]) {
+  expectIncludes(paymentsMigration, migrationContract, `T11 migration: ${migrationContract}`);
+}
+
+expectIncludes(
+  backendApp,
+  "app.use('/api/v1/payments', createPaymentsRouter(paymentsRuntime))",
+  'T11 mounts the payments router at the exact API prefix',
+);
+
+const paymentsSchema = await readText('apps/backend/src/payments/schema.ts');
+for (const schemaContract of [
+  'return_url: z.string().url().max(2_048)',
+  '.strict()',
+  "type: z.literal('notification')",
+  "z.enum(['payment.succeeded', 'payment.canceled', 'refund.succeeded'])",
+  'payment_id: z.string().min(1)',
+  'saved: z.boolean()',
+]) {
+  expectIncludes(paymentsSchema, schemaContract, `T11 payment schema: ${schemaContract}`);
+}
+
+const paymentsRouter = await readText('apps/backend/src/payments/router.ts');
+for (const routerContract of [
+  "router.post(\n    '/webhook'",
+  'webhookSourceVerifier.isAllowed(request.ip)',
+  'response.status(200).send()',
+  "'/create'",
+  'authMiddleware',
+  'response.status(201).json(payment)',
+  "'/cancel-subscription'",
+  "response.setHeader('Cache-Control', 'no-store')",
+]) {
+  expectIncludes(paymentsRouter, routerContract, `T11 payments router: ${routerContract}`);
+}
+
+const webhookSource = await readText('apps/backend/src/payments/webhook-source.ts');
+for (const sourceContract of [
+  "this.allowed.addSubnet('185.71.76.0', 27, 'ipv4')",
+  "this.allowed.addSubnet('185.71.77.0', 27, 'ipv4')",
+  "this.allowed.addSubnet('77.75.153.0', 25, 'ipv4')",
+  "this.allowed.addAddress('77.75.156.11', 'ipv4')",
+  "this.allowed.addAddress('77.75.156.35', 'ipv4')",
+  "this.allowed.addSubnet('77.75.154.128', 25, 'ipv4')",
+  "this.allowed.addSubnet('2a02:5180::', 32, 'ipv6')",
+  "withoutZone.startsWith('::ffff:')",
+  'return false',
+]) {
+  expectIncludes(webhookSource, sourceContract, `T11 webhook source gate: ${sourceContract}`);
+}
+
+const yooKassaClient = await readText('apps/backend/src/payments/yookassa-client.ts');
+for (const clientContract of [
+  "'https://api.yookassa.ru/v3'",
+  "headers: { 'Idempotence-Key': idempotencyKey }",
+  'Authorization: this.authorization',
+  'AbortSignal.timeout(this.options.requestTimeoutMs)',
+  'response.status === 408 || response.status === 429 || response.status >= 500',
+  'getPayment(paymentId: string)',
+  'getRefund(refundId: string)',
+]) {
+  expectIncludes(
+    yooKassaClient,
+    clientContract,
+    `T11 direct YooKassa REST client: ${clientContract}`,
+  );
+}
+
+const paymentsService = await readText('apps/backend/src/payments/service.ts');
+for (const serviceContract of [
+  "export const SUBSCRIPTION_AMOUNT_VALUE = '799.00'",
+  "export const SUBSCRIPTION_CURRENCY = 'RUB'",
+  'this.allowedReturnUrls.has(requestedReturnUrl)',
+  'capture: true',
+  'save_payment_method: true',
+  "type: 'redirect'",
+  'await this.client.getPayment',
+  'await this.client.getRefund',
+  'eventId: `yukassa:${notification.event}:${providerObjectId}`',
+  'payment.payment_method?.saved === true',
+  "attached.kind === 'terminal'",
+  'cancelAutoRenew(userId, now)',
+]) {
+  expectIncludes(paymentsService, serviceContract, `T11 payment service: ${serviceContract}`);
+}
+
+const paymentsRepository = await readText(
+  'apps/backend/src/payments/postgres-payments.repository.ts',
+);
+for (const repositoryContract of [
+  "status IN ('creating', 'pending')",
+  'ON CONFLICT (event_id) DO NOTHING',
+  'SET auto_renew = false',
+  'FOR UPDATE SKIP LOCKED',
+  "kind = 'renewal'",
+  'subscription.payment_method_id IS NOT NULL',
+  'executeRenewalClaim(',
+  'FOR UPDATE OF attempt, subscription',
+  'subscription.auto_renew = true',
+  'row.provider_payment_id !== input.providerPaymentId',
+  'isTerminalAttemptStatus(row.status)',
+  "return { kind: 'terminal', status: row.status }",
+]) {
+  expectIncludes(
+    paymentsRepository,
+    repositoryContract,
+    `T11 PostgreSQL payment contract: ${repositoryContract}`,
+  );
+}
+
+const renewalService = await readText('apps/backend/src/payments/renewal-service.ts');
+for (const renewalContract of [
+  'claimDueRenewals(',
+  'payment_method_id: validatedClaim.paymentMethodId',
+  'capture: true',
+  'validatedClaim.idempotencyKey',
+  "execution.kind === 'skipped'",
+  "reason: 'payment_cancelled'",
+]) {
+  expectIncludes(renewalService, renewalContract, `T11 renewal worker: ${renewalContract}`);
+}
+
+const subscriptionAccess = await readText('apps/backend/src/payments/subscription-access.ts');
+for (const accessContract of [
+  "status = 'active'",
+  'starts_at IS NOT NULL',
+  'starts_at <= $2',
+  'expires_at IS NOT NULL',
+  'expires_at > $2',
+]) {
+  expectIncludes(subscriptionAccess, accessContract, `T11 server entitlement: ${accessContract}`);
+}
+for (const accessContract of [
+  'await this.requireActiveSubscription(userId)',
+  "'SUBSCRIPTION_REQUIRED'",
+  '403',
+]) {
+  expectIncludes(programService, accessContract, `T11 program paywall: ${accessContract}`);
+}
+
+for (const sharedPaymentContract of [
+  'export interface CreatePaymentRequest',
+  'readonly return_url: string',
+  'export interface CreatePaymentResponse',
+  'readonly confirmation_url: string',
+  "readonly status: 'pending'",
+]) {
+  expectIncludes(
+    sharedContracts,
+    sharedPaymentContract,
+    `T11 shared DTO: ${sharedPaymentContract}`,
+  );
+}
+
+for (const frontendApiContract of [
+  "'/api/v1/payments/create'",
+  'const body: CreatePaymentRequest = { return_url: returnUrl }',
+  "'/api/v1/payments/cancel-subscription'",
+  'public async createPayment(returnUrl: string)',
+  'public async cancelSubscription()',
+]) {
+  expectIncludes(frontendApi, frontendApiContract, `T11 frontend API: ${frontendApiContract}`);
+}
+
+for (const routeContract of [
+  "payment: '/payment'",
+  "paymentSuccess: '/payment/success'",
+  "paymentCancel: '/payment/cancel'",
+  'export const isPaymentRoute',
+]) {
+  expectIncludes(routes, routeContract, `T11 frontend route: ${routeContract}`);
+}
+
+const paymentModel = await readText('apps/frontend/src/features/payments/model.ts');
+for (const pollingContract of [
+  "export const PAYMENT_PRICE_LABEL = '799 ₽ / месяц'",
+  'export const PAYMENT_POLL_INTERVAL_MS = 2_000',
+  'export const PAYMENT_POLL_TIMEOUT_MS = 30_000',
+  'while (!isSubscriptionActive(subscription, now()))',
+  'const operationController = new AbortController()',
+  'scheduleDeadline(timeoutMs, () => {',
+  'withinDeadline(fetchSubscription(operationController.signal))',
+  'operationController.abort()',
+]) {
+  expectIncludes(paymentModel, pollingContract, `T11 payment model: ${pollingContract}`);
+}
+
+const paymentScreen = await readText('apps/frontend/src/features/payments/PaymentScreen.tsx');
+for (const paymentScreenContract of [
+  'submissionInFlight.current',
+  'new URL(appRoutes.paymentSuccess, window.location.origin).toString()',
+  'window.location.assign(confirmationUrl)',
+]) {
+  expectIncludes(
+    paymentScreen,
+    paymentScreenContract,
+    `T11 checkout screen: ${paymentScreenContract}`,
+  );
+}
+
+const paymentView = await readText('apps/frontend/src/features/payments/PaymentView.tsx');
+for (const paymentViewContract of [
+  'data-testid="payment-screen"',
+  'Kinetra Premium',
+  'data-testid="payment-price"',
+  'data-testid="payment-benefits"',
+  'data-testid="create-payment"',
+  'Подписка продлевается автоматически',
+]) {
+  expectIncludes(paymentView, paymentViewContract, `T11 checkout content: ${paymentViewContract}`);
+}
+
+const paymentSuccess = await readText(
+  'apps/frontend/src/features/payments/PaymentSuccessScreen.tsx',
+);
+for (const successContract of [
+  'pollForActiveSubscription',
+  'data-testid="payment-success-screen"',
+  'data-testid="payment-success-status"',
+  'data-testid="retry-subscription-check"',
+  'data-testid="start-training"',
+  'onActivated(result.subscription)',
+]) {
+  expectIncludes(paymentSuccess, successContract, `T11 success verification: ${successContract}`);
+}
+
+const paymentCancel = await readText('apps/frontend/src/features/payments/PaymentCancelScreen.tsx');
+for (const cancelContract of [
+  'data-testid="payment-cancel-screen"',
+  'data-testid="retry-payment"',
+  'data-testid="payment-later"',
+]) {
+  expectIncludes(paymentCancel, cancelContract, `T11 cancel page: ${cancelContract}`);
+}
+
+const paywall = await readText('apps/frontend/src/features/payments/SubscriptionPaywallDialog.tsx');
+for (const paywallContract of [
+  'data-testid="subscription-paywall-dialog"',
+  'data-testid="paywall-renew"',
+  'data-testid="paywall-close"',
+  "status === 'expired'",
+]) {
+  expectIncludes(paywall, paywallContract, `T11 premium paywall: ${paywallContract}`);
+}
+
+for (const appPaymentContract of [
+  'route === appRoutes.paymentSuccess',
+  'route === appRoutes.paymentCancel',
+  'route === appRoutes.payment',
+  'handleSubscriptionUpdated',
+  'onSubscriptionRequired={loadSubscription}',
+  'clearWorkoutHistorySentinel();',
+]) {
+  expectIncludes(frontendApp, appPaymentContract, `T11 App integration: ${appPaymentContract}`);
+}
+
+const programHistory = await readText('apps/frontend/src/features/program/history.ts');
+for (const historyContract of [
+  "['kinetraWorkoutVideoId', 'kinetraProgramWeek']",
+  'delete nextState[key]',
+  "window.history.replaceState(nextState, '', window.location.href)",
+]) {
+  expectIncludes(
+    programHistory,
+    historyContract,
+    `T11 expired entitlement clears only workout history: ${historyContract}`,
+  );
+}
+
+for (const settingsPaymentContract of [
+  'cancelSubscription()',
+  'onSubscriptionUpdated(subscription)',
+  "onOpenRenewalInfo={() => openDialog('renewal')}",
+]) {
+  expectIncludes(
+    settingsScreen,
+    settingsPaymentContract,
+    `T11 Settings integration: ${settingsPaymentContract}`,
+  );
+}
+for (const settingsDialogContract of [
+  'Отменить автопродление?',
+  'data-testid="settings-cancel-auto-renew-confirm"',
+  'до даты окончания',
+]) {
+  expectIncludes(
+    settingsDialogs,
+    settingsDialogContract,
+    `T11 Settings cancellation: ${settingsDialogContract}`,
+  );
+}
+
+for (const styleContract of [
+  '/* T11 — payments, subscription verification and program paywall */',
+  '.payment-card',
+  '.payment-primary',
+  '.payment-result-card',
+  '.subscription-paywall',
+  '.program-subscription-locked',
+]) {
+  expectIncludes(frontendStyles, styleContract, `T11 payment style: ${styleContract}`);
+}
+
+const paymentsFrontendTests = await readText('apps/frontend/test/payments.test.ts');
+for (const frontendTestContract of [
+  'T11 payment page renders the exact price, benefits and renewal disclosure',
+  'success polling is non-overlapping and stops on active or at 30 seconds',
+  'inactive subscription renders a locked T07 surface without rendering a player',
+  'inactive entitlement removes both workout sentinels while preserving unrelated history',
+]) {
+  expectIncludes(
+    paymentsFrontendTests,
+    frontendTestContract,
+    `T11 frontend test: ${frontendTestContract}`,
+  );
+}
+const paymentsFrontendApiTests = await readText('apps/frontend/test/payments-api.test.ts');
+expectIncludes(
+  paymentsFrontendApiTests,
+  'T11 API client creates a payment and cancels only auto-renewal with JWT auth',
+  'T11 frontend API test fixes exact protected payment calls',
+);
+
+const paymentsBackendTests = await readText('apps/backend/test/payments.e2e.test.ts');
+for (const backendTestContract of [
+  'payment create and cancellation are protected while webhook is public and IP-guarded',
+  'payment creation sends the exact subscription request and reuses an open attempt',
+  'a canceled webhook before provider attachment cannot regress to pending',
+  'a succeeded webhook before provider attachment cannot regress to pending',
+  'an unsaved provider payment method is never persisted or enabled for renewal',
+  'verified succeeded webhook activates exactly once and cancel preserves paid expiry',
+  'canceled and full-refund webhooks use verified provider objects',
+  'renewal worker retries a durable creating attempt with the same idempotency key',
+  'KINETRA_T11_BACKEND_E2E=PASS',
+  'KINETRA_T11_WEBHOOK_AUTH=PASS',
+  'KINETRA_T11_WEBHOOK_IDEMPOTENCY=PASS',
+  'KINETRA_T11_RENEWAL_IDEMPOTENCY=PASS',
+]) {
+  expectIncludes(
+    paymentsBackendTests,
+    backendTestContract,
+    `T11 backend E2E: ${backendTestContract}`,
+  );
+}
+
+const paymentsPostgresTests = await readText('apps/backend/test/payments.postgres.test.ts');
+for (const postgresTestContract of [
+  'KINETRA_T11_POSTGRES_INTEGRATION=PASS',
+  'KINETRA_T11_RENEWAL_IDEMPOTENCY=PASS',
+  'claimDueRenewals',
+  'SELECT COUNT(*)::text AS count FROM payment_events WHERE event_id = $1',
+  'KINETRA_T11_ATTACH_MONOTONICITY=PASS',
+]) {
+  expectIncludes(
+    paymentsPostgresTests,
+    postgresTestContract,
+    `T11 PostgreSQL test: ${postgresTestContract}`,
+  );
+}
+
+const yooKassaClientTests = await readText('apps/backend/test/yookassa-client.test.ts');
+for (const clientTestContract of [
+  'native YooKassa client sends Basic auth/idempotency and validates provider objects',
+  "request.headers['idempotence-key']",
+  'request.headers.authorization',
+  'KINETRA_T11_YOOKASSA_CLIENT=PASS',
+]) {
+  expectIncludes(
+    yooKassaClientTests,
+    clientTestContract,
+    `T11 YooKassa client test: ${clientTestContract}`,
+  );
+}
+
+const paymentsDocumentation = await readText('docs/T11_PAYMENTS.md');
+for (const documentationContract of [
+  'POST /api/v1/payments/create',
+  'POST /api/v1/payments/webhook',
+  'POST /api/v1/payments/cancel-subscription',
+  'Idempotence-Key',
+  '185.71.76.0/27',
+  '2a02:5180::/32',
+  'payment_method.saved',
+  '54-ФЗ',
+  'https://yookassa.ru/developers/using-api/webhooks',
+]) {
+  expectIncludes(
+    paymentsDocumentation,
+    documentationContract,
+    `T11 documented contract: ${documentationContract}`,
+  );
+}
+
+for (const marker of [
+  'KINETRA_T11_PAYMENT_FLOW=PASS',
+  'KINETRA_T11_PAYWALL=PASS',
+  'KINETRA_T11_SETTINGS_SUBSCRIPTION=PASS',
+  'KINETRA_T11_BROWSER_E2E=PASS',
+]) {
+  expectIncludes(browserTest, marker, `T11 browser marker: ${marker}`);
+}
+
+for (const marker of [
+  'KINETRA_T11_YOOKASSA_CLIENT=PASS',
+  'KINETRA_T11_BACKEND_E2E=PASS',
+  'KINETRA_T11_WEBHOOK_AUTH=PASS',
+  'KINETRA_T11_WEBHOOK_IDEMPOTENCY=PASS',
+  'KINETRA_T11_POSTGRES_INTEGRATION=PASS',
+  'KINETRA_T11_RENEWAL_IDEMPOTENCY=PASS',
+  'KINETRA_T11_PAYMENT_FLOW=PASS',
+  'KINETRA_T11_PAYWALL=PASS',
+  'KINETRA_T11_SETTINGS_SUBSCRIPTION=PASS',
+  'KINETRA_T11_BROWSER_E2E=PASS',
+]) {
+  expectIncludes(ciWorkflow, `grep -F '${marker}'`, `CI requires T11 marker: ${marker}`);
+}
+expectIncludes(
+  ciWorkflow,
+  "echo 'KINETRA_T11_TEST_SUITE=PASS'",
+  'CI emits the T11 suite completion marker',
+);
+for (const ciEnvironmentContract of [
+  'YUKASSA_SHOP_ID: ci-test-shop-not-real',
+  'YUKASSA_SECRET_KEY: ci-test-secret-not-real',
+  'YUKASSA_RETURN_URL: http://localhost:5173/payment/success',
+  "YUKASSA_REQUEST_TIMEOUT_MS: '10000'",
+]) {
+  expectIncludes(
+    ciWorkflow,
+    ciEnvironmentContract,
+    `CI provides safe T11 test env: ${ciEnvironmentContract}`,
+  );
+}
+
 for (const temporaryArtifact of [
   '.github/workflows/apply-t04-fixes.yml',
   '.github/workflows/apply-t05.yml',
@@ -2733,6 +3223,7 @@ for (const temporaryArtifact of [
   '.github/workflows/apply-t08.yml',
   '.github/workflows/apply-t09.yml',
   '.github/workflows/apply-t10.yml',
+  '.github/workflows/apply-t11.yml',
   '.github/workflows/export-dev-env.yml',
   '.github/workflows/export-full-env.yml',
   '.github/workflows/export-source.yml',
@@ -2742,6 +3233,7 @@ for (const temporaryArtifact of [
   '.t08-bootstrap',
   '.t09-bootstrap',
   '.t10-bootstrap',
+  '.t11-bootstrap',
   'docs/.probe',
   'docs/.t05-pr-trigger',
   'docs/.t06-pr-trigger',
@@ -2749,6 +3241,7 @@ for (const temporaryArtifact of [
   'docs/.t08-pr-trigger',
   'docs/.t09-pr-trigger',
   'docs/.t10-pr-trigger',
+  'docs/.t11-pr-trigger',
 ]) {
   try {
     await access(resolve(root, temporaryArtifact));
@@ -2824,6 +3317,20 @@ for (const key of [
 ]) {
   expectMatches(envExample, new RegExp(`^${key}=`, 'mu'), `T06 storage option: ${key}`);
 }
+
+for (const key of [
+  'YUKASSA_SHOP_ID',
+  'YUKASSA_SECRET_KEY',
+  'YUKASSA_RETURN_URL',
+  'YUKASSA_REQUEST_TIMEOUT_MS',
+]) {
+  expectMatches(envExample, new RegExp(`^${key}=`, 'mu'), `T11 YooKassa option: ${key}`);
+}
+expectIncludes(
+  envExample,
+  'YUKASSA_RETURN_URL=http://localhost:5173/payment/success',
+  'T11 local return URL targets the exact success route',
+);
 
 try {
   await access(resolve(root, '.env'));

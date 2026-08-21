@@ -15,6 +15,16 @@ const frontendOrigin = browserApiOrigin;
 const chromeShutdownTimeoutMs = 5_000;
 const profileCleanupAttempts = 3;
 const profileCleanupDelayMs = 500;
+const millisecondsPerDay = 24 * 60 * 60 * 1_000;
+const browserFixtureNow = Date.now();
+const fixtureTimestamp = (daysFromNow) =>
+  new Date(browserFixtureNow + daysFromNow * millisecondsPerDay).toISOString();
+const initialSubscriptionStartsAt = fixtureTimestamp(-30);
+const initialSubscriptionExpiresAt = fixtureTimestamp(30);
+const expiredSubscriptionStartsAt = fixtureTimestamp(-60);
+const expiredSubscriptionExpiresAt = fixtureTimestamp(-1);
+const renewedSubscriptionStartsAt = fixtureTimestamp(0);
+const renewedSubscriptionExpiresAt = fixtureTimestamp(30);
 
 const sleep = (milliseconds) =>
   new Promise((resolve) => {
@@ -85,6 +95,8 @@ const counters = {
   goalPut: 0,
   settingsProfileGet: 0,
   subscriptionGet: 0,
+  paymentCreate: 0,
+  subscriptionCancel: 0,
   notificationsPut: 0,
   accountDelete: 0,
   weekGet: 0,
@@ -424,16 +436,17 @@ const settingsProfilePayload = () => ({
   notification_preferences: notificationPreferences,
 });
 
-const subscriptionPayload = {
+let subscriptionPayload = {
   status: 'active',
   provider: 'yukassa',
-  starts_at: '2026-07-27T00:00:00.000Z',
-  expires_at: '2026-08-27T00:00:00.000Z',
+  starts_at: initialSubscriptionStartsAt,
+  expires_at: initialSubscriptionExpiresAt,
   amount: 799,
   currency: 'RUB',
   auto_renew: true,
-  days_remaining: 6,
+  days_remaining: 30,
 };
+let pendingSubscriptionPollsRemaining = 0;
 
 const baseLessonsPayload = () => {
   const totalCompleted = baseLessons.filter(
@@ -525,6 +538,23 @@ const createMockApiServer = () =>
 
     if (request.method === 'GET' && request.url === '/browser-test-health') {
       json(response, 200, { status: 'ok' });
+      return;
+    }
+
+    if (request.method === 'POST' && request.url === '/__browser-test/subscription/expire') {
+      subscriptionPayload = {
+        status: 'expired',
+        provider: 'yukassa',
+        starts_at: expiredSubscriptionStartsAt,
+        expires_at: expiredSubscriptionExpiresAt,
+        amount: 799,
+        currency: 'RUB',
+        auto_renew: false,
+        days_remaining: 0,
+      };
+      pendingSubscriptionPollsRemaining = 0;
+      response.writeHead(204, { 'Cache-Control': 'no-store' });
+      response.end();
       return;
     }
 
@@ -649,6 +679,68 @@ const createMockApiServer = () =>
       }
 
       counters.subscriptionGet += 1;
+      if (subscriptionPayload.status === 'pending') {
+        if (pendingSubscriptionPollsRemaining > 0) {
+          pendingSubscriptionPollsRemaining -= 1;
+        } else {
+          subscriptionPayload = {
+            status: 'active',
+            provider: 'yukassa',
+            starts_at: renewedSubscriptionStartsAt,
+            expires_at: renewedSubscriptionExpiresAt,
+            amount: 799,
+            currency: 'RUB',
+            auto_renew: true,
+            days_remaining: 30,
+          };
+        }
+      }
+      json(response, 200, subscriptionPayload);
+      return;
+    }
+
+    if (request.method === 'POST' && request.url === '/api/v1/payments/create') {
+      if (!hasValidAccessToken(request)) {
+        json(response, 401, {
+          error: { code: 'AUTHENTICATION_REQUIRED', message: 'A valid access token is required.' },
+        });
+        return;
+      }
+
+      const body = await readJsonBody(request);
+      assert.deepEqual(body, { return_url: `${frontendOrigin}/payment/success` });
+      counters.paymentCreate += 1;
+      subscriptionPayload = {
+        status: 'pending',
+        provider: 'yukassa',
+        starts_at: null,
+        expires_at: null,
+        amount: 799,
+        currency: 'RUB',
+        auto_renew: true,
+        days_remaining: null,
+      };
+      // App bootstrap and PaymentSuccessScreen both request the canonical subscription. Keeping
+      // two pending responses proves the success screen polls instead of trusting the return URL.
+      pendingSubscriptionPollsRemaining = 2;
+      json(response, 201, {
+        payment_id: '2f000000-0000-4000-8000-000000000011',
+        confirmation_url: `${frontendOrigin}/payment/success?provider=browser-mock`,
+        status: 'pending',
+      });
+      return;
+    }
+
+    if (request.method === 'POST' && request.url === '/api/v1/payments/cancel-subscription') {
+      if (!hasValidAccessToken(request)) {
+        json(response, 401, {
+          error: { code: 'AUTHENTICATION_REQUIRED', message: 'A valid access token is required.' },
+        });
+        return;
+      }
+
+      counters.subscriptionCancel += 1;
+      subscriptionPayload = { ...subscriptionPayload, auto_renew: false };
       json(response, 200, subscriptionPayload);
       return;
     }
@@ -1923,6 +2015,56 @@ const runBrowserScenario = async () => {
       );
       await cdp.evaluate("window.scrollTo({ top: 0, behavior: 'auto' })");
     };
+    const assertPaymentLayout = async (width) => {
+      await cdp.send('Emulation.setDeviceMetricsOverride', {
+        width,
+        height: 820,
+        screenWidth: width,
+        screenHeight: 820,
+        deviceScaleFactor: 1,
+        mobile: true,
+      });
+      await cdp.evaluate(
+        'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+      );
+      const metrics = await cdp.evaluate(`(() => {
+        const card = document.querySelector(${JSON.stringify(selector('payment-card'))});
+        const submit = document.querySelector(${JSON.stringify(selector('create-payment'))});
+        const back = document.querySelector(${JSON.stringify('.payment-back')});
+        const benefits = [
+          ...document.querySelectorAll(${JSON.stringify('.payment-benefits li')})
+        ];
+        const cardRect = card?.getBoundingClientRect();
+        const submitRect = submit?.getBoundingClientRect();
+        const backRect = back?.getBoundingClientRect();
+        return {
+          innerWidth: window.innerWidth,
+          scrollWidth: document.documentElement.scrollWidth,
+          cardInsideViewport:
+            cardRect !== undefined && cardRect.left >= 0 && cardRect.right <= window.innerWidth,
+          cardRadius: card instanceof HTMLElement ? getComputedStyle(card).borderRadius : null,
+          benefitCount: benefits.length,
+          benefitsInsideViewport: benefits.every((benefit) => {
+            const rect = benefit.getBoundingClientRect();
+            return rect.left >= 0 && rect.right <= window.innerWidth;
+          }),
+          submitHeight: submitRect?.height ?? 0,
+          backWidth: backRect?.width ?? 0,
+          backHeight: backRect?.height ?? 0,
+        };
+      })()`);
+      assert.equal(metrics.innerWidth, width);
+      assert.ok(metrics.scrollWidth <= width, `Payment horizontal overflow at ${width}px.`);
+      assert.equal(metrics.cardInsideViewport, true, `Payment card overflow at ${width}px.`);
+      assert.notEqual(metrics.cardRadius, '0px');
+      assert.equal(metrics.benefitCount, 5);
+      assert.equal(metrics.benefitsInsideViewport, true, `Payment benefit overflow at ${width}px.`);
+      assert.ok(metrics.submitHeight >= 44, `Payment CTA below 44px at ${width}px.`);
+      assert.ok(
+        metrics.backWidth >= 44 && metrics.backHeight >= 44,
+        `Payment back target below 44px at ${width}px.`,
+      );
+    };
     const assertWeeklyMetricsDialogLayout = async (width) => {
       await cdp.send('Emulation.setDeviceMetricsOverride', {
         width,
@@ -3047,10 +3189,11 @@ const runBrowserScenario = async () => {
     assert.ok((await text('settings-screen'))?.includes('browser-test@example.com'));
     assert.equal(await text('settings-member-since'), 'С нами с августа 2026');
     assert.equal(await attribute('settings-subscription-card', 'data-status'), 'active');
-    assert.equal(await text('settings-subscription-status'), 'Активна до 27 августа 2026');
+    const initialSubscriptionStatusText = await text('settings-subscription-status');
+    assert.ok(initialSubscriptionStatusText?.startsWith('Активна до '));
     assert.ok((await text('settings-subscription-provider'))?.includes('ЮKassa'));
     assert.ok((await text('settings-subscription-provider'))?.includes('799 ₽'));
-    assert.equal(await exists('settings-renew-subscription'), true);
+    assert.equal(await exists('settings-renew-subscription'), false);
     assert.equal(await exists('settings-cancel-auto-renew'), true);
     assert.equal(await attribute('settings-contact-coach', 'href'), 'mailto:coach@kinetra.app');
     assert.equal(await disabled('edit-survey'), false);
@@ -3301,9 +3444,155 @@ const runBrowserScenario = async () => {
 
     await click('settings-cancel-auto-renew');
     await waitFor('T10 renewal dialog', () => dialogIsOpen('settings-renewal-dialog'));
-    assert.ok((await text('settings-renewal-dialog'))?.includes('Управление автопродлением'));
-    assert.ok((await text('settings-renewal-dialog'))?.includes('свяжитесь с тренером'));
+    assert.ok((await text('settings-renewal-dialog'))?.includes('Отменить автопродление?'));
+    assert.ok((await text('settings-renewal-dialog'))?.includes('до даты окончания'));
+    const subscriptionCancelsBeforeConfirmation = counters.subscriptionCancel;
     await closeDialogFromBackdrop('settings-renewal-dialog');
+    assert.equal(counters.subscriptionCancel, subscriptionCancelsBeforeConfirmation);
+
+    await click('settings-cancel-auto-renew');
+    await waitFor('T11 auto-renew cancellation confirmation', () =>
+      dialogIsOpen('settings-renewal-dialog'),
+    );
+    await click('settings-cancel-auto-renew-confirm');
+    await waitFor(
+      'T11 auto-renew disabled without shortening the active term',
+      async () =>
+        counters.subscriptionCancel === subscriptionCancelsBeforeConfirmation + 1 &&
+        !(await dialogIsOpen('settings-renewal-dialog')) &&
+        (await attribute('settings-subscription-card', 'data-status')) === 'active' &&
+        (await text('settings-subscription-status')) === initialSubscriptionStatusText &&
+        (await text('settings-auto-renew-state')) === 'Автопродление отключено' &&
+        !(await exists('settings-cancel-auto-renew')),
+    );
+    assert.equal(subscriptionPayload.auto_renew, false);
+    assert.equal(subscriptionPayload.expires_at, initialSubscriptionExpiresAt);
+    console.log('KINETRA_T11_SETTINGS_SUBSCRIPTION=PASS');
+
+    const currentWeekRequestsBeforePaywall = counters.currentWeekGet;
+    const expireStatus = await cdp.evaluate(`fetch(
+      ${JSON.stringify(`${frontendOrigin}/__browser-test/subscription/expire`)},
+      { method: 'POST' }
+    ).then((response) => {
+      window.history.replaceState(
+        {
+          kinetraWorkoutVideoId: ${JSON.stringify(workoutVideoId(1, 2))},
+          kinetraProgramWeek: 1,
+          browserAcceptanceState: 'preserved',
+        },
+        '',
+        '/',
+      );
+      return response.status;
+    })`);
+    assert.equal(expireStatus, 204);
+    await cdp.send('Page.reload', { ignoreCache: true });
+    await waitFor(
+      'T11 expired subscription locks the paid program and opens paywall',
+      async () =>
+        (await pathname()) === '/' &&
+        (await exists('program-subscription-locked')) &&
+        (await dialogIsOpen('subscription-paywall-dialog')),
+    );
+    assert.equal(counters.currentWeekGet, currentWeekRequestsBeforePaywall);
+    assert.equal(await exists('workout-player'), false);
+    assert.equal(
+      await cdp.evaluate(
+        'window.history.state?.kinetraWorkoutVideoId === undefined && window.history.state?.kinetraProgramWeek === undefined',
+      ),
+      true,
+    );
+    assert.equal(await cdp.evaluate('window.history.state?.browserAcceptanceState'), 'preserved');
+    assert.equal(
+      await cdp.evaluate(
+        `document.querySelectorAll(${JSON.stringify('[data-testid^="workout-card-"]')}).length`,
+      ),
+      0,
+    );
+    assert.ok((await text('subscription-paywall-dialog'))?.includes('Подписка истекла'));
+    await click('paywall-renew');
+    await waitFor(
+      'T11 paywall renewal opens the internal payment route',
+      async () => (await pathname()) === '/payment' && (await exists('payment-screen')),
+    );
+    assert.equal(await cdp.evaluate('window.history.state?.kinetraWorkoutVideoId'), undefined);
+    assert.ok((await text('payment-screen'))?.includes('Kinetra Premium'));
+    assert.ok((await text('payment-price'))?.includes('799 ₽'));
+    assert.ok((await text('payment-screen'))?.includes('Подписка продлевается автоматически'));
+    await assertPaymentLayout(320);
+    await assertPaymentLayout(428);
+
+    const paymentCreatesBeforeSubmit = counters.paymentCreate;
+    const subscriptionGetsBeforePayment = counters.subscriptionGet;
+    await doubleClick('create-payment');
+    await waitFor(
+      'T11 same-origin provider return opens the success screen',
+      async () =>
+        counters.paymentCreate === paymentCreatesBeforeSubmit + 1 &&
+        (await pathname()) === '/payment/success' &&
+        (await exists('payment-success-screen')),
+    );
+    assert.ok((await text('payment-success-status'))?.includes('Подтверждаем'));
+    assert.equal(await disabled('start-training'), true);
+    await waitFor(
+      'T11 success screen polls canonical subscription until active',
+      async () =>
+        (await text('payment-success-status')) === 'Ваша подписка активирована' &&
+        !(await disabled('start-training')),
+      10_000,
+    );
+    assert.ok(
+      counters.subscriptionGet >= subscriptionGetsBeforePayment + 3,
+      'Payment return must verify canonical subscription more than once.',
+    );
+    console.log('KINETRA_T11_PAYMENT_FLOW=PASS');
+
+    await click('start-training');
+    await waitFor(
+      'T11 activated subscription restores the paid program',
+      async () =>
+        (await pathname()) === '/' &&
+        (await exists('main-screen')) &&
+        (await exists('workout-card-2')),
+    );
+    await click('workout-card-2');
+    await waitFor('T11 activated subscription opens a workout player', () =>
+      exists('workout-player'),
+    );
+    await click('workout-back');
+    await waitFor('T11 paid program restored after leaving player', () => exists('main-screen'));
+    console.log('KINETRA_T11_PAYWALL=PASS');
+
+    await cdp.evaluate(`(() => {
+      window.history.pushState(null, '', '/payment/cancel');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    })()`);
+    await waitFor(
+      'T11 payment cancellation route',
+      async () =>
+        (await pathname()) === '/payment/cancel' && (await exists('payment-cancel-screen')),
+    );
+    assert.ok((await text('payment-cancel-screen'))?.includes('Оплата не завершена'));
+    await click('payment-later');
+    await waitFor(
+      'T11 payment later returns to the program',
+      async () => (await pathname()) === '/' && (await exists('main-screen')),
+    );
+    await cdp.evaluate(`(() => {
+      window.history.pushState(null, '', '/payment/cancel');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    })()`);
+    await waitFor('T11 payment cancellation route reopened', () => exists('payment-cancel-screen'));
+    await click('retry-payment');
+    await waitFor(
+      'T11 active subscriber retry safely returns to the program',
+      async () => (await pathname()) === '/' && (await exists('main-screen')),
+    );
+
+    await click('tab-settings');
+    await waitFor('T11 settings restored before destructive T10 flows', () =>
+      exists('settings-account-section'),
+    );
 
     const accountDeletesBeforeCancel = counters.accountDelete;
     await click('settings-delete-account');
@@ -3392,6 +3681,8 @@ const runBrowserScenario = async () => {
     assert.equal(counters.goalPut, 1);
     assert.ok(counters.settingsProfileGet >= 5);
     assert.ok(counters.subscriptionGet >= 5);
+    assert.equal(counters.paymentCreate, 1);
+    assert.equal(counters.subscriptionCancel, 1);
     assert.equal(counters.notificationsPut, 2);
     assert.equal(counters.accountDelete, 1);
     assert.equal(counters.weekGet, 4);
@@ -3405,6 +3696,7 @@ const runBrowserScenario = async () => {
     console.log('KINETRA_T08_BROWSER_E2E=PASS');
     console.log('KINETRA_T09_BROWSER_E2E=PASS');
     console.log('KINETRA_T10_BROWSER_E2E=PASS');
+    console.log('KINETRA_T11_BROWSER_E2E=PASS');
   } catch (error) {
     if (cdp !== null) {
       try {
