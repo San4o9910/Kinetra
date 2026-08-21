@@ -55,6 +55,7 @@ const requiredConstraints = [
   'weekly_metrics_user_fk',
   'weekly_metrics_user_week_unique',
   'weekly_metrics_program_week_valid',
+  'weekly_metrics_note_length_valid',
   'achievements_code_unique',
   'user_achievements_user_fk',
   'user_achievements_achievement_fk',
@@ -76,12 +77,47 @@ const requiredIndexes = [
   'user_achievements_achievement_unlocked_idx',
 ];
 
-const seededAchievementCodes = [
-  'first_base_lesson',
-  'base_unlocked',
-  'first_workout',
-  'week_complete',
-  'streak_3',
+const expectedAchievements = [
+  {
+    code: 'first_base_lesson',
+    title: 'Первый шаг',
+    description: 'Просмотрен первый базовый урок',
+    icon_key: '🎯',
+    rule_type: 'base_lessons_viewed',
+    rule_value: 1,
+  },
+  {
+    code: 'base_unlocked',
+    title: 'База пройдена',
+    description: '4 базовых урока завершены',
+    icon_key: '🔓',
+    rule_type: 'base_lessons_viewed',
+    rule_value: 4,
+  },
+  {
+    code: 'first_workout',
+    title: 'Первая тренировка',
+    description: 'Первая тренировка из программы',
+    icon_key: '💪',
+    rule_type: 'workouts_completed',
+    rule_value: 1,
+  },
+  {
+    code: 'week_complete',
+    title: 'Неделя завершена',
+    description: 'Все 7 дней за неделю',
+    icon_key: '🏆',
+    rule_type: 'week_days_completed',
+    rule_value: 7,
+  },
+  {
+    code: 'streak_3',
+    title: 'Три подряд',
+    description: '3 тренировки подряд',
+    icon_key: '🔥',
+    rule_type: 'workout_streak',
+    rule_value: 3,
+  },
 ];
 
 const assert = (condition, message) => {
@@ -123,6 +159,29 @@ try {
   for (const constraint of requiredConstraints) {
     assert(foundConstraints.has(constraint), `Missing constraint: ${constraint}.`);
   }
+
+  const noteConstraintResult = await client.query(
+    `
+      SELECT convalidated, pg_get_constraintdef(oid) AS definition
+      FROM pg_catalog.pg_constraint
+      WHERE conname = 'weekly_metrics_note_length_valid'
+        AND conrelid = 'public.weekly_metrics'::regclass
+    `,
+  );
+  const noteConstraint = noteConstraintResult.rows[0];
+  assert(
+    noteConstraintResult.rowCount === 1,
+    'weekly_metrics_note_length_valid must belong to public.weekly_metrics.',
+  );
+  assert(
+    noteConstraint?.convalidated === true,
+    'weekly_metrics_note_length_valid must be validated.',
+  );
+  assert(
+    /note\s+IS\s+NULL/iu.test(noteConstraint?.definition ?? '') &&
+      /char_length\(\s*note\s*\)\s*<=\s*500/iu.test(noteConstraint?.definition ?? ''),
+    'weekly_metrics_note_length_valid must allow null notes and limit notes to 500 characters.',
+  );
 
   const indexResult = await client.query(
     `
@@ -172,11 +231,7 @@ try {
             GROUP BY week_number, day_of_week
           ) AS workout_slots
         ) AS workout_slots,
-        (
-          SELECT COUNT(*)::integer
-          FROM achievements
-          WHERE code = ANY($1::text[])
-        ) AS achievements,
+        (SELECT COUNT(*)::integer FROM achievements) AS achievements,
         (
           SELECT COUNT(*)::integer
           FROM videos
@@ -187,7 +242,6 @@ try {
             )
         ) AS legacy_base_lesson_placeholders
     `,
-    [seededAchievementCodes],
   );
 
   const counts = contentResult.rows[0];
@@ -200,6 +254,26 @@ try {
   assert(
     counts?.legacy_base_lesson_placeholders === 0,
     'Known T03 base lesson placeholder storage keys must be null or replaced with real keys.',
+  );
+
+  const achievementResult = await client.query(
+    `
+      SELECT code, title, description, icon_key, rule_type, rule_value
+      FROM achievements
+      ORDER BY CASE code
+        WHEN 'first_base_lesson' THEN 1
+        WHEN 'base_unlocked' THEN 2
+        WHEN 'first_workout' THEN 3
+        WHEN 'week_complete' THEN 4
+        WHEN 'streak_3' THEN 5
+        ELSE 6
+      END,
+      code
+    `,
+  );
+  assert(
+    JSON.stringify(achievementResult.rows) === JSON.stringify(expectedAchievements),
+    'Seeded achievements do not match the canonical T09 copy and rules.',
   );
 
   const baseLessonConstraintResult = await client.query(

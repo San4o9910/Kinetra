@@ -3,12 +3,17 @@ import type {
   AuthSessionResponse,
   BaseLessonsResponse,
   CompleteWorkoutRequest,
+  GoalResponse,
   HealthResponse,
   LessonProgressResponse,
   MeResponse,
+  MetricsResponse,
+  ProgressResponse,
   ScheduleResponse,
+  SurveyGoal,
   SurveySubmission,
   UpdateLessonProgressRequest,
+  WeeklyMetricsInput,
   WeekResponse,
 } from '@kinetra/shared';
 
@@ -190,6 +195,27 @@ export class ApiClient {
     });
   }
 
+  public async getProgress(signal?: AbortSignal): Promise<ProgressResponse> {
+    return this.authenticatedJsonRequest<ProgressResponse>('/api/v1/progress', {
+      method: 'GET',
+      ...(signal === undefined ? {} : { signal }),
+    });
+  }
+
+  public async submitWeeklyMetrics(data: WeeklyMetricsInput): Promise<MetricsResponse> {
+    return this.authenticatedJsonRequest<MetricsResponse>('/api/v1/progress/weekly-metrics', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async updateGoal(goal: SurveyGoal): Promise<GoalResponse> {
+    return this.authenticatedJsonRequest<GoalResponse>('/api/v1/progress/goal', {
+      method: 'PUT',
+      body: JSON.stringify({ goal }),
+    });
+  }
+
   public async getWeek(weekNumber: number, signal?: AbortSignal): Promise<WeekResponse> {
     return this.authenticatedJsonRequest<WeekResponse>(
       `/api/v1/program/weeks/${encodeURIComponent(String(weekNumber))}`,
@@ -364,6 +390,11 @@ export const getCurrentWeek = (signal?: AbortSignal): Promise<WeekResponse> =>
   apiClient.getCurrentWeek(signal);
 export const getSchedule = (signal?: AbortSignal): Promise<ScheduleResponse> =>
   apiClient.getSchedule(signal);
+export const getProgress = (signal?: AbortSignal): Promise<ProgressResponse> =>
+  apiClient.getProgress(signal);
+export const submitWeeklyMetrics = (data: WeeklyMetricsInput): Promise<MetricsResponse> =>
+  apiClient.submitWeeklyMetrics(data);
+export const updateGoal = (goal: SurveyGoal): Promise<GoalResponse> => apiClient.updateGoal(goal);
 export const getWeek = (weekNumber: number, signal?: AbortSignal): Promise<WeekResponse> =>
   apiClient.getWeek(weekNumber, signal);
 export const completeWorkout = (data: CompleteWorkoutRequest): Promise<WeekResponse> =>
