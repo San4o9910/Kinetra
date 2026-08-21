@@ -1,7 +1,8 @@
-const CACHE_NAME = 'kinetra-shell-v2';
+const CACHE_NAME = 'kinetra-shell-v3';
 const APP_SHELL = [
   '/',
   '/offline.html',
+  '/theme-init.js',
   '/manifest.webmanifest',
   '/favicon.svg',
   '/icons/icon-192.png',

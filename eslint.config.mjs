@@ -25,11 +25,7 @@ export default tseslint.config(
     },
   },
   {
-    files: [
-      'apps/backend/**/*.{ts,mjs}',
-      'packages/shared/**/*.ts',
-      'scripts/**/*.mjs',
-    ],
+    files: ['apps/backend/**/*.{ts,mjs}', 'packages/shared/**/*.ts', 'scripts/**/*.mjs'],
     languageOptions: {
       globals: globals.node,
     },
@@ -41,7 +37,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['apps/frontend/**/*.{ts,tsx}'],
+    files: ['apps/frontend/**/*.{js,ts,tsx}'],
     languageOptions: {
       globals: globals.browser,
     },
