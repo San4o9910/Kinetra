@@ -107,10 +107,15 @@ jobs:
           grep -F 'KINETRA_T07_POSTGRES_INTEGRATION=PASS' /tmp/kinetra-test.log
           grep -F 'KINETRA_T07_PLAYER_TAB_HISTORY=PASS' /tmp/kinetra-test.log
           grep -F 'KINETRA_T07_BROWSER_E2E=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T08_BACKEND_E2E=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T08_CARD_NAVIGATION=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T08_COMPLETION_STATE=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T08_BROWSER_E2E=PASS' /tmp/kinetra-test.log
           echo 'KINETRA_T04_TEST_SUITE=PASS'
           echo 'KINETRA_T05_TEST_SUITE=PASS'
           echo 'KINETRA_T06_TEST_SUITE=PASS'
           echo 'KINETRA_T07_TEST_SUITE=PASS'
+          echo 'KINETRA_T08_TEST_SUITE=PASS'
 
       - name: Verify browser profile cleanup
         if: always()

@@ -52,6 +52,7 @@ const requiredFiles = [
   'docs/T05_ONBOARDING_CAROUSEL.md',
   'docs/T06_BASE_LESSONS.md',
   'docs/T07_MAIN_SCREEN.md',
+  'docs/T08_SCHEDULE.md',
   'apps/frontend/index.html',
   'apps/frontend/src/features/auth/LoginScreen.tsx',
   'apps/frontend/src/features/survey/SurveyWizard.tsx',
@@ -68,6 +69,8 @@ const requiredFiles = [
   'apps/frontend/src/features/program/ProgramWeekView.tsx',
   'apps/frontend/src/features/program/WorkoutPlayer.tsx',
   'apps/frontend/src/features/program/model.ts',
+  'apps/frontend/src/features/schedule/ScheduleScreen.tsx',
+  'apps/frontend/src/features/schedule/ScheduleView.tsx',
   'apps/frontend/src/routing.ts',
   'apps/frontend/test/api-session.test.ts',
   'apps/frontend/test/survey-routing.test.ts',
@@ -76,6 +79,8 @@ const requiredFiles = [
   'apps/frontend/test/base-lessons.test.ts',
   'apps/frontend/test/main-screen.test.ts',
   'apps/frontend/test/program-api.test.ts',
+  'apps/frontend/test/schedule-api.test.ts',
+  'apps/frontend/test/schedule.test.ts',
   'apps/frontend/public/manifest.webmanifest',
   'apps/frontend/public/service-worker.js',
   'apps/frontend/public/offline.html',
@@ -88,6 +93,7 @@ const requiredFiles = [
   'apps/backend/migrations/003_survey.sql',
   'apps/backend/migrations/004_base_lessons.sql',
   'apps/backend/migrations/005_program_media_availability.sql',
+  'apps/backend/migrations/006_schedule_copy.sql',
   'apps/backend/scripts/migrate.mjs',
   'apps/backend/scripts/seed.mjs',
   'apps/backend/scripts/verify-content.mjs',
@@ -517,6 +523,31 @@ expectIncludes(
   ciWorkflow,
   "echo 'KINETRA_T07_TEST_SUITE=PASS'",
   'CI emits the T07 suite completion marker',
+);
+expectIncludes(
+  ciWorkflow,
+  "grep -F 'KINETRA_T08_BACKEND_E2E=PASS'",
+  'CI proves that the T08 HTTP E2E test executed',
+);
+expectIncludes(
+  ciWorkflow,
+  "grep -F 'KINETRA_T08_CARD_NAVIGATION=PASS'",
+  'CI proves that the T08 card navigation scenario executed',
+);
+expectIncludes(
+  ciWorkflow,
+  "grep -F 'KINETRA_T08_COMPLETION_STATE=PASS'",
+  'CI proves that the T08 completion scenario executed',
+);
+expectIncludes(
+  ciWorkflow,
+  "grep -F 'KINETRA_T08_BROWSER_E2E=PASS'",
+  'CI proves that the T08 browser acceptance test executed',
+);
+expectIncludes(
+  ciWorkflow,
+  "echo 'KINETRA_T08_TEST_SUITE=PASS'",
+  'CI emits the T08 suite completion marker',
 );
 expectIncludes(
   ciWorkflow,
@@ -1792,21 +1823,194 @@ expectIncludes(
   'T07 frontend API tests prove access JWT attachment',
 );
 
+const scheduleMigration = await readText('apps/backend/migrations/006_schedule_copy.sql');
+for (const copy of [
+  'Дыхательная практика',
+  'Настройка нервной системы, учимся дышать животом.',
+  'Силовая тренировка',
+  'Приседания, тяги, жимы. 3 круга.',
+  'Тело мой дом',
+  'Снимаем зажимы, работаем с телом.',
+  'Функциональная тренировка',
+  'Динамика, координация, баланс.',
+  'Восстанавливаем длину мышц.',
+  'Упражнения для мозга и координации.',
+  'Самомассаж и полезное блюдо.',
+]) {
+  expectIncludes(scheduleMigration, copy, `T08 migration copy: ${copy}`);
+  expectIncludes(contentSeed, copy, `T08 seed copy: ${copy}`);
+  expectIncludes(contentVerifier, copy, `T08 database verifier copy: ${copy}`);
+}
+expectMatches(
+  programRouter,
+  /router\.get\(\s*['"]\/schedule['"]/u,
+  'T08 GET schedule route exists',
+);
+expectIncludes(programService, 'getSchedule(userId: string)', 'T08 service exposes the schedule');
+expectIncludes(
+  programService,
+  'progress.currentWeekNumber < PROGRAM_WEEK_COUNT',
+  'T08 returns null after the final program week',
+);
+expectIncludes(
+  programService,
+  'getRequiredWeekSnapshot(userId, progress.currentWeekNumber)',
+  'T08 reuses the authoritative current-week calculation',
+);
+expectIncludes(
+  programService,
+  'days.filter((day) => day.completed).length',
+  'T08 derives completion totals from persisted day status',
+);
+for (const label of [
+  'Понедельник',
+  'Вторник',
+  'Среда',
+  'Четверг',
+  'Пятница',
+  'Суббота',
+  'Воскресенье',
+]) {
+  expectIncludes(programService, label, `T08 backend weekday label: ${label}`);
+}
+
+for (const contract of [
+  'ProgramDayLabel',
+  'ProgramScheduleDay',
+  'ProgramScheduleWeek',
+  'ScheduleResponse',
+  'current_week',
+  'next_week',
+]) {
+  expectIncludes(sharedContracts, contract, `T08 shared contract: ${contract}`);
+}
+expectIncludes(
+  frontendApi,
+  "'/api/v1/program/schedule'",
+  'T08 frontend fetches the protected schedule',
+);
+expectIncludes(frontendApp, '<ScheduleScreen', 'T08 schedule route renders the real screen');
+
+const scheduleScreen = await readText('apps/frontend/src/features/schedule/ScheduleScreen.tsx');
+for (const contract of [
+  'getSchedule(controller.signal)',
+  "error.kind === 'auth'",
+  'requestControllerRef.current?.abort()',
+  'schedule-retry',
+]) {
+  expectIncludes(scheduleScreen, contract, `T08 schedule loader contract: ${contract}`);
+}
+
+const scheduleView = await readText('apps/frontend/src/features/schedule/ScheduleView.tsx');
+for (const testId of [
+  'schedule-screen',
+  'schedule-segment-current',
+  'schedule-segment-next',
+  'schedule-panel-${section}',
+  'schedule-progress',
+  'schedule-${section}-day-${day.day_of_week}',
+  'schedule-final-message',
+]) {
+  expectIncludes(scheduleView, testId, `T08 schedule test hook: ${testId}`);
+}
+for (const contract of [
+  'Текущая неделя',
+  'Следующая неделя',
+  'Выполнено ${week.days_completed} из ${week.total_days}',
+  'Вы на финальной неделе программы!',
+  'role="tablist"',
+  'role="tab"',
+  'role="progressbar"',
+  'ArrowLeft',
+  'ArrowRight',
+  '✅',
+]) {
+  expectIncludes(scheduleView, contract, `T08 schedule view contract: ${contract}`);
+}
+for (const selector of [
+  '.schedule-shell',
+  '.schedule-segmented',
+  '.schedule-day-card',
+  '.schedule-day-description',
+  '.schedule-final-message',
+]) {
+  expectIncludes(frontendStyles, selector, `T08 style surface: ${selector}`);
+}
+for (const style of [
+  'background: #080909',
+  'background: #181c1c',
+  'background: #c8f169',
+  'border-left: 3px solid transparent',
+  '-webkit-line-clamp: 2',
+  'min-height: 44px',
+]) {
+  expectIncludes(frontendStyles, style, `T08 prescribed style: ${style}`);
+}
+
+for (const scenario of [
+  'schedule exposes canonical current and next weeks with completion state',
+  'schedule omits the next week at the twelve-week program boundary',
+  'KINETRA_T08_BACKEND_E2E=PASS',
+]) {
+  expectIncludes(programBackendTests, scenario, `T08 backend test: ${scenario}`);
+}
+const scheduleFrontendTests = await readText('apps/frontend/test/schedule.test.ts');
+for (const scenario of [
+  'current schedule renders seven canonical days, descriptions and completion state',
+  'segmented next-week view renders seven days without completion status',
+  'final week hides the next segment and displays the terminal program message',
+]) {
+  expectIncludes(scheduleFrontendTests, scenario, `T08 frontend test: ${scenario}`);
+}
+const scheduleFrontendApiTests = await readText('apps/frontend/test/schedule-api.test.ts');
+expectIncludes(
+  scheduleFrontendApiTests,
+  '/api/v1/program/schedule',
+  'T08 frontend API test fixes the endpoint path',
+);
+expectIncludes(
+  scheduleFrontendApiTests,
+  "authorization: 'Bearer schedule-token'",
+  'T08 frontend API test proves access JWT attachment',
+);
+
+const scheduleDocumentation = await readText('docs/T08_SCHEDULE.md');
+for (const contract of [
+  'GET /api/v1/program/schedule',
+  'Cache-Control: no-store',
+  'next_week',
+  'Вы на финальной неделе программы!',
+  'KINETRA_T08_BACKEND_E2E=PASS',
+  'KINETRA_T08_BROWSER_E2E=PASS',
+]) {
+  expectIncludes(scheduleDocumentation, contract, `T08 documented contract: ${contract}`);
+}
+for (const marker of [
+  'KINETRA_T08_CARD_NAVIGATION=PASS',
+  'KINETRA_T08_COMPLETION_STATE=PASS',
+  'KINETRA_T08_BROWSER_E2E=PASS',
+]) {
+  expectIncludes(browserTest, marker, `T08 browser marker: ${marker}`);
+}
+
 for (const temporaryArtifact of [
   '.github/workflows/apply-t04-fixes.yml',
   '.github/workflows/apply-t05.yml',
   '.github/workflows/apply-t06.yml',
   '.github/workflows/apply-t07.yml',
+  '.github/workflows/apply-t08.yml',
   '.github/workflows/export-dev-env.yml',
   '.github/workflows/export-full-env.yml',
   '.github/workflows/export-source.yml',
   '.t05-bootstrap',
   '.t06-bootstrap',
   '.t07-bootstrap',
+  '.t08-bootstrap',
   'docs/.probe',
   'docs/.t05-pr-trigger',
   'docs/.t06-pr-trigger',
   'docs/.t07-pr-trigger',
+  'docs/.t08-pr-trigger',
 ]) {
   try {
     await access(resolve(root, temporaryArtifact));
