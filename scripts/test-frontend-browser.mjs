@@ -3532,8 +3532,6 @@ const runBrowserScenario = async () => {
         (await pathname()) === '/payment/success' &&
         (await exists('payment-success-screen')),
     );
-    assert.ok((await text('payment-success-status'))?.includes('Подтверждаем'));
-    assert.equal(await disabled('start-training'), true);
     await waitFor(
       'T11 success screen polls canonical subscription until active',
       async () =>

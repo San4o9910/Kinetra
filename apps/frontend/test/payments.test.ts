@@ -80,7 +80,9 @@ test('T11 result pages and expired paywall expose canonical actions and copy', (
   );
   assert.ok(success.includes('Оплата прошла успешно!'));
   assert.ok(success.includes('data-testid="payment-success-status"'));
-  assert.ok(success.includes('data-testid="start-training"'));
+  assert.ok(success.includes('Подтверждаем активацию подписки…'));
+  assert.equal(success.includes('Ваша подписка активирована'), false);
+  assert.match(success, /data-testid="start-training"[^>]*disabled=""/u);
 
   const cancel = renderToStaticMarkup(
     createElement(PaymentCancelScreen, {

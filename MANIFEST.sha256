@@ -174,7 +174,7 @@ c66a3e3320adb426e470b8afac330608948291f2231e2c981a9139a5feb61110  ./apps/fronten
 c7531aa413ff48381f2072e6931795b07ebca6da362d1bd567085380a856484e  ./apps/frontend/test/main-screen.test.ts
 911a890c3f05c621fbdd3a234bc32d30f245af81b5b374b9299857f0370ca7fc  ./apps/frontend/test/onboarding.test.ts
 21022e06106b051a228133f53bc78b742f683f8ebfc5d9c4aba8de03ca804c50  ./apps/frontend/test/payments-api.test.ts
-7d36bf459f2c672a4982edf4ff0bb76434737a4d91e04866830232d5e1ff3a7b  ./apps/frontend/test/payments.test.ts
+dc1f2e5c71141e3ad526bab1708bcfae3614447a0197a6e69717f7bfeac5e204  ./apps/frontend/test/payments.test.ts
 a6d29a024ff51858152c5ab0284b3e974eef4550f3f42e52adb5df2460a26b9f  ./apps/frontend/test/program-api.test.ts
 62099c56cb95e097b8d408d3c6d5296d696180b9417b8570308fe353ff4be87a  ./apps/frontend/test/progress-api.test.ts
 167e74bebcfe390937f6af4d3a37801f6a2f4d94e0968fff39e54448373c62b5  ./apps/frontend/test/progress.test.ts
@@ -203,6 +203,6 @@ ad37b97348ba7289c37c5f82e2a73142d1c06fefe28fe965dc8ddeb033c73416  ./docs/T11_PAY
 1226b52db0d0863828daae249e0b8ba56452f40c4d6ebc4dab1f6bb40e532da8  ./packages/shared/package.json
 7226513cf068deed61d709808d20f3e54fc40d15c8502623a290c4ad75f2defb  ./packages/shared/src/index.ts
 c8171db33a1b645b8c36d542cf4bfc5c47073df8842b846f91a6ebf083973c5e  ./packages/shared/tsconfig.json
-31e6e45817c2282457a5b5745173821301f02a1e6551411c22f2fab73609a755  ./scripts/test-frontend-browser.mjs
+eb6ac6b6aecd1aae4f2d2c30328f1f2e62ddeb3a40423a31363067349ee1281b  ./scripts/test-frontend-browser.mjs
 9fdf7d89fac9935dcee81e5bfe64c0f73a6cfe6a4b93f809061a8e80590f3abc  ./scripts/verify-project.mjs
 2b67887209f3334ebdc96426f5c2cb87480fb85ff2f75c0d42b0a944dae7922a  ./tsconfig.base.json
