@@ -20,7 +20,7 @@ events/renewal attempts, server entitlement, payment UI, polling, paywall и р�
 
 | Проверка                          | Статус             | Команда / условие                                   |
 | --------------------------------- | ------------------ | --------------------------------------------------- |
-| Структурные T01–T11 contracts     | PASS — 1432 checks | `node scripts/verify-project.mjs`                   |
+| Структурные T01–T11 contracts     | PASS — 1434 checks | `node scripts/verify-project.mjs`                   |
 | TypeScript                        | PASS               | shared, backend production/tests, frontend          |
 | ESLint                            | PASS               | `eslint apps packages scripts`                      |
 | Backend + frontend unit/E2E       | PASS local         | backend 58 pass + 7 PG skip; frontend 61 pass       |

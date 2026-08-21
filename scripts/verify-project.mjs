@@ -2880,6 +2880,8 @@ for (const repositoryContract of [
   'executeRenewalClaim(',
   'FOR UPDATE OF attempt, subscription',
   'subscription.auto_renew = true',
+  'starts_at = $3::timestamptz',
+  "expires_at = $3::timestamptz + INTERVAL '30 days'",
   'row.provider_payment_id !== input.providerPaymentId',
   'isTerminalAttemptStatus(row.status)',
   "return { kind: 'terminal', status: row.status }",

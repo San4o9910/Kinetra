@@ -478,8 +478,8 @@ export class PostgresPaymentsRepository implements PaymentsRepository {
             `UPDATE subscriptions
              SET provider_subscription_id = COALESCE(provider_subscription_id, $2),
                  status = 'active',
-                 starts_at = $3,
-                 expires_at = $3 + INTERVAL '30 days',
+                 starts_at = $3::timestamptz,
+                 expires_at = $3::timestamptz + INTERVAL '30 days',
                  payment_method_id = CASE
                    WHEN $5::boolean THEN $4
                    ELSE NULL
