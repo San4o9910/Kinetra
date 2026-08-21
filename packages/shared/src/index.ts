@@ -322,6 +322,37 @@ export interface WeeklyMetricsInput {
 export type MetricsResponse = ProgressMetrics;
 export type GoalResponse = ProgressGoal;
 
+export type SettingsSubscriptionStatus = 'active' | 'expired' | 'cancelled' | 'pending' | 'none';
+
+export interface SubscriptionResponse {
+  readonly status: SettingsSubscriptionStatus;
+  readonly provider: SubscriptionProvider | null;
+  readonly starts_at: string | null;
+  readonly expires_at: string | null;
+  readonly amount: number | null;
+  readonly currency: string | null;
+  readonly auto_renew: boolean | null;
+  readonly days_remaining: number | null;
+}
+
+export interface NotificationPreferences {
+  readonly workout_reminders: boolean;
+  readonly reminder_time: string;
+  readonly weekly_survey_reminder: boolean;
+}
+
+export interface SettingsProfileResponse {
+  readonly email: string | null;
+  readonly phone: string | null;
+  readonly created_at: string;
+  readonly onboarding_status: OnboardingStatus;
+  readonly notification_preferences: NotificationPreferences;
+}
+
+export interface DeleteAccountRequest {
+  readonly confirm: 'DELETE';
+}
+
 export interface CompleteWorkoutRequest {
   readonly video_id: string;
   readonly program_week: number;
