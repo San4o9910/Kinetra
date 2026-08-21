@@ -203,6 +203,6 @@ ad37b97348ba7289c37c5f82e2a73142d1c06fefe28fe965dc8ddeb033c73416  ./docs/T11_PAY
 1226b52db0d0863828daae249e0b8ba56452f40c4d6ebc4dab1f6bb40e532da8  ./packages/shared/package.json
 7226513cf068deed61d709808d20f3e54fc40d15c8502623a290c4ad75f2defb  ./packages/shared/src/index.ts
 c8171db33a1b645b8c36d542cf4bfc5c47073df8842b846f91a6ebf083973c5e  ./packages/shared/tsconfig.json
-38c8d8414923e2f171b8167d054b223cbbbd298bcb06316e23802531397b2693  ./scripts/test-frontend-browser.mjs
+31e6e45817c2282457a5b5745173821301f02a1e6551411c22f2fab73609a755  ./scripts/test-frontend-browser.mjs
 9fdf7d89fac9935dcee81e5bfe64c0f73a6cfe6a4b93f809061a8e80590f3abc  ./scripts/verify-project.mjs
 2b67887209f3334ebdc96426f5c2cb87480fb85ff2f75c0d42b0a944dae7922a  ./tsconfig.base.json

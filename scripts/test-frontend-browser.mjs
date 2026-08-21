@@ -1963,7 +1963,7 @@ const runBrowserScenario = async () => {
           .filter((section) => section instanceof HTMLElement);
         const controls = [
           ...document.querySelectorAll(${JSON.stringify(
-            '.settings-row, .settings-theme-option, .settings-subscription-actions > *',
+            '.settings-close, .settings-row, .settings-theme-option, .settings-subscription-actions > *',
           )}),
         ].filter((control) => control instanceof HTMLElement);
         const tabBar = document.querySelector(${JSON.stringify(selector('tab-bar'))});
