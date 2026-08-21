@@ -118,12 +118,21 @@ jobs:
           grep -F 'KINETRA_T09_WEEKLY_METRICS=PASS' /tmp/kinetra-test.log
           grep -F 'KINETRA_T09_CHARTS=PASS' /tmp/kinetra-test.log
           grep -F 'KINETRA_T09_BROWSER_E2E=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T10_BACKEND_E2E=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T10_POSTGRES_INTEGRATION=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T10_SETTINGS_CONTENT=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T10_NOTIFICATIONS=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T10_THEME_MODES=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T10_LOGOUT=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T10_ACCOUNT_DELETION=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T10_BROWSER_E2E=PASS' /tmp/kinetra-test.log
           echo 'KINETRA_T04_TEST_SUITE=PASS'
           echo 'KINETRA_T05_TEST_SUITE=PASS'
           echo 'KINETRA_T06_TEST_SUITE=PASS'
           echo 'KINETRA_T07_TEST_SUITE=PASS'
           echo 'KINETRA_T08_TEST_SUITE=PASS'
           echo 'KINETRA_T09_TEST_SUITE=PASS'
+          echo 'KINETRA_T10_TEST_SUITE=PASS'
 
       - name: Verify browser profile cleanup
         if: always()

@@ -8,8 +8,11 @@ import type {
   LessonProgressResponse,
   MeResponse,
   MetricsResponse,
+  NotificationPreferences,
   ProgressResponse,
   ScheduleResponse,
+  SettingsProfileResponse,
+  SubscriptionResponse,
   SurveyGoal,
   SurveySubmission,
   UpdateLessonProgressRequest,
@@ -216,6 +219,36 @@ export class ApiClient {
     });
   }
 
+  public async getSubscription(signal?: AbortSignal): Promise<SubscriptionResponse> {
+    return this.authenticatedJsonRequest<SubscriptionResponse>('/api/v1/settings/subscription', {
+      method: 'GET',
+      ...(signal === undefined ? {} : { signal }),
+    });
+  }
+
+  public async getSettingsProfile(signal?: AbortSignal): Promise<SettingsProfileResponse> {
+    return this.authenticatedJsonRequest<SettingsProfileResponse>('/api/v1/settings/profile', {
+      method: 'GET',
+      ...(signal === undefined ? {} : { signal }),
+    });
+  }
+
+  public async updateNotifications(data: NotificationPreferences): Promise<void> {
+    await this.authenticatedVoidRequest('/api/v1/settings/notifications', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+      keepalive: true,
+    });
+  }
+
+  public async deleteAccount(confirm: string): Promise<void> {
+    await this.authenticatedVoidRequest('/api/v1/settings/account', {
+      method: 'DELETE',
+      body: JSON.stringify({ confirm }),
+    });
+    this.clearSession();
+  }
+
   public async getWeek(weekNumber: number, signal?: AbortSignal): Promise<WeekResponse> {
     return this.authenticatedJsonRequest<WeekResponse>(
       `/api/v1/program/weeks/${encodeURIComponent(String(weekNumber))}`,
@@ -246,6 +279,23 @@ export class ApiClient {
     init: RequestInit,
     allowRefresh = true,
   ): Promise<T> {
+    const response = await this.authenticatedRequest(path, init, allowRefresh);
+    return this.readJsonOrThrow<T>(response);
+  }
+
+  private async authenticatedVoidRequest(
+    path: string,
+    init: RequestInit,
+    allowRefresh = true,
+  ): Promise<void> {
+    await this.authenticatedRequest(path, init, allowRefresh);
+  }
+
+  private async authenticatedRequest(
+    path: string,
+    init: RequestInit,
+    allowRefresh = true,
+  ): Promise<Response> {
     const token = this.accessToken ?? (await this.refreshAccessToken());
 
     if (token === null) {
@@ -279,10 +329,14 @@ export class ApiClient {
         );
       }
 
-      return this.authenticatedJsonRequest<T>(path, init, false);
+      return this.authenticatedRequest(path, init, false);
     }
 
-    return this.readJsonOrThrow<T>(response);
+    if (!response.ok) {
+      await this.throwResponseError(response);
+    }
+
+    return response;
   }
 
   private async refreshAccessToken(): Promise<string | null> {
@@ -395,6 +449,13 @@ export const getProgress = (signal?: AbortSignal): Promise<ProgressResponse> =>
 export const submitWeeklyMetrics = (data: WeeklyMetricsInput): Promise<MetricsResponse> =>
   apiClient.submitWeeklyMetrics(data);
 export const updateGoal = (goal: SurveyGoal): Promise<GoalResponse> => apiClient.updateGoal(goal);
+export const getSubscription = (signal?: AbortSignal): Promise<SubscriptionResponse> =>
+  apiClient.getSubscription(signal);
+export const getSettingsProfile = (signal?: AbortSignal): Promise<SettingsProfileResponse> =>
+  apiClient.getSettingsProfile(signal);
+export const updateNotifications = (data: NotificationPreferences): Promise<void> =>
+  apiClient.updateNotifications(data);
+export const deleteAccount = (confirm: string): Promise<void> => apiClient.deleteAccount(confirm);
 export const getWeek = (weekNumber: number, signal?: AbortSignal): Promise<WeekResponse> =>
   apiClient.getWeek(weekNumber, signal);
 export const completeWorkout = (data: CompleteWorkoutRequest): Promise<WeekResponse> =>

@@ -8,8 +8,9 @@ import { OnboardingCarousel } from './features/onboarding/OnboardingCarousel';
 import { ProgressScreen } from './features/progress/ProgressScreen';
 import { ProgramScreen } from './features/program/ProgramScreen';
 import { ScheduleScreen } from './features/schedule/ScheduleScreen';
+import { SettingsScreen } from './features/settings/SettingsScreen';
 import { SurveyWizard } from './features/survey/SurveyWizard';
-import { ApiRequestError, bootstrapSession, fetchMe, logout } from './lib/api';
+import { ApiRequestError, bootstrapSession, fetchMe } from './lib/api';
 import {
   appRoutes,
   isActiveAppRoute,
@@ -18,73 +19,6 @@ import {
   routeForOnboardingStatus,
   type AppRoute,
 } from './routing';
-
-interface SettingsProps {
-  readonly profile: MeResponse;
-  readonly onClose: () => void;
-  readonly onEditSurvey: () => void;
-  readonly onLogout: () => void;
-}
-
-const Settings = ({ profile, onClose, onEditSurvey, onLogout }: SettingsProps): ReactNode => (
-  <main className="app-shell" data-testid="settings-screen">
-    <section className="settings-card">
-      <header className="stage-topbar">
-        <div>
-          <p className="survey-kicker">ПРОФИЛЬ</p>
-          <h1>Настройки</h1>
-        </div>
-        <button
-          className="ghost-button"
-          data-testid="close-settings"
-          type="button"
-          onClick={onClose}
-        >
-          Закрыть
-        </button>
-      </header>
-
-      <dl className="settings-list">
-        <div>
-          <dt>Имя</dt>
-          <dd>{profile.user.firstName ?? profile.user.username ?? 'Не указано'}</dd>
-        </div>
-        <div>
-          <dt>Email</dt>
-          <dd>{profile.user.email ?? 'Не указан'}</dd>
-        </div>
-        <div>
-          <dt>Статус</dt>
-          <dd>{profile.user.onboardingStatus}</dd>
-        </div>
-        <div>
-          <dt>Версия анкеты</dt>
-          <dd>{profile.survey?.version ?? 'Не заполнена'}</dd>
-        </div>
-      </dl>
-
-      <div className="settings-actions">
-        <button
-          className="primary-button settings-action"
-          data-testid="edit-survey"
-          type="button"
-          disabled={profile.survey === null}
-          onClick={onEditSurvey}
-        >
-          Редактировать анкету
-        </button>
-        <button
-          className="secondary-button settings-action"
-          data-testid="logout"
-          type="button"
-          onClick={onLogout}
-        >
-          Выйти
-        </button>
-      </div>
-    </section>
-  </main>
-);
 
 interface SystemStateProps {
   readonly kind: 'offline' | 'server';
@@ -359,16 +293,15 @@ export const App = (): ReactNode => {
 
   if (route === appRoutes.settings) {
     return withActiveNavigation(
-      <Settings
-        profile={profile}
+      <SettingsScreen
+        hasSurvey={profile.survey !== null}
         onClose={() => navigate(routeForOnboardingStatus(profile.user.onboardingStatus))}
         onEditSurvey={() => navigate(appRoutes.editSurvey)}
-        onLogout={() => {
-          void logout().finally(() => {
-            setSession({ kind: 'unauthenticated' });
-            navigate(appRoutes.login, true);
-          });
+        onSignedOut={() => {
+          setSession({ kind: 'unauthenticated' });
+          navigate(appRoutes.login, true);
         }}
+        onSessionExpired={handleActiveSessionExpired}
       />,
     );
   }
