@@ -241,6 +241,87 @@ export interface ScheduleResponse {
   readonly next_week: ProgramScheduleWeek | null;
 }
 
+export interface ProgressGoal {
+  readonly current_goal: SurveyGoal;
+  readonly goal_label: string;
+  readonly set_at: string;
+}
+
+export interface ProgressParams {
+  readonly gender: SurveyGender;
+  readonly age_range: SurveyAgeRange;
+  readonly experience: SurveyExperience;
+  readonly injuries: readonly SurveyInjury[];
+  readonly survey_updated_at: string;
+}
+
+export interface WeeklyMetric {
+  readonly program_week: number;
+  readonly energy: number;
+  readonly sleep: number;
+  readonly mood: number;
+  readonly body_satisfaction: number;
+  readonly note: string | null;
+  readonly created_at: string;
+}
+
+export interface ProgressMetrics {
+  readonly current_week: number;
+  readonly history: readonly WeeklyMetric[];
+  readonly pending_survey: boolean;
+}
+
+export interface UnlockedAchievement {
+  readonly code: string;
+  readonly title: string;
+  readonly description: string;
+  readonly icon_key: string;
+  readonly unlocked_at: string;
+}
+
+export interface LockedAchievement {
+  readonly code: string;
+  readonly title: string;
+  readonly description: string;
+  readonly icon_key: string;
+  readonly progress: string;
+}
+
+export interface ProgressAchievements {
+  readonly unlocked: readonly UnlockedAchievement[];
+  readonly locked: readonly LockedAchievement[];
+  readonly total_unlocked: number;
+  readonly total_available: number;
+}
+
+export interface ProgressStats {
+  readonly total_workouts: number;
+  readonly total_weeks_completed: number;
+  readonly current_streak: number;
+  readonly best_streak: number;
+  readonly total_minutes_trained: number;
+}
+
+export interface ProgressResponse {
+  readonly goal: ProgressGoal;
+  readonly params: ProgressParams;
+  readonly metrics: ProgressMetrics;
+  readonly achievements: ProgressAchievements;
+  readonly stats: ProgressStats;
+}
+
+export interface WeeklyMetricsInput {
+  readonly program_week: number;
+  readonly energy: number;
+  readonly sleep: number;
+  readonly mood: number;
+  readonly body_satisfaction: number;
+  readonly note?: string;
+}
+
+export type MetricsResponse = ProgressMetrics;
+export type GoalResponse = ProgressGoal;
+
 export interface CompleteWorkoutRequest {
   readonly video_id: string;
   readonly program_week: number;
