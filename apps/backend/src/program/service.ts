@@ -1,7 +1,11 @@
 import type {
   ProgramDay,
+  ProgramDayLabel,
   ProgramDirection,
+  ProgramScheduleDay,
+  ProgramScheduleWeek,
   ProgramWeekStatus,
+  ScheduleResponse,
   WeekResponse,
 } from '@kinetra/shared';
 
@@ -9,6 +13,7 @@ import { HttpError } from '../auth/errors.js';
 import type { ObjectUrlSigner } from '../base-lessons/storage.js';
 import {
   PROGRAM_DAYS_PER_WEEK,
+  PROGRAM_WEEK_COUNT,
   type ProgramDaySnapshot,
   type ProgramProgressSnapshot,
   type ProgramRepository,
@@ -25,6 +30,16 @@ const programIconByDirection = Object.freeze({
   neuro: '🧠',
   recovery: '🍲',
 } satisfies Readonly<Record<ProgramDirection, string>>);
+
+const programDayLabelByNumber: Readonly<Partial<Record<number, ProgramDayLabel>>> = Object.freeze({
+  1: 'Понедельник',
+  2: 'Вторник',
+  3: 'Среда',
+  4: 'Четверг',
+  5: 'Пятница',
+  6: 'Суббота',
+  7: 'Воскресенье',
+});
 
 const validationError = (code: string, fallbackMessage: string, issues: readonly unknown[]) => {
   const firstIssue = issues[0];
@@ -48,6 +63,23 @@ export class ProgramService {
   public async getCurrentWeek(userId: string): Promise<WeekResponse> {
     const progress = await this.repository.getProgress(userId);
     return this.getWeekResponse(userId, progress.currentWeekNumber, progress);
+  }
+
+  public async getSchedule(userId: string): Promise<ScheduleResponse> {
+    const progress = await this.repository.getProgress(userId);
+    const nextWeekNumber =
+      progress.currentWeekNumber < PROGRAM_WEEK_COUNT ? progress.currentWeekNumber + 1 : null;
+    const [currentWeek, nextWeek] = await Promise.all([
+      this.getRequiredWeekSnapshot(userId, progress.currentWeekNumber),
+      nextWeekNumber === null
+        ? Promise.resolve(null)
+        : this.getRequiredWeekSnapshot(userId, nextWeekNumber),
+    ]);
+
+    return {
+      current_week: this.scheduleWeekResponse(currentWeek),
+      next_week: nextWeek === null ? null : this.scheduleWeekResponse(nextWeek),
+    };
   }
 
   public async getWeek(userId: string, rawWeekNumber: unknown): Promise<WeekResponse> {
@@ -124,17 +156,7 @@ export class ProgramService {
     weekNumber: number,
     progress: ProgramProgressSnapshot,
   ): Promise<WeekResponse> {
-    const snapshot = await this.repository.getWeek(userId, weekNumber);
-
-    if (snapshot === null) {
-      throw new HttpError(404, 'PROGRAM_WEEK_NOT_FOUND', 'The program week was not found.');
-    }
-
-    if (snapshot.days.length !== PROGRAM_DAYS_PER_WEEK) {
-      throw new Error(
-        `Program week ${weekNumber} has ${snapshot.days.length} days instead of ${PROGRAM_DAYS_PER_WEEK}.`,
-      );
-    }
+    const snapshot = await this.getRequiredWeekSnapshot(userId, weekNumber);
 
     const status = this.statusFor(snapshot, progress.currentWeekNumber);
     const days = await Promise.all(
@@ -156,6 +178,61 @@ export class ProgramService {
         weeks_completed: progress.weeksCompleted,
         total_workouts_done: progress.totalWorkoutsDone,
       },
+    };
+  }
+
+  private async getRequiredWeekSnapshot(
+    userId: string,
+    weekNumber: number,
+  ): Promise<ProgramWeekSnapshot> {
+    const snapshot = await this.repository.getWeek(userId, weekNumber);
+
+    if (snapshot === null) {
+      throw new HttpError(404, 'PROGRAM_WEEK_NOT_FOUND', 'The program week was not found.');
+    }
+
+    if (snapshot.days.length !== PROGRAM_DAYS_PER_WEEK) {
+      throw new Error(
+        `Program week ${weekNumber} has ${snapshot.days.length} days instead of ${PROGRAM_DAYS_PER_WEEK}.`,
+      );
+    }
+
+    return snapshot;
+  }
+
+  private scheduleWeekResponse(snapshot: ProgramWeekSnapshot): ProgramScheduleWeek {
+    const days = snapshot.days.map((day) => this.scheduleDayResponse(day));
+
+    return {
+      week_number: snapshot.weekNumber,
+      title: snapshot.title,
+      days,
+      days_completed: days.filter((day) => day.completed).length,
+      total_days: PROGRAM_DAYS_PER_WEEK,
+    };
+  }
+
+  private scheduleDayResponse(day: ProgramDaySnapshot): ProgramScheduleDay {
+    const dayLabel = programDayLabelByNumber[day.dayOfWeek];
+    const description = day.description?.trim();
+
+    if (dayLabel === undefined) {
+      throw new Error(`Program day ${day.dayOfWeek} does not have a supported weekday label.`);
+    }
+
+    if (description === undefined || description.length === 0) {
+      throw new Error(`Program day ${day.dayOfWeek} does not have a schedule description.`);
+    }
+
+    return {
+      day_of_week: day.dayOfWeek,
+      day_label: dayLabel,
+      direction: day.direction,
+      icon: programIconByDirection[day.direction],
+      title: day.title,
+      description,
+      duration_minutes: day.durationMinutes,
+      completed: day.completedAt !== null,
     };
   }
 

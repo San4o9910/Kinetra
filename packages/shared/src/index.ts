@@ -214,6 +214,33 @@ export interface WeekResponse {
   readonly overall_progress: ProgramOverallProgress;
 }
 
+export type ProgramDayLabel =
+  'Понедельник' | 'Вторник' | 'Среда' | 'Четверг' | 'Пятница' | 'Суббота' | 'Воскресенье';
+
+export interface ProgramScheduleDay {
+  readonly day_of_week: number;
+  readonly day_label: ProgramDayLabel;
+  readonly direction: ProgramDirection;
+  readonly icon: string;
+  readonly title: string;
+  readonly description: string;
+  readonly duration_minutes: number;
+  readonly completed: boolean;
+}
+
+export interface ProgramScheduleWeek {
+  readonly week_number: number;
+  readonly title: string;
+  readonly days: readonly ProgramScheduleDay[];
+  readonly days_completed: number;
+  readonly total_days: number;
+}
+
+export interface ScheduleResponse {
+  readonly current_week: ProgramScheduleWeek;
+  readonly next_week: ProgramScheduleWeek | null;
+}
+
 export interface CompleteWorkoutRequest {
   readonly video_id: string;
   readonly program_week: number;
