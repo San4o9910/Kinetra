@@ -130,3 +130,82 @@ test('settings API client uses four exact protected routes and handles 204 respo
   assert.equal(calls.at(-2)?.keepalive, true);
   assert.equal(calls.at(-1)?.body, JSON.stringify({ confirm: 'DELETE' }));
 });
+
+test('T13 push API client uses exact protected public-key, upsert and delete contracts', async () => {
+  const calls: Array<{
+    readonly path: string;
+    readonly method: string;
+    readonly authorization: string | null;
+    readonly contentType: string | null;
+    readonly body: string | null;
+  }> = [];
+  const client = new ApiClient({
+    baseUrl: 'http://api.test',
+    fetchImpl: async (input, init) => {
+      const url = new URL(String(input));
+      const headers = new Headers(init?.headers);
+      calls.push({
+        path: url.pathname,
+        method: init?.method ?? 'GET',
+        authorization: headers.get('authorization'),
+        contentType: headers.get('content-type'),
+        body: typeof init?.body === 'string' ? init.body : null,
+      });
+
+      if (url.pathname === '/api/v1/auth/refresh') {
+        return Response.json(session);
+      }
+
+      if (url.pathname === '/api/v1/push/public-key') {
+        return Response.json({ public_key: 'test-public-vapid-key' });
+      }
+
+      if (url.pathname === '/api/v1/push/subscriptions' && init?.method === 'POST') {
+        return Response.json({ subscribed: true });
+      }
+
+      if (url.pathname === '/api/v1/push/subscriptions' && init?.method === 'DELETE') {
+        return new Response(null, { status: 204 });
+      }
+
+      throw new Error(`Unexpected request ${url.pathname}`);
+    },
+  });
+  const subscription = {
+    endpoint: 'https://push.example/subscription-1',
+    keys: {
+      p256dh: 'browser-p256dh',
+      auth: 'browser-auth',
+    },
+    expirationTime: null,
+  };
+
+  assert.equal(await client.bootstrapSession(), true);
+  assert.equal((await client.getPushPublicKey()).public_key, 'test-public-vapid-key');
+  assert.equal((await client.registerPushSubscription(subscription)).subscribed, true);
+  await client.deletePushSubscription({ endpoint: subscription.endpoint });
+
+  assert.deepEqual(calls.slice(1), [
+    {
+      path: '/api/v1/push/public-key',
+      method: 'GET',
+      authorization: 'Bearer settings-token',
+      contentType: null,
+      body: null,
+    },
+    {
+      path: '/api/v1/push/subscriptions',
+      method: 'POST',
+      authorization: 'Bearer settings-token',
+      contentType: 'application/json',
+      body: JSON.stringify(subscription),
+    },
+    {
+      path: '/api/v1/push/subscriptions',
+      method: 'DELETE',
+      authorization: 'Bearer settings-token',
+      contentType: 'application/json',
+      body: JSON.stringify({ endpoint: subscription.endpoint }),
+    },
+  ]);
+});

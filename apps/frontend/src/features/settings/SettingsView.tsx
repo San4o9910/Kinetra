@@ -5,6 +5,7 @@ import type {
 } from '@kinetra/shared';
 import React, { type ReactNode } from 'react';
 
+import type { PushBackendRegistrationStatus, PushPermission } from '../../pwa/pushNotifications';
 import { themeOptions, type ResolvedTheme, type ThemePreference } from '../theme/model';
 import { ChevronIcon, SettingsIcon, ThemeModeIcon } from './SettingsIcons';
 import {
@@ -21,12 +22,19 @@ export interface SettingsViewProps {
   readonly subscription: SubscriptionResponse;
   readonly notifications: NotificationPreferences;
   readonly notificationSaveStatus: NotificationSaveStatus;
+  readonly pushPermission: PushPermission;
+  readonly pushBrowserSubscribed: boolean;
+  readonly pushBackendRegistration: PushBackendRegistrationStatus;
+  readonly pushBusy: boolean;
+  readonly pushError: string | null;
   readonly hasSurvey: boolean;
   readonly themePreference: ThemePreference;
   readonly resolvedTheme: ResolvedTheme;
   readonly supportEmail: string;
   readonly onClose: () => void;
   readonly onNotificationsChange: (preferences: NotificationPreferences) => void;
+  readonly onEnablePush: () => void;
+  readonly onDisablePush: () => void;
   readonly onThemeChange: (preference: ThemePreference) => void;
   readonly onEditSurvey: () => void;
   readonly onOpenLevel: () => void;
@@ -114,6 +122,143 @@ const ToggleRow = ({
   </label>
 );
 
+const pushPermissionLabel = (permission: PushPermission): string => {
+  if (permission === 'unsupported') {
+    return 'Не поддерживается';
+  }
+
+  if (permission === 'granted') {
+    return 'Разрешено';
+  }
+
+  return permission === 'denied' ? 'Запрещено' : 'Не запрошено';
+};
+
+const pushBackendLabel = (status: PushBackendRegistrationStatus): string => {
+  if (status === 'registering') {
+    return 'Подключаем';
+  }
+
+  if (status === 'registered') {
+    return 'Подключено';
+  }
+
+  if (status === 'not_registered') {
+    return 'Не подключено';
+  }
+
+  return status === 'error' ? 'Ошибка подключения' : 'Не подтверждено';
+};
+
+const PushDeviceCard = ({
+  preferenceEnabled,
+  permission,
+  browserSubscribed,
+  backendRegistration,
+  busy,
+  error,
+  onEnable,
+  onDisable,
+}: {
+  readonly preferenceEnabled: boolean;
+  readonly permission: PushPermission;
+  readonly browserSubscribed: boolean;
+  readonly backendRegistration: PushBackendRegistrationStatus;
+  readonly busy: boolean;
+  readonly error: string | null;
+  readonly onEnable: () => void;
+  readonly onDisable: () => void;
+}): ReactNode => {
+  const permissionBlocked = permission === 'unsupported' || permission === 'denied';
+  const enableLabel = browserSubscribed
+    ? backendRegistration === 'error'
+      ? 'Повторить подключение'
+      : 'Подтвердить подключение'
+    : 'Включить на этом устройстве';
+
+  return (
+    <div
+      className="settings-push-device"
+      data-testid="settings-push-device"
+      data-permission={permission}
+      data-browser-subscribed={browserSubscribed ? 'true' : 'false'}
+      data-backend-registration={backendRegistration}
+    >
+      <div className="settings-push-device-heading">
+        <div>
+          <strong>Push на этом устройстве</strong>
+          <p>Настройки типов уведомлений синхронизируются отдельно от разрешения браузера.</p>
+        </div>
+        <SettingsIcon name="bell" />
+      </div>
+
+      <dl className="settings-push-device-state" aria-live="polite">
+        <div>
+          <dt>Разрешение браузера</dt>
+          <dd data-testid="settings-push-permission">{pushPermissionLabel(permission)}</dd>
+        </div>
+        <div>
+          <dt>Подписка браузера</dt>
+          <dd data-testid="settings-push-browser-state">
+            {browserSubscribed ? 'Создана' : 'Не создана'}
+          </dd>
+        </div>
+        <div>
+          <dt>Регистрация Kinetra</dt>
+          <dd data-testid="settings-push-backend-state">{pushBackendLabel(backendRegistration)}</dd>
+        </div>
+      </dl>
+
+      {!preferenceEnabled && browserSubscribed ? (
+        <p className="settings-push-device-note">
+          Типы уведомлений выключены. Подписка устройства сохранена для быстрого включения.
+        </p>
+      ) : null}
+      {permission === 'unsupported' ? (
+        <p className="settings-push-device-note">
+          Этот браузер или режим не поддерживает Web Push. На iPhone откройте установленную PWA с
+          экрана «Домой».
+        </p>
+      ) : null}
+      {permission === 'denied' ? (
+        <p className="settings-push-device-note">
+          Разрешите уведомления для Kinetra в настройках браузера или устройства. Повторный запрос
+          здесь недоступен.
+        </p>
+      ) : null}
+      {error === null ? null : (
+        <p className="settings-push-device-error" data-testid="settings-push-error" role="alert">
+          {error}
+        </p>
+      )}
+
+      {permissionBlocked || backendRegistration === 'registered' ? null : (
+        <button
+          className="settings-push-primary"
+          data-testid="settings-push-enable"
+          type="button"
+          disabled={busy}
+          aria-busy={busy}
+          onClick={onEnable}
+        >
+          {busy ? 'Подключаем…' : enableLabel}
+        </button>
+      )}
+      {browserSubscribed ? (
+        <button
+          className="settings-push-secondary"
+          data-testid="settings-push-disable"
+          type="button"
+          disabled={busy}
+          onClick={onDisable}
+        >
+          Отключить на этом устройстве
+        </button>
+      ) : null}
+    </div>
+  );
+};
+
 const SubscriptionCard = ({
   subscription,
   onOpenPayment,
@@ -189,12 +334,19 @@ export const SettingsView = ({
   subscription,
   notifications,
   notificationSaveStatus,
+  pushPermission,
+  pushBrowserSubscribed,
+  pushBackendRegistration,
+  pushBusy,
+  pushError,
   hasSurvey,
   themePreference,
   resolvedTheme,
   supportEmail,
   onClose,
   onNotificationsChange,
+  onEnablePush,
+  onDisablePush,
   onThemeChange,
   onEditSurvey,
   onOpenLevel,
@@ -295,6 +447,18 @@ export const SettingsView = ({
                   ? 'Не удалось сохранить. Измените настройку, чтобы повторить.'
                   : 'Изменения сохраняются автоматически'}
           </p>
+          <PushDeviceCard
+            preferenceEnabled={
+              notifications.workout_reminders || notifications.weekly_survey_reminder
+            }
+            permission={pushPermission}
+            browserSubscribed={pushBrowserSubscribed}
+            backendRegistration={pushBackendRegistration}
+            busy={pushBusy}
+            error={pushError}
+            onEnable={onEnablePush}
+            onDisable={onDisablePush}
+          />
         </Section>
 
         <Section title="Профиль" testId="settings-profile-section">

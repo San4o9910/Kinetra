@@ -29,6 +29,12 @@ export interface YooKassaEnvironment {
   readonly requestTimeoutMs: number;
 }
 
+export interface VapidEnvironment {
+  readonly publicKey: string;
+  readonly privateKey: string;
+  readonly subject: string;
+}
+
 const DEVELOPMENT_ACCESS_SECRET = 'local-development-only-change-this-kinetra-access-secret-2026';
 
 const parseInteger = (
@@ -217,6 +223,52 @@ const parseYooKassaEnvironment = (
   });
 };
 
+const parseVapidEnvironment = (
+  nodeEnvironment: NodeEnvironment,
+): Readonly<VapidEnvironment> | null => {
+  const publicKey = trimmedOrNull(process.env.VAPID_PUBLIC_KEY);
+  const privateKey = trimmedOrNull(process.env.VAPID_PRIVATE_KEY);
+  const subject = trimmedOrNull(process.env.VAPID_SUBJECT);
+
+  if (publicKey === null && privateKey === null && subject === null) {
+    if (nodeEnvironment === 'production') {
+      throw new Error(
+        'VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY and VAPID_SUBJECT are required in production.',
+      );
+    }
+
+    return null;
+  }
+
+  if (publicKey === null || privateKey === null || subject === null) {
+    throw new Error(
+      'Web Push configuration is incomplete. Set public key, private key and subject.',
+    );
+  }
+
+  if (!/^[A-Za-z0-9_-]{80,128}$/u.test(publicKey)) {
+    throw new Error('VAPID_PUBLIC_KEY must be a valid base64url public key.');
+  }
+
+  if (!/^[A-Za-z0-9_-]{40,128}$/u.test(privateKey)) {
+    throw new Error('VAPID_PRIVATE_KEY must be a valid base64url private key.');
+  }
+
+  let subjectUrl: URL;
+
+  try {
+    subjectUrl = new URL(subject);
+  } catch {
+    throw new Error('VAPID_SUBJECT must be a valid mailto: or HTTPS URL.');
+  }
+
+  if (!['mailto:', 'https:'].includes(subjectUrl.protocol)) {
+    throw new Error('VAPID_SUBJECT must use mailto: or HTTPS.');
+  }
+
+  return Object.freeze({ publicKey, privateKey, subject });
+};
+
 const nodeEnv = parseEnum<NodeEnvironment>('NODE_ENV', process.env.NODE_ENV, 'development', [
   'development',
   'test',
@@ -286,6 +338,7 @@ export const env = Object.freeze({
     process.env.DATABASE_URL ?? 'postgresql://kinetra:kinetra_local_only@localhost:5432/kinetra',
   s3: parseS3Environment(nodeEnv),
   yookassa: parseYooKassaEnvironment(nodeEnv),
+  vapid: parseVapidEnvironment(nodeEnv),
   auth: Object.freeze({
     jwtAccessSecret,
     jwtAccessTtlSeconds: parseInteger(

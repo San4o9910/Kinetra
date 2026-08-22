@@ -56,6 +56,7 @@ const requiredFiles = [
   'docs/T09_PROGRESS.md',
   'docs/T10_SETTINGS.md',
   'docs/T11_PAYMENTS.md',
+  'docs/T13_PUSH_NOTIFICATIONS.md',
   'apps/frontend/index.html',
   'apps/frontend/src/features/auth/LoginScreen.tsx',
   'apps/frontend/src/features/survey/SurveyWizard.tsx',
@@ -111,6 +112,8 @@ const requiredFiles = [
   'apps/frontend/test/theme.test.ts',
   'apps/frontend/test/payments-api.test.ts',
   'apps/frontend/test/payments.test.ts',
+  'apps/frontend/test/push-notifications.test.ts',
+  'apps/frontend/test/service-worker.test.ts',
   'apps/frontend/public/manifest.webmanifest',
   'apps/frontend/public/service-worker.js',
   'apps/frontend/public/offline.html',
@@ -119,6 +122,7 @@ const requiredFiles = [
   'apps/frontend/public/icons/icon-512.png',
   'apps/frontend/public/icons/icon-maskable-512.png',
   'apps/frontend/src/pwa/registerServiceWorker.ts',
+  'apps/frontend/src/pwa/pushNotifications.ts',
   'apps/backend/migrations/001_auth.sql',
   'apps/backend/migrations/002_content.sql',
   'apps/backend/migrations/003_survey.sql',
@@ -128,6 +132,7 @@ const requiredFiles = [
   'apps/backend/migrations/007_progress_data_contract.sql',
   'apps/backend/migrations/008_notifications.sql',
   'apps/backend/migrations/009_payments.sql',
+  'apps/backend/migrations/010_push_notifications.sql',
   'apps/backend/scripts/migrate.mjs',
   'apps/backend/scripts/seed.mjs',
   'apps/backend/scripts/verify-content.mjs',
@@ -182,6 +187,15 @@ const requiredFiles = [
   'apps/backend/src/payments/renewal-service.ts',
   'apps/backend/src/payments/run-renewals.ts',
   'apps/backend/src/payments/subscription-access.ts',
+  'apps/backend/src/push/schema.ts',
+  'apps/backend/src/push/repository.ts',
+  'apps/backend/src/push/postgres-push.repository.ts',
+  'apps/backend/src/push/webpush-sender.ts',
+  'apps/backend/src/push/service.ts',
+  'apps/backend/src/push/scheduler-service.ts',
+  'apps/backend/src/push/router.ts',
+  'apps/backend/src/push/runtime.ts',
+  'apps/backend/src/push/run-notifications.ts',
   'apps/backend/test/auth.e2e.test.ts',
   'apps/backend/test/profile.e2e.test.ts',
   'apps/backend/test/profile.postgres.test.ts',
@@ -196,6 +210,10 @@ const requiredFiles = [
   'apps/backend/test/payments.e2e.test.ts',
   'apps/backend/test/payments.postgres.test.ts',
   'apps/backend/test/yookassa-client.test.ts',
+  'apps/backend/test/push.e2e.test.ts',
+  'apps/backend/test/push.postgres.test.ts',
+  'apps/backend/test/webpush-sender.test.ts',
+  'apps/backend/test/notification-scheduler.test.ts',
   'apps/backend/test/support/fake-object-url-signer.ts',
   'apps/backend/test/support/fake-subscription-access-checker.ts',
   'apps/backend/test/support/fake-yookassa-client.ts',
@@ -204,6 +222,8 @@ const requiredFiles = [
   'apps/backend/test/support/in-memory-progress.repository.ts',
   'apps/backend/test/support/in-memory-settings.repository.ts',
   'apps/backend/test/support/in-memory-payments.repository.ts',
+  'apps/backend/test/support/in-memory-push.repository.ts',
+  'apps/backend/test/support/fake-webpush-sender.ts',
   'scripts/test-frontend-browser.mjs',
   'packages/shared/src/index.ts',
 ];
@@ -262,6 +282,18 @@ if (
   fail('T11 uses the documented YooKassa REST API without an unofficial SDK dependency');
 }
 
+if (backendPackage.dependencies?.['web-push']) {
+  pass('T13 backend dependency: web-push');
+} else {
+  fail('T13 backend dependency: web-push');
+}
+
+if (backendPackage.devDependencies?.['@types/web-push']) {
+  pass('T13 backend TypeScript dependency: @types/web-push');
+} else {
+  fail('T13 backend TypeScript dependency: @types/web-push');
+}
+
 if (frontendPackage.dependencies?.['socket.io-client']) {
   pass('frontend dependency: socket.io-client');
 } else {
@@ -280,6 +312,12 @@ if (backendPackage.scripts?.['payments:renew'] === 'node dist/payments/run-renew
   pass('T11 backend exposes the built daily renewal command');
 } else {
   fail('T11 backend exposes the built daily renewal command');
+}
+
+if (backendPackage.scripts?.['notifications:send'] === 'node dist/push/run-notifications.js') {
+  pass('T13 backend exposes the built one-shot notification worker');
+} else {
+  fail('T13 backend exposes the built one-shot notification worker');
 }
 
 const manifest = await readJson('apps/frontend/public/manifest.webmanifest');
@@ -2526,7 +2564,7 @@ for (const screenContract of [
   'flushPendingNotifications()',
   "deleteConfirmation !== 'DELETE'",
   'deleteAccount(deleteConfirmation)',
-  'void logout()',
+  '.then(() => logout())',
   '.catch(() => undefined)',
   '.finally(onSignedOut)',
   '<SettingsView',
@@ -3217,6 +3255,651 @@ for (const ciEnvironmentContract of [
   );
 }
 
+// T13 — per-device Web Push lifecycle, durable claims and deterministic notification worker.
+const pushMigration = await readText('apps/backend/migrations/010_push_notifications.sql');
+for (const migrationContract of [
+  'CREATE TABLE IF NOT EXISTS push_subscriptions',
+  'user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE',
+  'endpoint text NOT NULL',
+  'p256dh text NOT NULL',
+  'auth text NOT NULL',
+  'expiration_time timestamptz NULL',
+  'user_agent varchar(512) NULL',
+  'last_success_at timestamptz NULL',
+  'last_failure_at timestamptz NULL',
+  'disabled_at timestamptz NULL',
+  'push_subscriptions_endpoint_valid',
+  "endpoint ~* '^https://'",
+  'push_subscriptions_p256dh_valid',
+  'push_subscriptions_auth_valid',
+  'CREATE UNIQUE INDEX IF NOT EXISTS push_subscriptions_endpoint_unique_idx',
+  'CREATE INDEX IF NOT EXISTS push_subscriptions_user_active_idx',
+  'WHERE disabled_at IS NULL',
+  'CREATE TABLE IF NOT EXISTS push_notification_deliveries',
+  'subscription_id uuid NOT NULL REFERENCES push_subscriptions(id) ON DELETE CASCADE',
+  'occurrence_key varchar(512) NOT NULL',
+  "notification_type IN ('workout_reminder', 'weekly_survey_reminder')",
+  "status IN ('claimed', 'sent', 'failed', 'invalidated')",
+  'push_notification_deliveries_terminal_state_valid',
+  'CREATE UNIQUE INDEX IF NOT EXISTS push_notification_deliveries_occurrence_unique_idx',
+  'CREATE INDEX IF NOT EXISTS push_notification_deliveries_claimed_idx',
+  "WHERE status = 'claimed'",
+]) {
+  expectIncludes(pushMigration, migrationContract, `T13 migration: ${migrationContract}`);
+}
+expectMatches(
+  pushMigration,
+  /CREATE UNIQUE INDEX IF NOT EXISTS push_notification_deliveries_occurrence_unique_idx[\s\S]*?ON push_notification_deliveries \(\s*subscription_id,\s*user_id,\s*notification_type,\s*occurrence_key\s*\)/u,
+  'T13 delivery uniqueness binds device, owner, notification type and occurrence',
+);
+
+expectIncludes(
+  backendApp,
+  "app.use('/api/v1/push', createPushRouter(pushRuntime))",
+  'T13 backend mounts the push router at the exact API prefix',
+);
+
+const t13BackendEnvironment = await readText('apps/backend/src/config/env.ts');
+for (const environmentContract of [
+  'const parseVapidEnvironment = (',
+  'const publicKey = trimmedOrNull(process.env.VAPID_PUBLIC_KEY)',
+  'const privateKey = trimmedOrNull(process.env.VAPID_PRIVATE_KEY)',
+  'const subject = trimmedOrNull(process.env.VAPID_SUBJECT)',
+  "'VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY and VAPID_SUBJECT are required in production.'",
+  "'Web Push configuration is incomplete. Set public key, private key and subject.'",
+  '/^[A-Za-z0-9_-]{80,128}$/u.test(publicKey)',
+  '/^[A-Za-z0-9_-]{40,128}$/u.test(privateKey)',
+  "!['mailto:', 'https:'].includes(subjectUrl.protocol)",
+  'vapid: parseVapidEnvironment(nodeEnv)',
+]) {
+  expectIncludes(
+    t13BackendEnvironment,
+    environmentContract,
+    `T13 fail-closed VAPID environment: ${environmentContract}`,
+  );
+}
+
+const pushSchema = await readText('apps/backend/src/push/schema.ts');
+for (const schemaContract of [
+  "url.protocol !== 'https:'",
+  'url.username.length > 0 || url.password.length > 0 || url.hash.length > 0',
+  'isObviousLocalEndpoint(url)',
+  'subscriptionKeySchema',
+  '/^[A-Za-z0-9_-]+$/u',
+  'pushSubscriptionSchema',
+  'expirationTime: z',
+  'pushUnsubscribeSchema',
+]) {
+  expectIncludes(pushSchema, schemaContract, `T13 strict push schema: ${schemaContract}`);
+}
+if ((pushSchema.match(/\.strict\(\)/gu) ?? []).length >= 3) {
+  pass('T13 subscription, nested keys and unsubscribe payloads reject unknown fields');
+} else {
+  fail('T13 subscription, nested keys and unsubscribe payloads reject unknown fields');
+}
+if (/\buser_id\s*:/u.test(pushSchema)) {
+  fail('T13 push schemas never accept a body-owned user_id');
+} else {
+  pass('T13 push schemas never accept a body-owned user_id');
+}
+
+const pushRouter = await readText('apps/backend/src/push/router.ts');
+for (const routerContract of [
+  "response.setHeader('Cache-Control', 'no-store')",
+  'router.use(disableCaching)',
+  'router.use(authMiddleware)',
+  'readonly mutationRateLimiter: RequestHandler',
+  "router.get(\n    '/public-key'",
+  "router.post(\n    '/subscriptions'",
+  "'/subscriptions',\n    mutationRateLimiter",
+  "router.delete(\n    '/subscriptions'",
+  'requireAuthenticatedPrincipal(request)',
+  'response.status(200).json(configuration)',
+  'response.status(200).json(subscription)',
+  'response.status(204).send()',
+]) {
+  expectIncludes(pushRouter, routerContract, `T13 JWT/no-store push router: ${routerContract}`);
+}
+
+const pushService = await readText('apps/backend/src/push/service.ts');
+for (const serviceContract of [
+  "new HttpError(503, 'PUSH_NOT_CONFIGURED'",
+  'return { public_key: this.publicKey }',
+  'pushSubscriptionSchema.safeParse(body)',
+  "'INVALID_PUSH_SUBSCRIPTION'",
+  'this.repository.upsertSubscription({',
+  'userId,',
+  'userAgent: normalizeUserAgent(userAgent)',
+  "'PUSH_SUBSCRIPTION_CONFLICT'",
+  'return { subscribed: true }',
+  'pushUnsubscribeSchema.safeParse(body)',
+  "'INVALID_PUSH_UNSUBSCRIBE'",
+  'this.repository.disableSubscription(userId, parsed.data.endpoint, now)',
+]) {
+  expectIncludes(pushService, serviceContract, `T13 push service: ${serviceContract}`);
+}
+if (/privateKey|VAPID_PRIVATE_KEY/u.test(pushService)) {
+  fail('T13 push service response surface has no VAPID private key');
+} else {
+  pass('T13 push service response surface has no VAPID private key');
+}
+
+const pushRepositoryInterface = await readText('apps/backend/src/push/repository.ts');
+expectIncludes(
+  pushRepositoryInterface,
+  'export const MAX_ENABLED_PUSH_SUBSCRIPTIONS_PER_USER = 10',
+  'T13 bounds enabled device fan-out per user',
+);
+
+const pushRepository = await readText('apps/backend/src/push/postgres-push.repository.ts');
+for (const repositoryContract of [
+  'const user = await client.query(',
+  'let existingResult = await client.query<ExistingSubscriptionRow>(',
+  'const requiresEnabledSlot =',
+  'existing.disabled_at !== null',
+  "'enabled push subscription count'",
+  'return enabledCount < MAX_ENABLED_PUSH_SUBSCRIPTIONS_PER_USER',
+  'INSERT INTO push_subscriptions',
+  'ON CONFLICT (endpoint)',
+  'SET user_id = $1',
+  'disabled_at = NULL',
+  'WHERE user_id = $1',
+  'AND endpoint = $2',
+  "COALESCE(timezone_entry.name, 'Europe/Moscow') AS effective_timezone",
+  'LEFT JOIN pg_timezone_names AS timezone_entry',
+  '$1::timestamptz AT TIME ZONE normalized.effective_timezone AS local_now',
+  "to_char(local_now, 'HH24:MI') = reminder_time",
+  'EXTRACT(ISODOW FROM local_now)::integer = 7',
+  'WITH eligible AS MATERIALIZED',
+  'INSERT INTO push_notification_deliveries',
+  'ON CONFLICT (',
+  ') DO NOTHING',
+  "delivery.status = 'claimed'",
+  'FOR UPDATE OF delivery, subscription',
+  "SET status = 'sent'",
+  'SET last_success_at = $2',
+  "SET status = 'invalidated'",
+  'SET disabled_at = COALESCE(disabled_at, $2)',
+  "SET status = 'failed'",
+  'SET last_failure_at = $2',
+]) {
+  expectIncludes(
+    pushRepository,
+    repositoryContract,
+    `T13 PostgreSQL push repository: ${repositoryContract}`,
+  );
+}
+
+const webPushSender = await readText('apps/backend/src/push/webpush-sender.ts');
+for (const senderContract of [
+  'const MAX_PAYLOAD_BYTES = 3_072',
+  'const DEFAULT_TTL_SECONDS = 60 * 60',
+  'const DEFAULT_TIMEOUT_MS = 10_000',
+  "readonly url: '/schedule' | '/progress'",
+  "payload.type === 'workout_reminder' && payload.url === '/schedule'",
+  "payload.type === 'weekly_survey_reminder' && payload.url === '/progress'",
+  "Buffer.byteLength(serialized, 'utf8') > MAX_PAYLOAD_BYTES",
+  "errorCode: 'payload_too_large'",
+  'webPush.generateRequestDetails(subscription, payload',
+  'deadlineState.timer = setTimeout(',
+  'request.destroy(error)',
+  'response.resume()',
+  'const defaultTransport = createWebPushTransport()',
+  'this.transport.sendNotification(',
+  'vapidDetails: this.vapidDetails',
+  'TTL: this.ttlSeconds',
+  "urgency: 'normal'",
+  'timeout: this.timeoutMs',
+  'statusCode === 404 || statusCode === 410',
+  "return { kind: 'failed', errorCode: safeFailureCode(error) }",
+]) {
+  expectIncludes(webPushSender, senderContract, `T13 bounded Web Push sender: ${senderContract}`);
+}
+
+const pushScheduler = await readText('apps/backend/src/push/scheduler-service.ts');
+for (const schedulerContract of [
+  'const DEFAULT_SEND_CONCURRENCY = 8',
+  'sendConcurrency < 1 || sendConcurrency > 32',
+  'await this.subscriptionAccess.hasActiveSubscription(dueUser.userId, now)',
+  'this.programRepository.getProgress(dueUser.userId)',
+  'this.programRepository.getWeek(dueUser.userId, program.currentWeekNumber)',
+  'day.dayOfWeek === dueUser.localDayOfWeek',
+  'workout.completedAt !== null || !workout.mediaAvailable',
+  '`workout:${programWeek}:${workout.videoId}:${dueUser.localDate}`',
+  "url: '/schedule'",
+  'dueUser.localDayOfWeek !== 7',
+  'this.progressRepository.getMetrics(dueUser.userId)',
+  'metric.programWeek === programWeek',
+  '`weekly-survey:${programWeek}`',
+  "url: '/progress'",
+  'this.pushRepository.claimDeliveries(candidate.event, now)',
+  'this.pushRepository.executeDeliveryClaim(claim, now',
+  'mapWithConcurrency(',
+]) {
+  expectIncludes(pushScheduler, schedulerContract, `T13 scheduler policy: ${schedulerContract}`);
+}
+
+const pushRuntime = await readText('apps/backend/src/push/runtime.ts');
+for (const runtimeContract of [
+  'env.vapid === null',
+  'new UnavailablePushSender()',
+  'new WebPushSender({',
+  'privateKey: env.vapid.privateKey',
+  'new PostgresSubscriptionAccessChecker(databasePool)',
+  'mutationRateLimiter: createFixedWindowRateLimiter({',
+  'windowMs: 60_000',
+  'maximumRequests: 60',
+  "errorCode: 'PUSH_RATE_LIMITED'",
+  'configured: env.vapid !== null',
+]) {
+  expectIncludes(pushRuntime, runtimeContract, `T13 production push runtime: ${runtimeContract}`);
+}
+const notificationWorker = await readText('apps/backend/src/push/run-notifications.ts');
+for (const workerContract of [
+  'if (!runtime.configured)',
+  "throw new Error('Web Push is not configured.')",
+  'await runtime.schedulerService.run()',
+  "console.log('Kinetra notification run completed.', summary)",
+  'exitCode = 1',
+  'await closeDatabasePool()',
+  'process.exitCode = exitCode',
+]) {
+  expectIncludes(notificationWorker, workerContract, `T13 one-shot worker: ${workerContract}`);
+}
+
+for (const sharedPushContract of [
+  'export interface PushPublicKeyResponse',
+  'readonly public_key: string',
+  'export interface PushSubscriptionRequest',
+  'readonly endpoint: string',
+  'readonly p256dh: string',
+  'readonly auth: string',
+  'readonly expirationTime: number | null',
+  'export interface PushSubscriptionResponse',
+  'readonly subscribed: true',
+  'export interface PushUnsubscribeRequest',
+]) {
+  expectIncludes(
+    sharedContracts,
+    sharedPushContract,
+    `T13 minimal shared DTO: ${sharedPushContract}`,
+  );
+}
+expectMatches(
+  sharedContracts,
+  /export interface PushPublicKeyResponse \{\s*readonly public_key: string;\s*\}/u,
+  'T13 public-key DTO contains only the public key',
+);
+
+for (const frontendPushApiContract of [
+  'public async getPushPublicKey()',
+  "'/api/v1/push/public-key'",
+  'public async registerPushSubscription(',
+  "'/api/v1/push/subscriptions'",
+  "method: 'POST'",
+  'public async deletePushSubscription(data: PushUnsubscribeRequest)',
+  "method: 'DELETE'",
+]) {
+  expectIncludes(
+    frontendApi,
+    frontendPushApiContract,
+    `T13 frontend API: ${frontendPushApiContract}`,
+  );
+}
+
+const pushNotifications = await readText('apps/frontend/src/pwa/pushNotifications.ts');
+for (const lifecycleContract of [
+  'runtime.isSecureContext()',
+  'runtime.hasNotificationApi()',
+  'runtime.hasServiceWorkerApi()',
+  'runtime.hasPushManagerApi()',
+  'const getExistingPushSubscription = async',
+  'runtime.getExistingRegistration()',
+  'const subscribeToPush = async',
+  "if (permission === 'default')",
+  'permission = await runtime.requestPermission()',
+  "if (permission === 'denied')",
+  'runtime.getReadyRegistration()',
+  'registration.pushManager.getSubscription()',
+  'const publicKey = await runtime.getPublicKey()',
+  'registration.pushManager.subscribe({',
+  'userVisibleOnly: true',
+  'applicationServerKey: runtime.decodeApplicationServerKey(publicKey.public_key)',
+  'const response = await runtime.registerSubscription(',
+  'requestFromBrowserSubscription(subscription)',
+  'runtime.deleteSubscription({ endpoint: subscription.endpoint })',
+  'await Promise.allSettled([',
+  'const unsubscribeBrowserOnly = async',
+]) {
+  expectIncludes(
+    pushNotifications,
+    lifecycleContract,
+    `T13 frontend permission/subscription lifecycle: ${lifecycleContract}`,
+  );
+}
+if (/VAPID_PRIVATE_KEY|privateKey/u.test(pushNotifications)) {
+  fail('T13 frontend push module has no private VAPID key surface');
+} else {
+  pass('T13 frontend push module has no private VAPID key surface');
+}
+
+for (const serviceWorkerRegistrationContract of [
+  'getExistingServiceWorkerRegistration',
+  "navigator.serviceWorker.getRegistration('/')",
+  'getReadyServiceWorkerRegistration',
+]) {
+  expectIncludes(
+    registration,
+    serviceWorkerRegistrationContract,
+    `T13 injectable service worker registration seam: ${serviceWorkerRegistrationContract}`,
+  );
+}
+
+for (const settingsPushContract of [
+  'getExistingPushSubscription',
+  'void refreshPushDeviceState()',
+  'const enablePushOnDevice = (): void =>',
+  'void subscribeToPush()',
+  'const disablePushOnDevice = (): void =>',
+  'void unsubscribeFromPush()',
+  'settleBestEffortWithin(bestEffortUnsubscribeFromPush())',
+  '.then(() => logout())',
+  'await settleBestEffortWithin(unsubscribeBrowserOnly())',
+  'updateNotifications(snapshot)',
+  'SETTINGS_NOTIFICATION_DEBOUNCE_MS',
+]) {
+  expectIncludes(
+    settingsScreen,
+    settingsPushContract,
+    `T13 Settings lifecycle: ${settingsPushContract}`,
+  );
+}
+expectIncludes(
+  settingsModel,
+  'SETTINGS_NOTIFICATION_DEBOUNCE_MS = 450',
+  'T13 preserves the T10 450 ms notification debounce',
+);
+expectMatches(
+  frontendApi,
+  /public async updateNotifications\(data: NotificationPreferences\): Promise<void> \{[\s\S]*?authenticatedVoidRequest\('\/api\/v1\/settings\/notifications',[\s\S]*?method: 'PUT',[\s\S]*?body: JSON\.stringify\(data\),[\s\S]*?keepalive: true/u,
+  'T13 preserves the full T10 notification object PUT',
+);
+for (const settingsPushTestId of [
+  'settings-push-device',
+  'settings-push-permission',
+  'settings-push-browser-state',
+  'settings-push-backend-state',
+  'settings-push-error',
+  'settings-push-enable',
+  'settings-push-disable',
+]) {
+  expectIncludes(
+    settingsView,
+    settingsPushTestId,
+    `T13 Settings device state: ${settingsPushTestId}`,
+  );
+}
+
+for (const serviceWorkerPushContract of [
+  "const PUSH_NOTIFICATION_TYPES = new Set(['workout_reminder', 'weekly_survey_reminder'])",
+  "const PUSH_DEEP_LINKS = new Set(['/schedule', '/progress'])",
+  "url: '/schedule'",
+  "url: '/progress'",
+  "url: '/'",
+  "value.trimStart().startsWith('//')",
+  'candidate.origin !== self.location.origin || candidate.pathname !== fallback',
+  "self.addEventListener('push'",
+  'self.registration.showNotification(notification.title',
+  "self.addEventListener('notificationclick'",
+  'event.notification.close()',
+  ".matchAll({ type: 'window', includeUncontrolled: true })",
+  'clientUrl.origin !== self.location.origin',
+  'self.clients.openWindow(targetUrl)',
+]) {
+  expectIncludes(
+    serviceWorker,
+    serviceWorkerPushContract,
+    `T13 Service Worker safety: ${serviceWorkerPushContract}`,
+  );
+}
+
+const pushBackendTests = await readText('apps/backend/test/push.e2e.test.ts');
+for (const testContract of [
+  'all Push API endpoints require JWT and disable caching',
+  'idempotently upserts the authenticated device',
+  'caps enabled devices while rotation and disabling preserve capacity',
+  'reactivatedAtLimit.status, 409',
+  'validation is strict and rejects local literal endpoints',
+  'cannot disable another user device',
+  'fails safely when VAPID is not configured',
+  'mutations have a bounded per-IP rate limit',
+  "'PUSH_RATE_LIMITED'",
+  'KINETRA_T13_BACKEND_E2E=PASS',
+]) {
+  expectIncludes(pushBackendTests, testContract, `T13 backend E2E: ${testContract}`);
+}
+
+const pushPostgresTests = await readText('apps/backend/test/push.postgres.test.ts');
+for (const testContract of [
+  'claims once and classifies delivery state',
+  'atomically caps enabled devices and preserves rejected transfers',
+  'concurrentResults.filter(Boolean).length, 1',
+  'MAX_ENABLED_PUSH_SUBSCRIPTIONS_PER_USER',
+  "effectiveTimezone: 'Europe/Moscow'",
+  'Promise.all([',
+  "kind: 'invalid'",
+  "kind: 'failed'",
+  'repeated.claims.length, 0',
+  'KINETRA_T13_POSTGRES_INTEGRATION=PASS',
+]) {
+  expectIncludes(pushPostgresTests, testContract, `T13 PostgreSQL integration: ${testContract}`);
+}
+
+const webPushSenderTests = await readText('apps/backend/test/webpush-sender.test.ts');
+for (const testContract of [
+  'uses bounded options and sends only the compact public payload',
+  'discards a streaming response and enforces a wall-clock deadline',
+  'createWebPushTransport(localHttpRequestPrimitive(port))',
+  'chunksSent < 200',
+  'invalidates only 404/410',
+  "errorCode: 'network_timeout'",
+  'rejects mismatched deep links and oversized payloads before transport',
+  'KINETRA_T13_WEBPUSH_SENDER=PASS',
+]) {
+  expectIncludes(webPushSenderTests, testContract, `T13 Web Push sender test: ${testContract}`);
+}
+
+const notificationSchedulerTests = await readText(
+  'apps/backend/test/notification-scheduler.test.ts',
+);
+for (const testContract of [
+  'sends each Sunday logical event once to every device',
+  'skips unavailable/completed workouts, submitted metrics and inactive paywall',
+  'honors disabled preferences and completed workout state',
+  'isolates invalid and transient endpoints and never retries an occurrence',
+  'KINETRA_T13_SCHEDULER=PASS',
+]) {
+  expectIncludes(notificationSchedulerTests, testContract, `T13 scheduler test: ${testContract}`);
+}
+
+const pushFrontendTests = await readText('apps/frontend/test/push-notifications.test.ts');
+for (const testContract of [
+  'hydration checks an existing browser subscription without prompting or fetching VAPID',
+  'explicit subscribe requests permission first',
+  'existing browser subscription is upserted without a new prompt or public-key request',
+  'denied permission cannot loop a prompt',
+  'unsupported environments remain read-only',
+  'backend registration failure never removes or reports away the browser subscription',
+  'explicit and best-effort unsubscribe preserve their different failure semantics',
+  'KINETRA_T13_PERMISSION_LIFECYCLE=PASS',
+]) {
+  expectIncludes(pushFrontendTests, testContract, `T13 frontend lifecycle test: ${testContract}`);
+}
+
+const serviceWorkerTests = await readText('apps/frontend/test/service-worker.test.ts');
+for (const testContract of [
+  'shows bounded notifications and sends external URLs to the safe root',
+  'notification click navigates and focuses an existing same-origin window',
+  'malformed or external notification clicks never open an external origin',
+  'KINETRA_T13_SERVICE_WORKER=PASS',
+]) {
+  expectIncludes(serviceWorkerTests, testContract, `T13 Service Worker VM test: ${testContract}`);
+}
+for (const testContract of [
+  'T13 push API client uses exact protected public-key, upsert and delete contracts',
+  "authorization: 'Bearer settings-token'",
+]) {
+  expectIncludes(settingsFrontendApiTests, testContract, `T13 frontend API test: ${testContract}`);
+}
+for (const testContract of [
+  'T13 settings keeps permission, browser subscription and backend registration separate',
+  'KINETRA_T13_SETTINGS_INTEGRATION=PASS',
+]) {
+  expectIncludes(settingsFrontendTests, testContract, `T13 Settings unit test: ${testContract}`);
+}
+
+for (const browserContract of [
+  'Page.addScriptToEvaluateOnNewDocument',
+  "Object.defineProperty(Notification, 'requestPermission'",
+  "Object.defineProperty(PushManager.prototype, 'getSubscription'",
+  "Object.defineProperty(PushManager.prototype, 'subscribe'",
+  'permissionRequests: 0',
+  'counters.pushPublicKeyGet, 0',
+  'counters.pushSubscriptionPost, 0',
+  'T13 explicit device push registration',
+  'applicationServerKeyLength: 65',
+  'T10 debounced notification preferences saved once',
+  'workout_reminders: false',
+  "reminder_time: '10:30'",
+  'weekly_survey_reminder: false',
+  'T13 existing browser subscription is re-registered without a new permission prompt',
+  'T13 explicit device push removal',
+  'T13 device is unsubscribed after account deletion',
+  'T13 device is registered before logout cleanup',
+  'KINETRA_T13_BROWSER_E2E=PASS',
+]) {
+  expectIncludes(browserTest, browserContract, `T13 browser acceptance: ${browserContract}`);
+}
+const t13BrowserMarkerPosition = browserTest.lastIndexOf(
+  "console.log('KINETRA_T13_BROWSER_E2E=PASS')",
+);
+const t13BrowserFinalAssertionPosition = browserTest.lastIndexOf(
+  'assert.equal(counters.logout, 1)',
+);
+if (
+  t13BrowserMarkerPosition > t13BrowserFinalAssertionPosition &&
+  t13BrowserFinalAssertionPosition >= 0
+) {
+  pass('T13 browser marker is emitted only after final lifecycle assertions');
+} else {
+  fail('T13 browser marker is emitted only after final lifecycle assertions');
+}
+
+const migrationRunCount = (ciWorkflow.match(/run: npm run db:migrate/gu) ?? []).length;
+if (migrationRunCount >= 2) {
+  pass('T13 CI runs the append-only migration twice to prove idempotency');
+} else {
+  fail('T13 CI runs the append-only migration twice to prove idempotency');
+}
+for (const ciEnvironmentContract of [
+  'VAPID_PUBLIC_KEY: BG_wO5SSQc4drdQ1GeaWDgqFtBppoFwygQOqK84VlMoWPE91OlW_AdxT9sCwx-7ni0DG_30lqW4igrmJzvccFEo',
+  'VAPID_PRIVATE_KEY: AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE',
+  'VAPID_SUBJECT: mailto:ci@kinetra.test',
+]) {
+  expectIncludes(
+    ciWorkflow,
+    ciEnvironmentContract,
+    `CI provides deterministic T13 test env: ${ciEnvironmentContract}`,
+  );
+}
+for (const marker of [
+  'KINETRA_T13_WEBPUSH_SENDER=PASS',
+  'KINETRA_T13_BACKEND_E2E=PASS',
+  'KINETRA_T13_POSTGRES_INTEGRATION=PASS',
+  'KINETRA_T13_SCHEDULER=PASS',
+  'KINETRA_T13_SERVICE_WORKER=PASS',
+  'KINETRA_T13_PERMISSION_LIFECYCLE=PASS',
+  'KINETRA_T13_SETTINGS_INTEGRATION=PASS',
+  'KINETRA_T13_BROWSER_E2E=PASS',
+]) {
+  expectIncludes(ciWorkflow, `grep -F '${marker}'`, `CI requires T13 marker: ${marker}`);
+}
+expectIncludes(
+  ciWorkflow,
+  "echo 'KINETRA_T13_TEST_SUITE=PASS'",
+  'CI emits the T13 suite completion marker only after marker greps',
+);
+
+const pushDocumentation = await readText('docs/T13_PUSH_NOTIFICATIONS.md');
+for (const documentationContract of [
+  'GET /api/v1/push/public-key',
+  'POST /api/v1/push/subscriptions',
+  'DELETE /api/v1/push/subscriptions',
+  'Authorization: Bearer <access JWT>',
+  'Cache-Control: no-store',
+  '010_push_notifications.sql',
+  'VAPID_PRIVATE_KEY=<server-only private base64url key>',
+  'Notification.requestPermission()',
+  '450 ms',
+  '`/schedule`',
+  '`/progress`',
+  'каждую минуту',
+  'Europe/Moscow',
+  'в воскресенье по локальному календарю',
+  'canonical program/paywall contract',
+  'active',
+  'Одно логическое событие разрешено на каждую активную device',
+  '404/410',
+  'PUSH_RATE_LIMITED',
+  'Retry-After',
+  'at-most-once policy',
+  'stale',
+  'ротация',
+  'HTTPS',
+  'secret manager',
+  'Alerting',
+  'не более 10 enabled subscriptions',
+  'hard wall-clock deadline 10 seconds',
+]) {
+  expectIncludes(
+    pushDocumentation,
+    documentationContract,
+    `T13 documented contract: ${documentationContract}`,
+  );
+}
+const readmeDocumentation = await readText('README.md');
+for (const readmeContract of [
+  '## Web Push уведомления',
+  '/api/v1/push/public-key',
+  'npm run notifications:send -w @kinetra/backend',
+  'current program week',
+  'Sunday weekly policy',
+  'не более 10',
+  'docs/T13_PUSH_NOTIFICATIONS.md',
+]) {
+  expectIncludes(readmeDocumentation, readmeContract, `T13 README contract: ${readmeContract}`);
+}
+const validationReport = await readText('VALIDATION.md');
+for (const [validationCheck, expectedStatus] of [
+  ['Structural contracts T01–T13', 'PASS'],
+  ['TypeScript production + tests', 'PASS'],
+  ['ESLint', 'PASS'],
+  ['Backend unit/API tests', 'PASS'],
+  ['PostgreSQL migration/integration', 'CI REQUIRED'],
+  ['Frontend unit/Service Worker tests', 'PASS'],
+  ['Chrome browser acceptance', 'CI REQUIRED'],
+  ['Production build', 'PASS'],
+  ['Composite quality gate', 'CI REQUIRED'],
+  ['Tracked source manifest', 'PASS'],
+]) {
+  const escapedValidationCheck = validationCheck.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+  expectMatches(
+    validationReport,
+    new RegExp(`\\| ${escapedValidationCheck}\\s+\\| ${expectedStatus}\\s+\\|`, 'u'),
+    `T13 validation records ${expectedStatus}: ${validationCheck}`,
+  );
+}
+
 for (const temporaryArtifact of [
   '.github/workflows/apply-t04-fixes.yml',
   '.github/workflows/apply-t05.yml',
@@ -3226,6 +3909,7 @@ for (const temporaryArtifact of [
   '.github/workflows/apply-t09.yml',
   '.github/workflows/apply-t10.yml',
   '.github/workflows/apply-t11.yml',
+  '.github/workflows/apply-t13.yml',
   '.github/workflows/export-dev-env.yml',
   '.github/workflows/export-full-env.yml',
   '.github/workflows/export-source.yml',
@@ -3236,6 +3920,7 @@ for (const temporaryArtifact of [
   '.t09-bootstrap',
   '.t10-bootstrap',
   '.t11-bootstrap',
+  '.t13-bootstrap',
   'docs/.probe',
   'docs/.t05-pr-trigger',
   'docs/.t06-pr-trigger',
@@ -3244,6 +3929,7 @@ for (const temporaryArtifact of [
   'docs/.t09-pr-trigger',
   'docs/.t10-pr-trigger',
   'docs/.t11-pr-trigger',
+  'docs/.t13-pr-trigger',
 ]) {
   try {
     await access(resolve(root, temporaryArtifact));
@@ -3333,6 +4019,27 @@ expectIncludes(
   'YUKASSA_RETURN_URL=http://localhost:5173/payment/success',
   'T11 local return URL targets the exact success route',
 );
+
+for (const key of ['VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY', 'VAPID_SUBJECT']) {
+  expectMatches(envExample, new RegExp(`^${key}=`, 'mu'), `T13 Web Push option: ${key}`);
+}
+expectIncludes(
+  envExample,
+  '# Example subject after both keys are configured: mailto:coach@kinetra.app',
+  'T13 VAPID subject example uses a documented controlled contact',
+);
+for (const blankLocalVapidOption of ['VAPID_PUBLIC_KEY=', 'VAPID_PRIVATE_KEY=', 'VAPID_SUBJECT=']) {
+  expectMatches(
+    envExample,
+    new RegExp(`^${blankLocalVapidOption}$`, 'mu'),
+    `T13 copied local env leaves VAPID disabled without a partial configuration: ${blankLocalVapidOption}`,
+  );
+}
+if (/^VITE_.*VAPID_PRIVATE_KEY=/mu.test(envExample)) {
+  fail('T13 VAPID private key is never exposed as frontend configuration');
+} else {
+  pass('T13 VAPID private key is never exposed as frontend configuration');
+}
 
 try {
   await access(resolve(root, '.env'));

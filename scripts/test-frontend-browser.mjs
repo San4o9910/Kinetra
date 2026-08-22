@@ -25,6 +25,12 @@ const expiredSubscriptionStartsAt = fixtureTimestamp(-60);
 const expiredSubscriptionExpiresAt = fixtureTimestamp(-1);
 const renewedSubscriptionStartsAt = fixtureTimestamp(0);
 const renewedSubscriptionExpiresAt = fixtureTimestamp(30);
+const browserPushEndpoint = 'https://push.example.test/kinetra-browser-device';
+const browserPushPublicKey =
+  'BG_wO5SSQc4drdQ1GeaWDgqFtBppoFwygQOqK84VlMoWPE91OlW_AdxT9sCwx-7ni0DG_30lqW4igrmJzvccFEo';
+const browserPushP256dh =
+  'BNcRdreALRFXTkOOUHK1EtK0b4vQm3xV9YVxNToPvN7aK8MvQ3rTn5Jk2wLs6cDf8gHa9qEb4yUi7oPx1mZn0Ac';
+const browserPushAuth = 'AQIDBAUGBwgJCgsMDQ4PEA';
 
 const sleep = (milliseconds) =>
   new Promise((resolve) => {
@@ -98,6 +104,9 @@ const counters = {
   paymentCreate: 0,
   subscriptionCancel: 0,
   notificationsPut: 0,
+  pushPublicKeyGet: 0,
+  pushSubscriptionPost: 0,
+  pushSubscriptionDelete: 0,
   accountDelete: 0,
   weekGet: 0,
   workoutComplete: 0,
@@ -427,6 +436,8 @@ let notificationPreferences = {
 };
 
 const notificationUpdates = [];
+const pushSubscriptionUpdates = [];
+const pushSubscriptionDeletes = [];
 
 const settingsProfilePayload = () => ({
   email: profile.user.email,
@@ -696,6 +707,56 @@ const createMockApiServer = () =>
         }
       }
       json(response, 200, subscriptionPayload);
+      return;
+    }
+
+    if (request.method === 'GET' && request.url === '/api/v1/push/public-key') {
+      if (!hasValidAccessToken(request)) {
+        json(response, 401, {
+          error: { code: 'AUTHENTICATION_REQUIRED', message: 'A valid access token is required.' },
+        });
+        return;
+      }
+
+      counters.pushPublicKeyGet += 1;
+      json(response, 200, { public_key: browserPushPublicKey });
+      return;
+    }
+
+    if (request.method === 'POST' && request.url === '/api/v1/push/subscriptions') {
+      if (!hasValidAccessToken(request)) {
+        json(response, 401, {
+          error: { code: 'AUTHENTICATION_REQUIRED', message: 'A valid access token is required.' },
+        });
+        return;
+      }
+
+      const body = await readJsonBody(request);
+      assert.deepEqual(body, {
+        endpoint: browserPushEndpoint,
+        keys: { p256dh: browserPushP256dh, auth: browserPushAuth },
+        expirationTime: null,
+      });
+      counters.pushSubscriptionPost += 1;
+      pushSubscriptionUpdates.push(body);
+      json(response, 200, { subscribed: true });
+      return;
+    }
+
+    if (request.method === 'DELETE' && request.url === '/api/v1/push/subscriptions') {
+      if (!hasValidAccessToken(request)) {
+        json(response, 401, {
+          error: { code: 'AUTHENTICATION_REQUIRED', message: 'A valid access token is required.' },
+        });
+        return;
+      }
+
+      const body = await readJsonBody(request);
+      assert.deepEqual(body, { endpoint: browserPushEndpoint });
+      counters.pushSubscriptionDelete += 1;
+      pushSubscriptionDeletes.push(body);
+      response.writeHead(204, { 'Cache-Control': 'no-store' });
+      response.end();
       return;
     }
 
@@ -1493,6 +1554,82 @@ const runBrowserScenario = async () => {
     await cdp.attachToPage();
     await cdp.send('Runtime.enable');
     await cdp.send('Page.enable');
+    await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
+      source: `(() => {
+        const state = {
+          permission: 'default',
+          permissionRequests: 0,
+          getSubscriptionCalls: 0,
+          subscribeCalls: 0,
+          unsubscribeCalls: 0,
+          subscribeOptions: null,
+          subscription: null,
+        };
+        const makeSubscription = () => {
+          const subscription = {
+            endpoint: ${JSON.stringify(browserPushEndpoint)},
+            expirationTime: null,
+            toJSON: () => ({
+              endpoint: ${JSON.stringify(browserPushEndpoint)},
+              expirationTime: null,
+              keys: {
+                p256dh: ${JSON.stringify(browserPushP256dh)},
+                auth: ${JSON.stringify(browserPushAuth)},
+              },
+            }),
+            unsubscribe: async () => {
+              state.unsubscribeCalls += 1;
+              if (state.subscription === subscription) {
+                state.subscription = null;
+              }
+              return true;
+            },
+          };
+          return subscription;
+        };
+
+        Object.defineProperty(window, '__kinetraPushTest', {
+          configurable: false,
+          enumerable: false,
+          value: state,
+          writable: false,
+        });
+        Object.defineProperty(Notification, 'permission', {
+          configurable: true,
+          get: () => state.permission,
+        });
+        Object.defineProperty(Notification, 'requestPermission', {
+          configurable: true,
+          value: async () => {
+            state.permissionRequests += 1;
+            state.permission = 'granted';
+            return 'granted';
+          },
+        });
+        Object.defineProperty(PushManager.prototype, 'getSubscription', {
+          configurable: true,
+          value: async () => {
+            state.getSubscriptionCalls += 1;
+            return state.subscription;
+          },
+        });
+        Object.defineProperty(PushManager.prototype, 'subscribe', {
+          configurable: true,
+          value: async (options) => {
+            state.subscribeCalls += 1;
+            state.subscribeOptions = {
+              userVisibleOnly: options?.userVisibleOnly === true,
+              applicationServerKeyLength:
+                options?.applicationServerKey?.byteLength ??
+                options?.applicationServerKey?.length ??
+                null,
+            };
+            state.subscription = makeSubscription();
+            return state.subscription;
+          },
+        });
+      })();`,
+    });
     await cdp.send('Network.enable');
     await cdp.send('Network.setBlockedURLs', {
       urls: ['https://fonts.googleapis.com/*', 'https://fonts.gstatic.com/*'],
@@ -3201,6 +3338,65 @@ const runBrowserScenario = async () => {
     await assertSettingsLayout(428);
     console.log('KINETRA_T10_SETTINGS_CONTENT=PASS');
 
+    assert.equal(await exists('settings-push-device'), true);
+    assert.equal(await attribute('settings-push-device', 'data-permission'), 'default');
+    assert.equal(await attribute('settings-push-device', 'data-browser-subscribed'), 'false');
+    assert.equal(await attribute('settings-push-device', 'data-backend-registration'), 'unknown');
+    assert.equal(await exists('settings-push-enable'), true);
+    assert.equal(await exists('settings-push-disable'), false);
+    assert.deepEqual(
+      await cdp.evaluate(`(() => {
+        const state = window.__kinetraPushTest;
+        return {
+          permission: state?.permission ?? null,
+          permissionRequests: state?.permissionRequests ?? -1,
+          subscribeCalls: state?.subscribeCalls ?? -1,
+          subscriptionExists: state?.subscription !== null,
+        };
+      })()`),
+      {
+        permission: 'default',
+        permissionRequests: 0,
+        subscribeCalls: 0,
+        subscriptionExists: false,
+      },
+    );
+    assert.equal(counters.pushPublicKeyGet, 0);
+    assert.equal(counters.pushSubscriptionPost, 0);
+    assert.equal(counters.pushSubscriptionDelete, 0);
+
+    await click('settings-push-enable');
+    await waitFor(
+      'T13 explicit device push registration',
+      async () =>
+        counters.pushPublicKeyGet === 1 &&
+        counters.pushSubscriptionPost === 1 &&
+        (await attribute('settings-push-device', 'data-permission')) === 'granted' &&
+        (await attribute('settings-push-device', 'data-browser-subscribed')) === 'true' &&
+        (await attribute('settings-push-device', 'data-backend-registration')) === 'registered',
+    );
+    assert.equal(await exists('settings-push-enable'), false);
+    assert.equal(await exists('settings-push-disable'), true);
+    assert.deepEqual(
+      await cdp.evaluate(`(() => {
+        const state = window.__kinetraPushTest;
+        return {
+          permission: state.permission,
+          permissionRequests: state.permissionRequests,
+          subscribeCalls: state.subscribeCalls,
+          subscribeOptions: state.subscribeOptions,
+          subscriptionExists: state.subscription !== null,
+        };
+      })()`),
+      {
+        permission: 'granted',
+        permissionRequests: 1,
+        subscribeCalls: 1,
+        subscribeOptions: { userVisibleOnly: true, applicationServerKeyLength: 65 },
+        subscriptionExists: true,
+      },
+    );
+
     const notificationPutsBeforeChanges = counters.notificationsPut;
     await setValue('settings-reminder-time', '10:30');
     await waitFor(
@@ -3272,6 +3468,61 @@ const runBrowserScenario = async () => {
       true,
     );
     console.log('KINETRA_T10_NOTIFICATIONS=PASS');
+
+    await waitFor(
+      'T13 device subscription survives T10 toggle changes and settings remount',
+      async () =>
+        (await attribute('settings-push-device', 'data-browser-subscribed')) === 'true' &&
+        (await attribute('settings-push-device', 'data-backend-registration')) === 'unknown' &&
+        (await exists('settings-push-enable')) &&
+        (await exists('settings-push-disable')),
+    );
+    assert.equal(counters.pushSubscriptionDelete, 0);
+    assert.equal(counters.pushPublicKeyGet, 1);
+    assert.equal(counters.pushSubscriptionPost, 1);
+
+    await click('settings-push-enable');
+    await waitFor(
+      'T13 existing browser subscription is re-registered without a new permission prompt',
+      async () =>
+        counters.pushSubscriptionPost === 2 &&
+        (await attribute('settings-push-device', 'data-backend-registration')) === 'registered',
+    );
+    assert.equal(counters.pushPublicKeyGet, 1);
+    assert.deepEqual(
+      await cdp.evaluate(`(() => ({
+        permissionRequests: window.__kinetraPushTest.permissionRequests,
+        subscribeCalls: window.__kinetraPushTest.subscribeCalls,
+      }))()`),
+      { permissionRequests: 1, subscribeCalls: 1 },
+    );
+
+    await click('settings-push-disable');
+    await waitFor(
+      'T13 explicit device push removal',
+      async () =>
+        counters.pushSubscriptionDelete === 1 &&
+        (await attribute('settings-push-device', 'data-browser-subscribed')) === 'false' &&
+        (await attribute('settings-push-device', 'data-backend-registration')) === 'not_registered',
+    );
+    assert.equal(await exists('settings-push-disable'), false);
+    assert.equal(await cdp.evaluate('window.__kinetraPushTest.unsubscribeCalls'), 1);
+
+    await click('settings-push-enable');
+    await waitFor(
+      'T13 device can subscribe again after explicit removal',
+      async () =>
+        counters.pushPublicKeyGet === 2 &&
+        counters.pushSubscriptionPost === 3 &&
+        (await attribute('settings-push-device', 'data-backend-registration')) === 'registered',
+    );
+    assert.deepEqual(
+      await cdp.evaluate(`(() => ({
+        permissionRequests: window.__kinetraPushTest.permissionRequests,
+        subscribeCalls: window.__kinetraPushTest.subscribeCalls,
+      }))()`),
+      { permissionRequests: 1, subscribeCalls: 2 },
+    );
 
     const readThemeState = () =>
       cdp.evaluate(`(() => {
@@ -3632,6 +3883,9 @@ const runBrowserScenario = async () => {
         (await exists('login-screen')),
     );
     assert.equal(await cdp.evaluate("localStorage.getItem('kinetra.accessToken')"), null);
+    assert.equal(await cdp.evaluate('window.__kinetraPushTest.subscription === null'), true);
+    assert.equal(await cdp.evaluate('window.__kinetraPushTest.unsubscribeCalls'), 2);
+    assert.equal(counters.pushSubscriptionDelete, 1);
     console.log('KINETRA_T10_ACCOUNT_DELETION=PASS');
 
     await submitLogin();
@@ -3641,6 +3895,20 @@ const runBrowserScenario = async () => {
     );
     await click('tab-settings');
     await waitFor('T10 settings before confirmed logout', () => exists('settings-account-section'));
+    await waitFor(
+      'T13 device is unsubscribed after account deletion',
+      async () =>
+        (await attribute('settings-push-device', 'data-browser-subscribed')) === 'false' &&
+        (await exists('settings-push-enable')),
+    );
+    await click('settings-push-enable');
+    await waitFor(
+      'T13 device is registered before logout cleanup',
+      async () =>
+        counters.pushPublicKeyGet === 3 &&
+        counters.pushSubscriptionPost === 4 &&
+        (await attribute('settings-push-device', 'data-backend-registration')) === 'registered',
+    );
     const logoutsBeforeConfirmation = counters.logout;
     await click('logout');
     await waitFor('T10 logout confirmation dialog', () => dialogIsOpen('settings-logout-dialog'));
@@ -3659,6 +3927,9 @@ const runBrowserScenario = async () => {
         (await exists('login-screen')),
     );
     assert.equal(await cdp.evaluate("localStorage.getItem('kinetra.accessToken')"), null);
+    assert.equal(counters.pushSubscriptionDelete, 2);
+    assert.equal(await cdp.evaluate('window.__kinetraPushTest.subscription === null'), true);
+    assert.equal(await cdp.evaluate('window.__kinetraPushTest.unsubscribeCalls'), 3);
     console.log('KINETRA_T10_LOGOUT=PASS');
 
     assert.equal(counters.login, 3);
@@ -3682,6 +3953,30 @@ const runBrowserScenario = async () => {
     assert.equal(counters.paymentCreate, 1);
     assert.equal(counters.subscriptionCancel, 1);
     assert.equal(counters.notificationsPut, 2);
+    assert.equal(counters.pushPublicKeyGet, 3);
+    assert.equal(counters.pushSubscriptionPost, 4);
+    assert.equal(counters.pushSubscriptionDelete, 2);
+    assert.equal(pushSubscriptionUpdates.length, 4);
+    assert.deepEqual(
+      pushSubscriptionDeletes,
+      Array.from({ length: 2 }, () => ({ endpoint: browserPushEndpoint })),
+    );
+    assert.deepEqual(
+      await cdp.evaluate(`(() => ({
+        permission: window.__kinetraPushTest.permission,
+        permissionRequests: window.__kinetraPushTest.permissionRequests,
+        subscribeCalls: window.__kinetraPushTest.subscribeCalls,
+        unsubscribeCalls: window.__kinetraPushTest.unsubscribeCalls,
+        subscriptionExists: window.__kinetraPushTest.subscription !== null,
+      }))()`),
+      {
+        permission: 'granted',
+        permissionRequests: 1,
+        subscribeCalls: 3,
+        unsubscribeCalls: 3,
+        subscriptionExists: false,
+      },
+    );
     assert.equal(counters.accountDelete, 1);
     assert.equal(counters.weekGet, 4);
     assert.equal(counters.workoutComplete, 1);
@@ -3695,6 +3990,7 @@ const runBrowserScenario = async () => {
     console.log('KINETRA_T09_BROWSER_E2E=PASS');
     console.log('KINETRA_T10_BROWSER_E2E=PASS');
     console.log('KINETRA_T11_BROWSER_E2E=PASS');
+    console.log('KINETRA_T13_BROWSER_E2E=PASS');
   } catch (error) {
     if (cdp !== null) {
       try {

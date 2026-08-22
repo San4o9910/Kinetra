@@ -63,6 +63,9 @@ jobs:
       YUKASSA_SECRET_KEY: ci-test-secret-not-real
       YUKASSA_RETURN_URL: http://localhost:5173/payment/success
       YUKASSA_REQUEST_TIMEOUT_MS: '10000'
+      VAPID_PUBLIC_KEY: BG_wO5SSQc4drdQ1GeaWDgqFtBppoFwygQOqK84VlMoWPE91OlW_AdxT9sCwx-7ni0DG_30lqW4igrmJzvccFEo
+      VAPID_PRIVATE_KEY: AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE
+      VAPID_SUBJECT: mailto:ci@kinetra.test
       CI: 'true'
       KINETRA_REQUIRE_POSTGRES_TEST: 'true'
     steps:
@@ -77,6 +80,9 @@ jobs:
         run: npm ci
 
       - name: Run migrations
+        run: npm run db:migrate
+
+      - name: Verify idempotent migrations
         run: npm run db:migrate
 
       - name: Seed content model
@@ -140,6 +146,14 @@ jobs:
           grep -F 'KINETRA_T11_PAYWALL=PASS' /tmp/kinetra-test.log
           grep -F 'KINETRA_T11_SETTINGS_SUBSCRIPTION=PASS' /tmp/kinetra-test.log
           grep -F 'KINETRA_T11_BROWSER_E2E=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T13_WEBPUSH_SENDER=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T13_BACKEND_E2E=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T13_POSTGRES_INTEGRATION=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T13_SCHEDULER=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T13_SERVICE_WORKER=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T13_PERMISSION_LIFECYCLE=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T13_SETTINGS_INTEGRATION=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T13_BROWSER_E2E=PASS' /tmp/kinetra-test.log
           echo 'KINETRA_T04_TEST_SUITE=PASS'
           echo 'KINETRA_T05_TEST_SUITE=PASS'
           echo 'KINETRA_T06_TEST_SUITE=PASS'
@@ -148,6 +162,7 @@ jobs:
           echo 'KINETRA_T09_TEST_SUITE=PASS'
           echo 'KINETRA_T10_TEST_SUITE=PASS'
           echo 'KINETRA_T11_TEST_SUITE=PASS'
+          echo 'KINETRA_T13_TEST_SUITE=PASS'
 
       - name: Verify browser profile cleanup
         if: always()
