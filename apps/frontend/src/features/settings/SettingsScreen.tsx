@@ -15,6 +15,17 @@ import {
   updateNotifications,
 } from '../../lib/api';
 import { useTheme } from '../theme/theme-context';
+import {
+  PushNotificationError,
+  bestEffortUnsubscribeFromPush,
+  getExistingPushSubscription,
+  getPushPermission,
+  subscribeToPush,
+  unsubscribeBrowserOnly,
+  unsubscribeFromPush,
+  type PushBackendRegistrationStatus,
+  type PushPermission,
+} from '../../pwa/pushNotifications';
 import { SettingsDialogs, type SettingsDialogKind } from './SettingsDialogs';
 import { SettingsView, type NotificationSaveStatus } from './SettingsView';
 import { SETTINGS_NOTIFICATION_DEBOUNCE_MS } from './model';
@@ -27,6 +38,14 @@ type SettingsLoadState =
       readonly subscription: SubscriptionResponse;
     }
   | { readonly kind: 'error'; readonly message: string };
+
+interface PushDeviceState {
+  readonly permission: PushPermission;
+  readonly browserSubscribed: boolean;
+  readonly backendRegistration: PushBackendRegistrationStatus;
+  readonly busy: boolean;
+  readonly error: string | null;
+}
 
 export interface SettingsScreenProps {
   readonly hasSurvey: boolean;
@@ -42,6 +61,28 @@ const runtimeEnv = (typeof import.meta.env === 'object' ? import.meta.env : {}) 
 const supportEmail = runtimeEnv.VITE_SUPPORT_EMAIL ?? 'coach@kinetra.app';
 const privacyUrl = runtimeEnv.VITE_PRIVACY_URL ?? 'https://kinetra.app/privacy';
 const appVersion = runtimeEnv.VITE_APP_VERSION ?? '0.4.0';
+const PUSH_BEST_EFFORT_TIMEOUT_MS = 1_500;
+
+const settleBestEffortWithin = async (operation: Promise<unknown>): Promise<void> => {
+  let timer: number | undefined;
+  const timeout = new Promise<void>((resolve) => {
+    timer = window.setTimeout(resolve, PUSH_BEST_EFFORT_TIMEOUT_MS);
+  });
+
+  await Promise.race([operation.catch(() => undefined), timeout]);
+
+  if (timer !== undefined) {
+    window.clearTimeout(timer);
+  }
+};
+
+const initialPushDeviceState = (): PushDeviceState => ({
+  permission: getPushPermission(),
+  browserSubscribed: false,
+  backendRegistration: 'unknown',
+  busy: false,
+  error: null,
+});
 
 const SettingsState = ({
   kind,
@@ -85,6 +126,7 @@ export const SettingsScreen = ({
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [dialogBusy, setDialogBusy] = useState(false);
   const [dialogError, setDialogError] = useState<string | null>(null);
+  const [pushDeviceState, setPushDeviceState] = useState<PushDeviceState>(initialPushDeviceState);
   const requestControllerRef = useRef<AbortController | null>(null);
   const requestVersionRef = useRef(0);
   const lastSavedNotificationsRef = useRef<string | null>(null);
@@ -93,6 +135,7 @@ export const SettingsScreen = ({
   const notificationSaveVersionRef = useRef(0);
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const isMountedRef = useRef(true);
+  const pushActionInFlightRef = useRef(false);
 
   latestNotificationsRef.current = notifications;
 
@@ -251,6 +294,173 @@ export const SettingsScreen = ({
     return () => window.clearTimeout(timer);
   }, [notifications, queueNotificationSave]);
 
+  const pushErrorMessage = useCallback(
+    (error: unknown): string => {
+      if (error instanceof PushNotificationError) {
+        return error.message;
+      }
+
+      return handleApiError(error, 'Не удалось изменить push-подписку. Попробуйте ещё раз.');
+    },
+    [handleApiError],
+  );
+
+  const refreshPushDeviceState = useCallback(async (): Promise<void> => {
+    if (pushActionInFlightRef.current) {
+      return;
+    }
+
+    const permission = getPushPermission();
+
+    if (permission === 'unsupported') {
+      if (isMountedRef.current) {
+        setPushDeviceState({
+          permission,
+          browserSubscribed: false,
+          backendRegistration: 'unknown',
+          busy: false,
+          error: null,
+        });
+      }
+      return;
+    }
+
+    try {
+      const subscription = await getExistingPushSubscription();
+
+      if (isMountedRef.current && !pushActionInFlightRef.current) {
+        setPushDeviceState((current) => ({
+          permission: getPushPermission(),
+          browserSubscribed: subscription !== null,
+          backendRegistration:
+            subscription !== null && current.backendRegistration === 'registered'
+              ? 'registered'
+              : subscription === null && current.backendRegistration === 'not_registered'
+                ? 'not_registered'
+                : 'unknown',
+          busy: false,
+          error: null,
+        }));
+      }
+    } catch {
+      if (isMountedRef.current && !pushActionInFlightRef.current) {
+        setPushDeviceState({
+          permission: getPushPermission(),
+          browserSubscribed: false,
+          backendRegistration: 'unknown',
+          busy: false,
+          error: 'Не удалось проверить push-подписку этого устройства.',
+        });
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshPushDeviceState();
+
+    const refreshWhenVisible = (): void => {
+      if (document.visibilityState === 'visible') {
+        void refreshPushDeviceState();
+      }
+    };
+
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    return () => document.removeEventListener('visibilitychange', refreshWhenVisible);
+  }, [refreshPushDeviceState]);
+
+  const enablePushOnDevice = (): void => {
+    if (pushActionInFlightRef.current) {
+      return;
+    }
+
+    pushActionInFlightRef.current = true;
+    setPushDeviceState((current) => ({
+      ...current,
+      backendRegistration: 'registering',
+      busy: true,
+      error: null,
+    }));
+
+    void subscribeToPush()
+      .then(() => {
+        if (isMountedRef.current) {
+          setPushDeviceState({
+            permission: getPushPermission(),
+            browserSubscribed: true,
+            backendRegistration: 'registered',
+            busy: false,
+            error: null,
+          });
+        }
+      })
+      .catch(async (error: unknown) => {
+        let browserSubscribed = false;
+
+        try {
+          browserSubscribed = (await getExistingPushSubscription()) !== null;
+        } catch {
+          browserSubscribed = false;
+        }
+
+        if (isMountedRef.current) {
+          setPushDeviceState({
+            permission: getPushPermission(),
+            browserSubscribed,
+            backendRegistration: 'error',
+            busy: false,
+            error: pushErrorMessage(error),
+          });
+        }
+      })
+      .finally(() => {
+        pushActionInFlightRef.current = false;
+      });
+  };
+
+  const disablePushOnDevice = (): void => {
+    if (pushActionInFlightRef.current) {
+      return;
+    }
+
+    pushActionInFlightRef.current = true;
+    setPushDeviceState((current) => ({ ...current, busy: true, error: null }));
+
+    void unsubscribeFromPush()
+      .then(() => {
+        if (isMountedRef.current) {
+          setPushDeviceState({
+            permission: getPushPermission(),
+            browserSubscribed: false,
+            backendRegistration: 'not_registered',
+            busy: false,
+            error: null,
+          });
+        }
+      })
+      .catch(async (error: unknown) => {
+        let browserSubscribed = pushDeviceState.browserSubscribed;
+
+        try {
+          browserSubscribed = (await getExistingPushSubscription()) !== null;
+        } catch {
+          // Preserve the last known browser state when it cannot be refreshed.
+        }
+
+        if (isMountedRef.current) {
+          setPushDeviceState({
+            permission: getPushPermission(),
+            browserSubscribed,
+            backendRegistration: 'error',
+            busy: false,
+            error: pushErrorMessage(error),
+          });
+        }
+      })
+      .finally(() => {
+        pushActionInFlightRef.current = false;
+      });
+  };
+
   const closeDialog = (): void => {
     if (dialogBusy) {
       return;
@@ -276,7 +486,8 @@ export const SettingsScreen = ({
     }
 
     setDialogBusy(true);
-    void logout()
+    void settleBestEffortWithin(bestEffortUnsubscribeFromPush())
+      .then(() => logout())
       .catch(() => undefined)
       .finally(onSignedOut);
   };
@@ -314,7 +525,10 @@ export const SettingsScreen = ({
     setDialogBusy(true);
     setDialogError(null);
     void deleteAccount(deleteConfirmation)
-      .then(onSignedOut)
+      .then(async () => {
+        await settleBestEffortWithin(unsubscribeBrowserOnly());
+        onSignedOut();
+      })
       .catch((error: unknown) => {
         setDialogBusy(false);
         setDialogError(handleApiError(error, 'Не удалось удалить аккаунт. Попробуйте ещё раз.'));
@@ -340,12 +554,19 @@ export const SettingsScreen = ({
         subscription={loadState.subscription}
         notifications={notifications}
         notificationSaveStatus={notificationSaveStatus}
+        pushPermission={pushDeviceState.permission}
+        pushBrowserSubscribed={pushDeviceState.browserSubscribed}
+        pushBackendRegistration={pushDeviceState.backendRegistration}
+        pushBusy={pushDeviceState.busy}
+        pushError={pushDeviceState.error}
         hasSurvey={hasSurvey}
         themePreference={preference}
         resolvedTheme={resolvedTheme}
         supportEmail={supportEmail}
         onClose={onClose}
         onNotificationsChange={setNotifications}
+        onEnablePush={enablePushOnDevice}
+        onDisablePush={disablePushOnDevice}
         onThemeChange={setPreference}
         onEditSurvey={onEditSurvey}
         onOpenLevel={() => openDialog('level')}

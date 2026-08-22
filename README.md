@@ -2,7 +2,7 @@
 
 Kinetra — фитнес-приложение с React/Vite frontend и Express/PostgreSQL backend.
 
-В репозитории завершены этапы T01–T11:
+В репозитории завершены этапы T01–T11 и T13:
 
 - **T01:** каркас монорепо, PWA, PostgreSQL в Docker Compose, health endpoint и transport Socket.IO;
 - **T02:** регистрация и авторизация по email/паролю, опциональный телефон, refresh-сессии,
@@ -19,6 +19,8 @@ Kinetra — фитнес-приложение с React/Vite frontend и Express/
   светлая и тёмная тема приложения.
 - **T11:** оплата Kinetra Premium через ЮKassa, сохранённый способ оплаты, webhook, ежедневное
   автопродление, отмена будущих списаний и server-enforced paywall.
+- **T13:** Web Push subscriptions устройств, VAPID, безопасные Service Worker notifications и
+  отдельный идемпотентный scheduler напоминаний о тренировках и еженедельной самооценке.
 
 ## Структура
 
@@ -29,7 +31,7 @@ kinetra/
 │   └── backend/           @kinetra/backend — Express + TypeScript + PostgreSQL
 ├── packages/
 │   └── shared/            @kinetra/shared — общие API-типы
-├── docs/                  Контракты и сценарии T02–T11
+├── docs/                  Контракты и сценарии T02–T11 и T13
 ├── scripts/               Структурная проверка проекта
 ├── docker-compose.yml     PostgreSQL 17
 └── .env.example           Шаблон переменных без реальных секретов
@@ -154,6 +156,41 @@ canonical subscription, а backend возвращает `403 SUBSCRIPTION_REQUIR
 без активного периода. Полный API, cron, IP ranges, production checklist и ограничения по
 рекуррентным платежам/чекам: [`docs/T11_PAYMENTS.md`](docs/T11_PAYMENTS.md).
 
+## Web Push уведомления
+
+T13 добавляет три JWT-защищённых no-store endpoint:
+
+| Метод  | Путь                         | Назначение                                       |
+| ------ | ---------------------------- | ------------------------------------------------ |
+| GET    | `/api/v1/push/public-key`    | Получить публичный VAPID key                     |
+| POST   | `/api/v1/push/subscriptions` | Идемпотентно зарегистрировать текущее устройство |
+| DELETE | `/api/v1/push/subscriptions` | Идемпотентно отключить устройство                |
+
+Browser permission запрашивается только по явному действию пользователя. Первоначальная
+гидратация `/settings` не запрашивает permission, не создаёт subscription, не обращается за VAPID
+key и не делает лишний T10 PUT; в части Web Push она может только прочитать уже существующую browser
+subscription. Текущее устройство, T10 preference и фактическая server registration отображаются
+как разные состояния. POST/DELETE mutations ограничены 60 запросами с IP за 60 секунд, а endpoint
+глобально уникален. Текущий JWT-владелец может ротировать ключи; передача endpoint другому
+JWT-пользователю требует точного совпадения обоих сохранённых subscription keys, иначе backend
+возвращает неэнумерирующий `409` и не изменяет запись. На пользователя разрешено не более 10
+enabled (`disabled_at IS NULL`) endpoints; истёкшая, но не отключённая запись тоже занимает слот.
+Ротация ключей текущего enabled endpoint разрешена при лимите, а новая запись, реактивация или
+передача требуют свободного слота; DELETE слот освобождает.
+
+Отдельный worker запускается внешним scheduler каждую минуту:
+
+```bash
+npm run notifications:send -w @kinetra/backend
+```
+
+Worker использует локальный календарь `users.timezone`, current program week, завершённость
+workout/weekly metrics, active entitlement и durable per-device occurrence claim. Повторный или
+параллельный запуск не повторяет occurrence на одной subscription; stale endpoint после rotation
+остаётся отдельным известным ограничением. Полный API, VAPID setup, Sunday weekly policy,
+timezone/DST, delivery semantics, browser limitations и production checklist:
+[`docs/T13_PUSH_NOTIFICATIONS.md`](docs/T13_PUSH_NOTIFICATIONS.md).
+
 ## Auth API T02
 
 Базовый путь: `/api/v1/auth`.
@@ -259,10 +296,10 @@ Reset token:
 В production console-режим запрещён. Перед реальным запуском нужно подключить почтовый/SMS
 адаптер.
 
-Текущий rate limiter хранит счётчики в памяти одного процесса. Перед горизонтальным
-масштабированием его нужно заменить общим хранилищем, например Redis. За reverse proxy задайте
-точное число доверенных прокси через `TRUST_PROXY_HOPS`, иначе лимит будет видеть адрес прокси, а
-не клиента.
+Fixed-window limiters password reset и push mutations хранят счётчики в памяти одного процесса:
+каждая replica считает запросы независимо. Перед горизонтальным масштабированием нужен общий
+limiter/хранилище, например Redis или edge gateway. За reverse proxy задайте точное число доверенных
+прокси через `TRUST_PROXY_HOPS`, иначе лимит будет видеть адрес прокси, а не клиента.
 
 ## Email verification
 
@@ -278,10 +315,6 @@ email не блокируется этой проверкой.
 
 ## Миграции
 
-```bash
-npm run db:migrate
-```
-
 Миграции разделены по этапам:
 
 - `001_auth.sql` — пользователи и auth tokens;
@@ -294,6 +327,7 @@ npm run db:migrate
 - `008_notifications.sql` — notification JSON, legacy backfill, `auto_renew` и индексы каскадного
   удаления auth tokens.
 - `009_payments.sql` — provider payment metadata, идемпотентные webhook events и renewal attempts.
+- `010_push_notifications.sql` — device subscriptions и per-occurrence delivery claims Web Push.
 
 `schema_migrations` создаётся самим runner.
 
@@ -318,9 +352,10 @@ npm run check
 ```
 
 E2E-набор покрывает auth, профиль/анкету, онбординг-карусель, базовые уроки, главный экран,
-расписание, прогресс, T10 settings и T11 payments: JWT/no-store, строгие payload,
+расписание, прогресс, T10 settings, T11 payments и T13 Web Push: JWT/no-store, строгие payload,
 PostgreSQL migration/backfill, debounced уведомления, три режима темы, webhook authenticity и
-идемпотентность, polling, paywall, logout и двухэтапное удаление аккаунта. CI сравнивает
+идемпотентность, polling, paywall, permission/subscription lifecycle, Service Worker push/click,
+scheduler occurrence claims, logout и двухэтапное удаление аккаунта. CI сравнивает
 `MANIFEST.sha256` со всеми tracked-файлами и запрещает bootstrap/payload artifacts.
 
 ## Границы текущего этапа
@@ -328,5 +363,8 @@ PostgreSQL migration/backfill, debounced уведомления, три режи
 Перед production нужно активировать рекуррентные платежи у ЮKassa, зафиксировать согласие
 пользователя, настроить ежедневный scheduler, HTTPS/webhook ingress и кассовые чеки по применимым
 требованиям 54-ФЗ. T11 не определяет бизнес-правило частичных возвратов и не заменяет юридическую
-или налоговую проверку. Каталог тренеров и доменная логика чата остаются следующими этапами.
+или налоговую проверку. Для T13 нужны production VAPID keys в secret manager, HTTPS, минутный
+external scheduler, централизованный rate limiting, независимая outbound egress/firewall защита
+сверх встроенной connection-time DNS/IP проверки, экспортируемые delivery metrics/alerts и план
+ротации public key. Каталог тренеров и доменная логика чата остаются следующими этапами.
 Telegram-интеграции нет: продукт остаётся самостоятельной PWA.

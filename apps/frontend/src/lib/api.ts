@@ -12,6 +12,10 @@ import type {
   MetricsResponse,
   NotificationPreferences,
   ProgressResponse,
+  PushPublicKeyResponse,
+  PushSubscriptionRequest,
+  PushSubscriptionResponse,
+  PushUnsubscribeRequest,
   ScheduleResponse,
   SettingsProfileResponse,
   SubscriptionResponse,
@@ -259,6 +263,28 @@ export class ApiClient {
     });
   }
 
+  public async getPushPublicKey(): Promise<PushPublicKeyResponse> {
+    return this.authenticatedJsonRequest<PushPublicKeyResponse>('/api/v1/push/public-key', {
+      method: 'GET',
+    });
+  }
+
+  public async registerPushSubscription(
+    data: PushSubscriptionRequest,
+  ): Promise<PushSubscriptionResponse> {
+    return this.authenticatedJsonRequest<PushSubscriptionResponse>('/api/v1/push/subscriptions', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async deletePushSubscription(data: PushUnsubscribeRequest): Promise<void> {
+    await this.authenticatedVoidRequest('/api/v1/push/subscriptions', {
+      method: 'DELETE',
+      body: JSON.stringify(data),
+    });
+  }
+
   public async deleteAccount(confirm: string): Promise<void> {
     await this.authenticatedVoidRequest('/api/v1/settings/account', {
       method: 'DELETE',
@@ -477,6 +503,12 @@ export const getSettingsProfile = (signal?: AbortSignal): Promise<SettingsProfil
   apiClient.getSettingsProfile(signal);
 export const updateNotifications = (data: NotificationPreferences): Promise<void> =>
   apiClient.updateNotifications(data);
+export const getPushPublicKey = (): Promise<PushPublicKeyResponse> => apiClient.getPushPublicKey();
+export const registerPushSubscription = (
+  data: PushSubscriptionRequest,
+): Promise<PushSubscriptionResponse> => apiClient.registerPushSubscription(data);
+export const deletePushSubscription = (data: PushUnsubscribeRequest): Promise<void> =>
+  apiClient.deletePushSubscription(data);
 export const deleteAccount = (confirm: string): Promise<void> => apiClient.deleteAccount(confirm);
 export const getWeek = (weekNumber: number, signal?: AbortSignal): Promise<WeekResponse> =>
   apiClient.getWeek(weekNumber, signal);
