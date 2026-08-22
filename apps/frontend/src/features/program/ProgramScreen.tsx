@@ -1,14 +1,19 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { ProgramDay, WeekResponse } from '@kinetra/shared';
+import React, { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import type { ProgramDay, SubscriptionResponse, WeekResponse } from '@kinetra/shared';
 
 import { ApiRequestError, getCurrentWeek, getWeek } from '../../lib/api';
+import { isSubscriptionActive } from '../payments/model';
+import { SubscriptionPaywallDialog } from '../payments/SubscriptionPaywallDialog';
+import { SubscriptionLockedScreen } from '../payments/SubscriptionLockedScreen';
 
+import { clearWorkoutHistorySentinel } from './history';
 import { dayOfWeekInTimeZone, optimisticallyCompleteWorkout } from './model';
 import { ProgramWeekView } from './ProgramWeekView';
 import { WorkoutPlayer } from './WorkoutPlayer';
 
 type ProgramLoadState =
   | { readonly kind: 'loading' }
+  | { readonly kind: 'blocked' }
   | { readonly kind: 'failed'; readonly message: string }
   | {
       readonly kind: 'ready';
@@ -18,6 +23,9 @@ type ProgramLoadState =
 
 export interface ProgramScreenProps {
   readonly timezone: string;
+  readonly subscription: SubscriptionResponse;
+  readonly onOpenPayment: () => void;
+  readonly onSubscriptionRequired: () => void;
   readonly onWorkoutCompletionBusyChange: (busy: boolean) => void;
   readonly onSessionExpired: () => void;
 }
@@ -51,16 +59,23 @@ const workoutSelectionFromHistory = (): WorkoutHistorySelection => {
 
 export const ProgramScreen = ({
   timezone,
+  subscription,
+  onOpenPayment,
+  onSubscriptionRequired,
   onWorkoutCompletionBusyChange,
   onSessionExpired,
 }: ProgramScreenProps): ReactNode => {
-  const initialWorkoutSelection = useMemo(workoutSelectionFromHistory, []);
-  const [loadState, setLoadState] = useState<ProgramLoadState>({ kind: 'loading' });
+  const initialWorkoutSelection = React.useMemo(workoutSelectionFromHistory, []);
+  const initiallyActive = isSubscriptionActive(subscription);
+  const [loadState, setLoadState] = useState<ProgramLoadState>(
+    initiallyActive ? { kind: 'loading' } : { kind: 'blocked' },
+  );
   const [selectedVideoId, setSelectedVideoId] = useState<string | null>(
     initialWorkoutSelection.videoId,
   );
   const [isNavigating, setIsNavigating] = useState(false);
   const [isCompletingWorkout, setIsCompletingWorkout] = useState(false);
+  const [paywallOpen, setPaywallOpen] = useState(!initiallyActive);
   const [navigationError, setNavigationError] = useState<string | null>(null);
   const requestVersion = useRef(0);
   const requestController = useRef<AbortController | null>(null);
@@ -71,6 +86,7 @@ export const ProgramScreen = ({
   const currentWeekNumberRef = useRef<number | null>(null);
   const completionBusyRef = useRef(false);
   const todayDayOfWeek = useMemo(() => dayOfWeekInTimeZone(new Date(), timezone), [timezone]);
+  const subscriptionActive = isSubscriptionActive(subscription);
 
   const handleAuthError = useCallback(
     (error: unknown): boolean => {
@@ -79,9 +95,21 @@ export const ProgramScreen = ({
         return true;
       }
 
+      if (error instanceof ApiRequestError && error.code === 'SUBSCRIPTION_REQUIRED') {
+        requestController.current?.abort();
+        clearWorkoutHistorySentinel();
+        selectedVideoIdRef.current = null;
+        selectedProgramWeekRef.current = null;
+        setSelectedVideoId(null);
+        setLoadState({ kind: 'blocked' });
+        setPaywallOpen(true);
+        onSubscriptionRequired();
+        return true;
+      }
+
       return false;
     },
-    [onSessionExpired],
+    [onSessionExpired, onSubscriptionRequired],
   );
 
   const restoreCurrentWeek = useCallback(async (): Promise<void> => {
@@ -165,7 +193,7 @@ export const ProgramScreen = ({
         if (requestVersion.current === version && !handleAuthError(error)) {
           const message = loadErrorMessage(error);
           if (window.history.state?.kinetraWorkoutVideoId === videoId) {
-            window.history.replaceState(null, '', window.location.href);
+            clearWorkoutHistorySentinel();
           }
           selectedVideoIdRef.current = null;
           selectedProgramWeekRef.current = null;
@@ -188,6 +216,19 @@ export const ProgramScreen = ({
   );
 
   useEffect(() => {
+    if (!subscriptionActive) {
+      requestVersion.current += 1;
+      requestController.current?.abort();
+      requestController.current = null;
+      clearWorkoutHistorySentinel();
+      selectedVideoIdRef.current = null;
+      selectedProgramWeekRef.current = null;
+      setSelectedVideoId(null);
+      setLoadState({ kind: 'blocked' });
+      setPaywallOpen(true);
+      return;
+    }
+
     void restoreCurrentWeek();
 
     return () => {
@@ -195,7 +236,7 @@ export const ProgramScreen = ({
       requestController.current?.abort();
       requestController.current = null;
     };
-  }, [restoreCurrentWeek]);
+  }, [restoreCurrentWeek, subscriptionActive]);
 
   useEffect(() => {
     const restoreWorkoutFromHistory = (event: PopStateEvent): void => {
@@ -203,6 +244,15 @@ export const ProgramScreen = ({
       const programWeek = event.state?.kinetraProgramWeek;
       const restoredVideoId = typeof videoId === 'string' ? videoId : null;
       const restoredProgramWeek = programWeekFromHistory(programWeek);
+
+      if (restoredVideoId !== null && !isSubscriptionActive(subscription)) {
+        clearWorkoutHistorySentinel();
+        selectedVideoIdRef.current = null;
+        selectedProgramWeekRef.current = null;
+        setSelectedVideoId(null);
+        setPaywallOpen(true);
+        return;
+      }
 
       if (
         completionBusyRef.current &&
@@ -245,7 +295,19 @@ export const ProgramScreen = ({
 
     window.addEventListener('popstate', restoreWorkoutFromHistory);
     return () => window.removeEventListener('popstate', restoreWorkoutFromHistory);
-  }, [restoreHistoryWorkout]);
+  }, [restoreHistoryWorkout, subscription]);
+
+  useEffect(() => {
+    if (subscriptionActive || selectedVideoId === null) {
+      return;
+    }
+
+    clearWorkoutHistorySentinel();
+    selectedVideoIdRef.current = null;
+    selectedProgramWeekRef.current = null;
+    setSelectedVideoId(null);
+    setPaywallOpen(true);
+  }, [selectedVideoId, subscriptionActive]);
 
   useEffect(
     () => () => {
@@ -273,7 +335,7 @@ export const ProgramScreen = ({
     }
 
     if (window.history.state?.kinetraWorkoutVideoId === selectedVideoId) {
-      window.history.replaceState(null, '', window.location.href);
+      clearWorkoutHistorySentinel();
     }
     selectedVideoIdRef.current = null;
     selectedProgramWeekRef.current = null;
@@ -427,12 +489,16 @@ export const ProgramScreen = ({
     );
   }
 
+  if (loadState.kind === 'blocked') {
+    return <SubscriptionLockedScreen subscription={subscription} onOpenPayment={onOpenPayment} />;
+  }
+
   const selectedDay =
     selectedVideoId === null
       ? undefined
       : loadState.response.week.days.find(({ video }) => video.id === selectedVideoId);
 
-  if (selectedDay !== undefined) {
+  if (selectedDay !== undefined && subscriptionActive) {
     return (
       <WorkoutPlayer
         day={selectedDay}
@@ -465,6 +531,11 @@ export const ProgramScreen = ({
       return;
     }
 
+    if (!isSubscriptionActive(subscription)) {
+      setPaywallOpen(true);
+      return;
+    }
+
     focusReturnDay.current = day.day_of_week;
     setNavigationError(null);
     window.history.pushState(
@@ -481,15 +552,30 @@ export const ProgramScreen = ({
   };
 
   return (
-    <ProgramWeekView
-      response={loadState.response}
-      currentWeekNumber={loadState.currentWeekNumber}
-      todayDayOfWeek={todayDayOfWeek}
-      isNavigating={isNavigating || isCompletingWorkout}
-      navigationError={navigationError}
-      onPreviousWeek={() => void navigateToWeek(loadState.response.week.week_number - 1)}
-      onNextWeek={() => void navigateToWeek(loadState.response.week.week_number + 1)}
-      onSelectWorkout={selectWorkout}
-    />
+    <>
+      <ProgramWeekView
+        response={loadState.response}
+        currentWeekNumber={loadState.currentWeekNumber}
+        todayDayOfWeek={todayDayOfWeek}
+        isNavigating={isNavigating || isCompletingWorkout}
+        navigationError={navigationError}
+        onPreviousWeek={() => void navigateToWeek(loadState.response.week.week_number - 1)}
+        onNextWeek={() => void navigateToWeek(loadState.response.week.week_number + 1)}
+        onSelectWorkout={selectWorkout}
+      />
+      <SubscriptionPaywallDialog
+        open={paywallOpen || (selectedDay !== undefined && !subscriptionActive)}
+        subscription={subscription}
+        onClose={() => setPaywallOpen(false)}
+        onRenew={() => {
+          clearWorkoutHistorySentinel();
+          selectedVideoIdRef.current = null;
+          selectedProgramWeekRef.current = null;
+          setSelectedVideoId(null);
+          setPaywallOpen(false);
+          onOpenPayment();
+        }}
+      />
+    </>
   );
 };

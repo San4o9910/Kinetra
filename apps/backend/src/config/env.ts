@@ -22,6 +22,13 @@ export interface S3Environment {
   readonly presignedUrlTtlSeconds: number;
 }
 
+export interface YooKassaEnvironment {
+  readonly shopId: string;
+  readonly secretKey: string;
+  readonly returnUrls: readonly string[];
+  readonly requestTimeoutMs: number;
+}
+
 const DEVELOPMENT_ACCESS_SECRET = 'local-development-only-change-this-kinetra-access-secret-2026';
 
 const parseInteger = (
@@ -147,6 +154,69 @@ const parseS3Environment = (nodeEnvironment: NodeEnvironment): Readonly<S3Enviro
   });
 };
 
+const parseYooKassaEnvironment = (
+  nodeEnvironment: NodeEnvironment,
+): Readonly<YooKassaEnvironment> | null => {
+  const shopId = trimmedOrNull(process.env.YUKASSA_SHOP_ID);
+  const secretKey = trimmedOrNull(process.env.YUKASSA_SECRET_KEY);
+
+  if (shopId === null && secretKey === null) {
+    if (nodeEnvironment === 'production') {
+      throw new Error('YUKASSA_SHOP_ID and YUKASSA_SECRET_KEY are required in production.');
+    }
+
+    return null;
+  }
+
+  if (shopId === null || secretKey === null) {
+    throw new Error('YooKassa configuration is incomplete. Set both shop ID and secret key.');
+  }
+
+  const rawReturnUrls = process.env.YUKASSA_RETURN_URL ?? 'http://localhost:5173/payment/success';
+  const returnUrls = rawReturnUrls
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .map((value) => {
+      let url: URL;
+
+      try {
+        url = new URL(value);
+      } catch {
+        throw new Error('YUKASSA_RETURN_URL must contain valid absolute URLs.');
+      }
+
+      const localDevelopmentHost = ['localhost', '127.0.0.1', '::1'].includes(url.hostname);
+
+      if (
+        url.protocol !== 'https:' &&
+        !(nodeEnvironment !== 'production' && localDevelopmentHost)
+      ) {
+        throw new Error('YUKASSA_RETURN_URL must use HTTPS outside local development.');
+      }
+
+      url.hash = '';
+      return url.toString();
+    });
+
+  if (returnUrls.length === 0) {
+    throw new Error('YUKASSA_RETURN_URL must contain at least one allowed return URL.');
+  }
+
+  return Object.freeze({
+    shopId,
+    secretKey,
+    returnUrls: Object.freeze(returnUrls),
+    requestTimeoutMs: parseInteger(
+      'YUKASSA_REQUEST_TIMEOUT_MS',
+      process.env.YUKASSA_REQUEST_TIMEOUT_MS,
+      10_000,
+      1_000,
+      30_000,
+    ),
+  });
+};
+
 const nodeEnv = parseEnum<NodeEnvironment>('NODE_ENV', process.env.NODE_ENV, 'development', [
   'development',
   'test',
@@ -215,6 +285,7 @@ export const env = Object.freeze({
   databaseUrl:
     process.env.DATABASE_URL ?? 'postgresql://kinetra:kinetra_local_only@localhost:5432/kinetra',
   s3: parseS3Environment(nodeEnv),
+  yookassa: parseYooKassaEnvironment(nodeEnv),
   auth: Object.freeze({
     jwtAccessSecret,
     jwtAccessTtlSeconds: parseInteger(

@@ -3,6 +3,8 @@ import type {
   AuthSessionResponse,
   BaseLessonsResponse,
   CompleteWorkoutRequest,
+  CreatePaymentRequest,
+  CreatePaymentResponse,
   GoalResponse,
   HealthResponse,
   LessonProgressResponse,
@@ -224,6 +226,22 @@ export class ApiClient {
       method: 'GET',
       ...(signal === undefined ? {} : { signal }),
     });
+  }
+
+  public async createPayment(returnUrl: string): Promise<CreatePaymentResponse> {
+    const body: CreatePaymentRequest = { return_url: returnUrl };
+
+    return this.authenticatedJsonRequest<CreatePaymentResponse>('/api/v1/payments/create', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  public async cancelSubscription(): Promise<SubscriptionResponse> {
+    return this.authenticatedJsonRequest<SubscriptionResponse>(
+      '/api/v1/payments/cancel-subscription',
+      { method: 'POST' },
+    );
   }
 
   public async getSettingsProfile(signal?: AbortSignal): Promise<SettingsProfileResponse> {
@@ -451,6 +469,10 @@ export const submitWeeklyMetrics = (data: WeeklyMetricsInput): Promise<MetricsRe
 export const updateGoal = (goal: SurveyGoal): Promise<GoalResponse> => apiClient.updateGoal(goal);
 export const getSubscription = (signal?: AbortSignal): Promise<SubscriptionResponse> =>
   apiClient.getSubscription(signal);
+export const createPayment = (returnUrl: string): Promise<CreatePaymentResponse> =>
+  apiClient.createPayment(returnUrl);
+export const cancelSubscription = (): Promise<SubscriptionResponse> =>
+  apiClient.cancelSubscription();
 export const getSettingsProfile = (signal?: AbortSignal): Promise<SettingsProfileResponse> =>
   apiClient.getSettingsProfile(signal);
 export const updateNotifications = (data: NotificationPreferences): Promise<void> =>

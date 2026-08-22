@@ -12,6 +12,8 @@ import {
   type BaseLessonsRuntime,
 } from './base-lessons/runtime.js';
 import { env } from './config/env.js';
+import { createPaymentsRouter } from './payments/router.js';
+import { createProductionPaymentsRuntime, type PaymentsRuntime } from './payments/runtime.js';
 import { createProfileRouter } from './profile/router.js';
 import { createProductionProfileRuntime, type ProfileRuntime } from './profile/runtime.js';
 import { createProgramRouter } from './program/router.js';
@@ -28,6 +30,7 @@ export interface CreateAppOptions {
   readonly programRuntime?: ProgramRuntime;
   readonly progressRuntime?: ProgressRuntime;
   readonly settingsRuntime?: SettingsRuntime;
+  readonly paymentsRuntime?: PaymentsRuntime;
 }
 
 const requestIdFrom = (response: Response): string =>
@@ -47,6 +50,7 @@ export const createApp = (options: CreateAppOptions = {}) => {
   const programRuntime = options.programRuntime ?? createProductionProgramRuntime();
   const progressRuntime = options.progressRuntime ?? createProductionProgressRuntime();
   const settingsRuntime = options.settingsRuntime ?? createProductionSettingsRuntime();
+  const paymentsRuntime = options.paymentsRuntime ?? createProductionPaymentsRuntime();
 
   app.disable('x-powered-by');
 
@@ -97,6 +101,7 @@ export const createApp = (options: CreateAppOptions = {}) => {
       refreshCookie: authRuntime.refreshCookie,
     }),
   );
+  app.use('/api/v1/payments', createPaymentsRouter(paymentsRuntime));
 
   app.use((request: Request, response: Response<ApiErrorResponse>) => {
     response.status(404).json({

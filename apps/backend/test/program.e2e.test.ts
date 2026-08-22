@@ -6,9 +6,11 @@ import { test } from 'node:test';
 import { createApp } from '../src/app.js';
 import { createAuthMiddleware } from '../src/auth/middleware.js';
 import { HmacJwtAccessTokenService } from '../src/auth/tokens.js';
+import { MutableClock } from './support/test-clock.js';
 import type { ProgramRuntime } from '../src/program/runtime.js';
 import { ProgramService } from '../src/program/service.js';
 import { FakeObjectUrlSigner } from './support/fake-object-url-signer.js';
+import { FakeSubscriptionAccessChecker } from './support/fake-subscription-access-checker.js';
 import { InMemoryProgramRepository } from './support/in-memory-program.repository.js';
 
 interface ApiResult {
@@ -22,6 +24,7 @@ interface TestHarness {
   readonly accessToken: string;
   readonly repository: InMemoryProgramRepository;
   readonly signer: FakeObjectUrlSigner;
+  readonly subscriptionAccess: FakeSubscriptionAccessChecker;
   close(): Promise<void>;
 }
 
@@ -119,8 +122,14 @@ const startHarness = async (): Promise<TestHarness> => {
   );
   const repository = new InMemoryProgramRepository(userId);
   const signer = new FakeObjectUrlSigner();
+  const subscriptionAccess = new FakeSubscriptionAccessChecker(true);
   const runtime: ProgramRuntime = {
-    service: new ProgramService(repository, signer),
+    service: new ProgramService(
+      repository,
+      signer,
+      subscriptionAccess,
+      new MutableClock(new Date('2026-08-21T00:00:00.000Z')),
+    ),
     authMiddleware: createAuthMiddleware(accessTokens),
   };
   const server = createServer(createApp({ programRuntime: runtime }));
@@ -145,6 +154,7 @@ const startHarness = async (): Promise<TestHarness> => {
     accessToken: (await accessTokens.issue(userId, randomUUID(), new Date())).token,
     repository,
     signer,
+    subscriptionAccess,
     close: () => closeServer(server),
   };
 };
@@ -199,6 +209,31 @@ test('program endpoints require an access token', async () => {
       const response = await requestJson(harness, path, { method, body, token: null });
       assert.equal(response.status, 401);
       assert.equal(errorCode(response.body), 'AUTHENTICATION_REQUIRED');
+      assert.equal(response.cacheControl, 'no-store');
+    }
+  } finally {
+    await harness.close();
+  }
+});
+
+test('program endpoints require a currently active subscription', async () => {
+  const harness = await startHarness();
+  harness.subscriptionAccess.setActive(false);
+
+  try {
+    for (const [method, path, body] of [
+      ['GET', '/api/v1/program/schedule', undefined],
+      ['GET', '/api/v1/program/current-week', undefined],
+      ['GET', '/api/v1/program/weeks/1', undefined],
+      [
+        'PUT',
+        '/api/v1/program/complete-workout',
+        { video_id: harness.repository.videoIdsForWeek(1)[0], program_week: 1 },
+      ],
+    ] as const) {
+      const response = await requestJson(harness, path, { method, body });
+      assert.equal(response.status, 403);
+      assert.equal(errorCode(response.body), 'SUBSCRIPTION_REQUIRED');
       assert.equal(response.cacheControl, 'no-store');
     }
   } finally {

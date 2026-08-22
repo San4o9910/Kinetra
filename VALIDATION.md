@@ -1,96 +1,117 @@
-# Kinetra T10 — план и отчёт проверки
+# Kinetra T11 — план и отчёт проверки
 
 **Дата:** 2026-08-21
 
-**Ветка:** `feature/t10-settings`
+**Ветка:** `feature/t11-payments`
 
-**Объём:** T01–T10, standalone PWA monorepo
+**Объём:** T01–T11, standalone PWA monorepo
 
 ## Текущий статус
 
-T10 подготовлен обычными TypeScript/TSX/SQL/CSS/Markdown исходниками. Добавлены защищённые
-settings API, полноценный экран настроек и три режима глобальной темы. Миграция называется
-`008_notifications.sql`: номер `004` из исходного задания уже занят применённой T06-миграцией и
-не может быть переиспользован в append-only журнале.
+T11 подготовлен обычными TypeScript/TSX/SQL/CSS/Markdown исходниками. Добавлены REST-интеграция
+ЮKassa, webhook с независимой проверкой IP и canonical provider status, идемпотентные payment
+events/renewal attempts, server entitlement, payment UI, polling, paywall и рабочая отмена будущих
+списаний. Append-only миграция называется `009_payments.sql`.
 
-Итоговая проверка T10 ещё выполняется. Ниже `PASS` ставится только после фактического запуска;
-непрогнанные команды явно оставлены `PENDING`.
+Локальная проверка завершена. `PASS` ниже поставлен только после фактического запуска; проверки,
+для которых локальная среда не готова, остаются `PENDING CI`.
 
 ## Матрица локальной проверки
 
-| Проверка                          | Статус                  | Команда / условие                                       |
-| --------------------------------- | ----------------------- | ------------------------------------------------------- |
-| Структурные T01–T10 contracts     | PASS — 1196 checks      | `node scripts/verify-project.mjs`                       |
-| TypeScript                        | PASS                    | shared, backend production/tests, frontend              |
-| ESLint                            | PASS                    | `eslint apps packages scripts`                          |
-| Backend + frontend unit/E2E       | PASS local              | backend 38 pass + 5 PG skip; frontend 52 pass           |
-| Production build                  | PASS                    | shared, backend, frontend Vite (61 modules)             |
-| PostgreSQL migrations/integration | PENDING CI              | нужен PostgreSQL и `KINETRA_REQUIRE_POSTGRES_TEST=true` |
-| Chrome browser acceptance         | PENDING CI              | локальный Chrome/Chromium отсутствует                   |
-| Tracked source manifest           | PASS — 177 source files | exact path set + `sha256sum -c MANIFEST.sha256`         |
+| Проверка                          | Статус             | Команда / условие                                   |
+| --------------------------------- | ------------------ | --------------------------------------------------- |
+| Структурные T01–T11 contracts     | PASS — 1434 checks | `node scripts/verify-project.mjs`                   |
+| TypeScript                        | PASS               | shared, backend production/tests, frontend          |
+| ESLint                            | PASS               | `eslint apps packages scripts`                      |
+| Backend + frontend unit/E2E       | PASS local         | backend 58 pass + 7 PG skip; frontend 61 pass       |
+| Production build                  | PASS               | shared, backend, frontend Vite (70 modules)         |
+| PostgreSQL migrations/integration | PENDING CI         | PostgreSQL + `KINETRA_REQUIRE_POSTGRES_TEST=true`   |
+| Chrome browser acceptance         | PENDING CI         | script/contracts PASS; локальный Chrome отсутствует |
+| Tracked source manifest           | PASS — 208 files   | полный sorted SHA-256 inventory без самого manifest |
 
-Все изменённые форматируемые файлы проходят targeted Prettier check. Общий `prettier --check .`
-также показывает 14 существовавших до T10 style warnings в неизменённых baseline-файлах; T10 их
-не переписывает. Предыдущий T09 baseline был зелёным в CI, но он не заменяет новые T10 проверки и
-не используется как доказательство результата T10.
+### Сохранённый baseline T10
+
+До начала T11 были зафиксированы: structure `PASS — 1196 checks`, TypeScript/ESLint/build `PASS`,
+backend 38 tests + 5 PostgreSQL skips, frontend 52 tests, 177 source files в manifest. PostgreSQL
+integration и Chrome acceptance оставались `PENDING CI`. T11 не заменяет эти результаты новыми
+`PASS`: все прежние T04–T10 markers продолжают проверяться в том же CI job.
 
 ## Что обязана доказать структура
 
-`scripts/verify-project.mjs` проверяет существование обычных T10 source files, миграцию `008`,
-JWT/no-store settings router, строгие Zod payload, PostgreSQL contracts, shared DTO и четыре
-frontend API-метода. Для UI фиксируются шесть секций, 33 времени, debounce, dialogs, theme
-provider, ранний `/theme-init.js`, semantic light/dark tokens, tests и fail-closed CI markers.
+`scripts/verify-project.mjs` проверяет обычные T11 source files, миграцию `009`, shared DTO,
+JWT/no-store create/cancel routes, public webhook с fail-closed source verifier, прямой REST client
+ЮKassa, canonical status re-fetch, идемпотентные events/renewal attempts, server-side entitlement,
+cron command, три payment routes, 2s/30s polling, premium paywall, settings integration, tests,
+очистку workout sentinel state при истёкшем доступе, документацию и fail-closed CI markers.
 
-Отдельно запрещены `.t10-bootstrap`, `.github/workflows/apply-t10.yml`,
-`docs/.t10-pr-trigger`, а общий рекурсивный gate продолжает запрещать bootstrap/payload,
-`*.b64`, `*.base64`, `*.encoded`, apply/export workflows и encoded-source paths.
+Отдельно запрещены `.t11-bootstrap`, `.github/workflows/apply-t11.yml` и
+`docs/.t11-pr-trigger`. Общий recursive gate продолжает запрещать bootstrap/payload paths,
+`*.b64`, `*.base64`, `*.encoded`, apply/export workflows и encoded-source artifacts.
 
 ## Backend acceptance
 
-HTTP E2E должен подтвердить:
+HTTP/client E2E обязаны подтвердить:
 
-- `401` и `Cache-Control: no-store` для неавторизованных settings requests;
-- `none` subscription с nullable полями и вычисление active/pending/expired/cancelled;
-- строгий notification payload, валидный `HH:MM`, успешный `204` и ошибки `400`;
-- точное `{ "confirm": "DELETE" }`, отклонение отсутствующего/лишнего/неверного подтверждения;
-- очистку refresh cookie после удаления.
+- `401` для create/cancel без access JWT, строгий `{ return_url }` и server-side allowlist;
+- server-owned `799.00 RUB`, `capture: true`, `save_payment_method: true`, redirect confirmation,
+  metadata user ID, HTTP Basic credentials и `Idempotence-Key` не длиннее 64 символов;
+- webhook без JWT, но с официальным IPv4/IPv6 allowlist до мутаций;
+- повторное чтение payment/refund из ЮKassa, сравнение terminal status, IDs, amount/currency и
+  metadata; redirect/body alone не активирует доступ;
+- duplicate webhook возвращает `200` и не продлевает период повторно;
+- `payment.canceled` renewal не отнимает уже оплаченный срок, а partial refund не маскируется под
+  подтверждённый full-refund policy;
+- отмена автопродления идемпотентна и сохраняет active status/expiry;
+- `403 SUBSCRIPTION_REQUIRED` для платной программы без active entitlement; базовые уроки
+  остаются доступны;
+- повторный/параллельный daily worker не создаёт два списания для одного периода.
+- cancel и renewal сериализованы на PostgreSQL row lock: либо отмена выигрывает до provider call,
+  либо дожидается уже начатого запроса; terminal webhook не может быть перезаписан поздним attach;
+- `payment_method.id` не сохраняется и автопродление не включается, если provider вернул
+  `payment_method.saved: false`.
 
-PostgreSQL integration должен применить `001`–`008` и подтвердить legacy backfill/default/not-null
-notification JSON, `auto_renew`, deterministic subscription selection, реальный upsert, CASCADE
-всех пользовательских данных, недействительный refresh token и невозможность повторного login.
-Integration marker не должен печататься при skip.
+PostgreSQL integration обязан применить `001`–`009` и проверить реальные unique constraints,
+provider IDs, saved payment method, processed-event deduplication, renewal claim и cancel update.
+Integration marker не печатается при skip.
 
-## Frontend и тема
+## Frontend и browser acceptance
 
-Unit/API tests должны подтвердить:
+Unit/API tests должны фиксировать exact routes и payload, блокировку duplicate submit,
+полноэкранный redirect, немедленный non-overlapping polling каждые 2 секунды не дольше 30 секунд,
+включая зависший fetch в общий hard deadline, timeout/retry/error states, subscription update до
+перехода к тренировкам, cancel page, paywall и settings cancel/renew actions.
 
-- шесть settings sections, subscription states, support/about/level и survey entry;
-- два switch, 33 значения `06:00`–`22:00`, debounce только финального полного PUT payload;
-- logout и успешное удаление очищают in-memory access token;
-- два этапа danger-flow и точный ввод `DELETE`;
-- preference `system | light | dark`, безопасную localStorage-нормализацию и system resolution.
+Same-origin browser journey сохраняет T04–T10 и дополнительно проверяет:
 
-Browser journey должен проверить весь T10 flow при 320px и 428px, theme persistence после reload,
-динамическую системную тему, применение light/dark за пределами `/settings`, debounced
-notifications, отменённый и подтверждённый logout, затем отменённое и подтверждённое удаление.
-Финальный marker печатается только после сохранения T04–T09 journey.
+1. active subscription: подтверждение отмены делает один POST, меняет только `auto_renew`;
+2. expired subscription: программа блокируется до запроса workout API, paywall открывается
+   автоматически, workout cards/player не монтируются, оба workout history sentinel удаляются;
+3. renew ведёт внутренней SPA-навигацией на `/payment`;
+4. premium card, цена/benefits/copy и touch targets помещаются в 320px и 428px без overflow;
+5. create отправляет точный `${window.location.origin}/payment/success`, duplicate click даёт один
+   POST, confirmation redirect открывает success route;
+6. success сначала видит `pending`, затем через polling получает `active`, обновляет canonical App
+   state и открывает тренировку;
+7. `/payment/cancel` поддерживает retry и «Позже».
 
 ## Обязательные CI markers
 
 ```text
-KINETRA_T10_BACKEND_E2E=PASS
-KINETRA_T10_POSTGRES_INTEGRATION=PASS
-KINETRA_T10_SETTINGS_CONTENT=PASS
-KINETRA_T10_NOTIFICATIONS=PASS
-KINETRA_T10_THEME_MODES=PASS
-KINETRA_T10_LOGOUT=PASS
-KINETRA_T10_ACCOUNT_DELETION=PASS
-KINETRA_T10_BROWSER_E2E=PASS
-KINETRA_T10_TEST_SUITE=PASS
+KINETRA_T11_YOOKASSA_CLIENT=PASS
+KINETRA_T11_BACKEND_E2E=PASS
+KINETRA_T11_WEBHOOK_AUTH=PASS
+KINETRA_T11_WEBHOOK_IDEMPOTENCY=PASS
+KINETRA_T11_POSTGRES_INTEGRATION=PASS
+KINETRA_T11_RENEWAL_IDEMPOTENCY=PASS
+KINETRA_T11_PAYMENT_FLOW=PASS
+KINETRA_T11_PAYWALL=PASS
+KINETRA_T11_SETTINGS_SUBSCRIPTION=PASS
+KINETRA_T11_BROWSER_E2E=PASS
+KINETRA_T11_TEST_SUITE=PASS
 ```
 
-CI обязан продолжать grep всех markers T04–T09 и дополнительно всех T10 markers; отсутствие любого
-из них завершает job ошибкой.
+CI продолжает grep всех markers T04–T10 и дополнительно всех T11 markers; отсутствие любого из
+них завершает job ошибкой.
 
 ## Команды полной проверки
 
@@ -109,9 +130,16 @@ diff -u \
 sha256sum -c MANIFEST.sha256
 ```
 
-## Границы
+Daily renewal отдельно проверяется безопасной test-конфигурацией:
 
-T10 не выполняет настоящий платёж и не отменяет auto-renew у провайдера. Кнопка отмены открывает
-честную информационную модалку и направляет к тренеру; платежный endpoint/webhook остаётся
-отдельным этапом. Для production также нужны реальные URLs политики, оплаты и поддержки,
-собственные JWT secrets, HTTPS, secure refresh cookie и S3 credentials.
+```bash
+npm run payments:renew -w @kinetra/backend
+```
+
+## Production границы
+
+До production нужны реальные credentials, HTTPS, точная proxy topology, webhook registration,
+daily scheduler и мониторинг. Рекуррентные платежи должны быть включены ЮKassa, а согласие
+пользователя — зафиксировано. T11 не передаёт receipt items и не решает требования 54-ФЗ без
+настройки кассы/налоговой проверки; partial refund policy также требует отдельного бизнес-решения.
+Подробности и официальные ссылки: [`docs/T11_PAYMENTS.md`](docs/T11_PAYMENTS.md).

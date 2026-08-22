@@ -335,6 +335,16 @@ export interface SubscriptionResponse {
   readonly days_remaining: number | null;
 }
 
+export interface CreatePaymentRequest {
+  readonly return_url: string;
+}
+
+export interface CreatePaymentResponse {
+  readonly payment_id: string;
+  readonly confirmation_url: string;
+  readonly status: 'pending';
+}
+
 export interface NotificationPreferences {
   readonly workout_reminders: boolean;
   readonly reminder_time: string;

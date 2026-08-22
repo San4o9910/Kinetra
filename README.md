@@ -2,7 +2,7 @@
 
 Kinetra — фитнес-приложение с React/Vite frontend и Express/PostgreSQL backend.
 
-В репозитории завершены этапы T01–T10:
+В репозитории завершены этапы T01–T11:
 
 - **T01:** каркас монорепо, PWA, PostgreSQL в Docker Compose, health endpoint и transport Socket.IO;
 - **T02:** регистрация и авторизация по email/паролю, опциональный телефон, refresh-сессии,
@@ -17,6 +17,8 @@ Kinetra — фитнес-приложение с React/Vite frontend и Express/
 - **T09:** dashboard прогресса с целью, самооценкой, SVG-графиками, статистикой и достижениями.
 - **T10:** полноценные настройки подписки, уведомлений, профиля и аккаунта, а также системная,
   светлая и тёмная тема приложения.
+- **T11:** оплата Kinetra Premium через ЮKassa, сохранённый способ оплаты, webhook, ежедневное
+  автопродление, отмена будущих списаний и server-enforced paywall.
 
 ## Структура
 
@@ -27,7 +29,7 @@ kinetra/
 │   └── backend/           @kinetra/backend — Express + TypeScript + PostgreSQL
 ├── packages/
 │   └── shared/            @kinetra/shared — общие API-типы
-├── docs/                  Контракты и сценарии T02–T10
+├── docs/                  Контракты и сценарии T02–T11
 ├── scripts/               Структурная проверка проекта
 ├── docker-compose.yml     PostgreSQL 17
 └── .env.example           Шаблон переменных без реальных секретов
@@ -127,8 +129,30 @@ API, правила агрегатов и streak, пять canonical-дости�
 
 Экран содержит подписку, уведомления, профиль, оформление, поддержку и danger zone аккаунта.
 Preference темы имеет ровно три значения — `system`, `light`, `dark` — и применяется глобально до
-первого React render. Backend/UI/theme contracts, корректная миграция `008` и честные границы
-placeholder отмены автопродления описаны в [`docs/T10_SETTINGS.md`](docs/T10_SETTINGS.md).
+первого React render. Backend/UI/theme contracts и корректная миграция `008` описаны в
+[`docs/T10_SETTINGS.md`](docs/T10_SETTINGS.md); T11 заменяет прежний renewal placeholder рабочим
+сценарием отмены будущих списаний.
+
+## Платежи и подписка
+
+T11 добавляет три payment endpoint и ежедневный worker:
+
+| Метод | Путь                                   | Назначение                                      |
+| ----- | -------------------------------------- | ----------------------------------------------- |
+| POST  | `/api/v1/payments/create`              | Создать redirect-платёж 799 ₽ с Idempotence-Key |
+| POST  | `/api/v1/payments/webhook`             | Проверить notification и применить событие      |
+| POST  | `/api/v1/payments/cancel-subscription` | Отключить будущие списания                      |
+
+```bash
+npm run payments:renew -w @kinetra/backend
+```
+
+`create` и `cancel-subscription` требуют JWT. Webhook не использует JWT, но fail-closed проверяет
+официальный source IP, повторно читает payment/refund через REST API ЮKassa и применяет событие
+идемпотентно. Redirect `/payment/success` не является доказательством оплаты: frontend опрашивает
+canonical subscription, а backend возвращает `403 SUBSCRIPTION_REQUIRED` для платной программы
+без активного периода. Полный API, cron, IP ranges, production checklist и ограничения по
+рекуррентным платежам/чекам: [`docs/T11_PAYMENTS.md`](docs/T11_PAYMENTS.md).
 
 ## Auth API T02
 
@@ -269,6 +293,7 @@ npm run db:migrate
 - `007_progress_data_contract.sql` — лимит заметки и canonical-контракт пяти достижений.
 - `008_notifications.sql` — notification JSON, legacy backfill, `auto_renew` и индексы каскадного
   удаления auth tokens.
+- `009_payments.sql` — provider payment metadata, идемпотентные webhook events и renewal attempts.
 
 `schema_migrations` создаётся самим runner.
 
@@ -293,12 +318,15 @@ npm run check
 ```
 
 E2E-набор покрывает auth, профиль/анкету, онбординг-карусель, базовые уроки, главный экран,
-расписание, прогресс и T10 settings: JWT/no-store, строгие payload, PostgreSQL migration/backfill,
-debounced уведомления, три режима темы, logout и двухэтапное удаление аккаунта. CI сравнивает
+расписание, прогресс, T10 settings и T11 payments: JWT/no-store, строгие payload,
+PostgreSQL migration/backfill, debounced уведомления, три режима темы, webhook authenticity и
+идемпотентность, polling, paywall, logout и двухэтапное удаление аккаунта. CI сравнивает
 `MANIFEST.sha256` со всеми tracked-файлами и запрещает bootstrap/payload artifacts.
 
 ## Границы текущего этапа
 
-В T10 не входят проведение платежа, вызов API отмены автопродления, каталог тренеров и доменная
-логика чата. Кнопка отмены честно открывает информационный placeholder до отдельной интеграции с
-платёжным провайдером. Telegram-интеграции нет: продукт остаётся самостоятельной PWA.
+Перед production нужно активировать рекуррентные платежи у ЮKassa, зафиксировать согласие
+пользователя, настроить ежедневный scheduler, HTTPS/webhook ingress и кассовые чеки по применимым
+требованиям 54-ФЗ. T11 не определяет бизнес-правило частичных возвратов и не заменяет юридическую
+или налоговую проверку. Каталог тренеров и доменная логика чата остаются следующими этапами.
+Telegram-интеграции нет: продукт остаётся самостоятельной PWA.

@@ -11,6 +11,7 @@ import {
 import {
   appRoutes,
   isActiveAppRoute,
+  isPaymentRoute,
   normalizeAppRoute,
   routeForOnboardingStatus,
 } from '../src/routing.js';
@@ -32,6 +33,13 @@ test('server onboarding statuses map to canonical browser routes', () => {
   assert.equal(normalizeAppRoute('/settings/'), appRoutes.settings);
   assert.equal(normalizeAppRoute('/schedule/'), appRoutes.schedule);
   assert.equal(normalizeAppRoute('/progress/'), appRoutes.progress);
+  assert.equal(normalizeAppRoute('/payment/'), appRoutes.payment);
+  assert.equal(normalizeAppRoute('/payment/success/'), appRoutes.paymentSuccess);
+  assert.equal(normalizeAppRoute('/payment/cancel/'), appRoutes.paymentCancel);
+  assert.equal(isPaymentRoute(appRoutes.payment), true);
+  assert.equal(isPaymentRoute(appRoutes.paymentSuccess), true);
+  assert.equal(isPaymentRoute(appRoutes.paymentCancel), true);
+  assert.equal(isPaymentRoute(appRoutes.home), false);
   assert.equal(isActiveAppRoute(appRoutes.home), true);
   assert.equal(isActiveAppRoute(appRoutes.schedule), true);
   assert.equal(isActiveAppRoute(appRoutes.progress), true);

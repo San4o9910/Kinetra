@@ -25,13 +25,13 @@ export interface SettingsViewProps {
   readonly themePreference: ThemePreference;
   readonly resolvedTheme: ResolvedTheme;
   readonly supportEmail: string;
-  readonly paymentUrl: string;
   readonly onClose: () => void;
   readonly onNotificationsChange: (preferences: NotificationPreferences) => void;
   readonly onThemeChange: (preference: ThemePreference) => void;
   readonly onEditSurvey: () => void;
   readonly onOpenLevel: () => void;
   readonly onOpenAbout: () => void;
+  readonly onOpenPayment: () => void;
   readonly onOpenRenewalInfo: () => void;
   readonly onOpenLogout: () => void;
   readonly onOpenDelete: () => void;
@@ -116,11 +116,11 @@ const ToggleRow = ({
 
 const SubscriptionCard = ({
   subscription,
-  paymentUrl,
+  onOpenPayment,
   onOpenRenewalInfo,
 }: {
   readonly subscription: SubscriptionResponse;
-  readonly paymentUrl: string;
+  readonly onOpenPayment: () => void;
   readonly onOpenRenewalInfo: () => void;
 }): ReactNode => {
   const presentation = subscriptionPresentation(subscription);
@@ -150,16 +150,23 @@ const SubscriptionCard = ({
         </div>
       )}
 
+      {subscription.status === 'active' && subscription.auto_renew === false ? (
+        <p className="settings-auto-renew-state" data-testid="settings-auto-renew-state">
+          Автопродление отключено
+        </p>
+      ) : null}
+
       {presentation.showRenew || presentation.showCancelAutoRenew ? (
         <div className="settings-subscription-actions">
           {presentation.showRenew ? (
-            <a
+            <button
               className="settings-subscription-primary"
               data-testid="settings-renew-subscription"
-              href={paymentUrl}
+              type="button"
+              onClick={onOpenPayment}
             >
-              Продлить
-            </a>
+              {presentation.primaryActionLabel}
+            </button>
           ) : null}
           {presentation.showCancelAutoRenew ? (
             <button
@@ -186,13 +193,13 @@ export const SettingsView = ({
   themePreference,
   resolvedTheme,
   supportEmail,
-  paymentUrl,
   onClose,
   onNotificationsChange,
   onThemeChange,
   onEditSurvey,
   onOpenLevel,
   onOpenAbout,
+  onOpenPayment,
   onOpenRenewalInfo,
   onOpenLogout,
   onOpenDelete,
@@ -220,7 +227,7 @@ export const SettingsView = ({
         <Section title="Подписка" testId="settings-subscription-section">
           <SubscriptionCard
             subscription={subscription}
-            paymentUrl={paymentUrl}
+            onOpenPayment={onOpenPayment}
             onOpenRenewalInfo={onOpenRenewalInfo}
           />
         </Section>

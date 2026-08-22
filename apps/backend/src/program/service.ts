@@ -10,7 +10,9 @@ import type {
 } from '@kinetra/shared';
 
 import { HttpError } from '../auth/errors.js';
+import type { Clock } from '../auth/service.js';
 import type { ObjectUrlSigner } from '../base-lessons/storage.js';
+import type { SubscriptionAccessChecker } from '../payments/subscription-access.js';
 import {
   PROGRAM_DAYS_PER_WEEK,
   PROGRAM_WEEK_COUNT,
@@ -58,14 +60,18 @@ export class ProgramService {
   public constructor(
     private readonly repository: ProgramRepository,
     private readonly objectUrlSigner: ObjectUrlSigner,
+    private readonly subscriptionAccess: SubscriptionAccessChecker,
+    private readonly clock: Clock,
   ) {}
 
   public async getCurrentWeek(userId: string): Promise<WeekResponse> {
+    await this.requireActiveSubscription(userId);
     const progress = await this.repository.getProgress(userId);
     return this.getWeekResponse(userId, progress.currentWeekNumber, progress);
   }
 
   public async getSchedule(userId: string): Promise<ScheduleResponse> {
+    await this.requireActiveSubscription(userId);
     const progress = await this.repository.getProgress(userId);
     const nextWeekNumber =
       progress.currentWeekNumber < PROGRAM_WEEK_COUNT ? progress.currentWeekNumber + 1 : null;
@@ -83,6 +89,7 @@ export class ProgramService {
   }
 
   public async getWeek(userId: string, rawWeekNumber: unknown): Promise<WeekResponse> {
+    await this.requireActiveSubscription(userId);
     const parsedWeekNumber = programWeekNumberSchema.safeParse(rawWeekNumber);
 
     if (!parsedWeekNumber.success) {
@@ -103,6 +110,7 @@ export class ProgramService {
   }
 
   public async completeWorkout(userId: string, body: unknown): Promise<WeekResponse> {
+    await this.requireActiveSubscription(userId);
     const parsedBody = workoutCompletionSchema.safeParse(body);
 
     if (!parsedBody.success) {
@@ -149,6 +157,16 @@ export class ProgramService {
     }
 
     return this.getCurrentWeek(userId);
+  }
+
+  private async requireActiveSubscription(userId: string): Promise<void> {
+    if (!(await this.subscriptionAccess.hasActiveSubscription(userId, this.clock.now()))) {
+      throw new HttpError(
+        403,
+        'SUBSCRIPTION_REQUIRED',
+        'An active subscription is required to access the training program.',
+      );
+    }
   }
 
   private async getWeekResponse(

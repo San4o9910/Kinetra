@@ -59,6 +59,10 @@ jobs:
       PORT: 3000
       HOST: 0.0.0.0
       CORS_ORIGIN: http://localhost:5173
+      YUKASSA_SHOP_ID: ci-test-shop-not-real
+      YUKASSA_SECRET_KEY: ci-test-secret-not-real
+      YUKASSA_RETURN_URL: http://localhost:5173/payment/success
+      YUKASSA_REQUEST_TIMEOUT_MS: '10000'
       CI: 'true'
       KINETRA_REQUIRE_POSTGRES_TEST: 'true'
     steps:
@@ -126,6 +130,16 @@ jobs:
           grep -F 'KINETRA_T10_LOGOUT=PASS' /tmp/kinetra-test.log
           grep -F 'KINETRA_T10_ACCOUNT_DELETION=PASS' /tmp/kinetra-test.log
           grep -F 'KINETRA_T10_BROWSER_E2E=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T11_YOOKASSA_CLIENT=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T11_BACKEND_E2E=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T11_WEBHOOK_AUTH=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T11_WEBHOOK_IDEMPOTENCY=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T11_POSTGRES_INTEGRATION=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T11_RENEWAL_IDEMPOTENCY=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T11_PAYMENT_FLOW=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T11_PAYWALL=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T11_SETTINGS_SUBSCRIPTION=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T11_BROWSER_E2E=PASS' /tmp/kinetra-test.log
           echo 'KINETRA_T04_TEST_SUITE=PASS'
           echo 'KINETRA_T05_TEST_SUITE=PASS'
           echo 'KINETRA_T06_TEST_SUITE=PASS'
@@ -133,6 +147,7 @@ jobs:
           echo 'KINETRA_T08_TEST_SUITE=PASS'
           echo 'KINETRA_T09_TEST_SUITE=PASS'
           echo 'KINETRA_T10_TEST_SUITE=PASS'
+          echo 'KINETRA_T11_TEST_SUITE=PASS'
 
       - name: Verify browser profile cleanup
         if: always()

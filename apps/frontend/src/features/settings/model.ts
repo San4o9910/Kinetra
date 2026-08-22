@@ -55,6 +55,7 @@ export interface SubscriptionPresentation {
   readonly label: string;
   readonly tone: SubscriptionTone;
   readonly showRenew: boolean;
+  readonly primaryActionLabel: string | null;
   readonly showCancelAutoRenew: boolean;
 }
 
@@ -68,10 +69,8 @@ export const subscriptionPresentation = (
           ? 'Подписка активна'
           : `Активна до ${formatSubscriptionDate(subscription.expires_at)}`,
       tone: 'active',
-      showRenew:
-        subscription.days_remaining !== null && subscription.days_remaining >= 0
-          ? subscription.days_remaining <= 7
-          : false,
+      showRenew: false,
+      primaryActionLabel: null,
       showCancelAutoRenew: subscription.auto_renew === true,
     };
   }
@@ -81,6 +80,7 @@ export const subscriptionPresentation = (
       label: 'Подписка истекла',
       tone: 'danger',
       showRenew: true,
+      primaryActionLabel: 'Продлить подписку',
       showCancelAutoRenew: false,
     };
   }
@@ -90,6 +90,7 @@ export const subscriptionPresentation = (
       label: 'Подписка отменена',
       tone: 'danger',
       showRenew: true,
+      primaryActionLabel: 'Продлить подписку',
       showCancelAutoRenew: false,
     };
   }
@@ -99,6 +100,7 @@ export const subscriptionPresentation = (
       label: 'Ожидает подтверждения',
       tone: 'pending',
       showRenew: false,
+      primaryActionLabel: null,
       showCancelAutoRenew: false,
     };
   }
@@ -107,6 +109,7 @@ export const subscriptionPresentation = (
     label: 'Нет подписки',
     tone: 'neutral',
     showRenew: true,
+    primaryActionLabel: 'Оформить подписку',
     showCancelAutoRenew: false,
   };
 };
