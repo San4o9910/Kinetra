@@ -2792,6 +2792,7 @@ const apiSessionFrontendTests = await readText('apps/frontend/test/api-session.t
 for (const testContract of [
   'prepared account deletion stays bound to the token that confirmed it',
   'prepared account deletion never refreshes or retries with another subject',
+  'prepared logout push cleanup stays bound to account A and never refreshes as account B',
 ]) {
   expectIncludes(
     apiSessionFrontendTests,
@@ -3510,7 +3511,10 @@ for (const schedulerContract of [
   'sendConcurrency < 1 || sendConcurrency > 32',
   'await this.subscriptionAccess.hasActiveSubscription(dueUser.userId, now)',
   'this.programRepository.getProgress(dueUser.userId)',
-  'this.programRepository.getWeek(dueUser.userId, program.currentWeekNumber)',
+  'this.programRepository.getWeek(',
+  'await mapWithConcurrency(dueUsers, this.sendConcurrency',
+  'runFailures.push(error)',
+  'throw new AggregateError(',
   'day.dayOfWeek === dueUser.localDayOfWeek',
   'workout.completedAt !== null || !workout.mediaAvailable',
   '`workout:${programWeek}:${workout.videoId}:${dueUser.localDate}`',
@@ -3585,7 +3589,9 @@ for (const frontendPushApiContract of [
   'public async registerPushSubscription(',
   "'/api/v1/push/subscriptions'",
   "method: 'POST'",
-  'public async deletePushSubscription(data: PushUnsubscribeRequest)',
+  'public async deletePushSubscription(',
+  'options: PushSubscriptionDeleteOptions = {}',
+  'public preparePushSubscriptionDeletion()',
   "method: 'DELETE'",
 ]) {
   expectIncludes(
@@ -3616,7 +3622,12 @@ for (const lifecycleContract of [
   'const response = await runtime.registerSubscription(',
   'requestFromBrowserSubscription(subscription)',
   'runtime.deleteSubscription({ endpoint: subscription.endpoint })',
-  'await Promise.allSettled([',
+  'signal?.aborted ?? false',
+  'allowRefresh: false',
+  'control?.beginSideEffects?.() === false',
+  'Promise.race([backendCleanup, waitForAbort(signal)])',
+  'const backendCleanup = Promise.resolve()',
+  'const browserCleanup = Promise.resolve()',
   'const unsubscribeBrowserSubscription = async',
   'const unsubscribeBrowserOnly = async',
 ]) {
@@ -3651,7 +3662,9 @@ for (const settingsPushContract of [
   'void subscribeToPush()',
   'const disablePushOnDevice = (): void =>',
   'void unsubscribeFromPush()',
-  'settleBestEffortWithin(bestEffortUnsubscribeFromPush())',
+  'preparePushSubscriptionDeletion()',
+  'bestEffortUnsubscribeFromPush({ ...control, deleteSubscription })',
+  'PUSH_BEST_EFFORT_TIMEOUT_MS',
   '.then(() => logout())',
   'runAccountDeletionLifecycle(deleteConfirmation',
   'prepareAccountDeletion,',
@@ -3768,6 +3781,7 @@ for (const testContract of [
   'sends each Sunday logical event once to every device',
   'skips unavailable/completed workouts, submitted metrics and inactive paywall',
   'honors disabled preferences and completed workout state',
+  'isolates a late-user failure without losing or duplicating other due users',
   'isolates invalid and transient endpoints and never retries an occurrence',
   'KINETRA_T13_SCHEDULER=PASS',
 ]) {
@@ -3784,6 +3798,9 @@ for (const testContract of [
   'backend registration failure never removes or reports away the browser subscription',
   'explicit and best-effort unsubscribe preserve their different failure semantics',
   'a captured browser subscription can be removed after the live lookup loses it',
+  'timed-out logout cleanup cannot mutate a later session after delayed service worker resolution',
+  'logout waits for a browser unsubscribe that started before the timeout',
+  'logout bounds a hung account-A backend after browser unsubscribe completes',
   'KINETRA_T13_PERMISSION_LIFECYCLE=PASS',
 ]) {
   expectIncludes(pushFrontendTests, testContract, `T13 frontend lifecycle test: ${testContract}`);

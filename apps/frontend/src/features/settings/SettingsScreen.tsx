@@ -12,6 +12,7 @@ import {
   getSubscription,
   logout,
   prepareAccountDeletion,
+  preparePushSubscriptionDeletion,
   updateNotifications,
 } from '../../lib/api';
 import { useTheme } from '../theme/theme-context';
@@ -26,7 +27,7 @@ import {
   type PushBackendRegistrationStatus,
   type PushPermission,
 } from '../../pwa/pushNotifications';
-import { runAccountDeletionLifecycle } from './accountLifecycle';
+import { runAccountDeletionLifecycle, settleBestEffortWithin } from './accountLifecycle';
 import { SettingsDialogs, type SettingsDialogKind } from './SettingsDialogs';
 import { SettingsView, type NotificationSaveStatus } from './SettingsView';
 import { SETTINGS_NOTIFICATION_DEBOUNCE_MS } from './model';
@@ -63,19 +64,6 @@ const supportEmail = runtimeEnv.VITE_SUPPORT_EMAIL ?? 'coach@kinetra.app';
 const privacyUrl = runtimeEnv.VITE_PRIVACY_URL ?? 'https://kinetra.app/privacy';
 const appVersion = runtimeEnv.VITE_APP_VERSION ?? '0.4.0';
 const PUSH_BEST_EFFORT_TIMEOUT_MS = 1_500;
-
-const settleBestEffortWithin = async (operation: Promise<unknown>): Promise<void> => {
-  let timer: number | undefined;
-  const timeout = new Promise<void>((resolve) => {
-    timer = window.setTimeout(resolve, PUSH_BEST_EFFORT_TIMEOUT_MS);
-  });
-
-  await Promise.race([operation.catch(() => undefined), timeout]);
-
-  if (timer !== undefined) {
-    window.clearTimeout(timer);
-  }
-};
 
 const initialPushDeviceState = (): PushDeviceState => ({
   permission: getPushPermission(),
@@ -486,8 +474,12 @@ export const SettingsScreen = ({
       return;
     }
 
+    const deleteSubscription = preparePushSubscriptionDeletion();
     setDialogBusy(true);
-    void settleBestEffortWithin(bestEffortUnsubscribeFromPush())
+    void settleBestEffortWithin(
+      (control) => bestEffortUnsubscribeFromPush({ ...control, deleteSubscription }),
+      PUSH_BEST_EFFORT_TIMEOUT_MS,
+    )
       .then(() => logout())
       .catch(() => undefined)
       .finally(onSignedOut);

@@ -54,6 +54,16 @@ interface ApiClientOptions {
   readonly fetchImpl?: typeof fetch;
 }
 
+export interface PushSubscriptionDeleteOptions {
+  readonly signal?: AbortSignal;
+  readonly allowRefresh?: boolean;
+}
+
+export type PreparedPushSubscriptionDeletion = (
+  data: PushUnsubscribeRequest,
+  signal?: AbortSignal,
+) => Promise<void>;
+
 const errorKindForStatus = (status: number): ApiErrorKind => {
   if (status === 401) {
     return 'auth';
@@ -278,11 +288,48 @@ export class ApiClient {
     });
   }
 
-  public async deletePushSubscription(data: PushUnsubscribeRequest): Promise<void> {
-    await this.authenticatedVoidRequest('/api/v1/push/subscriptions', {
-      method: 'DELETE',
-      body: JSON.stringify(data),
-    });
+  public async deletePushSubscription(
+    data: PushUnsubscribeRequest,
+    options: PushSubscriptionDeleteOptions = {},
+  ): Promise<void> {
+    await this.authenticatedVoidRequest(
+      '/api/v1/push/subscriptions',
+      {
+        method: 'DELETE',
+        body: JSON.stringify(data),
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
+      },
+      options.allowRefresh ?? true,
+    );
+  }
+
+  public preparePushSubscriptionDeletion(): PreparedPushSubscriptionDeletion {
+    const accessToken = this.accessToken;
+
+    return async (data, signal) => {
+      if (accessToken === null) {
+        throw new ApiRequestError(
+          'Сессия завершена. Войдите в аккаунт.',
+          401,
+          'NO_SESSION',
+          'auth',
+        );
+      }
+
+      const response = await this.requestWithAccessToken(
+        '/api/v1/push/subscriptions',
+        {
+          method: 'DELETE',
+          body: JSON.stringify(data),
+          ...(signal === undefined ? {} : { signal }),
+        },
+        accessToken,
+      );
+
+      if (!response.ok) {
+        await this.throwResponseError(response);
+      }
+    };
   }
 
   public prepareAccountDeletion(confirm: string): () => Promise<void> {
@@ -532,8 +579,12 @@ export const getPushPublicKey = (): Promise<PushPublicKeyResponse> => apiClient.
 export const registerPushSubscription = (
   data: PushSubscriptionRequest,
 ): Promise<PushSubscriptionResponse> => apiClient.registerPushSubscription(data);
-export const deletePushSubscription = (data: PushUnsubscribeRequest): Promise<void> =>
-  apiClient.deletePushSubscription(data);
+export const deletePushSubscription = (
+  data: PushUnsubscribeRequest,
+  options?: PushSubscriptionDeleteOptions,
+): Promise<void> => apiClient.deletePushSubscription(data, options);
+export const preparePushSubscriptionDeletion = (): PreparedPushSubscriptionDeletion =>
+  apiClient.preparePushSubscriptionDeletion();
 export const prepareAccountDeletion = (confirm: string): (() => Promise<void>) =>
   apiClient.prepareAccountDeletion(confirm);
 export const getWeek = (weekNumber: number, signal?: AbortSignal): Promise<WeekResponse> =>

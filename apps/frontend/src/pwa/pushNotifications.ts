@@ -5,7 +5,13 @@ import type {
   PushUnsubscribeRequest,
 } from '@kinetra/shared';
 
-import { deletePushSubscription, getPushPublicKey, registerPushSubscription } from '../lib/api';
+import {
+  deletePushSubscription,
+  getPushPublicKey,
+  registerPushSubscription,
+  type PreparedPushSubscriptionDeletion,
+  type PushSubscriptionDeleteOptions,
+} from '../lib/api';
 import {
   getExistingServiceWorkerRegistration,
   getReadyServiceWorkerRegistration,
@@ -14,6 +20,12 @@ import {
 export type PushPermission = NotificationPermission | 'unsupported';
 export type PushBackendRegistrationStatus =
   'unknown' | 'registering' | 'registered' | 'not_registered' | 'error';
+
+export interface BestEffortPushCleanupControl {
+  readonly signal?: AbortSignal;
+  readonly beginSideEffects?: () => boolean;
+  readonly deleteSubscription?: PreparedPushSubscriptionDeletion;
+}
 
 export type PushNotificationErrorCode =
   | 'PUSH_UNSUPPORTED'
@@ -48,7 +60,10 @@ export interface PushNotificationsRuntime {
   readonly registerSubscription: (
     request: PushSubscriptionRequest,
   ) => Promise<PushSubscriptionResponse>;
-  readonly deleteSubscription: (request: PushUnsubscribeRequest) => Promise<void>;
+  readonly deleteSubscription: (
+    request: PushUnsubscribeRequest,
+    options?: PushSubscriptionDeleteOptions,
+  ) => Promise<void>;
   readonly decodeApplicationServerKey: (publicKey: string) => Uint8Array<ArrayBuffer>;
 }
 
@@ -58,7 +73,7 @@ export interface PushNotifications {
   readonly getExistingPushSubscription: () => Promise<PushSubscription | null>;
   readonly subscribeToPush: () => Promise<PushSubscription>;
   readonly unsubscribeFromPush: () => Promise<void>;
-  readonly bestEffortUnsubscribeFromPush: () => Promise<void>;
+  readonly bestEffortUnsubscribeFromPush: (control?: BestEffortPushCleanupControl) => Promise<void>;
   readonly unsubscribeBrowserSubscription: (subscription: PushSubscription | null) => Promise<void>;
   readonly unsubscribeBrowserOnly: () => Promise<void>;
 }
@@ -128,6 +143,16 @@ const requestFromBrowserSubscription = (
     keys: { p256dh, auth },
     expirationTime: serialized.expirationTime ?? subscription.expirationTime ?? null,
   };
+};
+
+const waitForAbort = async (signal: AbortSignal): Promise<void> => {
+  if (signal.aborted) {
+    return;
+  }
+
+  await new Promise<void>((resolve) => {
+    signal.addEventListener('abort', () => resolve(), { once: true });
+  });
 };
 
 const defaultRuntime: PushNotificationsRuntime = {
@@ -276,7 +301,17 @@ export const createPushNotifications = (
     }
   };
 
-  const bestEffortUnsubscribeFromPush = async (): Promise<void> => {
+  const bestEffortUnsubscribeFromPush = async (
+    control?: BestEffortPushCleanupControl,
+  ): Promise<void> => {
+    const signal = control?.signal;
+    const deleteBackendSubscription = control?.deleteSubscription;
+    const cleanupCancelled = (): boolean => signal?.aborted ?? false;
+
+    if (cleanupCancelled()) {
+      return;
+    }
+
     let subscription: PushSubscription | null = null;
 
     try {
@@ -285,14 +320,48 @@ export const createPushNotifications = (
       return;
     }
 
-    if (subscription === null) {
+    if (subscription === null || cleanupCancelled()) {
       return;
     }
 
-    await Promise.allSettled([
-      Promise.resolve().then(() => runtime.deleteSubscription({ endpoint: subscription.endpoint })),
-      Promise.resolve().then(() => subscription.unsubscribe()),
-    ]);
+    if (control?.beginSideEffects?.() === false) {
+      return;
+    }
+
+    const backendCleanup = Promise.resolve()
+      .then(() => {
+        if (cleanupCancelled()) {
+          return;
+        }
+
+        const request = { endpoint: subscription.endpoint };
+
+        return deleteBackendSubscription === undefined
+          ? runtime.deleteSubscription(request, {
+              allowRefresh: false,
+              ...(signal === undefined ? {} : { signal }),
+            })
+          : deleteBackendSubscription(request, signal);
+      })
+      .catch(() => undefined);
+    const browserCleanup = Promise.resolve()
+      .then(() => {
+        if (cleanupCancelled()) {
+          return;
+        }
+
+        return subscription.unsubscribe();
+      })
+      .catch(() => undefined);
+
+    await browserCleanup;
+
+    if (signal === undefined) {
+      await backendCleanup;
+      return;
+    }
+
+    await Promise.race([backendCleanup, waitForAbort(signal)]);
   };
 
   const unsubscribeBrowserOnly = async (): Promise<void> => {
@@ -320,8 +389,9 @@ export const getExistingPushSubscription = (): Promise<PushSubscription | null> 
   pushNotifications.getExistingPushSubscription();
 export const subscribeToPush = (): Promise<PushSubscription> => pushNotifications.subscribeToPush();
 export const unsubscribeFromPush = (): Promise<void> => pushNotifications.unsubscribeFromPush();
-export const bestEffortUnsubscribeFromPush = (): Promise<void> =>
-  pushNotifications.bestEffortUnsubscribeFromPush();
+export const bestEffortUnsubscribeFromPush = (
+  control?: BestEffortPushCleanupControl,
+): Promise<void> => pushNotifications.bestEffortUnsubscribeFromPush(control);
 export const unsubscribeBrowserSubscription = (
   subscription: PushSubscription | null,
 ): Promise<void> => pushNotifications.unsubscribeBrowserSubscription(subscription);

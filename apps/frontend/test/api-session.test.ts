@@ -182,6 +182,53 @@ test('prepared account deletion never refreshes or retries with another subject'
   assert.equal(refreshCalls, 0);
 });
 
+test('prepared logout push cleanup stays bound to account A and never refreshes as account B', async () => {
+  const deletionAuthorizations: string[] = [];
+  let nextLoginToken = 'account-a-token';
+  let refreshCalls = 0;
+  const client = new ApiClient({
+    baseUrl: 'http://api.test',
+    fetchImpl: async (input, init) => {
+      const url = new URL(String(input));
+
+      if (url.pathname === '/api/v1/auth/login') {
+        const response = Response.json(session(nextLoginToken));
+        nextLoginToken = 'account-b-token';
+        return response;
+      }
+
+      if (url.pathname === '/api/v1/push/subscriptions') {
+        deletionAuthorizations.push(new Headers(init?.headers).get('authorization') ?? '');
+        return Response.json(
+          { error: { code: 'AUTHENTICATION_REQUIRED', message: 'Expired.' } },
+          { status: 401 },
+        );
+      }
+
+      if (url.pathname === '/api/v1/auth/refresh') {
+        refreshCalls += 1;
+        return Response.json(session('account-b-refreshed-token'));
+      }
+
+      throw new Error(`Unexpected request ${url.pathname}`);
+    },
+  });
+
+  await client.login('account-a@example.test', 'password-a');
+  const deleteConfirmedAccountPush = client.preparePushSubscriptionDeletion();
+  await client.login('account-b@example.test', 'password-b');
+
+  await assert.rejects(
+    deleteConfirmedAccountPush({ endpoint: 'https://push.example/account-a-device' }),
+    (error: unknown) =>
+      error instanceof ApiRequestError &&
+      error.kind === 'auth' &&
+      error.code === 'AUTHENTICATION_REQUIRED',
+  );
+  assert.deepEqual(deletionAuthorizations, ['Bearer account-a-token']);
+  assert.equal(refreshCalls, 0);
+});
+
 test('onboarding completion uses an authenticated idempotent PUT endpoint', async () => {
   const calls: Array<{
     readonly path: string;

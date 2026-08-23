@@ -7,6 +7,7 @@ import {
   createPushNotifications,
   type PushNotificationsRuntime,
 } from '../src/pwa/pushNotifications.js';
+import { settleBestEffortWithin } from '../src/features/settings/accountLifecycle.js';
 
 const endpoint = 'https://push.example/subscriptions/device-1';
 
@@ -268,6 +269,216 @@ test('T13 a captured browser subscription can be removed after the live lookup l
   assert.deepEqual(fixture.calls, ['browser:unsubscribe']);
   assert.equal(fixture.calls.includes('api:delete'), false);
   assert.equal(fixture.calls.includes('browser:get-subscription'), false);
+});
+
+test('T13 timed-out logout cleanup cannot mutate a later session after delayed service worker resolution', async () => {
+  let releaseRegistration: ((registration: ServiceWorkerRegistration) => void) | undefined;
+  const registrationReady = new Promise<ServiceWorkerRegistration>((resolve) => {
+    releaseRegistration = resolve;
+  });
+  let activeSession = 'account-a';
+  let browserSubscriptionOwner = 'account-a';
+  let existingRegistrationRequests = 0;
+  let getSubscriptionCalls = 0;
+  const backendDeleteSessions: string[] = [];
+  const browserUnsubscribeOwners: string[] = [];
+  const subscription = {
+    endpoint,
+    expirationTime: null,
+    options: { userVisibleOnly: true },
+    getKey: () => null,
+    toJSON: () => ({
+      endpoint,
+      expirationTime: null,
+      keys: { p256dh: 'browser-p256dh', auth: 'browser-auth' },
+    }),
+    unsubscribe: async () => {
+      browserUnsubscribeOwners.push(browserSubscriptionOwner);
+      return true;
+    },
+  } as PushSubscription;
+  const registration = {
+    pushManager: {
+      getSubscription: async () => {
+        getSubscriptionCalls += 1;
+        return subscription;
+      },
+    },
+  } as ServiceWorkerRegistration;
+  const runtime: PushNotificationsRuntime = {
+    isSecureContext: () => true,
+    hasNotificationApi: () => true,
+    hasServiceWorkerApi: () => true,
+    hasPushManagerApi: () => true,
+    getPermission: () => 'granted',
+    requestPermission: async () => 'granted',
+    getExistingRegistration: () => {
+      existingRegistrationRequests += 1;
+      return registrationReady;
+    },
+    getReadyRegistration: async () => registration,
+    getPublicKey: async () => ({ public_key: 'unused-public-key' }),
+    registerSubscription: async () => ({ subscribed: true }),
+    deleteSubscription: async () => {
+      backendDeleteSessions.push(activeSession);
+    },
+    decodeApplicationServerKey: () => new Uint8Array([1, 2, 3]),
+  };
+  const push = createPushNotifications(runtime);
+
+  await settleBestEffortWithin((control) => push.bestEffortUnsubscribeFromPush(control), 0);
+  assert.equal(existingRegistrationRequests, 1);
+
+  activeSession = 'account-b';
+  browserSubscriptionOwner = 'account-b';
+  releaseRegistration?.(registration);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+
+  assert.equal(getSubscriptionCalls, 1);
+  assert.deepEqual(backendDeleteSessions, []);
+  assert.deepEqual(browserUnsubscribeOwners, []);
+});
+
+test('T13 logout waits for a browser unsubscribe that started before the timeout', async () => {
+  let releaseBrowserUnsubscribe: (() => void) | undefined;
+  const browserUnsubscribeFinished = new Promise<void>((resolve) => {
+    releaseBrowserUnsubscribe = resolve;
+  });
+  let activeSession = 'account-a';
+  let browserUnsubscribeStarted = false;
+  const subscription = {
+    endpoint,
+    expirationTime: null,
+    options: { userVisibleOnly: true },
+    getKey: () => null,
+    toJSON: () => ({
+      endpoint,
+      expirationTime: null,
+      keys: { p256dh: 'browser-p256dh', auth: 'browser-auth' },
+    }),
+    unsubscribe: async () => {
+      browserUnsubscribeStarted = true;
+      await browserUnsubscribeFinished;
+      assert.equal(activeSession, 'account-a');
+      return true;
+    },
+  } as PushSubscription;
+  const registration = {
+    pushManager: {
+      getSubscription: async () => subscription,
+    },
+  } as ServiceWorkerRegistration;
+  const runtime: PushNotificationsRuntime = {
+    isSecureContext: () => true,
+    hasNotificationApi: () => true,
+    hasServiceWorkerApi: () => true,
+    hasPushManagerApi: () => true,
+    getPermission: () => 'granted',
+    requestPermission: async () => 'granted',
+    getExistingRegistration: async () => registration,
+    getReadyRegistration: async () => registration,
+    getPublicKey: async () => ({ public_key: 'unused-public-key' }),
+    registerSubscription: async () => ({ subscribed: true }),
+    deleteSubscription: async (_request, options) => {
+      assert.equal(activeSession, 'account-a');
+      assert.equal(options?.allowRefresh, false);
+    },
+    decodeApplicationServerKey: () => new Uint8Array([1, 2, 3]),
+  };
+  const push = createPushNotifications(runtime);
+  let logoutContinued = false;
+  const cleanup = settleBestEffortWithin(
+    (control) => push.bestEffortUnsubscribeFromPush(control),
+    0,
+  ).then(() => {
+    logoutContinued = true;
+    activeSession = 'account-b';
+  });
+
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(browserUnsubscribeStarted, true);
+  assert.equal(logoutContinued, false);
+  assert.equal(activeSession, 'account-a');
+
+  releaseBrowserUnsubscribe?.();
+  await cleanup;
+
+  assert.equal(logoutContinued, true);
+  assert.equal(activeSession, 'account-b');
+});
+
+test('T13 logout bounds a hung account-A backend after browser unsubscribe completes', async () => {
+  let rejectBackendDelete: ((error: Error) => void) | undefined;
+  const backendDeleteFinished = new Promise<void>((_resolve, reject) => {
+    rejectBackendDelete = reject;
+  });
+  let activeSession = 'account-a';
+  let browserUnsubscribeCompleted = false;
+  let backendSignal: AbortSignal | undefined;
+  const backendDeleteSessions: string[] = [];
+  const subscription = {
+    endpoint,
+    expirationTime: null,
+    options: { userVisibleOnly: true },
+    getKey: () => null,
+    toJSON: () => ({
+      endpoint,
+      expirationTime: null,
+      keys: { p256dh: 'browser-p256dh', auth: 'browser-auth' },
+    }),
+    unsubscribe: async () => {
+      assert.equal(activeSession, 'account-a');
+      browserUnsubscribeCompleted = true;
+      return true;
+    },
+  } as PushSubscription;
+  const registration = {
+    pushManager: {
+      getSubscription: async () => subscription,
+    },
+  } as ServiceWorkerRegistration;
+  const runtime: PushNotificationsRuntime = {
+    isSecureContext: () => true,
+    hasNotificationApi: () => true,
+    hasServiceWorkerApi: () => true,
+    hasPushManagerApi: () => true,
+    getPermission: () => 'granted',
+    requestPermission: async () => 'granted',
+    getExistingRegistration: async () => registration,
+    getReadyRegistration: async () => registration,
+    getPublicKey: async () => ({ public_key: 'unused-public-key' }),
+    registerSubscription: async () => ({ subscribed: true }),
+    deleteSubscription: async () => {
+      throw new Error('The token-bound cleanup override must be used.');
+    },
+    decodeApplicationServerKey: () => new Uint8Array([1, 2, 3]),
+  };
+  const push = createPushNotifications(runtime);
+  const preparedDelete = async (_request: { readonly endpoint: string }, signal?: AbortSignal) => {
+    backendDeleteSessions.push(activeSession);
+    backendSignal = signal;
+    await backendDeleteFinished;
+  };
+
+  await settleBestEffortWithin(
+    (control) =>
+      push.bestEffortUnsubscribeFromPush({
+        ...control,
+        deleteSubscription: preparedDelete,
+      }),
+    0,
+  );
+  activeSession = 'account-b';
+
+  assert.equal(browserUnsubscribeCompleted, true);
+  assert.equal(backendSignal?.aborted, true);
+  assert.deepEqual(backendDeleteSessions, ['account-a']);
+
+  rejectBackendDelete?.(new Error('Late account-A backend failure.'));
+  await new Promise<void>((resolve) => setImmediate(resolve));
+
+  assert.equal(activeSession, 'account-b');
+  assert.deepEqual(backendDeleteSessions, ['account-a']);
 });
 
 test('T13 base64url VAPID conversion is bounded and deterministic', () => {

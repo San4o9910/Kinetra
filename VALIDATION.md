@@ -1,6 +1,6 @@
 # Kinetra T13 — план и отчёт проверки
 
-**Дата:** 2026-08-22
+**Дата:** 2026-08-23
 
 **Ветка:** `feature/t13-push-notifications`
 
@@ -22,12 +22,12 @@ permission lifecycle в T10 settings и отдельный идемпотент�
 
 | Проверка                           | Статус      | Фактический результат                                        |
 | ---------------------------------- | ----------- | ------------------------------------------------------------ |
-| Structural contracts T01–T13       | PASS        | `node scripts/verify-project.mjs` — 1849 checks              |
+| Structural contracts T01–T13       | PASS        | `node scripts/verify-project.mjs` — 1866 checks              |
 | TypeScript production + tests      | PASS        | `npm run typecheck` — shared/backend/tests/frontend          |
 | ESLint                             | PASS        | `npm run lint`                                               |
-| Backend unit/API tests             | PASS        | 76 pass, 0 fail, 9 PostgreSQL skips                          |
+| Backend unit/API tests             | PASS        | 77 pass, 0 fail, 9 PostgreSQL skips                          |
 | PostgreSQL migration/integration   | CI REQUIRED | нет локальной БД; CI требует реальный PostgreSQL 17 marker   |
-| Frontend unit/Service Worker tests | PASS        | 79 pass, 0 fail                                              |
+| Frontend unit/Service Worker tests | PASS        | 83 pass, 0 fail                                              |
 | Chrome browser acceptance          | CI REQUIRED | Chrome/Chromium отсутствует; обязательный CI marker          |
 | Production build                   | PASS        | shared/backend/frontend, Vite 72 modules                     |
 | Composite quality gate             | CI REQUIRED | доступные фазы PASS; полный `npm run check` завершается в CI |
@@ -38,9 +38,19 @@ permission lifecycle в T10 settings и отдельный идемпотент�
 - `git fetch --all --prune` подтвердил `origin/develop` на base commit `4852bab`.
 - `git diff --check` и Prettier check всех изменённых/новых PR-файлов прошли.
 - `npm run typecheck`, `npm run lint` и `npm run build` прошли без ошибок.
-- Backend выполнил 85 тестов: 76 прошли, 9 PostgreSQL tests честно пропущены только из-за
+- Backend выполнил 86 тестов: 77 прошли, 9 PostgreSQL tests честно пропущены только из-за
   отсутствующего `DATABASE_URL`; failed tests нет.
-- Frontend unit/API/Service Worker suite: 79 прошли, failed/skipped tests нет.
+- Frontend unit/API/Service Worker suite: 83 прошли, failed/skipped tests нет.
+- Scheduler изолирует due users и для каждого выполняет eligibility, claim и terminal send в том
+  же минутном запуске. Регрессия с ошибкой пользователя B подтверждает: пользователи A и C уже
+  получают по одной отправке до общего `AggregateError`; после восстановления B получает одну
+  отправку, а occurrences A и C фиксируются как duplicates без повторной отправки.
+- Logout cleanup до первого `await` связывает backend DELETE с access token текущего аккаунта.
+  Если Service Worker lookup не завершился за 1,5 секунды, abort запрещает поздние DELETE и
+  origin-wide `unsubscribe()`; если browser unsubscribe уже начался, переход к следующей сессии
+  ждёт его полного завершения. Отдельные регрессии подтверждают отсутствие mutation аккаунта B и
+  запрет refresh/retry с его токеном. Зависший backend DELETE прерывается тем же сигналом и не
+  удерживает logout после завершения browser cleanup.
 - Регрессия account deletion воспроизведена как потеря test-only subscription state при hard
   navigation: новая document-инъекция обнуляла объект, хотя реальный browser subscription
   переживает reload. Test seam теперь сохраняет native-like state между документами, а production
@@ -130,6 +140,8 @@ API/unit/PostgreSQL tests обязаны подтвердить:
 - повторный/параллельный worker не создаёт duplicate delivery;
 - `404/410` отключают endpoint, а `401/403/429/5xx/timeout` не удаляют его;
 - ошибка одной subscription не прерывает остальные;
+- ошибка eligibility более позднего пользователя не оставляет ранний durable claim без provider
+  attempt, а восстановленный запуск отправляет occurrence ровно один раз;
 - invalid timezone использует `Europe/Moscow`, fall-back DST occurrence не дублируется;
 - workout reminder использует current program week + local weekday, active entitlement и
   completed state; weekly reminder отправляется только pending week в воскресенье local time;
@@ -145,7 +157,9 @@ Unit/API/Service Worker/browser tests обязаны подтвердить:
    backend registration;
 4. VAPID public key читается только после явного действия;
 5. failed backend registration не становится success и допускает retry;
-6. logout делает best-effort push unregister до очистки access-сессии, но не блокирует `/login`;
+6. logout до первого `await` связывает push DELETE с текущим access token; timeout до начала
+   side effects отменяет поздний cleanup, а уже начатый browser unsubscribe завершается до очистки
+   сессии; ошибки cleanup не блокируют `/login`, refresh/retry с токеном следующего аккаунта нет;
 7. account deletion до первого `await` связывает DELETE с текущим access token, удерживает точный
    объект subscription и дожидается его browser `unsubscribe()`; DELETE выполняется без
    refresh/retry до очистки сессии и перехода на `/login`;
@@ -229,5 +243,12 @@ notification click, DST/timezone changes, toggles, logout/account deletion и п
 авторизацию. Push body не содержит premium content и не обходит T11 server-enforced paywall.
 Stale endpoint после полной browser rotation может существовать до `404/410`, потому что frontend
 не может перечислить прежние subscriptions устройства.
+
+Разные аккаунты в параллельных вкладках одного browser profile не поддерживаются: refresh cookie
+и физическая `PushSubscription` общие для origin. Такой режим требует отдельного ownership/
+coordination protocol или отдельных browser profiles. Уже вызванный native
+`PushSubscription.unsubscribe()` намеренно ожидается без верхней границы, чтобы его позднее
+завершение не затронуло следующую поддерживаемую последовательную сессию; never-settling browser
+Promise остаётся принятым security-over-liveness риском.
 
 Подробный контракт: [`docs/T13_PUSH_NOTIFICATIONS.md`](docs/T13_PUSH_NOTIFICATIONS.md).

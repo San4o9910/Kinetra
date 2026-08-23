@@ -4,7 +4,6 @@ import type { ProgramRepository } from '../program/repository.js';
 import type { ProgressRepository } from '../progress/repository.js';
 import type {
   DuePushUser,
-  PushDeliveryClaim,
   PushDeliveryExecutionResult,
   PushDeviceSubscription,
   PushNotificationEvent,
@@ -15,11 +14,6 @@ import type {
 import type { PushPayload, PushSender } from './webpush-sender.js';
 
 const DEFAULT_SEND_CONCURRENCY = 8;
-
-interface ClaimedDelivery {
-  readonly claim: PushDeliveryClaim;
-  readonly payload: PushPayload;
-}
 
 export interface NotificationRunSummary {
   readonly selected: number;
@@ -131,6 +125,7 @@ const mapWithConcurrency = async <Input, Output>(
   operation: (value: Input) => Promise<Output>,
 ): Promise<readonly Output[]> => {
   const results: Output[] = new Array<Output>(values.length);
+  const failures: unknown[] = [];
   let nextIndex = 0;
 
   const worker = async (): Promise<void> => {
@@ -140,13 +135,22 @@ const mapWithConcurrency = async <Input, Output>(
       const value = values[index];
 
       if (value !== undefined) {
-        results[index] = await operation(value);
+        try {
+          results[index] = await operation(value);
+        } catch (error) {
+          failures.push(error);
+        }
       }
     }
   };
 
   const workerCount = Math.min(concurrency, values.length);
   await Promise.all(Array.from({ length: workerCount }, () => worker()));
+
+  if (failures.length > 0) {
+    throw failures[0];
+  }
+
   return results;
 };
 
@@ -168,7 +172,8 @@ export class NotificationSchedulerService {
   public async run(): Promise<NotificationRunSummary> {
     const now = this.clock.now();
     const dueUsers = await this.pushRepository.findDueUsers(now);
-    const deliveries: ClaimedDelivery[] = [];
+    const outcomes: CompletedDelivery[] = [];
+    const runFailures: unknown[] = [];
     let selected = 0;
     let claimed = 0;
     let skipped = 0;
@@ -179,25 +184,35 @@ export class NotificationSchedulerService {
     };
     const errorCategories = createErrorCategories();
 
-    for (const dueUser of dueUsers) {
-      if (!(await this.subscriptionAccess.hasActiveSubscription(dueUser.userId, now))) {
-        skipped += 1;
-        continue;
-      }
+    await mapWithConcurrency(dueUsers, this.sendConcurrency, async (dueUser): Promise<void> => {
+      let events: readonly { event: PushNotificationEvent; payload: PushPayload }[];
 
-      const program = await this.programRepository.getProgress(dueUser.userId);
-      const week = await this.programRepository.getWeek(dueUser.userId, program.currentWeekNumber);
+      try {
+        if (!(await this.subscriptionAccess.hasActiveSubscription(dueUser.userId, now))) {
+          skipped += 1;
+          return;
+        }
 
-      if (week === null || week.days.length !== 7) {
-        throw new Error(
-          `Current program week ${program.currentWeekNumber} is incomplete for push scheduling.`,
+        const program = await this.programRepository.getProgress(dueUser.userId);
+        const week = await this.programRepository.getWeek(
+          dueUser.userId,
+          program.currentWeekNumber,
         );
-      }
 
-      const events: readonly { event: PushNotificationEvent; payload: PushPayload }[] = [
-        ...(this.workoutEvent(dueUser, program.currentWeekNumber, week.days) ?? []),
-        ...(await this.weeklySurveyEvent(dueUser, program.currentWeekNumber)),
-      ];
+        if (week === null || week.days.length !== 7) {
+          throw new Error(
+            `Current program week ${program.currentWeekNumber} is incomplete for push scheduling.`,
+          );
+        }
+
+        events = [
+          ...(this.workoutEvent(dueUser, program.currentWeekNumber, week.days) ?? []),
+          ...(await this.weeklySurveyEvent(dueUser, program.currentWeekNumber)),
+        ];
+      } catch (error) {
+        runFailures.push(error);
+        return;
+      }
 
       if (events.length === 0) {
         skipped += 1;
@@ -207,43 +222,48 @@ export class NotificationSchedulerService {
         const typeSummary = byType[candidate.event.notificationType];
         selected += 1;
         typeSummary.selected += 1;
-        const claimResult = await this.pushRepository.claimDeliveries(candidate.event, now);
-        claimed += claimResult.claims.length;
-        duplicated += claimResult.duplicates;
-        typeSummary.claimed += claimResult.claims.length;
-        typeSummary.duplicated += claimResult.duplicates;
-        deliveries.push(
-          ...claimResult.claims.map((deliveryClaim) => ({
-            claim: deliveryClaim,
+        try {
+          const claimResult = await this.pushRepository.claimDeliveries(candidate.event, now);
+          claimed += claimResult.claims.length;
+          duplicated += claimResult.duplicates;
+          typeSummary.claimed += claimResult.claims.length;
+          typeSummary.duplicated += claimResult.duplicates;
+          const deliveries = claimResult.claims.map((claim) => ({
+            claim,
             payload: candidate.payload,
-          })),
-        );
+          }));
+          const completed = await mapWithConcurrency(
+            deliveries,
+            1,
+            async ({ claim, payload }): Promise<CompletedDelivery> => {
+              const sendState: { result: PushSendResult | null } = { result: null };
+              const send = async (
+                subscription: PushDeviceSubscription,
+              ): Promise<PushSendResult> => {
+                try {
+                  sendState.result = await this.sender.send(subscription, payload);
+                } catch {
+                  sendState.result = { kind: 'failed', errorCode: 'sender_error' };
+                }
+
+                return sendState.result;
+              };
+              const outcome = await this.pushRepository.executeDeliveryClaim(claim, now, send);
+              const errorCategory =
+                outcome === 'failed' || outcome === 'invalidated'
+                  ? errorCategoryFor(failureCodeFrom(sendState.result))
+                  : null;
+
+              return { notificationType: claim.notificationType, outcome, errorCategory };
+            },
+          );
+          outcomes.push(...completed);
+        } catch (error) {
+          runFailures.push(error);
+        }
       }
-    }
+    });
 
-    const outcomes = await mapWithConcurrency(
-      deliveries,
-      this.sendConcurrency,
-      async ({ claim, payload }): Promise<CompletedDelivery> => {
-        const sendState: { result: PushSendResult | null } = { result: null };
-        const send = async (subscription: PushDeviceSubscription): Promise<PushSendResult> => {
-          try {
-            sendState.result = await this.sender.send(subscription, payload);
-          } catch {
-            sendState.result = { kind: 'failed', errorCode: 'sender_error' };
-          }
-
-          return sendState.result;
-        };
-        const outcome = await this.pushRepository.executeDeliveryClaim(claim, now, send);
-        const errorCategory =
-          outcome === 'failed' || outcome === 'invalidated'
-            ? errorCategoryFor(failureCodeFrom(sendState.result))
-            : null;
-
-        return { notificationType: claim.notificationType, outcome, errorCategory };
-      },
-    );
     let sent = 0;
     let invalidated = 0;
     let failed = 0;
@@ -268,6 +288,13 @@ export class NotificationSchedulerService {
       if (outcome.errorCategory !== null) {
         errorCategories[outcome.errorCategory] += 1;
       }
+    }
+
+    if (runFailures.length > 0) {
+      throw new AggregateError(
+        runFailures,
+        'One or more due users could not be processed for push scheduling.',
+      );
     }
 
     return {

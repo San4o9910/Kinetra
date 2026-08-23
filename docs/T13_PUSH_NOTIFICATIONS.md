@@ -188,8 +188,12 @@ Parser принимает base64url public key длиной 80–128 симво�
    Состояние остаётся recoverable, чтобы пользователь мог повторить регистрацию.
 6. Явное отключение устройства сначала best-effort удаляет endpoint на backend, затем вызывает
    browser `unsubscribe()`. T10 toggles сами device subscription не удаляют.
-7. Logout захватывает текущую browser subscription и запускает best-effort backend/browser
-   unregister до очистки access-сессии; ошибка cleanup не блокирует переход на `/login`.
+7. Logout до первого `await` связывает backend unregister с текущим access token и начинает
+   browser lookup с таймаутом. Если lookup не завершился вовремя, abort запрещает поздние DELETE и
+   origin-wide `unsubscribe()` после входа другого аккаунта. Если side effects уже начались,
+   переход на `/login` ждёт полного завершения browser unsubscribe; backend DELETE не использует
+   refresh/retry с токеном следующей сессии и ограничен тем же таймаутом. Ошибка cleanup переход
+   не блокирует.
 8. Account deletion до первого `await` связывает подтверждённую destructive operation с текущим
    access token, затем захватывает объект browser subscription и строго дожидается вызова именно
    его `unsubscribe()`. DELETE выполняется ровно один раз с захваченным token, без refresh/retry на
@@ -268,6 +272,10 @@ Occurrence key включает current program week; user, notification type и
 Перед provider call worker атомарно создаёт delivery claim. Unique constraint защищает два
 параллельных или повторных запуска. Одно логическое событие разрешено на каждую активную device
 subscription пользователя, но не дважды на одну subscription.
+
+Due users обрабатываются изолированно: eligibility, claim и terminal send здорового пользователя
+завершаются в текущем минутном запуске, даже если другой пользователь падает. После обработки
+остальных due users worker возвращает общий infrastructure error для alerting.
 
 Успешный send фиксирует `last_success_at`. `404/410` означает permanently invalid subscription и
 идемпотентно устанавливает `disabled_at`. `401/403/429/5xx` и timeout фиксируют безопасный failure
@@ -359,6 +367,14 @@ Web Push зависит от браузера, ОС, permission policy и реж
 может требовать установленную на Home Screen PWA и поддерживаемую версию системы. В private mode,
 корпоративной политике или при запрете notification permission API может быть недоступен. Kinetra
 показывает честное unsupported/denied состояние и не реализует скрытый email/SMS fallback.
+
+Один browser profile/origin поддерживает только один активный аккаунт Kinetra: refresh cookie и
+`PushSubscription` общие для вкладок. Параллельный вход разных аккаунтов в соседних вкладках не
+поддерживается; для него нужны отдельные browser profiles либо будущий origin-wide ownership
+protocol. После фактического вызова browser `subscription.unsubscribe()` logout ждёт settlement
+этого Promise без таймаута: иначе позднее физическое удаление могло бы затронуть следующую сессию.
+Обычный reject обрабатывается best-effort и переход не блокирует; never-settling browser API
+остаётся редким security-over-liveness ограничением.
 
 Технические ориентиры: [Push API](https://developer.mozilla.org/en-US/docs/Web/API/Push_API),
 [PushManager.subscribe](https://developer.mozilla.org/en-US/docs/Web/API/PushManager/subscribe),

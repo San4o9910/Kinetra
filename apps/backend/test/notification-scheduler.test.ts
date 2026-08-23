@@ -52,6 +52,29 @@ const noErrorCategories = {
   sender: 0,
 } as const;
 
+class RecoverableLateUserProgramRepository extends InMemoryProgramRepository {
+  private failLateUser = true;
+
+  public constructor(
+    userId: string,
+    private readonly lateUserId: string,
+  ) {
+    super(userId);
+  }
+
+  public override async getWeek(userId: string, weekNumber: number) {
+    if (this.failLateUser && userId === this.lateUserId) {
+      throw new Error('Late user eligibility failed.');
+    }
+
+    return super.getWeek(userId, weekNumber);
+  }
+
+  public recoverLateUser(): void {
+    this.failLateUser = false;
+  }
+}
+
 test('scheduler sends each Sunday logical event once to every device', async () => {
   const userId = randomUUID();
   const pushRepository = new InMemoryPushRepository([userId]);
@@ -237,6 +260,76 @@ test('scheduler honors disabled preferences and completed workout state', async 
   ]);
   assert.equal((await scheduler.run()).selected, 0);
   assert.equal(sender.sent.length, 0);
+});
+
+test('scheduler isolates a late-user failure without losing or duplicating other due users', async () => {
+  const firstUserId = randomUUID();
+  const lateUserId = randomUUID();
+  const trailingUserId = randomUUID();
+  const firstEndpoint = 'https://push.example.test/early-user';
+  const lateEndpoint = 'https://push.example.test/late-user';
+  const trailingEndpoint = 'https://push.example.test/trailing-user';
+  const pushRepository = new InMemoryPushRepository([firstUserId, lateUserId, trailingUserId]);
+  const programRepository = new RecoverableLateUserProgramRepository(firstUserId, lateUserId);
+  const progressRepository = new InMemoryProgressRepository(firstUserId);
+  const sender = new FakePushSender();
+  const clock = new MutableClock(new Date('2026-08-17T06:00:00.000Z'));
+  const mondayVideo = programRepository.videoIdsForWeek(1)[0] as string;
+  programRepository.markMediaAvailable(1, mondayVideo);
+  pushRepository.setDueUsers(
+    [firstUserId, lateUserId, trailingUserId].map((userId) => ({
+      userId,
+      effectiveTimezone: 'Europe/Moscow',
+      localDate: '2026-08-17',
+      localDayOfWeek: 1,
+      workoutReminders: true,
+      weeklySurveyReminder: false,
+    })),
+  );
+  await seedDevice(pushRepository, firstUserId, firstEndpoint);
+  await seedDevice(pushRepository, lateUserId, lateEndpoint);
+  await seedDevice(pushRepository, trailingUserId, trailingEndpoint);
+  const scheduler = new NotificationSchedulerService(
+    pushRepository,
+    programRepository,
+    progressRepository,
+    new FakeSubscriptionAccessChecker(true),
+    sender,
+    clock,
+    2,
+  );
+
+  await assert.rejects(scheduler.run(), (error: unknown) => {
+    assert.ok(error instanceof AggregateError);
+    assert.equal(error.errors.length, 1);
+    assert.match(String(error.errors[0]), /Late user eligibility failed\./u);
+    return true;
+  });
+  assert.deepEqual(
+    pushRepository.peekDeliveries().map(({ status }) => status),
+    ['sent', 'sent'],
+  );
+  assert.equal(sender.sent.filter(({ endpoint }) => endpoint === firstEndpoint).length, 1);
+  assert.equal(sender.sent.filter(({ endpoint }) => endpoint === lateEndpoint).length, 0);
+  assert.equal(sender.sent.filter(({ endpoint }) => endpoint === trailingEndpoint).length, 1);
+
+  programRepository.recoverLateUser();
+  assert.deepEqual(summaryTotals(await scheduler.run()), {
+    selected: 3,
+    claimed: 1,
+    sent: 1,
+    invalidated: 0,
+    skipped: 0,
+    failed: 0,
+    duplicated: 2,
+  });
+  assert.equal(sender.sent.filter(({ endpoint }) => endpoint === firstEndpoint).length, 1);
+  assert.equal(sender.sent.filter(({ endpoint }) => endpoint === lateEndpoint).length, 1);
+  assert.equal(sender.sent.filter(({ endpoint }) => endpoint === trailingEndpoint).length, 1);
+  assert.deepEqual(
+    pushRepository.peekDeliveries().map(({ status }) => status),
+    ['sent', 'sent', 'sent'],
+  );
 });
 
 test('scheduler isolates invalid and transient endpoints and never retries an occurrence', async () => {
