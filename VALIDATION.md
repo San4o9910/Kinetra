@@ -22,25 +22,33 @@ permission lifecycle в T10 settings и отдельный идемпотент�
 
 | Проверка                           | Статус      | Фактический результат                                        |
 | ---------------------------------- | ----------- | ------------------------------------------------------------ |
-| Structural contracts T01–T13       | PASS        | `node scripts/verify-project.mjs` — 1828 checks              |
+| Structural contracts T01–T13       | PASS        | `node scripts/verify-project.mjs` — 1849 checks              |
 | TypeScript production + tests      | PASS        | `npm run typecheck` — shared/backend/tests/frontend          |
 | ESLint                             | PASS        | `npm run lint`                                               |
 | Backend unit/API tests             | PASS        | 76 pass, 0 fail, 9 PostgreSQL skips                          |
 | PostgreSQL migration/integration   | CI REQUIRED | нет локальной БД; CI требует реальный PostgreSQL 17 marker   |
-| Frontend unit/Service Worker tests | PASS        | 75 pass, 0 fail                                              |
+| Frontend unit/Service Worker tests | PASS        | 79 pass, 0 fail                                              |
 | Chrome browser acceptance          | CI REQUIRED | Chrome/Chromium отсутствует; обязательный CI marker          |
-| Production build                   | PASS        | shared/backend/frontend, Vite 71 module                      |
+| Production build                   | PASS        | shared/backend/frontend, Vite 72 modules                     |
 | Composite quality gate             | CI REQUIRED | доступные фазы PASS; полный `npm run check` завершается в CI |
 | Tracked source manifest            | PASS        | полный sorted SHA-256 inventory без самого manifest          |
 
 ## Фактический локальный прогон
 
 - `git fetch --all --prune` подтвердил `origin/develop` на base commit `4852bab`.
-- `git diff --check` и Prettier check всех 41 изменённых/новых файлов прошли.
+- `git diff --check` и Prettier check всех изменённых/новых PR-файлов прошли.
 - `npm run typecheck`, `npm run lint` и `npm run build` прошли без ошибок.
 - Backend выполнил 85 тестов: 76 прошли, 9 PostgreSQL tests честно пропущены только из-за
   отсутствующего `DATABASE_URL`; failed tests нет.
-- Frontend unit/API/Service Worker suite: 75 прошли, failed/skipped tests нет.
+- Frontend unit/API/Service Worker suite: 79 прошли, failed/skipped tests нет.
+- Регрессия account deletion воспроизведена как потеря test-only subscription state при hard
+  navigation: новая document-инъекция обнуляла объект, хотя реальный browser subscription
+  переживает reload. Test seam теперь сохраняет native-like state между документами, а production
+  lifecycle удерживает точный объект subscription и строго завершает его `unsubscribe()` до
+  backend deletion, очистки access-сессии и навигации. Destructive DELETE дополнительно связывается
+  с access token до первого asynchronous cleanup и не использует refresh/retry, поэтому смена
+  текущей клиентской сессии во время `unsubscribe()` не может перенаправить удаление на другого
+  пользователя.
 - Sender test с реальным непрерывным локальным HTTP stream подтвердил hard wall-clock deadline,
   отсутствие накопления provider body и сохранение классификации `410`/`503`.
 - API test подтвердил лимит 10 enabled devices, ротацию на границе, освобождение слота и
@@ -52,8 +60,27 @@ permission lifecycle в T10 settings и отдельный идемпотент�
 - Browser runner не может завершить acceptance без Chrome/Chromium; ни один поддерживаемый
   executable локально не установлен. GitHub Actions остаётся обязательным владельцем обоих
   environment-dependent markers.
+- Полный `npm run format:check` обнаруживает только сохранённый baseline drift в 14 файлах,
+  неизменённых относительно `develop`. Отдельный Prettier check всех PR-файлов проходит.
 - `MANIFEST.sha256` сформирован последним из точного tracked path list и проверен через
   `sha256sum -c`.
+
+Точный unrelated formatting baseline:
+
+- `apps/backend/scripts/migrate.mjs`;
+- `apps/backend/src/auth/cookies.ts`;
+- `apps/backend/src/auth/normalization.ts`;
+- `apps/backend/src/auth/postgres-auth.repository.ts`;
+- `apps/backend/src/auth/runtime.ts`;
+- `apps/backend/src/auth/service.ts`;
+- `apps/backend/src/profile/schema.ts`;
+- `apps/backend/test/auth.e2e.test.ts`;
+- `apps/backend/tsconfig.build.json`;
+- `apps/backend/tsconfig.json`;
+- `apps/backend/tsconfig.test.json`;
+- `apps/frontend/public/manifest.webmanifest`;
+- `apps/frontend/tsconfig.json`;
+- `packages/shared/tsconfig.json`.
 
 ## Сохранённый baseline T11
 
@@ -83,7 +110,7 @@ T13 не заменяет этот baseline новым PASS. CI продолжа
   timeout/concurrency и status-specific invalidation;
 - scheduler preference/timezone/entitlement/completion/weekly-metrics filters и уникальный claim;
 - frontend permission/subscription module, явное settings действие, отсутствие prompt на
-  hydration, logout best-effort и раздельные UI states;
+  hydration, logout best-effort, строгий account-deletion lifecycle и раздельные UI states;
 - Service Worker `push`/`notificationclick`, same-origin route allowlist и сохранность offline/API
   cache policy;
 - backend/frontend/PostgreSQL/browser tests, документацию и fail-closed CI markers;
@@ -119,11 +146,16 @@ Unit/API/Service Worker/browser tests обязаны подтвердить:
 4. VAPID public key читается только после явного действия;
 5. failed backend registration не становится success и допускает retry;
 6. logout делает best-effort push unregister до очистки access-сессии, но не блокирует `/login`;
-7. Service Worker применяет defaults к malformed push и не принимает внешний/protocol-relative/
+7. account deletion до первого `await` связывает DELETE с текущим access token, удерживает точный
+   объект subscription и дожидается его browser `unsubscribe()`; DELETE выполняется без
+   refresh/retry до очистки сессии и перехода на `/login`;
+8. browser seam сохраняет permission/subscription state между reload/hard navigation, а
+   unsubscribe counter меняется только при вызове `PushSubscription.unsubscribe()`;
+9. Service Worker применяет defaults к malformed push и не принимает внешний/protocol-relative/
    `javascript:` URL;
-8. notification click закрывает notification, фокусирует открытую вкладку либо открывает новую;
-9. разрешены canonical `/schedule` и `/progress`, а auth/onboarding/paywall guards сохраняются;
-10. settings остаётся доступным на 320/428px, touch targets не меньше 44px, theme/safe-area и все
+10. notification click закрывает notification, фокусирует открытую вкладку либо открывает новую;
+11. разрешены canonical `/schedule` и `/progress`, а auth/onboarding/paywall guards сохраняются;
+12. settings остаётся доступным на 320/428px, touch targets не меньше 44px, theme/safe-area и все
     browser journeys T04–T11 не деградируют.
 
 Browser acceptance использует deterministic native/injectable seams и не зависит от внешнего push

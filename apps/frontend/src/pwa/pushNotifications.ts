@@ -59,6 +59,7 @@ export interface PushNotifications {
   readonly subscribeToPush: () => Promise<PushSubscription>;
   readonly unsubscribeFromPush: () => Promise<void>;
   readonly bestEffortUnsubscribeFromPush: () => Promise<void>;
+  readonly unsubscribeBrowserSubscription: (subscription: PushSubscription | null) => Promise<void>;
   readonly unsubscribeBrowserOnly: () => Promise<void>;
 }
 
@@ -226,19 +227,11 @@ export const createPushNotifications = (
     return subscription;
   };
 
-  const unsubscribeFromPush = async (): Promise<void> => {
-    const subscription = await getExistingPushSubscription();
-
+  const unsubscribeBrowserSubscription = async (
+    subscription: PushSubscription | null,
+  ): Promise<void> => {
     if (subscription === null) {
       return;
-    }
-
-    let backendError: unknown = null;
-
-    try {
-      await runtime.deleteSubscription({ endpoint: subscription.endpoint });
-    } catch (error) {
-      backendError = error;
     }
 
     let removed = false;
@@ -259,6 +252,24 @@ export const createPushNotifications = (
         'Браузер не смог удалить push-подписку. Повторите попытку.',
       );
     }
+  };
+
+  const unsubscribeFromPush = async (): Promise<void> => {
+    const subscription = await getExistingPushSubscription();
+
+    if (subscription === null) {
+      return;
+    }
+
+    let backendError: unknown = null;
+
+    try {
+      await runtime.deleteSubscription({ endpoint: subscription.endpoint });
+    } catch (error) {
+      backendError = error;
+    }
+
+    await unsubscribeBrowserSubscription(subscription);
 
     if (backendError !== null) {
       throw backendError;
@@ -286,19 +297,7 @@ export const createPushNotifications = (
 
   const unsubscribeBrowserOnly = async (): Promise<void> => {
     const subscription = await getExistingPushSubscription();
-
-    if (subscription === null) {
-      return;
-    }
-
-    const removed = await subscription.unsubscribe();
-
-    if (!removed) {
-      throw new PushNotificationError(
-        'PUSH_BROWSER_UNSUBSCRIBE_FAILED',
-        'Браузер не смог удалить push-подписку.',
-      );
-    }
+    await unsubscribeBrowserSubscription(subscription);
   };
 
   return {
@@ -308,6 +307,7 @@ export const createPushNotifications = (
     subscribeToPush,
     unsubscribeFromPush,
     bestEffortUnsubscribeFromPush,
+    unsubscribeBrowserSubscription,
     unsubscribeBrowserOnly,
   };
 };
@@ -322,5 +322,8 @@ export const subscribeToPush = (): Promise<PushSubscription> => pushNotification
 export const unsubscribeFromPush = (): Promise<void> => pushNotifications.unsubscribeFromPush();
 export const bestEffortUnsubscribeFromPush = (): Promise<void> =>
   pushNotifications.bestEffortUnsubscribeFromPush();
+export const unsubscribeBrowserSubscription = (
+  subscription: PushSubscription | null,
+): Promise<void> => pushNotifications.unsubscribeBrowserSubscription(subscription);
 export const unsubscribeBrowserOnly = (): Promise<void> =>
   pushNotifications.unsubscribeBrowserOnly();

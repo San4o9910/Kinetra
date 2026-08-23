@@ -8,10 +8,10 @@ import React, { useCallback, useEffect, useRef, useState, type ReactNode } from 
 import {
   ApiRequestError,
   cancelSubscription,
-  deleteAccount,
   getSettingsProfile,
   getSubscription,
   logout,
+  prepareAccountDeletion,
   updateNotifications,
 } from '../../lib/api';
 import { useTheme } from '../theme/theme-context';
@@ -21,11 +21,12 @@ import {
   getExistingPushSubscription,
   getPushPermission,
   subscribeToPush,
-  unsubscribeBrowserOnly,
+  unsubscribeBrowserSubscription,
   unsubscribeFromPush,
   type PushBackendRegistrationStatus,
   type PushPermission,
 } from '../../pwa/pushNotifications';
+import { runAccountDeletionLifecycle } from './accountLifecycle';
 import { SettingsDialogs, type SettingsDialogKind } from './SettingsDialogs';
 import { SettingsView, type NotificationSaveStatus } from './SettingsView';
 import { SETTINGS_NOTIFICATION_DEBOUNCE_MS } from './model';
@@ -524,15 +525,19 @@ export const SettingsScreen = ({
 
     setDialogBusy(true);
     setDialogError(null);
-    void deleteAccount(deleteConfirmation)
-      .then(async () => {
-        await settleBestEffortWithin(unsubscribeBrowserOnly());
-        onSignedOut();
-      })
-      .catch((error: unknown) => {
-        setDialogBusy(false);
-        setDialogError(handleApiError(error, 'Не удалось удалить аккаунт. Попробуйте ещё раз.'));
-      });
+    void runAccountDeletionLifecycle(deleteConfirmation, {
+      prepareAccountDeletion,
+      captureBrowserSubscription: getExistingPushSubscription,
+      unsubscribeBrowserSubscription,
+      onSignedOut,
+    }).catch((error: unknown) => {
+      setDialogBusy(false);
+      setDialogError(
+        error instanceof PushNotificationError
+          ? error.message
+          : handleApiError(error, 'Не удалось удалить аккаунт. Попробуйте ещё раз.'),
+      );
+    });
   };
 
   if (loadState.kind === 'loading') {

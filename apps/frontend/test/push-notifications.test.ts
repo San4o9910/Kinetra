@@ -257,6 +257,19 @@ test('T13 explicit and best-effort unsubscribe preserve their different failure 
   ]);
 });
 
+test('T13 a captured browser subscription can be removed after the live lookup loses it', async () => {
+  const fixture = createFixture();
+  const push = createPushNotifications(fixture.runtime);
+  const capturedSubscription = fixture.subscription;
+
+  fixture.setExistingSubscription(null);
+  await push.unsubscribeBrowserSubscription(capturedSubscription);
+
+  assert.deepEqual(fixture.calls, ['browser:unsubscribe']);
+  assert.equal(fixture.calls.includes('api:delete'), false);
+  assert.equal(fixture.calls.includes('browser:get-subscription'), false);
+});
+
 test('T13 base64url VAPID conversion is bounded and deterministic', () => {
   assert.deepEqual(
     [...applicationServerKeyFromBase64Url('AQIDBAUGBwgJCgsMDQ4PEA')],

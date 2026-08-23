@@ -285,12 +285,29 @@ export class ApiClient {
     });
   }
 
-  public async deleteAccount(confirm: string): Promise<void> {
-    await this.authenticatedVoidRequest('/api/v1/settings/account', {
-      method: 'DELETE',
-      body: JSON.stringify({ confirm }),
-    });
-    this.clearSession();
+  public prepareAccountDeletion(confirm: string): () => Promise<void> {
+    const accessToken = this.accessToken;
+
+    if (accessToken === null) {
+      throw new ApiRequestError('Сессия завершена. Войдите в аккаунт.', 401, 'NO_SESSION', 'auth');
+    }
+
+    return async () => {
+      const response = await this.requestWithAccessToken(
+        '/api/v1/settings/account',
+        {
+          method: 'DELETE',
+          body: JSON.stringify({ confirm }),
+        },
+        accessToken,
+      );
+
+      if (!response.ok) {
+        await this.throwResponseError(response);
+      }
+
+      this.clearSession();
+    };
   }
 
   public async getWeek(weekNumber: number, signal?: AbortSignal): Promise<WeekResponse> {
@@ -346,19 +363,7 @@ export class ApiClient {
       throw new ApiRequestError('Сессия завершена. Войдите в аккаунт.', 401, 'NO_SESSION', 'auth');
     }
 
-    const headers = new Headers(init.headers);
-    headers.set('Accept', 'application/json');
-    headers.set('Authorization', `Bearer ${token}`);
-
-    if (init.body !== undefined && init.body !== null) {
-      headers.set('Content-Type', 'application/json');
-    }
-
-    const response = await this.safeFetch(path, {
-      ...init,
-      credentials: 'include',
-      headers,
-    });
+    const response = await this.requestWithAccessToken(path, init, token);
 
     if (response.status === 401 && allowRefresh) {
       this.accessToken = null;
@@ -381,6 +386,26 @@ export class ApiClient {
     }
 
     return response;
+  }
+
+  private async requestWithAccessToken(
+    path: string,
+    init: RequestInit,
+    accessToken: string,
+  ): Promise<Response> {
+    const headers = new Headers(init.headers);
+    headers.set('Accept', 'application/json');
+    headers.set('Authorization', `Bearer ${accessToken}`);
+
+    if (init.body !== undefined && init.body !== null) {
+      headers.set('Content-Type', 'application/json');
+    }
+
+    return this.safeFetch(path, {
+      ...init,
+      credentials: 'include',
+      headers,
+    });
   }
 
   private async refreshAccessToken(): Promise<string | null> {
@@ -509,7 +534,8 @@ export const registerPushSubscription = (
 ): Promise<PushSubscriptionResponse> => apiClient.registerPushSubscription(data);
 export const deletePushSubscription = (data: PushUnsubscribeRequest): Promise<void> =>
   apiClient.deletePushSubscription(data);
-export const deleteAccount = (confirm: string): Promise<void> => apiClient.deleteAccount(confirm);
+export const prepareAccountDeletion = (confirm: string): (() => Promise<void>) =>
+  apiClient.prepareAccountDeletion(confirm);
 export const getWeek = (weekNumber: number, signal?: AbortSignal): Promise<WeekResponse> =>
   apiClient.getWeek(weekNumber, signal);
 export const completeWorkout = (data: CompleteWorkoutRequest): Promise<WeekResponse> =>

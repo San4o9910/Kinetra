@@ -188,9 +188,15 @@ Parser принимает base64url public key длиной 80–128 симво�
    Состояние остаётся recoverable, чтобы пользователь мог повторить регистрацию.
 6. Явное отключение устройства сначала best-effort удаляет endpoint на backend, затем вызывает
    browser `unsubscribe()`. T10 toggles сами device subscription не удаляют.
-7. Logout выполняет best-effort unregister текущего endpoint до очистки access-сессии, но ошибка
-   push backend не блокирует переход на `/login`. Account deletion дополнительно защищён
-   `ON DELETE CASCADE`.
+7. Logout захватывает текущую browser subscription и запускает best-effort backend/browser
+   unregister до очистки access-сессии; ошибка cleanup не блокирует переход на `/login`.
+8. Account deletion до первого `await` связывает подтверждённую destructive operation с текущим
+   access token, затем захватывает объект browser subscription и строго дожидается вызова именно
+   его `unsubscribe()`. DELETE выполняется ровно один раз с захваченным token, без refresh/retry на
+   другую сессию; только после успеха очищается access-сессия и выполняется переход на `/login`.
+   Если browser unsubscribe или связанный DELETE не удался, удаление аккаунта не продолжается и
+   требует повторного подтверждения. Backend `ON DELETE CASCADE` остаётся authoritative cleanup
+   для subscriptions и deliveries.
 
 Access token остаётся только в памяти и никогда не сохраняется в `localStorage`.
 
@@ -318,8 +324,10 @@ sha256sum -c MANIFEST.sha256
 
 Frontend browser acceptance не обращается к внешнему push service: permission/subscription seams
 и Service Worker события проверяются детерминированно, а marker печатается только после реальных
-assertions. PostgreSQL integration может skip-нуться локально без `DATABASE_URL`, но CI задаёт
-`KINETRA_REQUIRE_POSTGRES_TEST=true` и требует настоящий marker.
+assertions. Test seam хранит native-like permission/subscription state в `sessionStorage` между
+reload и hard navigation; счётчик unsubscribe увеличивается только внутри фактического mock
+`PushSubscription.unsubscribe()`. PostgreSQL integration может skip-нуться локально без
+`DATABASE_URL`, но CI задаёт `KINETRA_REQUIRE_POSTGRES_TEST=true` и требует настоящий marker.
 
 ## Production checklist
 

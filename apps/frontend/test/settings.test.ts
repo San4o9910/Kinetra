@@ -12,6 +12,7 @@ import type {
   PushPermission,
 } from '../src/pwa/pushNotifications.js';
 
+import { runAccountDeletionLifecycle } from '../src/features/settings/accountLifecycle.js';
 import { SettingsDialogs } from '../src/features/settings/SettingsDialogs.js';
 import { SettingsView } from '../src/features/settings/SettingsView.js';
 import {
@@ -276,4 +277,54 @@ test('T13 settings keeps permission, browser subscription and backend registrati
   assert.ok(denied.includes('data-testid="settings-push-error"'));
 
   console.log('KINETRA_T13_SETTINGS_INTEGRATION=PASS');
+});
+
+test('T13 account deletion retains and awaits the browser subscription before destructive cleanup', async () => {
+  const events: string[] = [];
+  const capturedSubscription = { endpoint: 'https://push.example/device-account-delete' };
+  let currentSubscription: PushSubscription | null = capturedSubscription as PushSubscription;
+  let releaseBrowserCleanup: (() => void) | undefined;
+  const browserCleanup = new Promise<void>((resolve) => {
+    releaseBrowserCleanup = resolve;
+  });
+
+  const lifecycle = runAccountDeletionLifecycle('DELETE', {
+    prepareAccountDeletion: (confirmation) => {
+      events.push('account:bind');
+      assert.equal(confirmation, 'DELETE');
+      return async () => {
+        events.push('account:delete');
+      };
+    },
+    captureBrowserSubscription: async () => {
+      events.push('browser:capture');
+      const captured = currentSubscription;
+      currentSubscription = null;
+      return captured;
+    },
+    unsubscribeBrowserSubscription: async (subscriptionToRemove) => {
+      events.push('browser:unsubscribe:start');
+      assert.equal(subscriptionToRemove, capturedSubscription);
+      await browserCleanup;
+      events.push('browser:unsubscribe:complete');
+    },
+    onSignedOut: () => {
+      events.push('auth:clear-and-navigate');
+    },
+  });
+
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.deepEqual(events, ['account:bind', 'browser:capture', 'browser:unsubscribe:start']);
+
+  releaseBrowserCleanup?.();
+  await lifecycle;
+
+  assert.deepEqual(events, [
+    'account:bind',
+    'browser:capture',
+    'browser:unsubscribe:start',
+    'browser:unsubscribe:complete',
+    'account:delete',
+    'auth:clear-and-navigate',
+  ]);
 });

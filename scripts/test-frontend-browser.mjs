@@ -1556,14 +1556,53 @@ const runBrowserScenario = async () => {
     await cdp.send('Page.enable');
     await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
       source: `(() => {
-        const state = {
+        const storageKey = 'kinetra.browser-acceptance.push-state.v1';
+        const defaultSnapshot = {
           permission: 'default',
           permissionRequests: 0,
           getSubscriptionCalls: 0,
           subscribeCalls: 0,
           unsubscribeCalls: 0,
           subscribeOptions: null,
+          subscriptionExists: false,
+        };
+        const readSnapshot = () => {
+          try {
+            const parsed = JSON.parse(sessionStorage.getItem(storageKey) ?? 'null');
+            return parsed !== null && typeof parsed === 'object'
+              ? { ...defaultSnapshot, ...parsed }
+              : defaultSnapshot;
+          } catch {
+            return defaultSnapshot;
+          }
+        };
+        const snapshot = readSnapshot();
+        const state = {
+          permission: snapshot.permission,
+          permissionRequests: snapshot.permissionRequests,
+          getSubscriptionCalls: snapshot.getSubscriptionCalls,
+          subscribeCalls: snapshot.subscribeCalls,
+          unsubscribeCalls: snapshot.unsubscribeCalls,
+          subscribeOptions: snapshot.subscribeOptions,
           subscription: null,
+        };
+        const persist = () => {
+          try {
+            sessionStorage.setItem(
+              storageKey,
+              JSON.stringify({
+                permission: state.permission,
+                permissionRequests: state.permissionRequests,
+                getSubscriptionCalls: state.getSubscriptionCalls,
+                subscribeCalls: state.subscribeCalls,
+                unsubscribeCalls: state.unsubscribeCalls,
+                subscribeOptions: state.subscribeOptions,
+                subscriptionExists: state.subscription !== null,
+              }),
+            );
+          } catch {
+            // The assertion suite will expose environments where same-tab persistence is absent.
+          }
         };
         const makeSubscription = () => {
           const subscription = {
@@ -1582,11 +1621,16 @@ const runBrowserScenario = async () => {
               if (state.subscription === subscription) {
                 state.subscription = null;
               }
+              persist();
               return true;
             },
           };
           return subscription;
         };
+
+        if (snapshot.subscriptionExists === true) {
+          state.subscription = makeSubscription();
+        }
 
         Object.defineProperty(window, '__kinetraPushTest', {
           configurable: false,
@@ -1603,6 +1647,7 @@ const runBrowserScenario = async () => {
           value: async () => {
             state.permissionRequests += 1;
             state.permission = 'granted';
+            persist();
             return 'granted';
           },
         });
@@ -1610,6 +1655,7 @@ const runBrowserScenario = async () => {
           configurable: true,
           value: async () => {
             state.getSubscriptionCalls += 1;
+            persist();
             return state.subscription;
           },
         });
@@ -1625,6 +1671,7 @@ const runBrowserScenario = async () => {
                 null,
             };
             state.subscription = makeSubscription();
+            persist();
             return state.subscription;
           },
         });
@@ -3841,6 +3888,18 @@ const runBrowserScenario = async () => {
     await click('tab-settings');
     await waitFor('T11 settings restored before destructive T10 flows', () =>
       exists('settings-account-section'),
+    );
+    assert.deepEqual(
+      await cdp.evaluate(`(() => ({
+        permission: window.__kinetraPushTest.permission,
+        subscriptionExists: window.__kinetraPushTest.subscription !== null,
+        unsubscribeCalls: window.__kinetraPushTest.unsubscribeCalls,
+      }))()`),
+      {
+        permission: 'granted',
+        subscriptionExists: true,
+        unsubscribeCalls: 1,
+      },
     );
 
     const accountDeletesBeforeCancel = counters.accountDelete;

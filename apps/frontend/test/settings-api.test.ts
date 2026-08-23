@@ -87,7 +87,8 @@ test('settings API client uses four exact protected routes and handles 204 respo
     reminder_time: '08:30',
     weekly_survey_reminder: true,
   });
-  await client.deleteAccount('DELETE');
+  const deleteConfirmedAccount = client.prepareAccountDeletion('DELETE');
+  await deleteConfirmedAccount();
   assert.equal(client.hasAccessToken(), false);
 
   assert.deepEqual(

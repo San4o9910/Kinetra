@@ -84,6 +84,7 @@ const requiredFiles = [
   'apps/frontend/src/features/settings/SettingsIcons.tsx',
   'apps/frontend/src/features/settings/SettingsScreen.tsx',
   'apps/frontend/src/features/settings/SettingsView.tsx',
+  'apps/frontend/src/features/settings/accountLifecycle.ts',
   'apps/frontend/src/features/settings/model.ts',
   'apps/frontend/src/features/theme/ThemeProvider.tsx',
   'apps/frontend/src/features/theme/model.ts',
@@ -2541,7 +2542,8 @@ for (const apiContract of [
   'getSubscription(signal?: AbortSignal)',
   'getSettingsProfile(signal?: AbortSignal)',
   'updateNotifications(data: NotificationPreferences)',
-  'deleteAccount(confirm: string)',
+  'prepareAccountDeletion(confirm: string)',
+  'requestWithAccessToken(',
   'authenticatedVoidRequest',
   'keepalive: true',
   'this.clearSession()',
@@ -2550,6 +2552,9 @@ for (const apiContract of [
 }
 
 const settingsScreen = await readText('apps/frontend/src/features/settings/SettingsScreen.tsx');
+const accountDeletionLifecycle = await readText(
+  'apps/frontend/src/features/settings/accountLifecycle.ts',
+);
 for (const screenContract of [
   'Promise.all([',
   'getSettingsProfile(controller.signal)',
@@ -2563,7 +2568,7 @@ for (const screenContract of [
   "window.removeEventListener('pagehide', flushPendingNotifications)",
   'flushPendingNotifications()',
   "deleteConfirmation !== 'DELETE'",
-  'deleteAccount(deleteConfirmation)',
+  'runAccountDeletionLifecycle(deleteConfirmation',
   '.then(() => logout())',
   '.catch(() => undefined)',
   '.finally(onSignedOut)',
@@ -2571,6 +2576,38 @@ for (const screenContract of [
   '<SettingsDialogs',
 ]) {
   expectIncludes(settingsScreen, screenContract, `T10 settings screen contract: ${screenContract}`);
+}
+
+const accountDeletionLifecycleSteps = [
+  'const deleteAccount = lifecycle.prepareAccountDeletion(confirmation);',
+  'const subscription = await lifecycle.captureBrowserSubscription();',
+  'await lifecycle.unsubscribeBrowserSubscription(subscription);',
+  'await deleteAccount();',
+  'lifecycle.onSignedOut();',
+];
+for (const lifecycleStep of accountDeletionLifecycleSteps) {
+  expectIncludes(
+    accountDeletionLifecycle,
+    lifecycleStep,
+    `T10 account deletion lifecycle: ${lifecycleStep}`,
+  );
+}
+const accountDeletionLifecyclePositions = accountDeletionLifecycleSteps.map((step) =>
+  accountDeletionLifecycle.indexOf(step),
+);
+if (
+  accountDeletionLifecyclePositions.every((position) => position >= 0) &&
+  accountDeletionLifecyclePositions.every(
+    (position, index) => index === 0 || position > accountDeletionLifecyclePositions[index - 1],
+  )
+) {
+  pass(
+    'T10 account deletion binds the session, then captures and awaits browser cleanup before delete and navigation',
+  );
+} else {
+  fail(
+    'T10 account deletion binds the session, then captures and awaits browser cleanup before delete and navigation',
+  );
 }
 
 const settingsModel = await readText('apps/frontend/src/features/settings/model.ts');
@@ -2751,6 +2788,17 @@ expectIncludes(
   "authorization: 'Bearer settings-token'",
   'T10 frontend API test proves access JWT attachment',
 );
+const apiSessionFrontendTests = await readText('apps/frontend/test/api-session.test.ts');
+for (const testContract of [
+  'prepared account deletion stays bound to the token that confirmed it',
+  'prepared account deletion never refreshes or retries with another subject',
+]) {
+  expectIncludes(
+    apiSessionFrontendTests,
+    testContract,
+    `T13 account deletion session-binding test: ${testContract}`,
+  );
+}
 const themeFrontendTests = await readText('apps/frontend/test/theme.test.ts');
 for (const testContract of [
   'theme preference accepts exactly system, light and dark',
@@ -3569,6 +3617,7 @@ for (const lifecycleContract of [
   'requestFromBrowserSubscription(subscription)',
   'runtime.deleteSubscription({ endpoint: subscription.endpoint })',
   'await Promise.allSettled([',
+  'const unsubscribeBrowserSubscription = async',
   'const unsubscribeBrowserOnly = async',
 ]) {
   expectIncludes(
@@ -3604,7 +3653,10 @@ for (const settingsPushContract of [
   'void unsubscribeFromPush()',
   'settleBestEffortWithin(bestEffortUnsubscribeFromPush())',
   '.then(() => logout())',
-  'await settleBestEffortWithin(unsubscribeBrowserOnly())',
+  'runAccountDeletionLifecycle(deleteConfirmation',
+  'prepareAccountDeletion,',
+  'captureBrowserSubscription: getExistingPushSubscription',
+  'unsubscribeBrowserSubscription,',
   'updateNotifications(snapshot)',
   'SETTINGS_NOTIFICATION_DEBOUNCE_MS',
 ]) {
@@ -3731,6 +3783,7 @@ for (const testContract of [
   'unsupported environments remain read-only',
   'backend registration failure never removes or reports away the browser subscription',
   'explicit and best-effort unsubscribe preserve their different failure semantics',
+  'a captured browser subscription can be removed after the live lookup loses it',
   'KINETRA_T13_PERMISSION_LIFECYCLE=PASS',
 ]) {
   expectIncludes(pushFrontendTests, testContract, `T13 frontend lifecycle test: ${testContract}`);
@@ -3753,6 +3806,7 @@ for (const testContract of [
 }
 for (const testContract of [
   'T13 settings keeps permission, browser subscription and backend registration separate',
+  'T13 account deletion retains and awaits the browser subscription before destructive cleanup',
   'KINETRA_T13_SETTINGS_INTEGRATION=PASS',
 ]) {
   expectIncludes(settingsFrontendTests, testContract, `T13 Settings unit test: ${testContract}`);
@@ -3763,6 +3817,8 @@ for (const browserContract of [
   "Object.defineProperty(Notification, 'requestPermission'",
   "Object.defineProperty(PushManager.prototype, 'getSubscription'",
   "Object.defineProperty(PushManager.prototype, 'subscribe'",
+  'kinetra.browser-acceptance.push-state.v1',
+  'subscriptionExists: state.subscription !== null',
   'permissionRequests: 0',
   'counters.pushPublicKeyGet, 0',
   'counters.pushSubscriptionPost, 0',
@@ -3774,12 +3830,19 @@ for (const browserContract of [
   'weekly_survey_reminder: false',
   'T13 existing browser subscription is re-registered without a new permission prompt',
   'T13 explicit device push removal',
+  'subscriptionExists: true',
+  'unsubscribeCalls: 1',
   'T13 device is unsubscribed after account deletion',
   'T13 device is registered before logout cleanup',
   'KINETRA_T13_BROWSER_E2E=PASS',
 ]) {
   expectIncludes(browserTest, browserContract, `T13 browser acceptance: ${browserContract}`);
 }
+expectIncludes(
+  browserTest,
+  "assert.equal(await cdp.evaluate('window.__kinetraPushTest.unsubscribeCalls'), 2)",
+  'T13 browser acceptance retains the strict account-deletion unsubscribe assertion',
+);
 const t13BrowserMarkerPosition = browserTest.lastIndexOf(
   "console.log('KINETRA_T13_BROWSER_E2E=PASS')",
 );
