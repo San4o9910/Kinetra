@@ -11,6 +11,7 @@
     "db:migrate": "node scripts/migrate.mjs",
     "db:seed": "node scripts/seed.mjs",
     "db:verify-content": "node scripts/verify-content.mjs",
+    "notifications:send": "node dist/push/run-notifications.js",
     "payments:renew": "node dist/payments/run-renewals.js",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/server.js",
@@ -28,6 +29,7 @@
     "jose": "^6.2.9",
     "pg": "^8.23.0",
     "socket.io": "^4.8.1",
+    "web-push": "^3.6.7",
     "zod": "^4.1.5"
   },
   "devDependencies": {
@@ -36,6 +38,7 @@
     "@types/express": "^5.0.6",
     "@types/node": "^24.10.0",
     "@types/pg": "^8.23.1",
+    "@types/web-push": "^3.6.4",
     "tsx": "^4.20.6"
   }
 }

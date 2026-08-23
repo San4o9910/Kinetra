@@ -12,6 +12,10 @@ import type {
   MetricsResponse,
   NotificationPreferences,
   ProgressResponse,
+  PushPublicKeyResponse,
+  PushSubscriptionRequest,
+  PushSubscriptionResponse,
+  PushUnsubscribeRequest,
   ScheduleResponse,
   SettingsProfileResponse,
   SubscriptionResponse,
@@ -49,6 +53,16 @@ interface ApiClientOptions {
   readonly baseUrl: string;
   readonly fetchImpl?: typeof fetch;
 }
+
+export interface PushSubscriptionDeleteOptions {
+  readonly signal?: AbortSignal;
+  readonly allowRefresh?: boolean;
+}
+
+export type PreparedPushSubscriptionDeletion = (
+  data: PushUnsubscribeRequest,
+  signal?: AbortSignal,
+) => Promise<void>;
 
 const errorKindForStatus = (status: number): ApiErrorKind => {
   if (status === 401) {
@@ -259,12 +273,88 @@ export class ApiClient {
     });
   }
 
-  public async deleteAccount(confirm: string): Promise<void> {
-    await this.authenticatedVoidRequest('/api/v1/settings/account', {
-      method: 'DELETE',
-      body: JSON.stringify({ confirm }),
+  public async getPushPublicKey(): Promise<PushPublicKeyResponse> {
+    return this.authenticatedJsonRequest<PushPublicKeyResponse>('/api/v1/push/public-key', {
+      method: 'GET',
     });
-    this.clearSession();
+  }
+
+  public async registerPushSubscription(
+    data: PushSubscriptionRequest,
+  ): Promise<PushSubscriptionResponse> {
+    return this.authenticatedJsonRequest<PushSubscriptionResponse>('/api/v1/push/subscriptions', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async deletePushSubscription(
+    data: PushUnsubscribeRequest,
+    options: PushSubscriptionDeleteOptions = {},
+  ): Promise<void> {
+    await this.authenticatedVoidRequest(
+      '/api/v1/push/subscriptions',
+      {
+        method: 'DELETE',
+        body: JSON.stringify(data),
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
+      },
+      options.allowRefresh ?? true,
+    );
+  }
+
+  public preparePushSubscriptionDeletion(): PreparedPushSubscriptionDeletion {
+    const accessToken = this.accessToken;
+
+    return async (data, signal) => {
+      if (accessToken === null) {
+        throw new ApiRequestError(
+          'Сессия завершена. Войдите в аккаунт.',
+          401,
+          'NO_SESSION',
+          'auth',
+        );
+      }
+
+      const response = await this.requestWithAccessToken(
+        '/api/v1/push/subscriptions',
+        {
+          method: 'DELETE',
+          body: JSON.stringify(data),
+          ...(signal === undefined ? {} : { signal }),
+        },
+        accessToken,
+      );
+
+      if (!response.ok) {
+        await this.throwResponseError(response);
+      }
+    };
+  }
+
+  public prepareAccountDeletion(confirm: string): () => Promise<void> {
+    const accessToken = this.accessToken;
+
+    if (accessToken === null) {
+      throw new ApiRequestError('Сессия завершена. Войдите в аккаунт.', 401, 'NO_SESSION', 'auth');
+    }
+
+    return async () => {
+      const response = await this.requestWithAccessToken(
+        '/api/v1/settings/account',
+        {
+          method: 'DELETE',
+          body: JSON.stringify({ confirm }),
+        },
+        accessToken,
+      );
+
+      if (!response.ok) {
+        await this.throwResponseError(response);
+      }
+
+      this.clearSession();
+    };
   }
 
   public async getWeek(weekNumber: number, signal?: AbortSignal): Promise<WeekResponse> {
@@ -320,19 +410,7 @@ export class ApiClient {
       throw new ApiRequestError('Сессия завершена. Войдите в аккаунт.', 401, 'NO_SESSION', 'auth');
     }
 
-    const headers = new Headers(init.headers);
-    headers.set('Accept', 'application/json');
-    headers.set('Authorization', `Bearer ${token}`);
-
-    if (init.body !== undefined && init.body !== null) {
-      headers.set('Content-Type', 'application/json');
-    }
-
-    const response = await this.safeFetch(path, {
-      ...init,
-      credentials: 'include',
-      headers,
-    });
+    const response = await this.requestWithAccessToken(path, init, token);
 
     if (response.status === 401 && allowRefresh) {
       this.accessToken = null;
@@ -355,6 +433,26 @@ export class ApiClient {
     }
 
     return response;
+  }
+
+  private async requestWithAccessToken(
+    path: string,
+    init: RequestInit,
+    accessToken: string,
+  ): Promise<Response> {
+    const headers = new Headers(init.headers);
+    headers.set('Accept', 'application/json');
+    headers.set('Authorization', `Bearer ${accessToken}`);
+
+    if (init.body !== undefined && init.body !== null) {
+      headers.set('Content-Type', 'application/json');
+    }
+
+    return this.safeFetch(path, {
+      ...init,
+      credentials: 'include',
+      headers,
+    });
   }
 
   private async refreshAccessToken(): Promise<string | null> {
@@ -477,7 +575,18 @@ export const getSettingsProfile = (signal?: AbortSignal): Promise<SettingsProfil
   apiClient.getSettingsProfile(signal);
 export const updateNotifications = (data: NotificationPreferences): Promise<void> =>
   apiClient.updateNotifications(data);
-export const deleteAccount = (confirm: string): Promise<void> => apiClient.deleteAccount(confirm);
+export const getPushPublicKey = (): Promise<PushPublicKeyResponse> => apiClient.getPushPublicKey();
+export const registerPushSubscription = (
+  data: PushSubscriptionRequest,
+): Promise<PushSubscriptionResponse> => apiClient.registerPushSubscription(data);
+export const deletePushSubscription = (
+  data: PushUnsubscribeRequest,
+  options?: PushSubscriptionDeleteOptions,
+): Promise<void> => apiClient.deletePushSubscription(data, options);
+export const preparePushSubscriptionDeletion = (): PreparedPushSubscriptionDeletion =>
+  apiClient.preparePushSubscriptionDeletion();
+export const prepareAccountDeletion = (confirm: string): (() => Promise<void>) =>
+  apiClient.prepareAccountDeletion(confirm);
 export const getWeek = (weekNumber: number, signal?: AbortSignal): Promise<WeekResponse> =>
   apiClient.getWeek(weekNumber, signal);
 export const completeWorkout = (data: CompleteWorkoutRequest): Promise<WeekResponse> =>

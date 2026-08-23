@@ -351,6 +351,27 @@ export interface NotificationPreferences {
   readonly weekly_survey_reminder: boolean;
 }
 
+export interface PushPublicKeyResponse {
+  readonly public_key: string;
+}
+
+export interface PushSubscriptionRequest {
+  readonly endpoint: string;
+  readonly keys: {
+    readonly p256dh: string;
+    readonly auth: string;
+  };
+  readonly expirationTime: number | null;
+}
+
+export interface PushSubscriptionResponse {
+  readonly subscribed: true;
+}
+
+export interface PushUnsubscribeRequest {
+  readonly endpoint: string;
+}
+
 export interface SettingsProfileResponse {
   readonly email: string | null;
   readonly phone: string | null;

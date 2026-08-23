@@ -7,7 +7,12 @@ import type {
   SettingsProfileResponse,
   SubscriptionResponse,
 } from '@kinetra/shared';
+import type {
+  PushBackendRegistrationStatus,
+  PushPermission,
+} from '../src/pwa/pushNotifications.js';
 
+import { runAccountDeletionLifecycle } from '../src/features/settings/accountLifecycle.js';
 import { SettingsDialogs } from '../src/features/settings/SettingsDialogs.js';
 import { SettingsView } from '../src/features/settings/SettingsView.js';
 import {
@@ -44,19 +49,45 @@ const subscription: SubscriptionResponse = {
 
 const notifications: NotificationPreferences = profile.notification_preferences;
 
-const renderSettings = (fixture: SubscriptionResponse = subscription): string =>
+interface PushFixture {
+  readonly permission: PushPermission;
+  readonly browserSubscribed: boolean;
+  readonly backendRegistration: PushBackendRegistrationStatus;
+  readonly busy: boolean;
+  readonly error: string | null;
+}
+
+const defaultPushFixture: PushFixture = {
+  permission: 'default',
+  browserSubscribed: false,
+  backendRegistration: 'unknown',
+  busy: false,
+  error: null,
+};
+
+const renderSettings = (
+  fixture: SubscriptionResponse = subscription,
+  push: PushFixture = defaultPushFixture,
+): string =>
   renderToStaticMarkup(
     createElement(SettingsView, {
       profile,
       subscription: fixture,
       notifications,
       notificationSaveStatus: 'idle',
+      pushPermission: push.permission,
+      pushBrowserSubscribed: push.browserSubscribed,
+      pushBackendRegistration: push.backendRegistration,
+      pushBusy: push.busy,
+      pushError: push.error,
       hasSurvey: true,
       themePreference: 'system',
       resolvedTheme: 'dark',
       supportEmail: 'coach@kinetra.app',
       onClose: () => undefined,
       onNotificationsChange: () => undefined,
+      onEnablePush: () => undefined,
+      onDisablePush: () => undefined,
       onThemeChange: () => undefined,
       onEditSurvey: () => undefined,
       onOpenLevel: () => undefined,
@@ -206,4 +237,94 @@ test('settings model fixes date, time, debounce and subscription-state contracts
     'Продлить подписку',
   );
   assert.equal(subscriptionPresentation({ ...subscription, status: 'pending' }).showRenew, false);
+});
+
+test('T13 settings keeps permission, browser subscription and backend registration separate', () => {
+  const initial = renderSettings();
+  assert.ok(initial.includes('data-testid="settings-push-device"'));
+  assert.ok(initial.includes('data-permission="default"'));
+  assert.ok(initial.includes('data-browser-subscribed="false"'));
+  assert.ok(initial.includes('data-backend-registration="unknown"'));
+  assert.ok(initial.includes('data-testid="settings-push-enable"'));
+  assert.equal(initial.includes('data-testid="settings-push-disable"'), false);
+  assert.ok(initial.includes('Не запрошено'));
+  assert.ok(initial.includes('Не создана'));
+  assert.ok(initial.includes('Не подтверждено'));
+
+  const registered = renderSettings(subscription, {
+    permission: 'granted',
+    browserSubscribed: true,
+    backendRegistration: 'registered',
+    busy: false,
+    error: null,
+  });
+  assert.ok(registered.includes('data-permission="granted"'));
+  assert.ok(registered.includes('data-browser-subscribed="true"'));
+  assert.ok(registered.includes('data-backend-registration="registered"'));
+  assert.equal(registered.includes('data-testid="settings-push-enable"'), false);
+  assert.ok(registered.includes('data-testid="settings-push-disable"'));
+  assert.ok(registered.includes('Подключено'));
+
+  const denied = renderSettings(subscription, {
+    permission: 'denied',
+    browserSubscribed: false,
+    backendRegistration: 'error',
+    busy: false,
+    error: 'Регистрация не выполнена.',
+  });
+  assert.equal(denied.includes('data-testid="settings-push-enable"'), false);
+  assert.ok(denied.includes('настройках браузера или устройства'));
+  assert.ok(denied.includes('data-testid="settings-push-error"'));
+
+  console.log('KINETRA_T13_SETTINGS_INTEGRATION=PASS');
+});
+
+test('T13 account deletion retains and awaits the browser subscription before destructive cleanup', async () => {
+  const events: string[] = [];
+  const capturedSubscription = { endpoint: 'https://push.example/device-account-delete' };
+  let currentSubscription: PushSubscription | null = capturedSubscription as PushSubscription;
+  let releaseBrowserCleanup: (() => void) | undefined;
+  const browserCleanup = new Promise<void>((resolve) => {
+    releaseBrowserCleanup = resolve;
+  });
+
+  const lifecycle = runAccountDeletionLifecycle('DELETE', {
+    prepareAccountDeletion: (confirmation) => {
+      events.push('account:bind');
+      assert.equal(confirmation, 'DELETE');
+      return async () => {
+        events.push('account:delete');
+      };
+    },
+    captureBrowserSubscription: async () => {
+      events.push('browser:capture');
+      const captured = currentSubscription;
+      currentSubscription = null;
+      return captured;
+    },
+    unsubscribeBrowserSubscription: async (subscriptionToRemove) => {
+      events.push('browser:unsubscribe:start');
+      assert.equal(subscriptionToRemove, capturedSubscription);
+      await browserCleanup;
+      events.push('browser:unsubscribe:complete');
+    },
+    onSignedOut: () => {
+      events.push('auth:clear-and-navigate');
+    },
+  });
+
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.deepEqual(events, ['account:bind', 'browser:capture', 'browser:unsubscribe:start']);
+
+  releaseBrowserCleanup?.();
+  await lifecycle;
+
+  assert.deepEqual(events, [
+    'account:bind',
+    'browser:capture',
+    'browser:unsubscribe:start',
+    'browser:unsubscribe:complete',
+    'account:delete',
+    'auth:clear-and-navigate',
+  ]);
 });

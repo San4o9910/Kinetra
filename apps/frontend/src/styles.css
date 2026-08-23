@@ -3646,6 +3646,114 @@ h1 {
   color: var(--danger);
 }
 
+.settings-push-device {
+  margin-top: 12px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.settings-push-device-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.settings-push-device-heading strong {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.settings-push-device-heading p,
+.settings-push-device-note,
+.settings-push-device-error {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.settings-push-device-heading .settings-icon {
+  flex: 0 0 auto;
+}
+
+.settings-push-device-state {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0 0;
+}
+
+.settings-push-device-state div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 8px;
+  border-top: 1px solid var(--divider);
+}
+
+.settings-push-device-state dt,
+.settings-push-device-state dd {
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.settings-push-device-state dt {
+  color: var(--muted);
+}
+
+.settings-push-device-state dd {
+  margin: 0;
+  color: var(--text);
+  font-weight: 600;
+  text-align: right;
+}
+
+.settings-push-device-error {
+  color: var(--danger);
+}
+
+.settings-push-primary,
+.settings-push-secondary {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.settings-push-primary {
+  margin-top: 14px;
+  border: 1px solid var(--accent-fill);
+  color: var(--accent-ink);
+  background: var(--accent-fill);
+}
+
+.settings-push-secondary {
+  margin-top: 8px;
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  background: transparent;
+}
+
+.settings-push-primary:disabled,
+.settings-push-secondary:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.settings-push-primary:focus-visible,
+.settings-push-secondary:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
 .settings-theme-fieldset {
   margin: 0;
   padding: 10px;

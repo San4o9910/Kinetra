@@ -4,6 +4,8 @@ import type { RequestHandler } from 'express';
 export interface FixedWindowRateLimitOptions {
   readonly windowMs: number;
   readonly maximumRequests: number;
+  readonly errorCode?: string;
+  readonly errorMessage?: string;
 }
 
 interface Counter {
@@ -57,8 +59,8 @@ export const createFixedWindowRateLimiter = (
       typeof response.locals.requestId === 'string' ? response.locals.requestId : undefined;
     const body: ApiErrorResponse = {
       error: {
-        code: 'RATE_LIMITED',
-        message: 'Too many password-reset requests. Try again later.',
+        code: options.errorCode ?? 'RATE_LIMITED',
+        message: options.errorMessage ?? 'Too many password-reset requests. Try again later.',
         ...(requestId === undefined ? {} : { requestId }),
       },
     };
