@@ -5166,6 +5166,57 @@ const launchT12BrowserContext = async (profileDirectory, width, height) => {
     cdp.evaluate(`Boolean(document.querySelector(${JSON.stringify(selector(testId))})?.disabled)`);
   const click = (testId) =>
     cdp.evaluate(`document.querySelector(${JSON.stringify(selector(testId))})?.click()`);
+  const trustedClick = async (testId) => {
+    const point = await cdp.evaluate(`(() => {
+      const element = document.querySelector(${JSON.stringify(selector(testId))});
+      if (!(element instanceof HTMLElement)) {
+        throw new Error('T12 trusted-click target not found: ${testId}');
+      }
+      element.scrollIntoView({ block: 'center', inline: 'center' });
+      const rect = element.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) {
+        throw new Error('T12 trusted-click target is not visible: ${testId}');
+      }
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    })()`);
+    await cdp.send('Input.dispatchMouseEvent', {
+      type: 'mouseMoved',
+      x: point.x,
+      y: point.y,
+    });
+    await cdp.send('Input.dispatchMouseEvent', {
+      type: 'mousePressed',
+      x: point.x,
+      y: point.y,
+      button: 'left',
+      buttons: 1,
+      clickCount: 1,
+    });
+    await cdp.send('Input.dispatchMouseEvent', {
+      type: 'mouseReleased',
+      x: point.x,
+      y: point.y,
+      button: 'left',
+      buttons: 0,
+      clickCount: 1,
+    });
+  };
+  const pressEscape = async () => {
+    await cdp.send('Input.dispatchKeyEvent', {
+      type: 'rawKeyDown',
+      key: 'Escape',
+      code: 'Escape',
+      windowsVirtualKeyCode: 27,
+      nativeVirtualKeyCode: 27,
+    });
+    await cdp.send('Input.dispatchKeyEvent', {
+      type: 'keyUp',
+      key: 'Escape',
+      code: 'Escape',
+      windowsVirtualKeyCode: 27,
+      nativeVirtualKeyCode: 27,
+    });
+  };
   const setValue = (testId, value) =>
     cdp.evaluate(`(() => {
       const element = document.querySelector(${JSON.stringify(selector(testId))});
@@ -5180,7 +5231,26 @@ const launchT12BrowserContext = async (profileDirectory, width, height) => {
       element.dispatchEvent(new Event('input', { bubbles: true }));
       element.dispatchEvent(new Event('change', { bubbles: true }));
     })()`);
-  const navigate = (route) => cdp.send('Page.navigate', { url: `${frontendOrigin}${route}` });
+  let navigationSequence = 0;
+  const navigate = async (route) => {
+    const previousDocumentMarker = `t12-navigation-${++navigationSequence}`;
+    await cdp.evaluate(
+      `document.documentElement.dataset.kinetraBrowserDocument = ${JSON.stringify(previousDocumentMarker)}`,
+    );
+    const result = await cdp.send('Page.navigate', { url: `${frontendOrigin}${route}` });
+    if (typeof result.errorText === 'string') {
+      throw new Error(`T12 navigation to ${route} failed: ${result.errorText}`);
+    }
+    await waitFor(
+      `new browser document for ${route}`,
+      async () =>
+        (await cdp.evaluate(
+          `document.documentElement.dataset.kinetraBrowserDocument !== ${JSON.stringify(previousDocumentMarker)} && document.readyState === 'complete'`,
+        )) === true,
+      20_000,
+    );
+    return result;
+  };
   const setVisibility = (visibility) =>
     cdp.evaluate(`window.__kinetraT12BrowserTest.setVisibility(${JSON.stringify(visibility)})`);
   const setOnline = (online) =>
@@ -5268,6 +5338,8 @@ const launchT12BrowserContext = async (profileDirectory, width, height) => {
     cdp.evaluate(
       `Boolean(document.querySelector(${JSON.stringify(selector('chat-photo-viewer'))})?.open)`,
     );
+  const viewerHistoryId = () =>
+    cdp.evaluate('window.history.state?.kinetraChatPhotoViewer ?? null');
   const activatePushSubscription = () =>
     cdp.evaluate('window.__kinetraT12BrowserTest.activatePushSubscription()');
   const pushLifecycle = () =>
@@ -5306,6 +5378,8 @@ const launchT12BrowserContext = async (profileDirectory, width, height) => {
     text,
     disabled,
     click,
+    trustedClick,
+    pressEscape,
     setValue,
     navigate,
     setVisibility,
@@ -5317,6 +5391,7 @@ const launchT12BrowserContext = async (profileDirectory, width, height) => {
     selectPhoto,
     messageCount,
     viewerOpen,
+    viewerHistoryId,
     activatePushSubscription,
     pushLifecycle,
     authenticatedFetch,
@@ -5802,8 +5877,41 @@ const runT12BrowserScenario = async () => {
     );
     const attachedPhoto = [...fixture.state.photos.values()].find(({ attached }) => attached);
     assert.notEqual(attachedPhoto, undefined);
-    await client.click('chat-photo-thumbnail');
-    await waitFor('fullscreen photo viewer', () => client.viewerOpen());
+
+    const waitForPhotoViewerOpen = (label) =>
+      waitFor(
+        label,
+        async () => {
+          const historyId = await client.viewerHistoryId();
+          return (
+            (await client.viewerOpen()) &&
+            typeof historyId === 'string' &&
+            historyId.startsWith('viewer-')
+          );
+        },
+        20_000,
+      );
+    const waitForPhotoViewerClosed = (label) =>
+      waitFor(
+        label,
+        async () =>
+          !(await client.viewerOpen()) &&
+          (await client.viewerHistoryId()) === null &&
+          (await client.pathname()) === '/chat',
+        20_000,
+      );
+    const waitForPhotoThumbnailFocus = (label) =>
+      waitFor(
+        label,
+        async () =>
+          (await client.cdp.evaluate(
+            `document.activeElement?.getAttribute('data-testid') ?? null`,
+          )) === 'chat-photo-thumbnail',
+        20_000,
+      );
+
+    await client.trustedClick('chat-photo-thumbnail');
+    await waitForPhotoViewerOpen('fullscreen photo viewer with owned History entry');
     await waitFor(
       'fullscreen viewer decoded signed image',
       () =>
@@ -5811,18 +5919,24 @@ const runT12BrowserScenario = async () => {
           const viewer = document.querySelector(${JSON.stringify(selector('chat-photo-viewer'))});
           const image = viewer?.querySelector('img');
           return image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0;
-        })()`),
+      })()`),
       20_000,
     );
-    await client.click('chat-photo-viewer-close');
-    await waitFor('photo viewer close via History API', async () => !(await client.viewerOpen()));
-    await waitFor(
-      'photo viewer returns focus to thumbnail',
-      async () =>
-        (await client.cdp.evaluate(
-          `document.activeElement?.getAttribute('data-testid') ?? null`,
-        )) === 'chat-photo-thumbnail',
-    );
+    await client.trustedClick('chat-photo-viewer-close');
+    await waitForPhotoViewerClosed('photo viewer close button consumes owned History entry');
+    await waitForPhotoThumbnailFocus('photo viewer close button returns focus to thumbnail');
+
+    await client.trustedClick('chat-photo-thumbnail');
+    await waitForPhotoViewerOpen('photo viewer reopened for browser Back');
+    await client.cdp.evaluate('window.history.back()');
+    await waitForPhotoViewerClosed('browser Back closes photo viewer and consumes History entry');
+    await waitForPhotoThumbnailFocus('browser Back returns focus to thumbnail');
+
+    await client.trustedClick('chat-photo-thumbnail');
+    await waitForPhotoViewerOpen('photo viewer reopened for Escape');
+    await client.pressEscape();
+    await waitForPhotoViewerClosed('Escape closes photo viewer and consumes History entry');
+    await waitForPhotoThumbnailFocus('Escape returns focus to thumbnail');
 
     const messageCountBeforeFailedDraft = fixture.state.messages.length;
     await client.selectPhoto('t12-retry.png');
@@ -5856,14 +5970,19 @@ const runT12BrowserScenario = async () => {
     );
 
     const historyMessageIds = fixture.state.messages.map(({ id }) => id);
+    const socketConnectionsBeforeHistoryReload = fixture.state.socketConnectionCount.client;
+    const socketDisconnectsBeforeHistoryReload = fixture.state.socketDisconnectCount.client;
     await client.navigate('/chat');
     await waitFor(
-      'chat history restored after full reload',
+      'chat history and socket restored after full reload',
       async () =>
         (await client.exists('chat-conversation-screen')) &&
         (await client.bodyText()).includes('Сообщение клиента через realtime') &&
         (await client.bodyText()).includes('Ответ тренера для FAB') &&
-        (await client.bodyText()).includes('Подпись к безопасной фотографии'),
+        (await client.bodyText()).includes('Подпись к безопасной фотографии') &&
+        fixture.state.socketConnections.client.size === 1 &&
+        fixture.state.socketConnectionCount.client > socketConnectionsBeforeHistoryReload &&
+        fixture.state.socketDisconnectCount.client > socketDisconnectsBeforeHistoryReload,
       20_000,
     );
     for (const messageId of historyMessageIds) {

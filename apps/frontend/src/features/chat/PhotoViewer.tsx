@@ -28,6 +28,7 @@ export const PhotoViewer = ({
   const viewerIdRef = useRef(`viewer-${Math.random().toString(36).slice(2)}`);
   const ownedHistoryRef = useRef(false);
   const wasOpenRef = useRef(false);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
   const { access, status, error, refresh, handleImageError } = usePhotoAccessLifecycle({
     enabled: open && photo !== null,
     photoId: photo?.id ?? null,
@@ -40,6 +41,8 @@ export const PhotoViewer = ({
       ownedHistoryRef.current &&
       window.history.state?.[viewerHistoryKey] === viewerIdRef.current
     ) {
+      ownedHistoryRef.current = false;
+      onClose();
       window.history.back();
       return;
     }
@@ -76,7 +79,10 @@ export const PhotoViewer = ({
     }
 
     const handlePopState = (): void => {
-      if (window.history.state?.[viewerHistoryKey] !== viewerIdRef.current) {
+      if (
+        ownedHistoryRef.current &&
+        window.history.state?.[viewerHistoryKey] !== viewerIdRef.current
+      ) {
         ownedHistoryRef.current = false;
         onClose();
       }
@@ -87,6 +93,12 @@ export const PhotoViewer = ({
   }, [onClose, open, photo]);
 
   useEffect(() => {
+    if (open && returnFocusElement !== null) {
+      returnFocusRef.current = returnFocusElement;
+    }
+  }, [open, returnFocusElement]);
+
+  useEffect(() => {
     if (open) {
       return;
     }
@@ -94,9 +106,11 @@ export const PhotoViewer = ({
     if (wasOpenRef.current) {
       wasOpenRef.current = false;
       ownedHistoryRef.current = false;
-      window.requestAnimationFrame(() => returnFocusElement?.focus());
+      const focusTarget = returnFocusRef.current;
+      returnFocusRef.current = null;
+      window.requestAnimationFrame(() => focusTarget?.focus());
     }
-  }, [open, returnFocusElement]);
+  }, [open]);
 
   return (
     <React.Fragment>

@@ -177,7 +177,7 @@ ef3df1ff6e3460dd8ad98c60c18f915ab927274b2df937ad2bbd618d143e53c5  ./apps/fronten
 fad547484e5aa8cb790a35dc0eaff7c7f8d1ef1ba9399fd54967f5eef36d781b  ./apps/frontend/src/features/chat/ClientChatScreen.tsx
 f85c26f874f53ccc2bcf66db57f615b106795bc93cb5fd5954a5eb70ee2ee741  ./apps/frontend/src/features/chat/ConversationView.tsx
 02577537cdde42188f8727cdef3229fd60fc06e600c88dc3e78c90ace31a97ec  ./apps/frontend/src/features/chat/MessageList.tsx
-d73fc11abc2c5d167edfc633e233e6eb8dbb25171fa11e193e9fdd77fe35d56d  ./apps/frontend/src/features/chat/PhotoViewer.tsx
+ad1eb94c8d502025617031da0fdfa6241955d6144780618ac8a447d47f0bc431  ./apps/frontend/src/features/chat/PhotoViewer.tsx
 1a42de9f0209189026f1e44977b4a3c942a1720e507032a677da42707bffe11c  ./apps/frontend/src/features/chat/authError.ts
 da1a2bb60e54cba079e376ccfde07b8087533724aff3fcee80871cdd2c6873dd  ./apps/frontend/src/features/chat/composerAcknowledgement.ts
 1372a79755185c2c4236611339699bf4ce9e1919031ab56185d656ede348e8d3  ./apps/frontend/src/features/chat/draft.ts
@@ -284,6 +284,6 @@ ca34313e3e69827306dc65884bd88ff99e91e35c6bb29db8d9e4c3e49fb3f9a6  ./package-lock
 bd4cb891bf26046d9e953dd6ac99b6c0bad1f4699a41da9957dec153410e26f9  ./packages/shared/src/index.ts
 c8171db33a1b645b8c36d542cf4bfc5c47073df8842b846f91a6ebf083973c5e  ./packages/shared/tsconfig.json
 f048e3d2c18cdbc376ae2f5c68b990397dc454101664ea667251ce27b0129957  ./scripts/check-changed-format.mjs
-71db189c0d5ea2c01c9ab5121d8d6b9979c338c37b5d2973d8c2cbe7fef8ced0  ./scripts/test-frontend-browser.mjs
+619834dc11155de7ef3dba03ce43683e9d0ad8cbc64b74f7fec05d62f9a3efe2  ./scripts/test-frontend-browser.mjs
 31ae01ea7b08f6f22528a7fc44b3ee021c62f73b2e6ac31f0e8d9c8239724472  ./scripts/verify-project.mjs
 2b67887209f3334ebdc96426f5c2cb87480fb85ff2f75c0d42b0a944dae7922a  ./tsconfig.base.json
