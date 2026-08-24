@@ -10,10 +10,12 @@ import {
   cancelSubscription,
   getSettingsProfile,
   getSubscription,
-  logout,
   prepareAccountDeletion,
+  prepareLogout,
   preparePushSubscriptionDeletion,
   updateNotifications,
+  type PreparedLogoutAttempt,
+  type PreparedPushSubscriptionDeletion,
 } from '../../lib/api';
 import { useTheme } from '../theme/theme-context';
 import {
@@ -51,12 +53,18 @@ interface PushDeviceState {
 
 export interface SettingsScreenProps {
   readonly hasSurvey: boolean;
+  readonly chatAvailable: boolean;
   readonly onClose: () => void;
+  readonly onOpenChat: () => void;
   readonly onEditSurvey: () => void;
   readonly onOpenPayment: () => void;
   readonly onSubscriptionUpdated: (subscription: SubscriptionResponse) => void;
   readonly onSignedOut: () => void;
   readonly onSessionExpired: () => void;
+  readonly onChatSessionSuspend: () => void;
+  readonly onChatSessionRestart: () => void;
+  readonly onChatSessionEnd: () => void;
+  readonly onBlockingDialogChange?: (open: boolean) => void;
 }
 
 const runtimeEnv = (typeof import.meta.env === 'object' ? import.meta.env : {}) as ImportMetaEnv;
@@ -98,12 +106,18 @@ const SettingsState = ({
 
 export const SettingsScreen = ({
   hasSurvey,
+  chatAvailable,
   onClose,
+  onOpenChat,
   onEditSurvey,
   onOpenPayment,
   onSubscriptionUpdated,
   onSignedOut,
   onSessionExpired,
+  onChatSessionSuspend,
+  onChatSessionRestart,
+  onChatSessionEnd,
+  onBlockingDialogChange,
 }: SettingsScreenProps): ReactNode => {
   const { preference, resolvedTheme, setPreference } = useTheme();
   const [loadState, setLoadState] = useState<SettingsLoadState>({ kind: 'loading' });
@@ -125,8 +139,15 @@ export const SettingsScreen = ({
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const isMountedRef = useRef(true);
   const pushActionInFlightRef = useRef(false);
+  const logoutAttemptRef = useRef<PreparedLogoutAttempt | null>(null);
+  const logoutPushDeletionRef = useRef<PreparedPushSubscriptionDeletion | null>(null);
 
   latestNotificationsRef.current = notifications;
+
+  useEffect(() => {
+    onBlockingDialogChange?.(activeDialog !== null);
+    return () => onBlockingDialogChange?.(false);
+  }, [activeDialog, onBlockingDialogChange]);
 
   const handleApiError = useCallback(
     (error: unknown, fallback: string): string => {
@@ -474,15 +495,69 @@ export const SettingsScreen = ({
       return;
     }
 
-    const deleteSubscription = preparePushSubscriptionDeletion();
+    let attempt = logoutAttemptRef.current;
+    let deleteSubscription = logoutPushDeletionRef.current;
+
+    if (attempt === null || deleteSubscription === null || !attempt.isCurrent()) {
+      try {
+        attempt = prepareLogout();
+        deleteSubscription = preparePushSubscriptionDeletion();
+        logoutAttemptRef.current = attempt;
+        logoutPushDeletionRef.current = deleteSubscription;
+      } catch (error) {
+        setDialogError(
+          `Выход не завершен. ${
+            error instanceof ApiRequestError
+              ? error.message
+              : 'Не удалось подготовить безопасный выход. Попробуйте ещё раз.'
+          }`,
+        );
+        return;
+      }
+    }
+
+    const preparedAttempt = attempt;
+    const preparedDeleteSubscription = deleteSubscription;
+    onChatSessionSuspend();
     setDialogBusy(true);
+    setDialogError(null);
     void settleBestEffortWithin(
-      (control) => bestEffortUnsubscribeFromPush({ ...control, deleteSubscription }),
+      (control) =>
+        bestEffortUnsubscribeFromPush({
+          ...control,
+          deleteSubscription: preparedDeleteSubscription,
+        }),
       PUSH_BEST_EFFORT_TIMEOUT_MS,
     )
-      .then(() => logout())
-      .catch(() => undefined)
-      .finally(onSignedOut);
+      .then(() => preparedAttempt.execute())
+      .then((completion) => {
+        if (
+          logoutAttemptRef.current !== preparedAttempt ||
+          !preparedAttempt.isCompletionCurrent(completion)
+        ) {
+          return;
+        }
+
+        logoutAttemptRef.current = null;
+        logoutPushDeletionRef.current = null;
+        onChatSessionEnd();
+        onSignedOut();
+      })
+      .catch((error: unknown) => {
+        if (logoutAttemptRef.current !== preparedAttempt || !preparedAttempt.isCurrent()) {
+          return;
+        }
+
+        setDialogBusy(false);
+        setDialogError(
+          `Выход не завершен. ${
+            error instanceof ApiRequestError
+              ? error.message
+              : 'Сервер не подтвердил отзыв сессии. Попробуйте ещё раз.'
+          }`,
+        );
+        onChatSessionRestart();
+      });
   };
 
   const confirmCancelSubscription = (): void => {
@@ -521,6 +596,9 @@ export const SettingsScreen = ({
       prepareAccountDeletion,
       captureBrowserSubscription: getExistingPushSubscription,
       unsubscribeBrowserSubscription,
+      onChatSessionSuspend,
+      onChatSessionRestart,
+      onChatSessionEnd,
       onSignedOut,
     }).catch((error: unknown) => {
       setDialogBusy(false);
@@ -557,10 +635,12 @@ export const SettingsScreen = ({
         pushBusy={pushDeviceState.busy}
         pushError={pushDeviceState.error}
         hasSurvey={hasSurvey}
+        chatAvailable={chatAvailable}
         themePreference={preference}
         resolvedTheme={resolvedTheme}
         supportEmail={supportEmail}
         onClose={onClose}
+        onOpenChat={onOpenChat}
         onNotificationsChange={setNotifications}
         onEnablePush={enablePushOnDevice}
         onDisablePush={disablePushOnDevice}

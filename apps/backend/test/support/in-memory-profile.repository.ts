@@ -104,6 +104,8 @@ export class InMemoryProfileRepository implements ProfileRepository {
       timezone: 'Europe/Moscow',
       createdAt: new Date('2026-08-20T00:00:00.000Z'),
       updatedAt: new Date('2026-08-20T00:00:00.000Z'),
+      accountRole: 'client',
+      trainerProfile: null,
       survey:
         currentSurvey === null
           ? null

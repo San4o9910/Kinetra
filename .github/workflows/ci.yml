@@ -2,9 +2,9 @@ name: Kinetra CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, fix/t12-merge-readiness]
   pull_request:
-    branches: [main, develop]
+    branches: [main, develop, feature/t12-trainer-chat]
 
 env:
   NODE_VERSION: '22'
@@ -15,6 +15,36 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify checkout identity
+        shell: bash
+        env:
+          EXPECTED_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          checkout_sha="$(git rev-parse HEAD)"
+          semantics='push-head'
+          if [[ "${GITHUB_EVENT_NAME}" == 'pull_request' ]]; then
+            if [[ "$checkout_sha" == "$EXPECTED_HEAD_SHA" ]]; then
+              semantics='pull-request-head'
+            else
+              test "$(git rev-parse HEAD^1)" = "$EXPECTED_BASE_SHA"
+              test "$(git rev-parse HEAD^2)" = "$EXPECTED_HEAD_SHA"
+              semantics='pull-request-merge'
+            fi
+          else
+            test "$checkout_sha" = "$GITHUB_SHA"
+          fi
+          {
+            echo "Checkout semantics: $semantics"
+            echo "Checkout SHA: $checkout_sha"
+            echo "Expected base SHA: ${EXPECTED_BASE_SHA:-n/a}"
+            echo "Expected head SHA: ${EXPECTED_HEAD_SHA:-n/a}"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "KINETRA_CI_CHECKOUT_SEMANTICS=$semantics"
 
       - uses: actions/setup-node@v4
         with:
@@ -29,6 +59,9 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+      - name: Verify formatting
+        run: npm run format:changed
 
       - name: Build
         run: npm run build
@@ -66,10 +99,45 @@ jobs:
       VAPID_PUBLIC_KEY: BG_wO5SSQc4drdQ1GeaWDgqFtBppoFwygQOqK84VlMoWPE91OlW_AdxT9sCwx-7ni0DG_30lqW4igrmJzvccFEo
       VAPID_PRIVATE_KEY: AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE
       VAPID_SUBJECT: mailto:ci@kinetra.test
+      CHAT_ENABLED: 'true'
+      CHAT_PHOTO_UPLOADS_ENABLED: 'false'
+      CHAT_PHOTO_UPLOAD_IDLE_TIMEOUT_SECONDS: '15'
+      CHAT_PHOTO_UPLOAD_TOTAL_TIMEOUT_SECONDS: '120'
+      CHAT_MEDIA_URL_TTL_SECONDS: '300'
       CI: 'true'
       KINETRA_REQUIRE_POSTGRES_TEST: 'true'
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Verify checkout identity
+        shell: bash
+        env:
+          EXPECTED_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          checkout_sha="$(git rev-parse HEAD)"
+          semantics='push-head'
+          if [[ "${GITHUB_EVENT_NAME}" == 'pull_request' ]]; then
+            if [[ "$checkout_sha" == "$EXPECTED_HEAD_SHA" ]]; then
+              semantics='pull-request-head'
+            else
+              test "$(git rev-parse HEAD^1)" = "$EXPECTED_BASE_SHA"
+              test "$(git rev-parse HEAD^2)" = "$EXPECTED_HEAD_SHA"
+              semantics='pull-request-merge'
+            fi
+          else
+            test "$checkout_sha" = "$GITHUB_SHA"
+          fi
+          {
+            echo "Checkout semantics: $semantics"
+            echo "Checkout SHA: $checkout_sha"
+            echo "Expected base SHA: ${EXPECTED_BASE_SHA:-n/a}"
+            echo "Expected head SHA: ${EXPECTED_HEAD_SHA:-n/a}"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "KINETRA_CI_CHECKOUT_SEMANTICS=$semantics"
 
       - uses: actions/setup-node@v4
         with:
@@ -78,6 +146,13 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Install real chat image decoder
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends imagemagick
+          identify -version
+          convert -version
 
       - name: Run migrations
         run: npm run db:migrate
@@ -154,6 +229,16 @@ jobs:
           grep -F 'KINETRA_T13_PERMISSION_LIFECYCLE=PASS' /tmp/kinetra-test.log
           grep -F 'KINETRA_T13_SETTINGS_INTEGRATION=PASS' /tmp/kinetra-test.log
           grep -F 'KINETRA_T13_BROWSER_E2E=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T12_BACKEND_E2E=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T12_SOCKET_AUTHORIZATION=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T12_MESSAGE_DELIVERY=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T12_POSTGRES_INTEGRATION=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T12_MULTIPART_TIMEOUT=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T12_PHOTO_SECURITY=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T12_CLIENT_UI=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T12_TRAINER_ADMIN=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T12_T13_COEXISTENCE=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T12_BROWSER_E2E=PASS' /tmp/kinetra-test.log
           echo 'KINETRA_T04_TEST_SUITE=PASS'
           echo 'KINETRA_T05_TEST_SUITE=PASS'
           echo 'KINETRA_T06_TEST_SUITE=PASS'
@@ -163,6 +248,7 @@ jobs:
           echo 'KINETRA_T10_TEST_SUITE=PASS'
           echo 'KINETRA_T11_TEST_SUITE=PASS'
           echo 'KINETRA_T13_TEST_SUITE=PASS'
+          echo 'KINETRA_T12_TEST_SUITE=PASS'
 
       - name: Verify browser profile cleanup
         if: always()
@@ -182,6 +268,36 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Verify checkout identity
+        shell: bash
+        env:
+          EXPECTED_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          checkout_sha="$(git rev-parse HEAD)"
+          semantics='push-head'
+          if [[ "${GITHUB_EVENT_NAME}" == 'pull_request' ]]; then
+            if [[ "$checkout_sha" == "$EXPECTED_HEAD_SHA" ]]; then
+              semantics='pull-request-head'
+            else
+              test "$(git rev-parse HEAD^1)" = "$EXPECTED_BASE_SHA"
+              test "$(git rev-parse HEAD^2)" = "$EXPECTED_HEAD_SHA"
+              semantics='pull-request-merge'
+            fi
+          else
+            test "$checkout_sha" = "$GITHUB_SHA"
+          fi
+          {
+            echo "Checkout semantics: $semantics"
+            echo "Checkout SHA: $checkout_sha"
+            echo "Expected base SHA: ${EXPECTED_BASE_SHA:-n/a}"
+            echo "Expected head SHA: ${EXPECTED_HEAD_SHA:-n/a}"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "KINETRA_CI_CHECKOUT_SEMANTICS=$semantics"
 
       - uses: actions/setup-node@v4
         with:

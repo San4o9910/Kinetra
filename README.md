@@ -2,7 +2,8 @@
 
 Kinetra — фитнес-приложение с React/Vite frontend и Express/PostgreSQL backend.
 
-В репозитории завершены этапы T01–T11 и T13:
+Репозиторий охватывает этапы T01–T13; текущий статус проверки T12 зафиксирован в
+[`VALIDATION.md`](VALIDATION.md):
 
 - **T01:** каркас монорепо, PWA, PostgreSQL в Docker Compose, health endpoint и transport Socket.IO;
 - **T02:** регистрация и авторизация по email/паролю, опциональный телефон, refresh-сессии,
@@ -19,6 +20,8 @@ Kinetra — фитнес-приложение с React/Vite frontend и Express/
   светлая и тёмная тема приложения.
 - **T11:** оплата Kinetra Premium через ЮKassa, сохранённый способ оплаты, webhook, ежедневное
   автопродление, отмена будущих списаний и server-enforced paywall.
+- **T12:** приватный client↔trainer чат, durable history/read state, authenticated Socket.IO,
+  role-protected trainer inbox, normalized private photo attachments и media cleanup.
 - **T13:** Web Push subscriptions устройств, VAPID, безопасные Service Worker notifications и
   отдельный идемпотентный scheduler напоминаний о тренировках и еженедельной самооценке.
 
@@ -31,7 +34,7 @@ kinetra/
 │   └── backend/           @kinetra/backend — Express + TypeScript + PostgreSQL
 ├── packages/
 │   └── shared/            @kinetra/shared — общие API-типы
-├── docs/                  Контракты и сценарии T02–T11 и T13
+├── docs/                  Контракты и сценарии T02–T13
 ├── scripts/               Структурная проверка проекта
 ├── docker-compose.yml     PostgreSQL 17
 └── .env.example           Шаблон переменных без реальных секретов
@@ -156,6 +159,70 @@ canonical subscription, а backend возвращает `403 SUBSCRIPTION_REQUIR
 без активного периода. Полный API, cron, IP ranges, production checklist и ограничения по
 рекуррентным платежам/чекам: [`docs/T11_PAYMENTS.md`](docs/T11_PAYMENTS.md).
 
+## Встроенный чат с тренером
+
+T12 добавляет приватный диалог один-на-один. Активный client открывает `/chat`, а provisioned
+trainer работает в role-protected `/trainer/chats` и видит только назначенные conversations.
+Conversation создаётся при первом явном открытии клиентом и закрепляется за текущим default
+trainer. Premium subscription не ограничивает чат.
+
+Базовый JWT/no-store API:
+
+| Метод | Путь                                      | Назначение                              |
+| ----- | ----------------------------------------- | --------------------------------------- |
+| GET   | `/api/v1/chat/session`                    | Role-specific bootstrap и unread        |
+| POST  | `/api/v1/chat/conversations`              | Создать/получить client conversation    |
+| GET   | `/api/v1/chat/conversations`              | Assigned trainer inbox                  |
+| GET   | `/api/v1/chat/conversations/:id`          | Exact assigned trainer deep link        |
+| GET   | `/api/v1/chat/conversations/:id/messages` | Latest/older/reconnect delta history    |
+| POST  | `/api/v1/chat/conversations/:id/messages` | Идемпотентно отправить text/photo       |
+| PUT   | `/api/v1/chat/conversations/:id/read`     | Монотонно подтвердить read cursor       |
+| POST  | `/api/v1/chat/conversations/:id/photos`   | Подготовить normalized photo attachment |
+| GET   | `/api/v1/chat/photos/:photoId/status`     | Восстановить upload state               |
+| GET   | `/api/v1/chat/photos/:photoId/access`     | Получить private signed URL             |
+
+PostgreSQL назначает sequence и хранит read/unread state. Socket.IO namespace `/chat` получает
+access JWT только через `socket.auth.accessToken`, использует server-derived account rooms и
+рассылает события только после commit. После reconnect frontend восстанавливает потерянные
+события через REST `after_sequence`.
+
+Фото принимаются только как один статический JPEG/PNG/WebP до 10 MiB, 20 MP и 8 192 px по стороне.
+Реальный ImageMagick runtime (`identify` + `convert`) работает через bounded subprocess queue,
+выполняет auto-orient, resize до 2 048 px, удаляет metadata и сохраняет private WebP до 4 MiB.
+Production host/container должен содержать hardened ImageMagick с JPEG/PNG/WebP coders. Private
+S3 хранит только server-generated keys; signed URL живёт 60–900 секунд, по умолчанию 300.
+
+Feature flags по умолчанию выключены:
+
+```dotenv
+CHAT_ENABLED=false
+CHAT_PHOTO_UPLOADS_ENABLED=false
+CHAT_MEDIA_URL_TTL_SECONDS=300
+```
+
+Trainer profiles управляются только operator CLI:
+
+```bash
+npm run chat:trainer:grant -w @kinetra/backend -- \
+  --user-id <UUID> --display-name "Тренер Kinetra" --default
+npm run chat:trainer:reassign -w @kinetra/backend -- \
+  --from-user-id <UUID> --to-user-id <UUID> --all
+npm run chat:trainer:revoke -w @kinetra/backend -- --user-id <UUID>
+```
+
+Cleanup private objects запускается внешним scheduler не реже раза в 15 минут:
+
+```bash
+npm run chat:media-cleanup -w @kinetra/backend
+```
+
+Без Redis Socket.IO adapter realtime backend допускает только одну replica. До production нужны
+private encrypted bucket, cleanup/backlog alerts, centralized limits при scale, trainer MFA либо
+authenticated gateway и отдельное разрешение владельца. T12 не является E2EE и не добавляет chat
+push; T13 Service Worker deep-link allowlist остаётся прежним. Полный API, media pipeline,
+operator lifecycle, rate limits и rollout checklist:
+[`docs/T12_TRAINER_CHAT.md`](docs/T12_TRAINER_CHAT.md).
+
 ## Web Push уведомления
 
 T13 добавляет три JWT-защищённых no-store endpoint:
@@ -256,10 +323,26 @@ Email обрезается по краям, домен приводится к A
 - refresh token — случайная непрозрачная строка высокой энтропии;
 - в PostgreSQL сохраняется только SHA-256 хэш refresh token;
 - каждый refresh отзывает предыдущий token и выдаёт новый;
-- повторное использование уже отозванного refresh token отзывает все активные refresh-сессии
-  пользователя;
+- повторное использование refresh token, отозванного именно rotation и имеющего replacement,
+  отзывает все активные refresh-сессии пользователя; намеренно logout-revoked token без replacement
+  лишь отклоняется и не затрагивает другие login families;
 - logout отзывает текущую refresh-сессию;
 - user ID не принимается из body как источник личности.
+
+Cookie-mutating login/refresh/logout операции frontend сериализуются origin-wide через Web Locks.
+Если browser не предоставляет `navigator.locks`, mutations fail-closed; незавершённый logout не
+делает сетевой refresh, сохраняет signed-in state и не рискует перезаписать cookie другого аккаунта.
+Bound logout использует captured access token, а backend никогда не отправляет `Set-Cookie` в ответе.
+Только точный `204` после server-confirmed revocation считается success; несовпавшая cookie/family
+даёт `409 LOGOUT_NOT_CONFIRMED` и честный retry UI. Refresh cookie отзывается только
+если её session ID совпадает с signed `sid` proof либо является его потомком в той же rotation chain
+и принадлежит signed `sub`; другая login family того же пользователя и другой аккаунт не
+затрагиваются. Refresh/logout сериализуются на server по user row до refresh rows: refresh-first
+replacement и все его дальнейшие descendants отзываются ожидающим family logout, а logout-first не
+позволяет ожидающему refresh создать replacement. Отдельного age limit у expired logout proof нет,
+потому что sliding refresh chain может быть старше исходного cookie lifetime; signature, canonical
+claims, точный access TTL и запрет future-issued token остаются обязательными. Bearerless legacy
+logout — безопасный server-side no-op. Это исключение не действует для обычных API и Socket.IO.
 
 Access token рекомендуется держать только в памяти frontend. В `localStorage` его сохранять не
 нужно: восстановление сессии выполняется через `HttpOnly` refresh cookie. После logout или смены
@@ -328,6 +411,8 @@ email не блокируется этой проверкой.
   удаления auth tokens.
 - `009_payments.sql` — provider payment metadata, идемпотентные webhook events и renewal attempts.
 - `010_push_notifications.sql` — device subscriptions и per-occurrence delivery claims Web Push.
+- `011_trainer_chat.sql` — trainer profiles, conversations, immutable messages, photo lifecycle и
+  durable media deletion jobs.
 
 `schema_migrations` создаётся самим runner.
 
@@ -340,23 +425,26 @@ SQL-файл.
 npm run verify:structure
 npm run typecheck
 npm run lint
+npm run format:changed
 npm run test
 npm run build
 sha256sum -c MANIFEST.sha256
 ```
 
-Все проверки одной командой:
+Проверки структуры, типов, форматирования изменённых файлов, lint, тестов и build одной командой
+(manifest CI проверяет отдельным шагом):
 
 ```bash
 npm run check
 ```
 
 E2E-набор покрывает auth, профиль/анкету, онбординг-карусель, базовые уроки, главный экран,
-расписание, прогресс, T10 settings, T11 payments и T13 Web Push: JWT/no-store, строгие payload,
-PostgreSQL migration/backfill, debounced уведомления, три режима темы, webhook authenticity и
-идемпотентность, polling, paywall, permission/subscription lifecycle, Service Worker push/click,
-scheduler occurrence claims, logout и двухэтапное удаление аккаунта. CI сравнивает
-`MANIFEST.sha256` со всеми tracked-файлами и запрещает bootstrap/payload artifacts.
+расписание, прогресс, T10 settings, T11 payments, T12 trainer chat и T13 Web Push: JWT/no-store,
+строгие payload, PostgreSQL migration/backfill/concurrency, authenticated Socket.IO, idempotent
+message delivery, real image decoder, private media lifecycle, debounced уведомления, три режима
+темы, webhook authenticity и идемпотентность, polling, paywall, permission/subscription lifecycle,
+Service Worker push/click, scheduler occurrence claims, logout и двухэтапное удаление аккаунта. CI
+сравнивает `MANIFEST.sha256` со всеми tracked-файлами и запрещает bootstrap/payload artifacts.
 
 ## Границы текущего этапа
 
@@ -366,5 +454,7 @@ scheduler occurrence claims, logout и двухэтапное удаление �
 или налоговую проверку. Для T13 нужны production VAPID keys в secret manager, HTTPS, минутный
 external scheduler, централизованный rate limiting, независимая outbound egress/firewall защита
 сверх встроенной connection-time DNS/IP проверки, экспортируемые delivery metrics/alerts и план
-ротации public key. Каталог тренеров и доменная логика чата остаются следующими этапами.
-Telegram-интеграции нет: продукт остаётся самостоятельной PWA.
+ротации public key. Для T12 до включения нужны provisioned trainer с MFA либо authenticated
+gateway, hardened ImageMagick runtime, private encrypted S3, пятнадцатиминутный cleanup scheduler,
+WSS/Redis topology по числу replicas, redacted observability и доказанный physical-delete SLO.
+Chat push и E2EE не реализованы. Telegram-интеграции нет: продукт остаётся самостоятельной PWA.

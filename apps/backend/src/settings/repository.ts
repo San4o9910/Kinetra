@@ -35,5 +35,5 @@ export interface SettingsRepository {
     userId: string,
     preferences: NotificationPreferences,
   ): Promise<boolean>;
-  deleteAccount(userId: string): Promise<boolean>;
+  deleteAccount(userId: string): Promise<'deleted' | 'not_found' | 'trainer_managed'>;
 }

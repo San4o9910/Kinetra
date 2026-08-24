@@ -2,6 +2,16 @@ import type {
   ApiErrorResponse,
   AuthSessionResponse,
   BaseLessonsResponse,
+  ChatConversationListResponse,
+  ChatConversationResponse,
+  ChatConversationSummaryResponse,
+  ChatMessagePageResponse,
+  ChatPhotoAccessResponse,
+  ChatPhotoResponse,
+  ChatReadResponse,
+  ChatSendMessageRequest,
+  ChatSendMessageResponse,
+  ChatSessionResponse,
   CompleteWorkoutRequest,
   CreatePaymentRequest,
   CreatePaymentResponse,
@@ -26,6 +36,8 @@ import type {
   WeekResponse,
 } from '@kinetra/shared';
 
+import type { ChatRuntimeApi } from '../features/chat/types';
+
 const configuredApiUrl =
   typeof import.meta.env === 'object' ? import.meta.env.VITE_API_URL : undefined;
 const defaultApiUrl =
@@ -33,7 +45,18 @@ const defaultApiUrl =
     ? 'http://localhost:3000'
     : `${window.location.protocol}//${window.location.hostname}:3000`;
 
-export const apiBaseUrl = (configuredApiUrl ?? defaultApiUrl).replace(/\/$/u, '');
+export const resolveApiBaseUrl = (
+  configuredUrl: string | undefined,
+  fallbackUrl: string,
+): string => {
+  const normalized = configuredUrl?.trim();
+  return (normalized === undefined || normalized.length === 0 ? fallbackUrl : normalized).replace(
+    /\/$/u,
+    '',
+  );
+};
+
+export const apiBaseUrl = resolveApiBaseUrl(configuredApiUrl, defaultApiUrl);
 
 export type ApiErrorKind = 'auth' | 'validation' | 'network' | 'server' | 'request';
 
@@ -49,6 +72,22 @@ export class ApiRequestError extends Error {
   }
 }
 
+const networkRequestError = (): ApiRequestError =>
+  new ApiRequestError(
+    'Не удалось связаться с сервером. Проверьте интернет и попробуйте ещё раз.',
+    0,
+    'NETWORK_ERROR',
+    'network',
+  );
+
+const invalidJsonResponseError = (status: number): ApiRequestError =>
+  new ApiRequestError(
+    'Сервер вернул некорректный ответ. Попробуйте ещё раз.',
+    status,
+    'INVALID_RESPONSE',
+    'server',
+  );
+
 interface ApiClientOptions {
   readonly baseUrl: string;
   readonly fetchImpl?: typeof fetch;
@@ -59,10 +98,48 @@ export interface PushSubscriptionDeleteOptions {
   readonly allowRefresh?: boolean;
 }
 
+export interface ChatMessagePageOptions {
+  readonly before_sequence?: number;
+  readonly after_sequence?: number;
+  readonly limit?: number;
+  readonly signal?: AbortSignal;
+}
+
+export interface ChatInboxOptions {
+  readonly cursor?: string;
+  readonly limit?: number;
+  readonly filter: 'all' | 'unread';
+  readonly query?: string;
+  readonly signal?: AbortSignal;
+}
+
+export interface ChatPhotoUploadOptions {
+  readonly file: File;
+  readonly idempotencyKey: string;
+  readonly onProgress?: (percent: number) => void;
+  readonly signal?: AbortSignal;
+}
+
 export type PreparedPushSubscriptionDeletion = (
   data: PushUnsubscribeRequest,
   signal?: AbortSignal,
 ) => Promise<void>;
+
+export interface PreparedLogoutCompletion {
+  readonly subjectId: string;
+  readonly authEpoch: number;
+  readonly attemptNonce: string;
+  readonly completionEpoch: number;
+}
+
+export interface PreparedLogoutAttempt {
+  readonly subjectId: string;
+  readonly authEpoch: number;
+  readonly attemptNonce: string;
+  readonly execute: () => Promise<PreparedLogoutCompletion>;
+  readonly isCurrent: () => boolean;
+  readonly isCompletionCurrent: (completion: PreparedLogoutCompletion) => boolean;
+}
 
 const errorKindForStatus = (status: number): ApiErrorKind => {
   if (status === 401) {
@@ -93,7 +170,16 @@ if (typeof window !== 'undefined') {
 
 export class ApiClient {
   private accessToken: string | null = null;
-  private refreshInFlight: Promise<string | null> | null = null;
+  private logoutAccessToken: string | null = null;
+  private authSubjectId: string | null = null;
+  private authEpoch = 0;
+  private logoutAttemptSequence = 0;
+  private terminalSubjectMismatch = false;
+  private authMutationQueue: Promise<void> = Promise.resolve();
+  private refreshInFlight: {
+    readonly epoch: number;
+    readonly promise: Promise<string | null>;
+  } | null = null;
   private readonly baseUrl: string;
   private readonly fetchImpl: typeof fetch;
 
@@ -106,23 +192,58 @@ export class ApiClient {
     return this.accessToken !== null;
   }
 
-  public clearSession(): void {
+  public getInMemoryAccessToken(): string | null {
+    return this.accessToken;
+  }
+
+  public getInMemoryAuthSubjectId(): string | null {
+    return this.authSubjectId;
+  }
+
+  public async ensureAccessToken(): Promise<string> {
+    const token = this.accessToken ?? (await this.refreshAccessToken());
+
+    if (token === null) {
+      throw new ApiRequestError('Сессия завершена. Войдите в аккаунт.', 401, 'NO_SESSION', 'auth');
+    }
+
+    return token;
+  }
+
+  public async refreshInMemoryAccessToken(): Promise<string> {
     this.accessToken = null;
+    return this.ensureAccessToken();
+  }
+
+  public clearSession(): void {
+    this.invalidateInMemorySession();
   }
 
   public async login(identifier: string, password: string): Promise<AuthSessionResponse> {
-    const response = await this.safeFetch('/api/v1/auth/login', {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ identifier: identifier.trim(), password }),
+    this.terminalSubjectMismatch = false;
+    const epoch = this.invalidateInMemorySession();
+
+    return this.enqueueAuthMutation(async () => {
+      const response = await this.safeFetch('/api/v1/auth/login', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ identifier: identifier.trim(), password }),
+      });
+      const session = await this.readJsonOrThrow<AuthSessionResponse>(response);
+
+      if (this.authEpoch !== epoch) {
+        throw this.authSessionChangedError();
+      }
+
+      this.authSubjectId = session.user.id;
+      this.accessToken = session.accessToken;
+      this.logoutAccessToken = session.accessToken;
+      return session;
     });
-    const session = await this.readJsonOrThrow<AuthSessionResponse>(response);
-    this.accessToken = session.accessToken;
-    return session;
   }
 
   public async bootstrapSession(): Promise<boolean> {
@@ -133,24 +254,91 @@ export class ApiClient {
     return (await this.refreshAccessToken()) !== null;
   }
 
-  public async logout(): Promise<void> {
-    try {
-      const response = await this.safeFetch('/api/v1/auth/logout', {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-        },
-        body: '{}',
-      });
+  public prepareLogout(): PreparedLogoutAttempt {
+    const subjectId = this.authSubjectId;
+    const accessToken = this.logoutAccessToken;
+    const authEpoch = this.authEpoch;
 
-      if (!response.ok && response.status !== 401) {
-        await this.throwResponseError(response);
-      }
-    } finally {
-      this.clearSession();
+    if (subjectId === null || accessToken === null) {
+      throw new ApiRequestError('Сессия завершена. Войдите в аккаунт.', 401, 'NO_SESSION', 'auth');
     }
+
+    this.logoutAttemptSequence += 1;
+    const attemptNonce = `${authEpoch}:${this.logoutAttemptSequence}`;
+    const isCurrent = (): boolean =>
+      this.authEpoch === authEpoch && this.authSubjectId === subjectId;
+
+    const execute = async (): Promise<PreparedLogoutCompletion> => {
+      if (!isCurrent()) {
+        throw this.authSessionChangedError();
+      }
+
+      return this.enqueueAuthMutation(async () => {
+        if (!isCurrent()) {
+          throw this.authSessionChangedError();
+        }
+
+        // Never rotate the shared refresh cookie as part of logout. Without
+        // cross-tab Web Locks, a late account-A refresh response could overwrite
+        // a newer account-B login cookie. The server atomically revokes only when
+        // this captured bearer subject still owns the request cookie.
+        const response = await this.safeFetch('/api/v1/auth/logout', {
+          method: 'POST',
+          credentials: 'include',
+          redirect: 'error',
+          headers: {
+            Accept: 'application/json',
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: '{}',
+        });
+
+        if (!response.ok) {
+          await this.throwResponseError(response);
+        }
+
+        if (response.status !== 204) {
+          throw new ApiRequestError(
+            'Сервер не подтвердил отзыв сессии.',
+            response.status,
+            'LOGOUT_NOT_CONFIRMED',
+            errorKindForStatus(response.status),
+          );
+        }
+
+        if (!isCurrent()) {
+          throw this.authSessionChangedError();
+        }
+
+        const completionEpoch = this.invalidateInMemorySession();
+        return { subjectId, authEpoch, attemptNonce, completionEpoch };
+      });
+    };
+
+    return {
+      subjectId,
+      authEpoch,
+      attemptNonce,
+      execute,
+      isCurrent,
+      isCompletionCurrent: (completion) =>
+        completion.subjectId === subjectId &&
+        completion.authEpoch === authEpoch &&
+        completion.attemptNonce === attemptNonce &&
+        this.authEpoch === completion.completionEpoch &&
+        this.authSubjectId === null &&
+        this.accessToken === null &&
+        this.logoutAccessToken === null,
+    };
+  }
+
+  public async logout(): Promise<void> {
+    if (this.authSubjectId === null || this.logoutAccessToken === null) {
+      return;
+    }
+
+    await this.prepareLogout().execute();
   }
 
   public async fetchMe(signal?: AbortSignal): Promise<MeResponse> {
@@ -263,6 +451,140 @@ export class ApiClient {
       method: 'GET',
       ...(signal === undefined ? {} : { signal }),
     });
+  }
+
+  public async getChatSession(signal?: AbortSignal): Promise<ChatSessionResponse> {
+    return this.authenticatedJsonRequest<ChatSessionResponse>('/api/v1/chat/session', {
+      method: 'GET',
+      ...(signal === undefined ? {} : { signal }),
+    });
+  }
+
+  public async createChatConversation(signal?: AbortSignal): Promise<ChatConversationResponse> {
+    return this.authenticatedJsonRequest<ChatConversationResponse>('/api/v1/chat/conversations', {
+      method: 'POST',
+      body: '{}',
+      ...(signal === undefined ? {} : { signal }),
+    });
+  }
+
+  public async getChatInbox(options: ChatInboxOptions): Promise<ChatConversationListResponse> {
+    const query = new URLSearchParams({ filter: options.filter });
+
+    if (options.cursor !== undefined) query.set('cursor', options.cursor);
+    if (options.limit !== undefined) query.set('limit', String(options.limit));
+    if (options.query !== undefined && options.query.length > 0) query.set('query', options.query);
+
+    return this.authenticatedJsonRequest<ChatConversationListResponse>(
+      `/api/v1/chat/conversations?${query.toString()}`,
+      {
+        method: 'GET',
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
+      },
+    );
+  }
+
+  public async getChatConversationSummary(
+    conversationId: string,
+    signal?: AbortSignal,
+  ): Promise<ChatConversationSummaryResponse> {
+    return this.authenticatedJsonRequest<ChatConversationSummaryResponse>(
+      `/api/v1/chat/conversations/${encodeURIComponent(conversationId)}`,
+      {
+        method: 'GET',
+        ...(signal === undefined ? {} : { signal }),
+      },
+    );
+  }
+
+  public async getChatMessages(
+    conversationId: string,
+    options: ChatMessagePageOptions = {},
+  ): Promise<ChatMessagePageResponse> {
+    const query = new URLSearchParams();
+
+    if (options.before_sequence !== undefined) {
+      query.set('before_sequence', String(options.before_sequence));
+    }
+    if (options.after_sequence !== undefined) {
+      query.set('after_sequence', String(options.after_sequence));
+    }
+    if (options.limit !== undefined) query.set('limit', String(options.limit));
+    const suffix = query.size === 0 ? '' : `?${query.toString()}`;
+
+    return this.authenticatedJsonRequest<ChatMessagePageResponse>(
+      `/api/v1/chat/conversations/${encodeURIComponent(conversationId)}/messages${suffix}`,
+      {
+        method: 'GET',
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
+      },
+    );
+  }
+
+  public async sendChatMessage(
+    conversationId: string,
+    request: ChatSendMessageRequest,
+    signal?: AbortSignal,
+  ): Promise<ChatSendMessageResponse> {
+    return this.authenticatedJsonRequest<ChatSendMessageResponse>(
+      `/api/v1/chat/conversations/${encodeURIComponent(conversationId)}/messages`,
+      {
+        method: 'POST',
+        body: JSON.stringify(request),
+        ...(signal === undefined ? {} : { signal }),
+      },
+    );
+  }
+
+  public async markChatRead(
+    conversationId: string,
+    throughSequence: number,
+    signal?: AbortSignal,
+  ): Promise<ChatReadResponse> {
+    return this.authenticatedJsonRequest<ChatReadResponse>(
+      `/api/v1/chat/conversations/${encodeURIComponent(conversationId)}/read`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ through_sequence: throughSequence }),
+        ...(signal === undefined ? {} : { signal }),
+      },
+    );
+  }
+
+  public async uploadChatPhoto(
+    conversationId: string,
+    options: ChatPhotoUploadOptions,
+  ): Promise<ChatPhotoResponse> {
+    const form = new FormData();
+    form.append('photo', options.file);
+
+    return this.authenticatedMultipartRequest<ChatPhotoResponse>(
+      `/api/v1/chat/conversations/${encodeURIComponent(conversationId)}/photos`,
+      form,
+      options.idempotencyKey,
+      options.onProgress,
+      options.signal,
+    );
+  }
+
+  public async getChatPhotoStatus(
+    photoId: string,
+    signal?: AbortSignal,
+  ): Promise<ChatPhotoResponse> {
+    return this.authenticatedJsonRequest<ChatPhotoResponse>(
+      `/api/v1/chat/photos/${encodeURIComponent(photoId)}/status`,
+      { method: 'GET', ...(signal === undefined ? {} : { signal }) },
+    );
+  }
+
+  public async getChatPhotoAccess(
+    photoId: string,
+    signal?: AbortSignal,
+  ): Promise<ChatPhotoAccessResponse> {
+    return this.authenticatedJsonRequest<ChatPhotoAccessResponse>(
+      `/api/v1/chat/photos/${encodeURIComponent(photoId)}/access`,
+      { method: 'GET', ...(signal === undefined ? {} : { signal }) },
+    );
   }
 
   public async updateNotifications(data: NotificationPreferences): Promise<void> {
@@ -387,8 +709,28 @@ export class ApiClient {
     init: RequestInit,
     allowRefresh = true,
   ): Promise<T> {
-    const response = await this.authenticatedRequest(path, init, allowRefresh);
-    return this.readJsonOrThrow<T>(response);
+    const epoch = this.authEpoch;
+
+    try {
+      const response = await this.authenticatedRequest(path, init, allowRefresh);
+      const body = await this.readJsonOrThrow<T>(response);
+
+      if (this.authEpoch !== epoch) {
+        throw this.authSessionChangedError();
+      }
+
+      return body;
+    } catch (error) {
+      if (this.isTerminalSubjectMismatchError(error)) {
+        throw error;
+      }
+
+      if (this.authEpoch !== epoch) {
+        throw this.authSessionChangedError();
+      }
+
+      throw error;
+    }
   }
 
   private async authenticatedVoidRequest(
@@ -396,7 +738,25 @@ export class ApiClient {
     init: RequestInit,
     allowRefresh = true,
   ): Promise<void> {
-    await this.authenticatedRequest(path, init, allowRefresh);
+    const epoch = this.authEpoch;
+
+    try {
+      await this.authenticatedRequest(path, init, allowRefresh);
+    } catch (error) {
+      if (this.isTerminalSubjectMismatchError(error)) {
+        throw error;
+      }
+
+      if (this.authEpoch !== epoch) {
+        throw this.authSessionChangedError();
+      }
+
+      throw error;
+    }
+
+    if (this.authEpoch !== epoch) {
+      throw this.authSessionChangedError();
+    }
   }
 
   private async authenticatedRequest(
@@ -404,7 +764,12 @@ export class ApiClient {
     init: RequestInit,
     allowRefresh = true,
   ): Promise<Response> {
+    const epoch = this.authEpoch;
     const token = this.accessToken ?? (await this.refreshAccessToken());
+
+    if (this.authEpoch !== epoch) {
+      throw this.authSessionChangedError();
+    }
 
     if (token === null) {
       throw new ApiRequestError('Сессия завершена. Войдите в аккаунт.', 401, 'NO_SESSION', 'auth');
@@ -412,9 +777,20 @@ export class ApiClient {
 
     const response = await this.requestWithAccessToken(path, init, token);
 
+    if (this.authEpoch !== epoch) {
+      throw this.authSessionChangedError();
+    }
+
     if (response.status === 401 && allowRefresh) {
-      this.accessToken = null;
-      const refreshedToken = await this.refreshAccessToken();
+      if (this.accessToken === token) {
+        this.accessToken = null;
+      }
+      const refreshedToken =
+        this.accessToken !== null ? this.accessToken : await this.refreshAccessToken();
+
+      if (this.authEpoch !== epoch) {
+        throw this.authSessionChangedError();
+      }
 
       if (refreshedToken === null) {
         throw new ApiRequestError(
@@ -433,6 +809,141 @@ export class ApiClient {
     }
 
     return response;
+  }
+
+  private async authenticatedMultipartRequest<T>(
+    path: string,
+    form: FormData,
+    idempotencyKey: string,
+    onProgress?: (percent: number) => void,
+    signal?: AbortSignal,
+    allowRefresh = true,
+  ): Promise<T> {
+    const epoch = this.authEpoch;
+    const token = this.accessToken ?? (await this.refreshAccessToken());
+
+    if (this.authEpoch !== epoch) {
+      throw this.authSessionChangedError();
+    }
+
+    if (token === null) {
+      throw new ApiRequestError('Сессия завершена. Войдите в аккаунт.', 401, 'NO_SESSION', 'auth');
+    }
+
+    const response = await this.sendMultipartWithXhr(
+      path,
+      form,
+      token,
+      idempotencyKey,
+      onProgress,
+      signal,
+    );
+
+    if (this.authEpoch !== epoch) {
+      throw this.authSessionChangedError();
+    }
+
+    if (response.status === 401 && allowRefresh) {
+      if (this.accessToken === token) {
+        this.accessToken = null;
+      }
+      const refreshedToken =
+        this.accessToken !== null ? this.accessToken : await this.refreshAccessToken();
+      if (this.authEpoch !== epoch) {
+        throw this.authSessionChangedError();
+      }
+      if (refreshedToken === null) {
+        throw new ApiRequestError(
+          'Сессия завершена. Войдите в аккаунт.',
+          401,
+          'NO_SESSION',
+          'auth',
+        );
+      }
+      return this.authenticatedMultipartRequest(
+        path,
+        form,
+        idempotencyKey,
+        onProgress,
+        signal,
+        false,
+      );
+    }
+
+    if (response.status < 200 || response.status >= 300) {
+      throw this.errorFromPayload(response.status, response.body);
+    }
+
+    return response.body as T;
+  }
+
+  private async sendMultipartWithXhr(
+    path: string,
+    form: FormData,
+    accessToken: string,
+    idempotencyKey: string,
+    onProgress?: (percent: number) => void,
+    signal?: AbortSignal,
+  ): Promise<{ readonly status: number; readonly body: unknown }> {
+    return new Promise((resolve, reject) => {
+      const request = new XMLHttpRequest();
+      const abort = (): void => request.abort();
+      request.open('POST', `${this.baseUrl}${path}`);
+      request.setRequestHeader('Accept', 'application/json');
+      request.setRequestHeader('Authorization', `Bearer ${accessToken}`);
+      request.setRequestHeader('Idempotency-Key', idempotencyKey);
+      request.withCredentials = true;
+      request.upload.addEventListener('progress', (event) => {
+        if (event.lengthComputable && event.total > 0) {
+          onProgress?.(Math.min(100, Math.round((event.loaded / event.total) * 100)));
+        }
+      });
+      request.addEventListener('load', () => {
+        signal?.removeEventListener('abort', abort);
+        let body: unknown = null;
+
+        try {
+          body = request.responseText.length === 0 ? null : JSON.parse(request.responseText);
+        } catch {
+          body = null;
+        }
+
+        resolve({ status: request.status, body });
+      });
+      request.addEventListener('error', () => {
+        signal?.removeEventListener('abort', abort);
+        reject(
+          new ApiRequestError(
+            'Не удалось загрузить фото. Проверьте интернет и попробуйте ещё раз.',
+            0,
+            'NETWORK_ERROR',
+            'network',
+          ),
+        );
+      });
+      request.addEventListener('abort', () => {
+        signal?.removeEventListener('abort', abort);
+        reject(new DOMException('The request was aborted.', 'AbortError'));
+      });
+      signal?.addEventListener('abort', abort, { once: true });
+
+      if (signal?.aborted === true) {
+        abort();
+        return;
+      }
+
+      request.send(form);
+    });
+  }
+
+  private errorFromPayload(status: number, body: unknown): ApiRequestError {
+    const candidate = body as Partial<ApiErrorResponse> | null;
+    return new ApiRequestError(
+      candidate?.error?.message ?? `Запрос завершился с ошибкой ${status}.`,
+      status,
+      candidate?.error?.code ?? 'REQUEST_FAILED',
+      errorKindForStatus(status),
+    );
   }
 
   private async requestWithAccessToken(
@@ -456,44 +967,132 @@ export class ApiClient {
   }
 
   private async refreshAccessToken(): Promise<string | null> {
-    if (this.refreshInFlight !== null) {
-      return this.refreshInFlight;
+    if (this.terminalSubjectMismatch) {
+      throw this.terminalSubjectMismatchError();
+    }
+
+    const epoch = this.authEpoch;
+    if (this.refreshInFlight?.epoch === epoch) {
+      return this.refreshInFlight.promise;
     }
 
     const refresh = async (): Promise<string | null> => {
-      const response = await this.safeFetch('/api/v1/auth/refresh', {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-        },
-        body: '{}',
-      });
-
-      if (response.status === 401) {
-        this.accessToken = null;
+      const session = await this.requestRefreshSession();
+      if (session === null) {
+        if (this.authEpoch === epoch) {
+          this.accessToken = null;
+        }
         return null;
       }
 
-      const session = await this.readJsonOrThrow<AuthSessionResponse>(response);
+      if (this.authEpoch !== epoch) {
+        return null;
+      }
+
+      if (this.authSubjectId !== null && this.authSubjectId !== session.user.id) {
+        this.terminalSubjectMismatch = true;
+        this.invalidateInMemorySession();
+        throw this.terminalSubjectMismatchError();
+      }
+
+      this.authSubjectId = session.user.id;
       this.accessToken = session.accessToken;
+      this.logoutAccessToken = session.accessToken;
       return session.accessToken;
     };
 
-    const runWithCrossTabLock = async (): Promise<string | null> => {
-      if (typeof navigator !== 'undefined' && navigator.locks !== undefined) {
-        return navigator.locks.request('kinetra-refresh-session', { mode: 'exclusive' }, refresh);
+    const pendingRefresh = this.enqueueAuthMutation(refresh);
+    const refreshEntry = { epoch, promise: pendingRefresh };
+    this.refreshInFlight = refreshEntry;
+    const clearRefreshEntry = (): void => {
+      if (this.refreshInFlight === refreshEntry) {
+        this.refreshInFlight = null;
       }
-
-      return refresh();
     };
-
-    const pendingRefresh = runWithCrossTabLock().finally(() => {
-      this.refreshInFlight = null;
-    });
-    this.refreshInFlight = pendingRefresh;
+    void pendingRefresh.then(clearRefreshEntry, clearRefreshEntry);
     return pendingRefresh;
+  }
+
+  private async requestRefreshSession(): Promise<AuthSessionResponse | null> {
+    const response = await this.safeFetch('/api/v1/auth/refresh', {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: '{}',
+    });
+
+    if (response.status === 401) {
+      return null;
+    }
+
+    return this.readJsonOrThrow<AuthSessionResponse>(response);
+  }
+
+  private invalidateInMemorySession(): number {
+    this.authEpoch += 1;
+    this.accessToken = null;
+    this.logoutAccessToken = null;
+    this.authSubjectId = null;
+    return this.authEpoch;
+  }
+
+  private authSessionChangedError(): ApiRequestError {
+    return new ApiRequestError(
+      'Сессия аккаунта изменилась. Повторите действие.',
+      0,
+      'AUTH_SESSION_CHANGED',
+      'request',
+    );
+  }
+
+  private terminalSubjectMismatchError(): ApiRequestError {
+    return new ApiRequestError(
+      'Сессия открыта для другого аккаунта. Войдите снова.',
+      401,
+      'AUTH_SESSION_CHANGED',
+      'auth',
+    );
+  }
+
+  private isTerminalSubjectMismatchError(error: unknown): error is ApiRequestError {
+    return (
+      error instanceof ApiRequestError &&
+      error.code === 'AUTH_SESSION_CHANGED' &&
+      error.kind === 'auth'
+    );
+  }
+
+  private enqueueAuthMutation<T>(operation: () => Promise<T>): Promise<T> {
+    const run = this.authMutationQueue
+      .catch(() => undefined)
+      .then(async () => {
+        if (typeof window !== 'undefined') {
+          if (typeof navigator === 'undefined' || navigator.locks === undefined) {
+            throw new ApiRequestError(
+              'Браузер не поддерживает безопасную синхронизацию сессии. Обновите браузер.',
+              0,
+              'AUTH_COORDINATION_UNAVAILABLE',
+              'auth',
+            );
+          }
+
+          return navigator.locks.request(
+            'kinetra-auth-session-mutation',
+            { mode: 'exclusive' },
+            operation,
+          );
+        }
+
+        return operation();
+      });
+    this.authMutationQueue = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
   }
 
   private async safeFetch(path: string, init: RequestInit): Promise<Response> {
@@ -504,12 +1103,7 @@ export class ApiClient {
         throw error;
       }
 
-      throw new ApiRequestError(
-        'Не удалось связаться с сервером. Проверьте интернет и попробуйте ещё раз.',
-        0,
-        'NETWORK_ERROR',
-        'network',
-      );
+      throw networkRequestError();
     }
   }
 
@@ -518,7 +1112,22 @@ export class ApiClient {
       await this.throwResponseError(response);
     }
 
-    return (await response.json()) as T;
+    try {
+      return (await response.json()) as T;
+    } catch (error) {
+      if (isAbortError(error)) {
+        throw error;
+      }
+
+      if (
+        error instanceof TypeError ||
+        (error instanceof DOMException && error.name === 'NetworkError')
+      ) {
+        throw networkRequestError();
+      }
+
+      throw invalidJsonResponseError(response.status);
+    }
   }
 
   private async throwResponseError(response: Response): Promise<never> {
@@ -544,6 +1153,7 @@ const apiClient = new ApiClient({ baseUrl: apiBaseUrl });
 export const login = (identifier: string, password: string): Promise<AuthSessionResponse> =>
   apiClient.login(identifier, password);
 export const bootstrapSession = (): Promise<boolean> => apiClient.bootstrapSession();
+export const prepareLogout = (): PreparedLogoutAttempt => apiClient.prepareLogout();
 export const logout = (): Promise<void> => apiClient.logout();
 export const fetchMe = (signal?: AbortSignal): Promise<MeResponse> => apiClient.fetchMe(signal);
 export const saveSurvey = (survey: SurveySubmission): Promise<MeResponse> =>
@@ -573,6 +1183,48 @@ export const cancelSubscription = (): Promise<SubscriptionResponse> =>
   apiClient.cancelSubscription();
 export const getSettingsProfile = (signal?: AbortSignal): Promise<SettingsProfileResponse> =>
   apiClient.getSettingsProfile(signal);
+export const getChatSession = (signal?: AbortSignal): Promise<ChatSessionResponse> =>
+  apiClient.getChatSession(signal);
+export const createChatConversation = (signal?: AbortSignal): Promise<ChatConversationResponse> =>
+  apiClient.createChatConversation(signal);
+export const getChatInbox = (options: ChatInboxOptions): Promise<ChatConversationListResponse> =>
+  apiClient.getChatInbox(options);
+export const getChatConversationSummary = (
+  conversationId: string,
+  signal?: AbortSignal,
+): Promise<ChatConversationSummaryResponse> =>
+  apiClient.getChatConversationSummary(conversationId, signal);
+export const getChatMessages = (
+  conversationId: string,
+  options?: ChatMessagePageOptions,
+): Promise<ChatMessagePageResponse> => apiClient.getChatMessages(conversationId, options);
+export const sendChatMessage = (
+  conversationId: string,
+  request: ChatSendMessageRequest,
+  signal?: AbortSignal,
+): Promise<ChatSendMessageResponse> => apiClient.sendChatMessage(conversationId, request, signal);
+export const markChatRead = (
+  conversationId: string,
+  throughSequence: number,
+  signal?: AbortSignal,
+): Promise<ChatReadResponse> => apiClient.markChatRead(conversationId, throughSequence, signal);
+export const uploadChatPhoto = (
+  conversationId: string,
+  options: ChatPhotoUploadOptions,
+): Promise<ChatPhotoResponse> => apiClient.uploadChatPhoto(conversationId, options);
+export const getChatPhotoStatus = (
+  photoId: string,
+  signal?: AbortSignal,
+): Promise<ChatPhotoResponse> => apiClient.getChatPhotoStatus(photoId, signal);
+export const getChatPhotoAccess = (
+  photoId: string,
+  signal?: AbortSignal,
+): Promise<ChatPhotoAccessResponse> => apiClient.getChatPhotoAccess(photoId, signal);
+export const getInMemoryAccessToken = (): string | null => apiClient.getInMemoryAccessToken();
+export const ensureAccessToken = (): Promise<string> => apiClient.ensureAccessToken();
+export const refreshInMemoryAccessToken = (): Promise<string> =>
+  apiClient.refreshInMemoryAccessToken();
+export const invalidateInMemorySession = (): void => apiClient.clearSession();
 export const updateNotifications = (data: NotificationPreferences): Promise<void> =>
   apiClient.updateNotifications(data);
 export const getPushPublicKey = (): Promise<PushPublicKeyResponse> => apiClient.getPushPublicKey();
@@ -593,3 +1245,41 @@ export const completeWorkout = (data: CompleteWorkoutRequest): Promise<WeekRespo
   apiClient.completeWorkout(data);
 export const fetchHealth = (signal: AbortSignal): Promise<HealthResponse> =>
   apiClient.fetchHealth(signal);
+
+export const chatRuntimeApi: ChatRuntimeApi = {
+  getSession: (signal) => getChatSession(signal),
+  createConversation: async (signal) => (await createChatConversation(signal)).conversation,
+  getMessages: (conversationId, query) => getChatMessages(conversationId, query),
+  sendMessage: async (conversationId, request, signal) =>
+    (await sendChatMessage(conversationId, request, signal)).message,
+  markRead: (conversationId, throughSequence, signal) =>
+    markChatRead(conversationId, throughSequence, signal),
+  uploadPhoto: async (conversationId, input) => ({
+    photo: (
+      await uploadChatPhoto(conversationId, {
+        file: input.file,
+        idempotencyKey: input.idempotencyKey,
+        onProgress: (percent) => input.onProgress(percent),
+        ...(input.signal === undefined ? {} : { signal: input.signal }),
+      })
+    ).photo,
+  }),
+  getPhotoStatus: (photoId, signal) => getChatPhotoStatus(photoId, signal),
+  getPhotoAccess: (photoId, signal) => getChatPhotoAccess(photoId, signal),
+  getInbox: (query) => getChatInbox(query),
+  getConversationSummary: async (conversationId, signal) => {
+    try {
+      return (await getChatConversationSummary(conversationId, signal)).conversation;
+    } catch (error) {
+      if (
+        error instanceof ApiRequestError &&
+        error.status === 404 &&
+        error.code === 'CHAT_RESOURCE_NOT_FOUND'
+      ) {
+        return null;
+      }
+
+      throw error;
+    }
+  },
+};

@@ -23,6 +23,8 @@ interface UserRow extends QueryResultRow {
   readonly timezone: string;
   readonly created_at: Date;
   readonly updated_at: Date;
+  readonly account_role: 'client' | 'trainer';
+  readonly trainer_display_name: string | null;
 }
 
 interface OnboardingRow extends QueryResultRow {
@@ -245,21 +247,26 @@ export class PostgresProfileRepository implements ProfileRepository {
     const userResult = await client.query<UserRow>(
       `
         SELECT
-          id,
-          email,
-          phone,
-          email_verified,
-          avatar_url,
-          username,
-          first_name,
-          onboarding_status,
-          notification_enabled,
-          level,
-          timezone,
-          created_at,
-          updated_at
-        FROM users
-        WHERE id = $1
+          user_record.id,
+          user_record.email,
+          user_record.phone,
+          user_record.email_verified,
+          user_record.avatar_url,
+          user_record.username,
+          user_record.first_name,
+          user_record.onboarding_status,
+          user_record.notification_enabled,
+          user_record.level,
+          user_record.timezone,
+          user_record.created_at,
+          user_record.updated_at,
+          CASE WHEN trainer.user_id IS NULL THEN 'client' ELSE 'trainer' END AS account_role,
+          trainer.display_name AS trainer_display_name
+        FROM users AS user_record
+        LEFT JOIN trainer_profiles AS trainer
+          ON trainer.user_id = user_record.id
+         AND trainer.is_active = true
+        WHERE user_record.id = $1
       `,
       [userId],
     );
@@ -342,6 +349,14 @@ export class PostgresProfileRepository implements ProfileRepository {
       timezone: user.timezone,
       createdAt: asDate(user.created_at),
       updatedAt: asDate(user.updated_at),
+      accountRole: user.account_role,
+      trainerProfile:
+        user.account_role === 'trainer' && user.trainer_display_name !== null
+          ? {
+              displayName: user.trainer_display_name,
+              avatarUrl: user.avatar_url,
+            }
+          : null,
       survey: survey === undefined ? null : mapSurvey(survey),
       subscription: subscription === undefined ? null : mapSubscription(subscription),
     };

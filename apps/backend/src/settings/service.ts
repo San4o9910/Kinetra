@@ -133,9 +133,17 @@ export class SettingsService {
       );
     }
 
-    const deleted = await this.repository.deleteAccount(userId);
+    const result = await this.repository.deleteAccount(userId);
 
-    if (!deleted) {
+    if (result === 'trainer_managed') {
+      throw new HttpError(
+        409,
+        'TRAINER_ACCOUNT_MANAGED',
+        'Trainer accounts with assigned or historical chat data are operator-managed.',
+      );
+    }
+
+    if (result === 'not_found') {
       throw profileNotFound();
     }
   }

@@ -11,6 +11,8 @@ import {
   createProductionBaseLessonsRuntime,
   type BaseLessonsRuntime,
 } from './base-lessons/runtime.js';
+import { createChatRouter } from './chat/router.js';
+import { createProductionChatRuntime, type ChatRuntime } from './chat/runtime.js';
 import { env } from './config/env.js';
 import { createPaymentsRouter } from './payments/router.js';
 import { createProductionPaymentsRuntime, type PaymentsRuntime } from './payments/runtime.js';
@@ -29,6 +31,7 @@ export interface CreateAppOptions {
   readonly authRuntime?: AuthRuntime;
   readonly profileRuntime?: ProfileRuntime;
   readonly baseLessonsRuntime?: BaseLessonsRuntime;
+  readonly chatRuntime?: ChatRuntime;
   readonly programRuntime?: ProgramRuntime;
   readonly progressRuntime?: ProgressRuntime;
   readonly pushRuntime?: PushRuntime;
@@ -45,11 +48,23 @@ const isMalformedJsonError = (error: unknown): boolean =>
   'type' in error &&
   (error as { type?: unknown }).type === 'entity.parse.failed';
 
+const safeUnhandledErrorCode = (error: unknown): string => {
+  if (typeof error !== 'object' || error === null || !('code' in error)) {
+    return 'UNCLASSIFIED';
+  }
+
+  const code = (error as { code?: unknown }).code;
+  return typeof code === 'string' && /^[A-Z0-9_]{1,64}$/u.test(code) ? code : 'UNCLASSIFIED';
+};
+
 export const createApp = (options: CreateAppOptions = {}) => {
   const app = express();
   const authRuntime = options.authRuntime ?? createProductionAuthRuntime();
   const profileRuntime = options.profileRuntime ?? createProductionProfileRuntime();
   const baseLessonsRuntime = options.baseLessonsRuntime ?? createProductionBaseLessonsRuntime();
+  const chatRuntime =
+    options.chatRuntime ??
+    createProductionChatRuntime({ accessTokenVerifier: authRuntime.accessTokenVerifier });
   const programRuntime = options.programRuntime ?? createProductionProgramRuntime();
   const progressRuntime = options.progressRuntime ?? createProductionProgressRuntime();
   const pushRuntime = options.pushRuntime ?? createProductionPushRuntime();
@@ -66,11 +81,13 @@ export const createApp = (options: CreateAppOptions = {}) => {
     response.locals.requestId =
       typeof requestId === 'string' && requestId.length <= 128 ? requestId : randomUUID();
     response.setHeader('X-Request-Id', requestIdFrom(response));
+    response.setHeader('Referrer-Policy', 'no-referrer');
+    response.setHeader('X-Content-Type-Options', 'nosniff');
     next();
   });
   app.use(
     cors({
-      origin: env.corsOrigins,
+      origin: [...env.corsOrigins],
       credentials: true,
     }),
   );
@@ -89,6 +106,7 @@ export const createApp = (options: CreateAppOptions = {}) => {
     '/api/v1/auth',
     createAuthRouter({
       service: authRuntime.service,
+      accessTokenVerifier: authRuntime.accessTokenVerifier,
       refreshCookie: authRuntime.refreshCookie,
       passwordResetRateLimiter: authRuntime.passwordResetRateLimiter,
     }),
@@ -96,6 +114,7 @@ export const createApp = (options: CreateAppOptions = {}) => {
 
   app.use('/api/v1/me', createProfileRouter(profileRuntime));
   app.use('/api/v1/base-lessons', createBaseLessonsRouter(baseLessonsRuntime));
+  app.use('/api/v1/chat', createChatRouter(chatRuntime));
   app.use('/api/v1/program', createProgramRouter(programRuntime));
   app.use('/api/v1/progress', createProgressRouter(progressRuntime));
   app.use('/api/v1/push', createPushRouter(pushRuntime));
@@ -150,7 +169,12 @@ export const createApp = (options: CreateAppOptions = {}) => {
         return;
       }
 
-      console.error(`[${requestId}] Unhandled request error`, error);
+      // Never pass the raw error to the logger here. PostgreSQL errors can carry
+      // statement details and complete row values, including private chat text.
+      console.error('Unhandled request error.', {
+        requestId,
+        code: safeUnhandledErrorCode(error),
+      });
       response.status(500).json({
         error: {
           code: 'INTERNAL_ERROR',

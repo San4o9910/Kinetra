@@ -1,203 +1,121 @@
-# Kinetra T13 — план и отчёт проверки
+# Kinetra T12 correction — validation contract
 
-**Дата:** 2026-08-23
+**Дата:** 2026-08-24
 
-**Ветка:** `feature/t13-push-notifications`
+**Correction branch:** `fix/t12-merge-readiness`
 
-**Base commit:** `4852bab67af2db9f309b0719b61d89d5d77537e6`
+**Correction PR base:** `feature/t12-trainer-chat`
 
-**Объём:** T01–T11 и T13, standalone PWA monorepo
+**Проверенный исходный T12 head:** `4468b52bf34669e6dba63ac3bcad75e666b81c01`
 
-## Текущий статус
+**Develop baseline:** `75e74de5d077464d3be129f9ed4f344223a35c0d`
 
-T13 реализован обычными TypeScript/TSX/JavaScript/SQL/CSS/Markdown исходниками. Scope включает
-device Web Push subscriptions, VAPID, JWT/no-store API, Service Worker `push`/`notificationclick`,
-permission lifecycle в T10 settings и отдельный идемпотентный notification worker.
+## Статус
 
-Матрица фиксирует фактический локальный прогон итогового дерева. `PASS` ставится только после
-выполненной команды; проверки, которым необходимы отсутствующие локально PostgreSQL или Chrome,
-помечены `CI REQUIRED` и не выдаются за локально пройденные.
+Correction head остаётся **CI REQUIRED**, пока внешний authoritative GitHub Actions run не завершит
+весь suite успешно и не зафиксирует фактически проверенные checkout SHAs. Этот tracked документ не
+содержит final head SHA, merge SHA, run URL или attempt: добавление таких данных изменило бы
+проверяемый commit и создало циклическую ссылку.
 
-## Матрица T13
+Run #96 на develop baseline был зелёным до T12 и записан только как precondition. Он не является
+доказательством исправленного correction head. Старый run PR #13 также не является evidence для
+этой ветки.
 
-| Проверка                           | Статус      | Фактический результат                                        |
-| ---------------------------------- | ----------- | ------------------------------------------------------------ |
-| Structural contracts T01–T13       | PASS        | `node scripts/verify-project.mjs` — 1866 checks              |
-| TypeScript production + tests      | PASS        | `npm run typecheck` — shared/backend/tests/frontend          |
-| ESLint                             | PASS        | `npm run lint`                                               |
-| Backend unit/API tests             | PASS        | 77 pass, 0 fail, 9 PostgreSQL skips                          |
-| PostgreSQL migration/integration   | CI REQUIRED | нет локальной БД; CI требует реальный PostgreSQL 17 marker   |
-| Frontend unit/Service Worker tests | PASS        | 83 pass, 0 fail                                              |
-| Chrome browser acceptance          | CI REQUIRED | Chrome/Chromium отсутствует; обязательный CI marker          |
-| Production build                   | PASS        | shared/backend/frontend, Vite 72 modules                     |
-| Composite quality gate             | CI REQUIRED | доступные фазы PASS; полный `npm run check` завершается в CI |
-| Tracked source manifest            | PASS        | полный sorted SHA-256 inventory без самого manifest          |
+| Проверка                                 | Статус      | Требование                                         |
+| ---------------------------------------- | ----------- | -------------------------------------------------- |
+| T13 base exact-head GitHub CI            | PASS        | baseline `75e74de`; не evidence correction         |
+| Structural contracts T01–T13 + T12       | PASS        | 2 669/2 669 checks                                 |
+| TypeScript production + backend tests    | PASS        | shared, backend production/tests и frontend        |
+| ESLint                                   | PASS        | `eslint apps packages scripts`                     |
+| Backend unit/API tests                   | PASS        | 132 total: 118 pass, 14 PostgreSQL skips, 0 fail   |
+| Real Socket.IO authorization/delivery    | PASS        | real HTTP + `socket.io-client`                     |
+| Real ImageMagick photo security          | PASS        | complete real-decoder matrix                       |
+| PostgreSQL 17 migration/concurrency      | CI REQUIRED | migrations, seed, content и real-PG F1–F4/F7 tests |
+| Frontend unit/API/Service Worker tests   | PASS        | 146/146, 0 fail                                    |
+| Chrome client+trainer browser acceptance | CI REQUIRED | Chrome/Chromium отсутствует локально               |
+| Production build                         | PASS        | backend + Vite production, 126 modules             |
+| Changed-file Prettier                    | PASS        | 109 changed files                                  |
+| Tracked source manifest                  | PASS        | 293/293 tracked source hashes                      |
+| Composite quality gate                   | CI REQUIRED | authoritative final GitHub Actions run             |
 
-## Фактический локальный прогон
+Локальные targeted tests: F1–F4 — 13 total, 10 pass и 3 PostgreSQL skips; F5–F6 — 54/54; F7 —
+4/4. Полный backend набор выполнен эквивалентной командой
+`node --import tsx --test apps/backend/test/*.test.ts`: стандартный `tsx --test` wrapper в этой
+sandbox не может создать IPC pipe `/tmp/tsx-0/*.pipe` (`EPERM`). `npm run test:frontend:browser`
+успешно строит browser-test bundle и mock API, затем fail-closed останавливается с
+`Chrome/Chromium was not found for the frontend browser test.` Docker, `psql`, `pg_isready` и
+`DATABASE_URL` локально отсутствуют. Стандартные Node 22/PostgreSQL 17/Chrome команды остаются
+обязательными в authoritative CI.
 
-- `git fetch --all --prune` подтвердил `origin/develop` на base commit `4852bab`.
-- `git diff --check` и Prettier check всех изменённых/новых PR-файлов прошли.
-- `npm run typecheck`, `npm run lint` и `npm run build` прошли без ошибок.
-- Backend выполнил 86 тестов: 77 прошли, 9 PostgreSQL tests честно пропущены только из-за
-  отсутствующего `DATABASE_URL`; failed tests нет.
-- Frontend unit/API/Service Worker suite: 83 прошли, failed/skipped tests нет.
-- Scheduler изолирует due users и для каждого выполняет eligibility, claim и terminal send в том
-  же минутном запуске. Регрессия с ошибкой пользователя B подтверждает: пользователи A и C уже
-  получают по одной отправке до общего `AggregateError`; после восстановления B получает одну
-  отправку, а occurrences A и C фиксируются как duplicates без повторной отправки.
-- Logout cleanup до первого `await` связывает backend DELETE с access token текущего аккаунта.
-  Если Service Worker lookup не завершился за 1,5 секунды, abort запрещает поздние DELETE и
-  origin-wide `unsubscribe()`; если browser unsubscribe уже начался, переход к следующей сессии
-  ждёт его полного завершения. Отдельные регрессии подтверждают отсутствие mutation аккаунта B и
-  запрет refresh/retry с его токеном. Зависший backend DELETE прерывается тем же сигналом и не
-  удерживает logout после завершения browser cleanup.
-- Регрессия account deletion воспроизведена как потеря test-only subscription state при hard
-  navigation: новая document-инъекция обнуляла объект, хотя реальный browser subscription
-  переживает reload. Test seam теперь сохраняет native-like state между документами, а production
-  lifecycle удерживает точный объект subscription и строго завершает его `unsubscribe()` до
-  backend deletion, очистки access-сессии и навигации. Destructive DELETE дополнительно связывается
-  с access token до первого asynchronous cleanup и не использует refresh/retry, поэтому смена
-  текущей клиентской сессии во время `unsubscribe()` не может перенаправить удаление на другого
-  пользователя.
-- Sender test с реальным непрерывным локальным HTTP stream подтвердил hard wall-clock deadline,
-  отсутствие накопления provider body и сохранение классификации `410`/`503`.
-- API test подтвердил лимит 10 enabled devices, ротацию на границе, освобождение слота и
-  fail-closed реактивацию; PostgreSQL test дополнительно фиксирует конкурентную границу и transfer
-  в заполненного владельца, но его фактический запуск принадлежит CI.
-- Миграции `001`–`009` не отличаются от base commit.
-- Принудительный PostgreSQL test с `KINETRA_REQUIRE_POSTGRES_TEST=true` fail-closed требует
-  `DATABASE_URL`; локально также отсутствуют `psql`, `postgres`, Docker и Podman.
-- Browser runner не может завершить acceptance без Chrome/Chromium; ни один поддерживаемый
-  executable локально не установлен. GitHub Actions остаётся обязательным владельцем обоих
-  environment-dependent markers.
-- Полный `npm run format:check` обнаруживает только сохранённый baseline drift в 14 файлах,
-  неизменённых относительно `develop`. Отдельный Prettier check всех PR-файлов проходит.
-- `MANIFEST.sha256` сформирован последним из точного tracked path list и проверен через
-  `sha256sum -c`.
+## Closure matrix F1–F7
 
-Точный unrelated formatting baseline:
+| Finding              | Runtime closure                                                                                                                                                                    | Обязательное regression evidence                                                                                                                            | До final CI |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| F1 / K13-RT-002      | Короткий authorized snapshot освобождает PostgreSQL client до socket/session validation и emit; recipient assignment повторно авторизуется после release.                          | pool `max=1` и `max=10`, unrelated query, reassignment/revocation fence, isolated validation failure                                                        | CI REQUIRED |
+| F2 / K13-RT-001      | Principal+IP admission выполняется синхронно до await/DB; guards: 1 на canonical socket/conversation, 4 на socket, 8 на principal; disconnected DB work учитывается до settlement. | burst с zero repository calls сверх лимита, UUID case/reconnect churn, cross-conversation/socket caps, release после terminal settlement, 401/403 semantics | CI REQUIRED |
+| F3 / K13-BECORE-001  | `POST /conversations` имеет early principal+IP limiter и cheap replay fast path до global advisory lock; create повторно проверяет state под lock.                                 | zero DB/lock при 429, replay без global lock, concurrent create даёт одну conversation/event, lifecycle recheck                                             | CI REQUIRED |
+| F4 / K13-BECORE-002  | Search predicate использует только фактически видимые `display_name` и masked secondary label; raw contacts не участвуют.                                                          | hidden email/phone/username fragments, visible/masked/Unicode search, LIKE escaping, trainer isolation, JSON redaction                                      | CI REQUIRED |
+| F5 / K13-FECHAT-001  | Prepared logout захватывает subject/bearer/epoch/nonce до async; failure остаётся signed in и сохраняет retry proof/drafts; только ACK завершает logout.                           | network/500/Web Locks failure, same-bearer retry, pending privacy screen, late A ACK fenced from B, browser failure→retry→204                               | CI REQUIRED |
+| F6 / W3-CHAT-001     | Canonical identity — только `message.id`; client key связывает лишь собственный optimistic item с совпадающим payload fingerprint.                                                 | cross-sender collision в обоих realtime orders и после full history reload, same server ID dedupe, read/photo/order preservation                            | CI REQUIRED |
+| F7 / KPR13-MEDIA-001 | Slot берётся после preflight; application idle/total deadlines 15/120 s активно останавливают body и exactly-once освобождают slot.                                                | no-byte/pause/drip/boundary/abort, 10 partial + 11th 429, recovery, zero post-timeout processing, marker                                                    | CI REQUIRED |
 
-- `apps/backend/scripts/migrate.mjs`;
-- `apps/backend/src/auth/cookies.ts`;
-- `apps/backend/src/auth/normalization.ts`;
-- `apps/backend/src/auth/postgres-auth.repository.ts`;
-- `apps/backend/src/auth/runtime.ts`;
-- `apps/backend/src/auth/service.ts`;
-- `apps/backend/src/profile/schema.ts`;
-- `apps/backend/test/auth.e2e.test.ts`;
-- `apps/backend/tsconfig.build.json`;
-- `apps/backend/tsconfig.json`;
-- `apps/backend/tsconfig.test.json`;
-- `apps/frontend/public/manifest.webmanifest`;
-- `apps/frontend/tsconfig.json`;
-- `packages/shared/tsconfig.json`.
+## Security и coexistence invariants
 
-## Сохранённый baseline T11
+- JWT `sub`/`sid`, current role, participant assignment, reassignment и session revocation остаются
+  server-authoritative; один failed realtime recipient не ослабляет остальные проверки.
+- Message idempotency остаётся sender-scoped; `client_message_id` не становится глобально уникальным.
+- Photo access, short signed URLs, private-cache bypass, size/type limits и storage isolation
+  сохраняются; ingress timeout является только defense in depth.
+- Logout не делает bearerless request, refresh-before-logout, JavaScript cookie deletion или
+  persistent bearer storage. Pending немедленно скрывает private trainer chat, failure явно
+  показывает `Выход не завершен / Повторить`, success требует server-confirmed revocation;
+  mismatched cookie/family возвращает `409 LOGOUT_NOT_CONFIRMED` без `Set-Cookie`.
+- T13 push taxonomy, Service Worker deep-link allowlist, account deletion token capture и cookie
+  lineage не меняются.
+- `CHAT_ENABLED=false` и `CHAT_PHOTO_UPLOADS_ENABLED=false` остаются defaults.
 
-T13 начинается строго от merge T11 `4852bab`. Зафиксированный T11 baseline до изменений:
+## Обязательные T12 CI markers
 
-- structure — 1434 checks;
-- backend — 58 pass и 7 PostgreSQL skips в локальной среде без БД;
-- frontend — 61 pass;
-- production build — shared/backend/frontend;
-- manifest — 208 tracked-файлов без самого `MANIFEST.sha256`;
-- exact GitHub Actions run T11 прошёл с PostgreSQL и Chrome markers.
-
-T13 не заменяет этот baseline новым PASS. CI продолжает требовать все markers T04–T11 до проверки
-новых T13 markers.
-
-## Что обязана доказать структура
-
-`scripts/verify-project.mjs` должен fail-closed проверить:
-
-- append-only `010_push_notifications.sql`, не меняя `001`–`009`;
-- `push_subscriptions` и durable per-device occurrence claims с cascade/unique/index contracts;
-- backend feature-папку `push` с strict schema, repository, PostgreSQL repository, injectable
-  sender, service, scheduler, router, runtime и built worker command;
-- JWT/no-store `GET /public-key`, `POST/DELETE /subscriptions`, отсутствие `user_id` из body и
-  минимальные shared DTO;
-- server-only VAPID private key, public endpoint, safe payload/deep-link allowlist, bounded
-  timeout/concurrency и status-specific invalidation;
-- scheduler preference/timezone/entitlement/completion/weekly-metrics filters и уникальный claim;
-- frontend permission/subscription module, явное settings действие, отсутствие prompt на
-  hydration, logout best-effort, строгий account-deletion lifecycle и раздельные UI states;
-- Service Worker `push`/`notificationclick`, same-origin route allowlist и сохранность offline/API
-  cache policy;
-- backend/frontend/PostgreSQL/browser tests, документацию и fail-closed CI markers;
-- отсутствие `.t13-bootstrap`, apply/export workflow, encoded payload и PR-trigger artifacts.
-
-## Backend acceptance
-
-API/unit/PostgreSQL tests обязаны подтвердить:
-
-- public key, register и delete требуют access JWT и отдают `Cache-Control: no-store`;
-- public response не раскрывает private key, subscription keys или endpoint;
-- strict HTTPS/base64url/length validation отклоняет missing/extra/oversized/user-owned fields;
-- endpoint upsert идемпотентен, может принадлежать только authenticated user, delete не раскрывает
-  и не меняет чужую запись;
-- удаление аккаунта каскадно очищает subscriptions/deliveries;
-- multi-device пользователь получает одно occurrence на каждую active subscription;
-- повторный/параллельный worker не создаёт duplicate delivery;
-- `404/410` отключают endpoint, а `401/403/429/5xx/timeout` не удаляют его;
-- ошибка одной subscription не прерывает остальные;
-- ошибка eligibility более позднего пользователя не оставляет ранний durable claim без provider
-  attempt, а восстановленный запуск отправляет occurrence ровно один раз;
-- invalid timezone использует `Europe/Moscow`, fall-back DST occurrence не дублируется;
-- workout reminder использует current program week + local weekday, active entitlement и
-  completed state; weekly reminder отправляется только pending week в воскресенье local time;
-- ambiguous send не получает автоматический retry в том же occurrence.
-
-## Frontend и browser acceptance
-
-Unit/API/Service Worker/browser tests обязаны подтвердить:
-
-1. hydration `/settings` не вызывает permission prompt, subscribe или лишний T10 PUT;
-2. T10 full payload и debounce 450 ms не изменены;
-3. `unsupported`, `default`, `denied`, `granted` отображаются раздельно от browser subscription и
-   backend registration;
-4. VAPID public key читается только после явного действия;
-5. failed backend registration не становится success и допускает retry;
-6. logout до первого `await` связывает push DELETE с текущим access token; timeout до начала
-   side effects отменяет поздний cleanup, а уже начатый browser unsubscribe завершается до очистки
-   сессии; ошибки cleanup не блокируют `/login`, refresh/retry с токеном следующего аккаунта нет;
-7. account deletion до первого `await` связывает DELETE с текущим access token, удерживает точный
-   объект subscription и дожидается его browser `unsubscribe()`; DELETE выполняется без
-   refresh/retry до очистки сессии и перехода на `/login`;
-8. browser seam сохраняет permission/subscription state между reload/hard navigation, а
-   unsubscribe counter меняется только при вызове `PushSubscription.unsubscribe()`;
-9. Service Worker применяет defaults к malformed push и не принимает внешний/protocol-relative/
-   `javascript:` URL;
-10. notification click закрывает notification, фокусирует открытую вкладку либо открывает новую;
-11. разрешены canonical `/schedule` и `/progress`, а auth/onboarding/paywall guards сохраняются;
-12. settings остаётся доступным на 320/428px, touch targets не меньше 44px, theme/safe-area и все
-    browser journeys T04–T11 не деградируют.
-
-Browser acceptance использует deterministic native/injectable seams и не зависит от внешнего push
-service. `KINETRA_T13_BROWSER_E2E=PASS` печатается только после фактических assertions.
-
-## Обязательные CI markers
+Каждый marker печатается только после соответствующих assertions. PostgreSQL skip, отсутствие
+Chrome или fake decoder не могут печатать PASS. Multipart marker проверяется раньше общего suite
+marker.
 
 ```text
-KINETRA_T13_WEBPUSH_SENDER=PASS
-KINETRA_T13_BACKEND_E2E=PASS
-KINETRA_T13_POSTGRES_INTEGRATION=PASS
-KINETRA_T13_SCHEDULER=PASS
-KINETRA_T13_SERVICE_WORKER=PASS
-KINETRA_T13_PERMISSION_LIFECYCLE=PASS
-KINETRA_T13_SETTINGS_INTEGRATION=PASS
-KINETRA_T13_BROWSER_E2E=PASS
-KINETRA_T13_TEST_SUITE=PASS
+KINETRA_T12_BACKEND_E2E=PASS
+KINETRA_T12_SOCKET_AUTHORIZATION=PASS
+KINETRA_T12_MESSAGE_DELIVERY=PASS
+KINETRA_T12_POSTGRES_INTEGRATION=PASS
+KINETRA_T12_PHOTO_SECURITY=PASS
+KINETRA_T12_CLIENT_UI=PASS
+KINETRA_T12_TRAINER_ADMIN=PASS
+KINETRA_T12_T13_COEXISTENCE=PASS
+KINETRA_T12_BROWSER_E2E=PASS
+KINETRA_T12_MULTIPART_TIMEOUT=PASS
+KINETRA_T12_TEST_SUITE=PASS
 ```
 
-CI выполняет tests с `tee`, отдельно grep-ит первые восемь markers и печатает suite marker только
-после их наличия. PostgreSQL skip не печатает integration marker. Старые markers T04–T11 остаются
-обязательными.
+Все прежние T04–T11 и T13 markers также обязательны.
 
-## Команды полной проверки
+## Полная последовательность проверки
+
+Targeted regression commands выполняются перед полным suite:
 
 ```bash
-cp .env.example .env
-npm install
+node --import tsx --test \
+  apps/backend/test/chat-realtime-admission.test.ts \
+  apps/backend/test/chat-realtime-postgres.test.ts \
+  apps/backend/test/chat-merge-readiness.test.ts \
+  apps/backend/test/chat.postgres.test.ts
+node --import tsx --test apps/backend/test/chat-multipart-timeout.test.ts
+node --import tsx --test \
+  apps/frontend/test/api-session.test.ts \
+  apps/frontend/test/settings.test.ts \
+  apps/frontend/test/chat-model.test.ts \
+  apps/frontend/test/chat-lifecycle.test.ts
+```
+
+```bash
+npm ci
 docker compose up -d postgres
 npm run db:migrate
 npm run db:migrate
@@ -207,48 +125,53 @@ npm run db:verify-content
 npm run verify:structure
 npm run typecheck
 npm run lint
-npm run test:backend
-npm run test:frontend:unit
-npm run test:frontend:browser
+npm run format:changed
+npm run test
 npm run build
 npm run check
+node --check scripts/test-frontend-browser.mjs
+node --check scripts/verify-project.mjs
+node --check scripts/check-changed-format.mjs
+git diff --check
 diff -u \
   <(git ls-files | sed '/^MANIFEST\.sha256$/d' | sed 's#^#./#' | LC_ALL=C sort) \
   <(awk '{ print $2 }' MANIFEST.sha256 | LC_ALL=C sort)
 sha256sum -c MANIFEST.sha256
+git status --short
 ```
 
-Worker отдельно проверяется только с test configuration/injectable sender, без обращения к
-реальному push service:
+Локальная среда без PostgreSQL 17 или Chrome не получает PASS за эти gates. Точная команда и
+ошибка фиксируются в mutable correction PR evidence, а задача остаётся `CI REQUIRED` до зелёного
+authoritative run.
+После commit `git status --short` обязан быть пустым; незакоммиченный manifest или generated output
+считается blocker.
 
-```bash
-npm run notifications:send -w @kinetra/backend
-```
+## Checkout identity и внешнее evidence
+
+Каждый authoritative job выводит и проверяет checkout identity:
+
+- explicit head run: `HEAD == github.event.pull_request.head.sha` либо push `HEAD == GITHUB_SHA`;
+- merge-ref run: `HEAD` является test merge commit, `HEAD^1` равен ожидаемому base SHA, а `HEAD^2`
+  равен ожидаемому correction head SHA.
+
+Merge-ref run нельзя называть exact-head run. После финального code/docs/manifest commit динамические
+`head SHA`, `base SHA`, tested merge SHA, run URL, attempt, checkout semantics, job results и точные
+test counts сохраняются только в GitHub Check Run/job summary, mutable Draft correction PR
+body/comment и CI artifact при наличии. `VALIDATION.md` после этого не изменяется.
+Иными словами, dynamic SHA/run/attempt evidence всегда находится вне tracked final head.
 
 ## Manifest policy
 
-`MANIFEST.sha256` содержит каждый tracked-файл кроме самого manifest. Формат строки — SHA-256,
-два пробела и путь `./relative/path`; полный path list отсортирован `LC_ALL=C`. Manifest обновляется
-последним, после форматирования и всех source/test/docs изменений. CI сначала сравнивает path list
-с `git ls-files`, затем выполняет `sha256sum -c`.
+`MANIFEST.sha256` содержит каждый tracked file кроме самого manifest. Формат — SHA-256, два пробела
+и `./relative/path`; полный список сортируется `LC_ALL=C`. Manifest обновляется последним после
+source, tests, docs, formatting и validation.
 
 ## Production границы
 
-До rollout нужны HTTPS, production VAPID pair в secret manager, controlled subject, минутный
-external scheduler, non-zero exit alerts, metrics по send/invalidation/temporary failure/duplicate/
-backlog и проверенная redaction policy. Public key нельзя ротировать без re-subscription plan.
+Зелёный correction CI разрешает только owner review. Он не разрешает merge, Ready transition,
+deployment, migration вне CI, включение flags или rollout. До production отдельно требуются
+HTTPS/WSS и proxy checks, одна realtime replica либо Redis adapter/distributed accounting, private
+encrypted S3, hardened ImageMagick, cleanup/alerts, trainer MFA/gateway, privacy approval и
+installed-PWA smoke.
 
-Нужно отдельно проверить installed PWA/desktop/iOS permission UX, Service Worker update,
-notification click, DST/timezone changes, toggles, logout/account deletion и повторную
-авторизацию. Push body не содержит premium content и не обходит T11 server-enforced paywall.
-Stale endpoint после полной browser rotation может существовать до `404/410`, потому что frontend
-не может перечислить прежние subscriptions устройства.
-
-Разные аккаунты в параллельных вкладках одного browser profile не поддерживаются: refresh cookie
-и физическая `PushSubscription` общие для origin. Такой режим требует отдельного ownership/
-coordination protocol или отдельных browser profiles. Уже вызванный native
-`PushSubscription.unsubscribe()` намеренно ожидается без верхней границы, чтобы его позднее
-завершение не затронуло следующую поддерживаемую последовательную сессию; never-settling browser
-Promise остаётся принятым security-over-liveness риском.
-
-Подробный контракт: [`docs/T13_PUSH_NOTIFICATIONS.md`](docs/T13_PUSH_NOTIFICATIONS.md).
+Подробный контракт: [`docs/T12_TRAINER_CHAT.md`](docs/T12_TRAINER_CHAT.md).

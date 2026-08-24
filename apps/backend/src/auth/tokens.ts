@@ -1,6 +1,6 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 
-import { jwtVerify, SignJWT, type JWTPayload } from 'jose';
+import { compactVerify, jwtVerify, SignJWT, type JWTPayload } from 'jose';
 
 export interface IssuedOpaqueToken {
   readonly value: string;
@@ -34,6 +34,9 @@ interface VerifiedAccessPayload extends JWTPayload {
   readonly jti: string;
 }
 
+const CANONICAL_UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
+
 const isVerifiedAccessPayload = (
   payload: JWTPayload,
   issuer: string,
@@ -51,6 +54,58 @@ const isVerifiedAccessPayload = (
   typeof payload.jti === 'string' &&
   payload.exp > payload.iat &&
   payload.exp - payload.iat <= ttlSeconds;
+
+const decodeVerifiedJwtPayload = (encodedPayload: Uint8Array): JWTPayload => {
+  const decoded: unknown = JSON.parse(
+    new TextDecoder('utf-8', { fatal: true }).decode(encodedPayload),
+  );
+
+  if (typeof decoded !== 'object' || decoded === null || Array.isArray(decoded)) {
+    throw new Error('Invalid access-token payload.');
+  }
+
+  return decoded as JWTPayload;
+};
+
+const isLogoutSubjectProofPayload = (
+  payload: JWTPayload,
+  issuer: string,
+  audience: string,
+  ttlSeconds: number,
+  now: Date,
+): payload is VerifiedAccessPayload => {
+  const nowMs = now.getTime();
+  const issuedAt = payload.iat;
+  const expiresAt = payload.exp;
+
+  if (
+    !Number.isFinite(nowMs) ||
+    typeof issuedAt !== 'number' ||
+    !Number.isSafeInteger(issuedAt) ||
+    typeof expiresAt !== 'number' ||
+    !Number.isSafeInteger(expiresAt)
+  ) {
+    return false;
+  }
+
+  const nowSeconds = Math.floor(nowMs / 1_000);
+
+  return (
+    typeof payload.sub === 'string' &&
+    CANONICAL_UUID_PATTERN.test(payload.sub) &&
+    typeof payload.sid === 'string' &&
+    CANONICAL_UUID_PATTERN.test(payload.sid) &&
+    payload.type === 'access' &&
+    payload.iss === issuer &&
+    payload.aud === audience &&
+    typeof payload.jti === 'string' &&
+    CANONICAL_UUID_PATTERN.test(payload.jti) &&
+    issuedAt >= 0 &&
+    expiresAt > issuedAt &&
+    expiresAt - issuedAt === ttlSeconds &&
+    issuedAt <= nowSeconds
+  );
+};
 
 export const isPlausibleOpaqueToken = (token: string): boolean =>
   token.length >= 32 && token.length <= 256 && /^[A-Za-z0-9_-]+$/u.test(token);
@@ -114,6 +169,37 @@ export class HmacJwtAccessTokenService {
 
     if (!isVerifiedAccessPayload(payload, this.issuer, this.audience, this.ttlSeconds)) {
       throw new Error('Invalid access-token claims.');
+    }
+
+    return {
+      sub: payload.sub,
+      sid: payload.sid,
+      type: 'access',
+      iss: payload.iss,
+      aud: this.audience,
+      iat: payload.iat,
+      exp: payload.exp,
+      jti: payload.jti,
+    };
+  }
+
+  /** Verifies an issued access token as a logout-only rotation-family proof. */
+  public async verifyLogoutSubjectProof(
+    token: string,
+    now = new Date(),
+  ): Promise<AccessTokenClaims> {
+    const { payload: encodedPayload, protectedHeader } = await compactVerify(token, this.secret, {
+      algorithms: ['HS256'],
+    });
+
+    if (protectedHeader.alg !== 'HS256' || protectedHeader.typ !== 'JWT') {
+      throw new Error('Invalid access-token protected header.');
+    }
+
+    const payload = decodeVerifiedJwtPayload(encodedPayload);
+
+    if (!isLogoutSubjectProofPayload(payload, this.issuer, this.audience, this.ttlSeconds, now)) {
+      throw new Error('Invalid logout subject-proof claims.');
     }
 
     return {

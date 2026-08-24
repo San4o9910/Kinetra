@@ -42,6 +42,13 @@ export interface RotateRefreshSessionInput {
   readonly now: Date;
 }
 
+export interface RevokeRefreshSessionInFamilyInput {
+  readonly currentTokenHash: string;
+  readonly expectedUserId: string;
+  readonly ancestorSessionId: string;
+  readonly now: Date;
+}
+
 export type RotateRefreshSessionResult =
   | { readonly status: 'rotated'; readonly user: UserRecord }
   | { readonly status: 'invalid' }
@@ -61,7 +68,7 @@ export interface AuthRepository {
   createUser(input: CreateUserInput): Promise<CreateUserResult>;
   createRefreshSession(input: RefreshSessionInput): Promise<void>;
   rotateRefreshSession(input: RotateRefreshSessionInput): Promise<RotateRefreshSessionResult>;
-  revokeRefreshSessionByHash(tokenHash: string, now: Date): Promise<void>;
+  revokeRefreshSessionInFamily(input: RevokeRefreshSessionInFamilyInput): Promise<boolean>;
   revokeAllRefreshSessions(userId: string, now: Date): Promise<void>;
   storePasswordResetToken(input: OneTimeTokenInput): Promise<void>;
   replacePasswordUsingResetToken(

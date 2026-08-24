@@ -7,6 +7,10 @@ export interface AccessTokenVerifier {
   verify(token: string, now?: Date): Promise<AccessTokenClaims>;
 }
 
+export interface LogoutSubjectProofVerifier extends AccessTokenVerifier {
+  verifyLogoutSubjectProof(token: string, now?: Date): Promise<AccessTokenClaims>;
+}
+
 export interface AuthenticatedPrincipal {
   readonly userId: string;
   readonly sessionId: string;

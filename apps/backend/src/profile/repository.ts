@@ -1,4 +1,5 @@
 import type {
+  AccountRole,
   OnboardingStatus,
   SubscriptionProvider,
   SubscriptionStatus,
@@ -49,6 +50,11 @@ export interface UserProfileSnapshot {
   readonly timezone: string;
   readonly createdAt: Date;
   readonly updatedAt: Date;
+  readonly accountRole: AccountRole;
+  readonly trainerProfile: {
+    readonly displayName: string;
+    readonly avatarUrl: string | null;
+  } | null;
   readonly survey: SurveySnapshot | null;
   readonly subscription: SubscriptionSnapshot | null;
 }

@@ -18,6 +18,8 @@ const session = {
 };
 
 const activeProfile: MeResponse = {
+  account_role: 'client',
+  trainer_profile: null,
   user: {
     ...session.user,
     avatarUrl: null,

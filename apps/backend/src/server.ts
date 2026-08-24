@@ -1,13 +1,29 @@
 import { createServer } from 'node:http';
 
 import { createApp } from './app.js';
+import { createProductionAuthRuntime } from './auth/runtime.js';
+import { attachChatRealtime } from './chat/realtime.js';
+import { createProductionChatRuntime } from './chat/runtime.js';
 import { env } from './config/env.js';
 import { closeDatabasePool } from './db/pool.js';
 import { createSocketServer } from './realtime/socket.js';
 
-const app = createApp();
+const authRuntime = createProductionAuthRuntime();
+const chatRuntime = createProductionChatRuntime({
+  accessTokenVerifier: authRuntime.accessTokenVerifier,
+});
+const app = createApp({ authRuntime, chatRuntime });
 const httpServer = createServer(app);
+httpServer.requestTimeout = env.chat.photoUploadTotalTimeoutMs + 5_000;
 const socketServer = createSocketServer(httpServer);
+const detachChatRealtime = attachChatRealtime(socketServer, {
+  accessTokenVerifier: authRuntime.accessTokenVerifier,
+  service: chatRuntime.service,
+  eventHub: chatRuntime.eventHub,
+  rateLimiter: chatRuntime.rateLimiter,
+  allowedOrigins: env.corsOrigins,
+  trustedProxyHops: chatRuntime.trustedProxyHops,
+});
 
 httpServer.listen(env.port, env.host, () => {
   console.log(`Kinetra backend is listening on http://${env.host}:${env.port} (${env.nodeEnv}).`);
@@ -46,6 +62,7 @@ const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
   console.log(`${signal} received. Closing Kinetra backend.`);
 
   try {
+    detachChatRealtime();
     await closeSocketServer();
     await closeHttpServer();
     await closeDatabasePool();

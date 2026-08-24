@@ -19,6 +19,7 @@ const MINUTE_IN_MILLISECONDS = 60 * 1000;
 
 export interface AuthRuntime {
   readonly service: AuthService;
+  readonly accessTokenVerifier: HmacJwtAccessTokenService;
   readonly refreshCookie: RefreshCookieConfig;
   readonly passwordResetRateLimiter: RequestHandler;
 }
@@ -31,16 +32,17 @@ const createTokenDelivery = (): AuthTokenDelivery =>
 export const createProductionAuthRuntime = (): AuthRuntime => {
   const refreshTtlMs = env.auth.refreshTtlDays * DAY_IN_MILLISECONDS;
   const repository = new PostgresAuthRepository(databasePool);
+  const accessTokenVerifier = new HmacJwtAccessTokenService(
+    env.auth.jwtAccessSecret,
+    env.auth.jwtIssuer,
+    env.auth.jwtAudience,
+    env.auth.jwtAccessTtlSeconds,
+  );
   const service = new AuthService({
     repository,
     passwordHasher: new BcryptPasswordHasher(env.auth.bcryptCost),
     opaqueTokens: new OpaqueTokenService(),
-    accessTokens: new HmacJwtAccessTokenService(
-      env.auth.jwtAccessSecret,
-      env.auth.jwtIssuer,
-      env.auth.jwtAudience,
-      env.auth.jwtAccessTtlSeconds,
-    ),
+    accessTokens: accessTokenVerifier,
     tokenDelivery: createTokenDelivery(),
     clock: new SystemClock(),
     config: {
@@ -50,13 +52,13 @@ export const createProductionAuthRuntime = (): AuthRuntime => {
       passwordMinimumLength: env.auth.passwordMinimumLength,
       refreshTtlMs,
       passwordResetTtlMs: env.auth.passwordResetTtlMinutes * MINUTE_IN_MILLISECONDS,
-      emailVerificationTtlMs:
-        env.auth.emailVerificationTtlMinutes * MINUTE_IN_MILLISECONDS,
+      emailVerificationTtlMs: env.auth.emailVerificationTtlMinutes * MINUTE_IN_MILLISECONDS,
     },
   });
 
   return {
     service,
+    accessTokenVerifier,
     refreshCookie: {
       name: env.auth.refreshCookieName,
       secure: env.auth.refreshCookieSecure,

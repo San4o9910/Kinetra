@@ -4,7 +4,7 @@ import type {
   SubscriptionProvider,
   SubscriptionStatus,
 } from '@kinetra/shared';
-import type { Pool, QueryResultRow } from 'pg';
+import type { Pool, PoolClient, QueryResultRow } from 'pg';
 
 import type {
   SettingsProfileSnapshot,
@@ -76,6 +76,14 @@ const mapSubscription = (row: SubscriptionRow): SettingsSubscriptionSnapshot | n
     currency: row.currency,
     autoRenew: row.auto_renew ?? false,
   };
+};
+
+const rollbackQuietly = async (client: PoolClient): Promise<void> => {
+  try {
+    await client.query('ROLLBACK');
+  } catch {
+    console.error('Failed to roll back an account deletion transaction.');
+  }
 };
 
 export class PostgresSettingsRepository implements SettingsRepository {
@@ -181,8 +189,71 @@ export class PostgresSettingsRepository implements SettingsRepository {
     return result.rowCount === 1;
   }
 
-  public async deleteAccount(userId: string): Promise<boolean> {
-    const result = await this.pool.query('DELETE FROM users WHERE id = $1 RETURNING id', [userId]);
-    return result.rowCount === 1;
+  public async deleteAccount(userId: string): Promise<'deleted' | 'not_found' | 'trainer_managed'> {
+    const client = await this.pool.connect();
+
+    try {
+      await client.query('BEGIN');
+      const user = await client.query(
+        `SELECT id
+         FROM users
+         WHERE id = $1
+         FOR UPDATE`,
+        [userId],
+      );
+      const row = user.rows[0] as { readonly id: string } | undefined;
+
+      if (row === undefined) {
+        await client.query('COMMIT');
+        return 'not_found';
+      }
+
+      const trainer = await client.query(
+        `SELECT user_id
+         FROM trainer_profiles
+         WHERE user_id = $1
+         FOR UPDATE`,
+        [userId],
+      );
+
+      if (trainer.rowCount === 1) {
+        const managedChat = await client.query<{ readonly managed: boolean }>(
+          `SELECT
+             EXISTS (
+               SELECT 1
+               FROM chat_conversations
+               WHERE trainer_user_id = $1
+             ) OR EXISTS (
+               SELECT 1
+               FROM chat_messages
+               WHERE sender_user_id = $1
+             ) AS managed`,
+          [userId],
+        );
+
+        if (managedChat.rows[0]?.managed === true) {
+          await client.query('COMMIT');
+          return 'trainer_managed';
+        }
+      }
+
+      await client.query(
+        `INSERT INTO chat_media_deletion_jobs (object_key, requested_at, next_attempt_at)
+         SELECT photo.object_key, NOW(), NOW()
+         FROM chat_photos AS photo
+         JOIN chat_conversations AS conversation ON conversation.id = photo.conversation_id
+         WHERE conversation.client_user_id = $1 OR conversation.trainer_user_id = $1
+         ON CONFLICT (object_key) DO NOTHING`,
+        [userId],
+      );
+      const deleted = await client.query('DELETE FROM users WHERE id = $1 RETURNING id', [userId]);
+      await client.query('COMMIT');
+      return deleted.rowCount === 1 ? 'deleted' : 'not_found';
+    } catch (error) {
+      await rollbackQuietly(client);
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 }
