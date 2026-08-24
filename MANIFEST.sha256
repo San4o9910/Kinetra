@@ -115,13 +115,13 @@ e9bf1beb859b71919eaa8b661f3c92c811f3636bf2400a5fe862767236b6ed42  ./apps/backend
 789d1efdde412b141598af441238bd4af79bf42502253e7cecb3a6d827f29438  ./apps/backend/test/chat-cleanup.test.ts
 019379079791438da7108250e74c0052fe853764e83fbf595f533f901ab4cf10  ./apps/backend/test/chat-client-ip.test.ts
 75c25187fe049007101bca90bd3f7a2b905cd4c7db46f489aadea064ba375993  ./apps/backend/test/chat-merge-readiness.test.ts
-3e5594b6437dd22a045ae69cdaf84c2936141cd52f8d963126fb57cdaf4274e6  ./apps/backend/test/chat-multipart-timeout.test.ts
+fc5e6ca4d067421c4565797b6994cc7bb8d84effb05e9efcdfd287a0f9528661  ./apps/backend/test/chat-multipart-timeout.test.ts
 cbf484d8c19acc667af3ab670bcf88be28a3fe9cfd3b923246de84bb183c70fa  ./apps/backend/test/chat-photo-security.test.ts
 a5e5bafef8b0a0eb905b08e837e2d07e9ac39abae35692d8b7afb99083b11b6a  ./apps/backend/test/chat-realtime-admission.test.ts
 6417bdd16c9c3b79b23a39d0c52c6f8c1ed3cb75b31a65b84b2081f177ea8fd1  ./apps/backend/test/chat-realtime-postgres.test.ts
 4288034feae8df55c0fc0b340bd31e45085afc63e8e0a2168007dd89a7a4de31  ./apps/backend/test/chat-trainer-cli.test.ts
 f3e2842c33680e36905de8c7d2d7cdddfb6c8752fcdc4b7bc51918a7b7ccb3cf  ./apps/backend/test/chat.e2e.test.ts
-2548bb0ce21aac6f0b12aba1b64bb454158d01e1c2e0eb267244ceefc22cc24d  ./apps/backend/test/chat.postgres.test.ts
+d378369a5ae907839c6d171ead573b0e5ca768baa207a8ec0b5f9fc542de6e5e  ./apps/backend/test/chat.postgres.test.ts
 6ce8c1539d51b8db3a096c9268fc045732e5aac883cc88379163666af85ee979  ./apps/backend/test/chat.socket.test.ts
 80bc4e76016089f2bcdce06d06e56db30cceeb7f1fa5617eec0e74277106be34  ./apps/backend/test/env.test.ts
 32cbd9df87011ea0cc88536661b803d260edcef71347ac0f63ed118e0554f76c  ./apps/backend/test/notification-scheduler.test.ts

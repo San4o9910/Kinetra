@@ -512,7 +512,11 @@ test(
       );
       assert.deepEqual(await listFor(trainerId, 'Анна', null, 1), visiblePageBeforeHiddenMutation);
       assert.equal((await listFor(trainerId, 'Анна')).items.length, 1);
-      assert.equal((await listFor(trainerId, 'c***@example.com')).items.length, 1);
+      const maskedEmailMatches = await listFor(trainerId, 'c***@example.com', null, 50);
+      assert.equal(
+        maskedEmailMatches.items.find(({ id }) => id === conversationId)?.client.secondaryLabel,
+        'c***@example.com',
+      );
       assert.equal((await listFor(trainerId, 'АННА')).items.length, 1);
       assert.deepEqual(await listFor(trainerId, '%'), { items: [], hasMore: false });
       assert.deepEqual(await listFor(trainerId, '_'), { items: [], hasMore: false });

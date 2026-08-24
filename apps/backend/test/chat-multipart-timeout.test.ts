@@ -58,6 +58,24 @@ const timeoutError = (error: unknown): boolean =>
   error.statusCode === 408 &&
   error.code === 'CHAT_PHOTO_UPLOAD_TIMEOUT';
 
+const withReferencedDeadline = async <T>(operation: () => Promise<T>): Promise<T> => {
+  let deadline: ReturnType<typeof setTimeout> | undefined;
+  const watchdog = new Promise<never>((_resolve, reject) => {
+    deadline = setTimeout(
+      () => reject(new Error('multipart timeout test did not settle within 2 seconds')),
+      2_000,
+    );
+  });
+
+  try {
+    return await Promise.race([operation(), watchdog]);
+  } finally {
+    if (deadline !== undefined) {
+      clearTimeout(deadline);
+    }
+  }
+};
+
 test('multipart reader enforces idle deadlines before the first byte and between chunks', async () => {
   for (const writePrefix of [false, true]) {
     const request = controlledRequest();
@@ -74,7 +92,7 @@ test('multipart reader enforces idle deadlines before the first byte and between
       request.write(Buffer.from(`--${BOUNDARY}\r\n`, 'utf8'));
     }
 
-    await assert.rejects(read, timeoutError);
+    await withReferencedDeadline(() => assert.rejects(read, timeoutError));
     const bytesAtTimeout = accountedBytes;
     request.write(Buffer.from('late bytes'));
     await delay(10);
@@ -93,12 +111,14 @@ test('multipart reader enforces total deadline against drip feeds and accepts bo
     interval.unref();
 
     try {
-      await assert.rejects(
-        readSinglePhotoMultipart(request, undefined, {
-          idleTimeoutMs: 30,
-          totalTimeoutMs: 80,
-        }),
-        timeoutError,
+      await withReferencedDeadline(() =>
+        assert.rejects(
+          readSinglePhotoMultipart(request, undefined, {
+            idleTimeoutMs: 30,
+            totalTimeoutMs: 80,
+          }),
+          timeoutError,
+        ),
       );
     } finally {
       clearInterval(interval);
