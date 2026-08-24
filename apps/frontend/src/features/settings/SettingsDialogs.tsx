@@ -213,7 +213,7 @@ export const SettingsDialogs = ({
           disabled={busy}
           onClick={onLogout}
         >
-          {busy ? 'Выходим…' : 'Выйти'}
+          {busy ? 'Выходим…' : error === null ? 'Выйти' : 'Повторить'}
         </button>
       </DialogActions>
     </ManagedDialog>

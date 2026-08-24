@@ -10,10 +10,12 @@ import {
   cancelSubscription,
   getSettingsProfile,
   getSubscription,
-  logout,
   prepareAccountDeletion,
+  prepareLogout,
   preparePushSubscriptionDeletion,
   updateNotifications,
+  type PreparedLogoutAttempt,
+  type PreparedPushSubscriptionDeletion,
 } from '../../lib/api';
 import { useTheme } from '../theme/theme-context';
 import {
@@ -137,6 +139,8 @@ export const SettingsScreen = ({
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const isMountedRef = useRef(true);
   const pushActionInFlightRef = useRef(false);
+  const logoutAttemptRef = useRef<PreparedLogoutAttempt | null>(null);
+  const logoutPushDeletionRef = useRef<PreparedPushSubscriptionDeletion | null>(null);
 
   latestNotificationsRef.current = notifications;
 
@@ -491,16 +495,69 @@ export const SettingsScreen = ({
       return;
     }
 
-    const deleteSubscription = preparePushSubscriptionDeletion();
-    onChatSessionEnd();
+    let attempt = logoutAttemptRef.current;
+    let deleteSubscription = logoutPushDeletionRef.current;
+
+    if (attempt === null || deleteSubscription === null || !attempt.isCurrent()) {
+      try {
+        attempt = prepareLogout();
+        deleteSubscription = preparePushSubscriptionDeletion();
+        logoutAttemptRef.current = attempt;
+        logoutPushDeletionRef.current = deleteSubscription;
+      } catch (error) {
+        setDialogError(
+          `Выход не завершен. ${
+            error instanceof ApiRequestError
+              ? error.message
+              : 'Не удалось подготовить безопасный выход. Попробуйте ещё раз.'
+          }`,
+        );
+        return;
+      }
+    }
+
+    const preparedAttempt = attempt;
+    const preparedDeleteSubscription = deleteSubscription;
+    onChatSessionSuspend();
     setDialogBusy(true);
+    setDialogError(null);
     void settleBestEffortWithin(
-      (control) => bestEffortUnsubscribeFromPush({ ...control, deleteSubscription }),
+      (control) =>
+        bestEffortUnsubscribeFromPush({
+          ...control,
+          deleteSubscription: preparedDeleteSubscription,
+        }),
       PUSH_BEST_EFFORT_TIMEOUT_MS,
     )
-      .then(() => logout())
-      .catch(() => undefined)
-      .finally(onSignedOut);
+      .then(() => preparedAttempt.execute())
+      .then((completion) => {
+        if (
+          logoutAttemptRef.current !== preparedAttempt ||
+          !preparedAttempt.isCompletionCurrent(completion)
+        ) {
+          return;
+        }
+
+        logoutAttemptRef.current = null;
+        logoutPushDeletionRef.current = null;
+        onChatSessionEnd();
+        onSignedOut();
+      })
+      .catch((error: unknown) => {
+        if (logoutAttemptRef.current !== preparedAttempt || !preparedAttempt.isCurrent()) {
+          return;
+        }
+
+        setDialogBusy(false);
+        setDialogError(
+          `Выход не завершен. ${
+            error instanceof ApiRequestError
+              ? error.message
+              : 'Сервер не подтвердил отзыв сессии. Попробуйте ещё раз.'
+          }`,
+        );
+        onChatSessionRestart();
+      });
   };
 
   const confirmCancelSubscription = (): void => {
