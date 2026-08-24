@@ -287,3 +287,20 @@ test('account deletion requires exact confirmation and removes the authenticated
     await harness.close();
   }
 });
+
+test('trainer account deletion is managed while conversations remain assigned', async () => {
+  const harness = await startHarness();
+  harness.repository.setTrainerManaged(true);
+
+  try {
+    const response = await requestJson(harness, '/api/v1/settings/account', {
+      method: 'DELETE',
+      body: { confirm: 'DELETE' },
+    });
+    assert.equal(response.status, 409);
+    assert.equal(asObject(asObject(response.body).error).code, 'TRAINER_ACCOUNT_MANAGED');
+    assert.equal(harness.repository.isDeleted(), false);
+  } finally {
+    await harness.close();
+  }
+});

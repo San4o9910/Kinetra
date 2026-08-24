@@ -13,6 +13,7 @@ const clonePreferences = (preferences: NotificationPreferences): NotificationPre
 
 export class InMemorySettingsRepository implements SettingsRepository {
   private deleted = false;
+  private trainerManaged = false;
   private preferences: NotificationPreferences = {
     workout_reminders: true,
     reminder_time: '09:00',
@@ -78,13 +79,17 @@ export class InMemorySettingsRepository implements SettingsRepository {
     return true;
   }
 
-  public async deleteAccount(userId: string): Promise<boolean> {
+  public async deleteAccount(userId: string): Promise<'deleted' | 'not_found' | 'trainer_managed'> {
     if (this.deleted || userId !== this.userId) {
-      return false;
+      return 'not_found';
+    }
+
+    if (this.trainerManaged) {
+      return 'trainer_managed';
     }
 
     this.deleted = true;
-    return true;
+    return 'deleted';
   }
 
   public peekPreferences(): NotificationPreferences {
@@ -93,5 +98,9 @@ export class InMemorySettingsRepository implements SettingsRepository {
 
   public isDeleted(): boolean {
     return this.deleted;
+  }
+
+  public setTrainerManaged(managed: boolean): void {
+    this.trainerManaged = managed;
   }
 }

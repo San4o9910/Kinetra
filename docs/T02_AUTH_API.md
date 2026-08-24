@@ -118,11 +118,29 @@ await fetch('/api/v1/auth/refresh', {
 
 Успех — `200`, новый access token и новая refresh cookie. Предыдущий refresh token немедленно
 отзывается. Отсутствующий cookie даёт `REFRESH_TOKEN_REQUIRED`; недействительная, отозванная или
-протухшая сессия — `INVALID_REFRESH_TOKEN`.
+протухшая сессия — `INVALID_REFRESH_TOKEN`. Reuse token, у которого есть rotation replacement,
+считается компрометацией и отзывает все активные sessions пользователя. Intentional logout token
+без replacement просто отклоняется, чтобы оставшийся HttpOnly cookie не уничтожил unrelated login
+family при следующем bootstrap.
 
 ## POST /logout
 
-Body не нужен. Текущий refresh token отзывается, cookie очищается. Ответ — `204`.
+Body не нужен. Browser-вызов передаёт captured access bearer: backend атомарно отзывает текущую
+cookie только когда её сессия принадлежит подписанному subject и является `sid` access token либо
+его потомком по цепочке refresh rotation. Другая login family того же пользователя и другой аккаунт
+не затрагиваются. Refresh и logout используют единый lock order `user → refresh session`. Если
+remote refresh успел создать один или несколько replacement до ожидающего logout, logout отзывает
+предъявленную cookie и всех её replacement descendants в доказанной signed `sid` chain. Если logout
+получил user lock первым, ожидающий refresh не создаёт replacement. Возраст proof отдельно не
+ограничивается: sliding refresh может пережить исходный cookie lifetime, а принадлежность к его
+rotation family проверяется в PostgreSQL. Подпись, HS256, `typ`, `iss`, `aud`, `type`, UUID
+`sub`/`sid`/`jti`, safe `iat`/`exp`, точный access TTL и запрет future-issued proof остаются
+обязательными. Обычная API/Socket.IO-проверка истёкшие access tokens по-прежнему отклоняет.
+
+Logout всегда отвечает `204` без `Set-Cookie`. Legacy-вызов без `Authorization` является
+server-side no-op: иначе поздний запрос старой вкладки мог бы отозвать refresh cookie нового
+аккаунта. Современный frontend всегда отправляет family-bound bearer и локально завершает logout
+даже при недоступном backend.
 
 Logout идемпотентен: отсутствие cookie не раскрывает информацию и тоже возвращает `204`. Уже
 выпущенный access JWT не хранится на сервере и истекает сам по короткому TTL; refresh этой сессии

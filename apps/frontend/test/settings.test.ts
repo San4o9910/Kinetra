@@ -13,6 +13,7 @@ import type {
 } from '../src/pwa/pushNotifications.js';
 
 import { runAccountDeletionLifecycle } from '../src/features/settings/accountLifecycle.js';
+import { restartChatRuntime } from '../src/features/chat/runtime.js';
 import { SettingsDialogs } from '../src/features/settings/SettingsDialogs.js';
 import { SettingsView } from '../src/features/settings/SettingsView.js';
 import {
@@ -68,6 +69,7 @@ const defaultPushFixture: PushFixture = {
 const renderSettings = (
   fixture: SubscriptionResponse = subscription,
   push: PushFixture = defaultPushFixture,
+  chatAvailable = false,
 ): string =>
   renderToStaticMarkup(
     createElement(SettingsView, {
@@ -81,10 +83,12 @@ const renderSettings = (
       pushBusy: push.busy,
       pushError: push.error,
       hasSurvey: true,
+      chatAvailable,
       themePreference: 'system',
       resolvedTheme: 'dark',
       supportEmail: 'coach@kinetra.app',
       onClose: () => undefined,
+      onOpenChat: () => undefined,
       onNotificationsChange: () => undefined,
       onEnablePush: () => undefined,
       onDisablePush: () => undefined,
@@ -123,6 +127,16 @@ test('T10 settings view renders all six sections and canonical controls', () => 
   assert.ok(markup.includes('data-testid="edit-survey"'));
   assert.ok(markup.includes('data-testid="logout"'));
   assert.ok(markup.includes('data-testid="settings-delete-account"'));
+});
+
+test('T12 settings opens protected trainer chat and uses email only as a controlled fallback', () => {
+  const chatMarkup = renderSettings(subscription, defaultPushFixture, true);
+  assert.ok(chatMarkup.includes('data-testid="settings-contact-coach"'));
+  assert.ok(chatMarkup.includes('Открыть защищённый чат'));
+  assert.equal(chatMarkup.includes('mailto:coach@kinetra.app'), false);
+
+  const fallbackMarkup = renderSettings(subscription, defaultPushFixture, false);
+  assert.ok(fallbackMarkup.includes('mailto:coach@kinetra.app'));
 });
 
 test('subscription card renders provider, amount, expiry and real T11 actions', () => {
@@ -296,6 +310,9 @@ test('T13 account deletion retains and awaits the browser subscription before de
         events.push('account:delete');
       };
     },
+    onChatSessionSuspend: () => {
+      events.push('chat:suspend-sync');
+    },
     captureBrowserSubscription: async () => {
       events.push('browser:capture');
       const captured = currentSubscription;
@@ -308,23 +325,164 @@ test('T13 account deletion retains and awaits the browser subscription before de
       await browserCleanup;
       events.push('browser:unsubscribe:complete');
     },
+    onChatSessionEnd: () => {
+      events.push('chat:terminal-clear');
+    },
     onSignedOut: () => {
       events.push('auth:clear-and-navigate');
     },
   });
 
   await new Promise<void>((resolve) => setImmediate(resolve));
-  assert.deepEqual(events, ['account:bind', 'browser:capture', 'browser:unsubscribe:start']);
+  assert.deepEqual(events, [
+    'account:bind',
+    'chat:suspend-sync',
+    'browser:capture',
+    'browser:unsubscribe:start',
+  ]);
 
   releaseBrowserCleanup?.();
   await lifecycle;
 
   assert.deepEqual(events, [
     'account:bind',
+    'chat:suspend-sync',
     'browser:capture',
     'browser:unsubscribe:start',
     'browser:unsubscribe:complete',
     'account:delete',
+    'chat:terminal-clear',
     'auth:clear-and-navigate',
   ]);
+  console.log('KINETRA_T12_T13_COEXISTENCE=PASS');
+});
+
+test('failed account deletion preserves auth and restarts chat after every suspended failure', async () => {
+  for (const failurePoint of ['capture', 'unsubscribe', 'delete'] as const) {
+    const events: string[] = [];
+    let authenticated = true;
+    let draft = 'Сохранённый черновик';
+    let badge = 0;
+    let emitUnread: ((unread: number) => void) | null = null;
+
+    const lifecycle = runAccountDeletionLifecycle('DELETE', {
+      prepareAccountDeletion: () => async () => {
+        events.push('account:delete');
+        if (failurePoint === 'delete') {
+          throw new Error('delete failed');
+        }
+      },
+      onChatSessionSuspend: () => {
+        events.push('chat:suspend');
+      },
+      captureBrowserSubscription: async () => {
+        events.push('browser:capture');
+        if (failurePoint === 'capture') {
+          throw new Error('capture failed');
+        }
+        return { endpoint: 'https://push.example/delete-retry' } as PushSubscription;
+      },
+      unsubscribeBrowserSubscription: async () => {
+        events.push('browser:unsubscribe');
+        if (failurePoint === 'unsubscribe') {
+          throw new Error('unsubscribe failed');
+        }
+      },
+      onChatSessionRestart: () => {
+        events.push('chat:restart-and-subscribe');
+        emitUnread = (unread) => {
+          badge = unread;
+        };
+      },
+      onChatSessionEnd: () => {
+        draft = '';
+        events.push('chat:terminal-clear');
+      },
+      onSignedOut: () => {
+        authenticated = false;
+      },
+    });
+
+    await assert.rejects(lifecycle, new RegExp(`${failurePoint} failed`, 'u'));
+    assert.equal(authenticated, true);
+    assert.equal(draft, 'Сохранённый черновик');
+    assert.equal(events[0], 'chat:suspend');
+    assert.equal(events.at(-1), 'chat:restart-and-subscribe');
+    assert.equal(events.includes('chat:terminal-clear'), false);
+    assert.notEqual(emitUnread, null);
+    emitUnread?.(4);
+    assert.equal(badge, 4, `chat badge must update after ${failurePoint} recovery`);
+  }
+});
+
+test('failed deletion uses the runtime restart path to resubscribe, reload and update the badge', async () => {
+  const events: string[] = [];
+  let authenticated = true;
+  let draft = 'Черновик остаётся';
+  let badge = 0;
+  let activeListener: ((unread: number) => void) | null = null;
+  let unsubscribeCurrent: (() => void) | null = () => events.push('chat:unsubscribe-old');
+
+  await assert.rejects(
+    runAccountDeletionLifecycle('DELETE', {
+      prepareAccountDeletion: () => async () => {
+        events.push('account:delete');
+        throw new Error('delete failed');
+      },
+      captureBrowserSubscription: async () => null,
+      unsubscribeBrowserSubscription: async () => undefined,
+      onChatSessionSuspend: () => events.push('chat:suspend'),
+      onChatSessionRestart: () => {
+        const previousUnsubscribe = unsubscribeCurrent;
+        unsubscribeCurrent = restartChatRuntime({
+          invalidateSessionRequests: () => events.push('chat:invalidate-get'),
+          unsubscribeCurrent: previousUnsubscribe,
+          disconnect: () => events.push('chat:disconnect'),
+          revokeObjectUrls: () => events.push('chat:revoke-media'),
+          available: true,
+          resetUnavailable: () => events.push('chat:idle'),
+          getConnectionState: () => 'connecting',
+          setConnectionState: (state) => events.push(`chat:state:${state}`),
+          subscribe: () => {
+            events.push('chat:subscribe-new');
+            activeListener = (unread) => {
+              badge = unread;
+            };
+            return () => events.push('chat:unsubscribe-new');
+          },
+          loadSession: () => {
+            events.push('api:get-session');
+            void Promise.resolve().then(() => events.push('chat:connect'));
+          },
+        });
+      },
+      onChatSessionEnd: () => {
+        draft = '';
+      },
+      onSignedOut: () => {
+        authenticated = false;
+      },
+    }),
+    /delete failed/u,
+  );
+  await Promise.resolve();
+
+  assert.equal(authenticated, true);
+  assert.equal(draft, 'Черновик остаётся');
+  assert.deepEqual(events, [
+    'chat:suspend',
+    'account:delete',
+    'chat:invalidate-get',
+    'chat:unsubscribe-old',
+    'chat:disconnect',
+    'chat:revoke-media',
+    'chat:state:connecting',
+    'chat:subscribe-new',
+    'api:get-session',
+    'chat:connect',
+  ]);
+  assert.notEqual(activeListener, null);
+  activeListener?.(6);
+  assert.equal(badge, 6);
+  unsubscribeCurrent?.();
 });

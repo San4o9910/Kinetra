@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kinetra-shell-v4';
+const CACHE_NAME = 'kinetra-shell-v5';
 const APP_SHELL = [
   '/',
   '/offline.html',
@@ -17,6 +17,17 @@ const DEFAULT_NOTIFICATION = Object.freeze({
   body: 'Откройте приложение, чтобы продолжить.',
   url: '/',
 });
+
+const isPrivateChatResource = (url) =>
+  url.pathname.startsWith('/api/v1/chat') ||
+  url.pathname.startsWith('/chat-media/') ||
+  url.searchParams.has('X-Amz-Signature') ||
+  url.searchParams.has('x-amz-signature');
+
+const isCacheableResponse = (response) => {
+  const cacheControl = response.headers.get('cache-control')?.toLowerCase() ?? '';
+  return response.ok && !cacheControl.includes('no-store') && !cacheControl.includes('private');
+};
 
 const notificationDefaultsForType = (type) => {
   if (type === 'workout_reminder') {
@@ -139,7 +150,11 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  if (url.pathname.startsWith('/api/') || url.pathname === '/health') {
+  if (
+    url.pathname.startsWith('/api/') ||
+    url.pathname === '/health' ||
+    isPrivateChatResource(url)
+  ) {
     return;
   }
 
@@ -147,7 +162,7 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          if (response.ok) {
+          if (isCacheableResponse(response)) {
             const responseCopy = response.clone();
             void caches.open(CACHE_NAME).then((cache) => cache.put(request, responseCopy));
           }
@@ -172,7 +187,7 @@ self.addEventListener('fetch', (event) => {
 
       const networkResponse = await fetch(request);
 
-      if (networkResponse.ok) {
+      if (isCacheableResponse(networkResponse)) {
         const responseCopy = networkResponse.clone();
         void caches.open(CACHE_NAME).then((cache) => cache.put(request, responseCopy));
       }

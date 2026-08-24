@@ -74,6 +74,11 @@ export interface AuthenticatedSession {
   readonly refreshToken: string;
 }
 
+export interface LogoutSessionProof {
+  readonly userId: string;
+  readonly sessionId: string;
+}
+
 export type RegisterResult =
   | { readonly kind: 'authenticated'; readonly session: AuthenticatedSession }
   | {
@@ -189,11 +194,7 @@ export class AuthService {
       throw new HttpError(401, 'INVALID_CREDENTIALS', 'Invalid identifier or password.');
     }
 
-    if (
-      this.config.emailVerificationRequired &&
-      user.email !== null &&
-      !user.emailVerified
-    ) {
+    if (this.config.emailVerificationRequired && user.email !== null && !user.emailVerified) {
       throw new HttpError(403, 'EMAIL_NOT_VERIFIED', 'Email verification is required.');
     }
 
@@ -223,11 +224,7 @@ export class AuthService {
       throw new HttpError(401, 'INVALID_REFRESH_TOKEN', 'Refresh session is invalid.');
     }
 
-    const accessToken = await this.accessTokens.issue(
-      result.user.id,
-      replacementSessionId,
-      now,
-    );
+    const accessToken = await this.accessTokens.issue(result.user.id, replacementSessionId, now);
 
     return {
       refreshToken: replacementToken.value,
@@ -240,15 +237,20 @@ export class AuthService {
     };
   }
 
-  public async logout(refreshToken: string | null): Promise<void> {
-    if (refreshToken === null || !isPlausibleOpaqueToken(refreshToken)) {
-      return;
+  public async logout(
+    refreshToken: string | null,
+    proof: LogoutSessionProof | undefined,
+  ): Promise<boolean> {
+    if (proof === undefined || refreshToken === null || !isPlausibleOpaqueToken(refreshToken)) {
+      return false;
     }
 
-    await this.repository.revokeRefreshSessionByHash(
-      hashOpaqueToken(refreshToken),
-      this.clock.now(),
-    );
+    return this.repository.revokeRefreshSessionInFamily({
+      currentTokenHash: hashOpaqueToken(refreshToken),
+      expectedUserId: proof.userId,
+      ancestorSessionId: proof.sessionId,
+      now: this.clock.now(),
+    });
   }
 
   public async requestPasswordReset(rawIdentifier: string): Promise<void> {

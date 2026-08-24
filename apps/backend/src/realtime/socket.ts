@@ -5,8 +5,10 @@ import { env } from '../config/env.js';
 
 export const createSocketServer = (httpServer: HttpServer): SocketServer =>
   new SocketServer(httpServer, {
+    transports: ['websocket'],
+    maxHttpBufferSize: 32 * 1024,
     cors: {
-      origin: env.corsOrigins,
+      origin: [...env.corsOrigins],
       credentials: true,
     },
   });

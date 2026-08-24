@@ -51,12 +51,18 @@ interface PushDeviceState {
 
 export interface SettingsScreenProps {
   readonly hasSurvey: boolean;
+  readonly chatAvailable: boolean;
   readonly onClose: () => void;
+  readonly onOpenChat: () => void;
   readonly onEditSurvey: () => void;
   readonly onOpenPayment: () => void;
   readonly onSubscriptionUpdated: (subscription: SubscriptionResponse) => void;
   readonly onSignedOut: () => void;
   readonly onSessionExpired: () => void;
+  readonly onChatSessionSuspend: () => void;
+  readonly onChatSessionRestart: () => void;
+  readonly onChatSessionEnd: () => void;
+  readonly onBlockingDialogChange?: (open: boolean) => void;
 }
 
 const runtimeEnv = (typeof import.meta.env === 'object' ? import.meta.env : {}) as ImportMetaEnv;
@@ -98,12 +104,18 @@ const SettingsState = ({
 
 export const SettingsScreen = ({
   hasSurvey,
+  chatAvailable,
   onClose,
+  onOpenChat,
   onEditSurvey,
   onOpenPayment,
   onSubscriptionUpdated,
   onSignedOut,
   onSessionExpired,
+  onChatSessionSuspend,
+  onChatSessionRestart,
+  onChatSessionEnd,
+  onBlockingDialogChange,
 }: SettingsScreenProps): ReactNode => {
   const { preference, resolvedTheme, setPreference } = useTheme();
   const [loadState, setLoadState] = useState<SettingsLoadState>({ kind: 'loading' });
@@ -127,6 +139,11 @@ export const SettingsScreen = ({
   const pushActionInFlightRef = useRef(false);
 
   latestNotificationsRef.current = notifications;
+
+  useEffect(() => {
+    onBlockingDialogChange?.(activeDialog !== null);
+    return () => onBlockingDialogChange?.(false);
+  }, [activeDialog, onBlockingDialogChange]);
 
   const handleApiError = useCallback(
     (error: unknown, fallback: string): string => {
@@ -475,6 +492,7 @@ export const SettingsScreen = ({
     }
 
     const deleteSubscription = preparePushSubscriptionDeletion();
+    onChatSessionEnd();
     setDialogBusy(true);
     void settleBestEffortWithin(
       (control) => bestEffortUnsubscribeFromPush({ ...control, deleteSubscription }),
@@ -521,6 +539,9 @@ export const SettingsScreen = ({
       prepareAccountDeletion,
       captureBrowserSubscription: getExistingPushSubscription,
       unsubscribeBrowserSubscription,
+      onChatSessionSuspend,
+      onChatSessionRestart,
+      onChatSessionEnd,
       onSignedOut,
     }).catch((error: unknown) => {
       setDialogBusy(false);
@@ -557,10 +578,12 @@ export const SettingsScreen = ({
         pushBusy={pushDeviceState.busy}
         pushError={pushDeviceState.error}
         hasSurvey={hasSurvey}
+        chatAvailable={chatAvailable}
         themePreference={preference}
         resolvedTheme={resolvedTheme}
         supportEmail={supportEmail}
         onClose={onClose}
+        onOpenChat={onOpenChat}
         onNotificationsChange={setNotifications}
         onEnablePush={enablePushOnDevice}
         onDisablePush={disablePushOnDevice}

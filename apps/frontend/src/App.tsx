@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import type { MeResponse, SubscriptionResponse } from '@kinetra/shared';
 
 import { LoginScreen } from './features/auth/LoginScreen';
@@ -16,17 +24,59 @@ import { clearWorkoutHistorySentinel } from './features/program/history';
 import { ProgramScreen } from './features/program/ProgramScreen';
 import { ScheduleScreen } from './features/schedule/ScheduleScreen';
 import { SettingsScreen } from './features/settings/SettingsScreen';
+import { settleBestEffortWithin } from './features/settings/accountLifecycle';
 import { SurveyWizard } from './features/survey/SurveyWizard';
-import { ApiRequestError, bootstrapSession, fetchMe, getSubscription } from './lib/api';
+import { ChatFloatingButton, ClientChatScreen, useChatRuntime } from './features/chat';
+import { TrainerChatsScreen } from './features/trainer-chat';
+import { useOnlineStatus } from './hooks/useOnlineStatus';
+import {
+  ApiRequestError,
+  bootstrapSession,
+  chatRuntimeApi,
+  ensureAccessToken,
+  fetchMe,
+  getSubscription,
+  invalidateInMemorySession,
+  logout,
+  preparePushSubscriptionDeletion,
+  refreshInMemoryAccessToken,
+} from './lib/api';
+import { bestEffortUnsubscribeFromPush } from './pwa/pushNotifications';
+import { createFeatureChatRealtimeClient } from './realtime/socket';
 import {
   appRoutes,
   isActiveAppRoute,
+  isChatFabRoute,
   isPaymentRoute,
   isSettingsRoute,
+  isTrainerRoute,
   normalizeAppRoute,
   routeForOnboardingStatus,
+  trainerConversationIdFromRoute,
+  trainerConversationRoute,
   type AppRoute,
 } from './routing';
+
+const runtimeEnv = (typeof import.meta.env === 'object' ? import.meta.env : {}) as ImportMetaEnv;
+const supportEmail = runtimeEnv.VITE_SUPPORT_EMAIL ?? 'coach@kinetra.app';
+const PUSH_BEST_EFFORT_TIMEOUT_MS = 1_500;
+
+const chatUnavailableMessage = (
+  reason: 'disabled' | 'trainer_unavailable' | 'not_available',
+): string => {
+  if (reason === 'disabled') {
+    return 'Чат временно отключён.';
+  }
+
+  if (reason === 'trainer_unavailable') {
+    return 'Персональный тренер пока не назначен.';
+  }
+
+  return 'Чат недоступен для этого аккаунта.';
+};
+
+const clientDisplayName = (profile: MeResponse): string =>
+  profile.user.firstName ?? profile.user.username ?? 'Вы';
 
 interface SystemStateProps {
   readonly kind: 'offline' | 'server';
@@ -63,6 +113,9 @@ const SystemState = ({ kind, message, onRetry }: SystemStateProps): ReactNode =>
 interface ActiveAppShellProps {
   readonly route: AppRoute;
   readonly navigationDisabled: boolean;
+  readonly chatFabHidden: boolean;
+  readonly chatUnreadCount: number;
+  readonly onOpenChat: () => void;
   readonly onNavigate: (route: AppRoute) => void;
   readonly children: ReactNode;
 }
@@ -70,13 +123,60 @@ interface ActiveAppShellProps {
 const ActiveAppShell = ({
   route,
   navigationDisabled,
+  chatFabHidden,
+  chatUnreadCount,
+  onOpenChat,
   onNavigate,
   children,
 }: ActiveAppShellProps): ReactNode => (
   <div className="active-app-shell">
     <div className="active-app-content">{children}</div>
+    <ChatFloatingButton unreadCount={chatUnreadCount} hidden={chatFabHidden} onOpen={onOpenChat} />
     <TabBar route={route} disabled={navigationDisabled} onNavigate={onNavigate} />
   </div>
+);
+
+interface ChatRouteStateProps {
+  readonly kind: 'loading' | 'error' | 'unavailable';
+  readonly message: string;
+  readonly onBack: () => void;
+  readonly backLabel?: string;
+  readonly onRetry?: () => void;
+  readonly showEmailFallback?: boolean;
+}
+
+const ChatRouteState = ({
+  kind,
+  message,
+  onBack,
+  backLabel = 'Назад',
+  onRetry,
+  showEmailFallback = false,
+}: ChatRouteStateProps): ReactNode => (
+  <main className="chat-bootstrap-shell" data-testid={`chat-runtime-${kind}`}>
+    <section className="chat-bootstrap-card" aria-live="polite">
+      <p className="survey-kicker">ЧАТ KINETRA</p>
+      <h1>
+        {kind === 'loading'
+          ? 'Открываем защищённый чат'
+          : kind === 'unavailable'
+            ? 'Чат пока недоступен'
+            : 'Чат не загрузился'}
+      </h1>
+      <p>{message}</p>
+      <div className="chat-bootstrap-actions">
+        {onRetry === undefined ? null : (
+          <button className="primary-button" type="button" onClick={onRetry}>
+            Повторить
+          </button>
+        )}
+        {showEmailFallback ? <a href={`mailto:${supportEmail}`}>Написать в поддержку</a> : null}
+        <button type="button" onClick={onBack}>
+          {backLabel}
+        </button>
+      </div>
+    </section>
+  </main>
 );
 
 type SessionState =
@@ -124,11 +224,20 @@ export const App = (): ReactNode => {
   const [session, setSession] = useState<SessionState>({ kind: 'booting' });
   const [route, navigate] = useBrowserRoute();
   const [workoutCompletionBusy, setWorkoutCompletionBusy] = useState(false);
+  const [blockingDialogOpen, setBlockingDialogOpen] = useState(false);
+  const [trainerSignOutBusy, setTrainerSignOutBusy] = useState(false);
   const [subscriptionState, setSubscriptionState] = useState<SubscriptionLoadState>({
     kind: 'idle',
   });
   const subscriptionControllerRef = useRef<AbortController | null>(null);
   const subscriptionRequestVersionRef = useRef(0);
+  const chatDisposeRef = useRef<() => void>(() => undefined);
+  const trainerSignOutBusyRef = useRef(false);
+  const online = useOnlineStatus();
+  const chatRealtime = useMemo(
+    () => createFeatureChatRealtimeClient(ensureAccessToken, refreshInMemoryAccessToken),
+    [],
+  );
 
   const navigateActiveTab = useCallback(
     (nextRoute: AppRoute): void => {
@@ -153,6 +262,8 @@ export const App = (): ReactNode => {
   );
 
   const handleActiveSessionExpired = useCallback((): void => {
+    invalidateInMemorySession();
+    chatDisposeRef.current();
     subscriptionControllerRef.current?.abort();
     subscriptionRequestVersionRef.current += 1;
     setSubscriptionState({ kind: 'idle' });
@@ -267,9 +378,55 @@ export const App = (): ReactNode => {
   }, [restoreSession, session.kind]);
 
   const authenticatedUserId = session.kind === 'authenticated' ? session.profile.user.id : null;
+  const authenticatedRole = session.kind === 'authenticated' ? session.profile.account_role : null;
+  const chatEnabled =
+    session.kind === 'authenticated' &&
+    (session.profile.account_role === 'trainer' ||
+      session.profile.user.onboardingStatus === 'active');
+  const chatRuntime = useChatRuntime({
+    accountId: authenticatedUserId,
+    role: authenticatedRole,
+    enabled: chatEnabled,
+    api: chatRuntimeApi,
+    realtime: chatRealtime,
+    onSessionExpired: handleActiveSessionExpired,
+  });
+  chatDisposeRef.current = chatRuntime.disposeNow;
+
+  const finishSignedOut = useCallback((): void => {
+    subscriptionControllerRef.current?.abort();
+    subscriptionRequestVersionRef.current += 1;
+    setSubscriptionState({ kind: 'idle' });
+    setBlockingDialogOpen(false);
+    setSession({ kind: 'unauthenticated' });
+    navigate(appRoutes.login, true);
+  }, [navigate]);
+
+  const handleTrainerSignOut = useCallback((): void => {
+    if (trainerSignOutBusyRef.current) {
+      return;
+    }
+
+    trainerSignOutBusyRef.current = true;
+    setTrainerSignOutBusy(true);
+    const deleteSubscription = preparePushSubscriptionDeletion();
+    chatDisposeRef.current();
+
+    void settleBestEffortWithin(
+      (control) => bestEffortUnsubscribeFromPush({ ...control, deleteSubscription }),
+      PUSH_BEST_EFFORT_TIMEOUT_MS,
+    )
+      .then(() => logout())
+      .catch(() => undefined)
+      .finally(() => {
+        trainerSignOutBusyRef.current = false;
+        setTrainerSignOutBusy(false);
+        finishSignedOut();
+      });
+  }, [finishSignedOut]);
 
   useEffect(() => {
-    if (authenticatedUserId === null) {
+    if (authenticatedUserId === null || authenticatedRole !== 'client') {
       subscriptionControllerRef.current?.abort();
       subscriptionRequestVersionRef.current += 1;
       setSubscriptionState({ kind: 'idle' });
@@ -281,10 +438,10 @@ export const App = (): ReactNode => {
       subscriptionControllerRef.current?.abort();
       subscriptionRequestVersionRef.current += 1;
     };
-  }, [authenticatedUserId, loadSubscription]);
+  }, [authenticatedRole, authenticatedUserId, loadSubscription]);
 
   useEffect(() => {
-    if (authenticatedUserId === null) {
+    if (authenticatedUserId === null || authenticatedRole !== 'client') {
       return;
     }
 
@@ -296,7 +453,7 @@ export const App = (): ReactNode => {
 
     document.addEventListener('visibilitychange', refreshWhenVisible);
     return () => document.removeEventListener('visibilitychange', refreshWhenVisible);
-  }, [authenticatedUserId, loadSubscription]);
+  }, [authenticatedRole, authenticatedUserId, loadSubscription]);
 
   useLayoutEffect(() => {
     if (
@@ -308,6 +465,12 @@ export const App = (): ReactNode => {
   }, [subscriptionState]);
 
   useEffect(() => {
+    if (route !== appRoutes.settings) {
+      setBlockingDialogOpen(false);
+    }
+  }, [route]);
+
+  useEffect(() => {
     if (session.kind === 'unauthenticated') {
       if (route !== appRoutes.login) {
         navigate(appRoutes.login, true);
@@ -316,6 +479,18 @@ export const App = (): ReactNode => {
     }
 
     if (session.kind !== 'authenticated') {
+      return;
+    }
+
+    if (session.profile.account_role === 'trainer') {
+      if (!isTrainerRoute(route)) {
+        navigate(appRoutes.trainerChats, true);
+      }
+      return;
+    }
+
+    if (isTrainerRoute(route)) {
+      navigate(routeForOnboardingStatus(session.profile.user.onboardingStatus), true);
       return;
     }
 
@@ -336,7 +511,7 @@ export const App = (): ReactNode => {
         return;
       }
 
-      if (!isActiveAppRoute(route)) {
+      if (route !== appRoutes.chat && !isActiveAppRoute(route)) {
         navigate(appRoutes.home, true);
       }
       return;
@@ -372,7 +547,12 @@ export const App = (): ReactNode => {
       <LoginScreen
         onAuthenticated={(profile) => {
           setSession({ kind: 'authenticated', profile });
-          navigate(routeForOnboardingStatus(profile.user.onboardingStatus), true);
+          navigate(
+            profile.account_role === 'trainer'
+              ? appRoutes.trainerChats
+              : routeForOnboardingStatus(profile.user.onboardingStatus),
+            true,
+          );
         }}
       />
     );
@@ -389,6 +569,78 @@ export const App = (): ReactNode => {
   }
 
   const profile = session.profile;
+
+  if (profile.account_role === 'trainer') {
+    if (!isTrainerRoute(route)) {
+      return (
+        <ChatRouteState
+          kind="loading"
+          message="Открываем рабочее пространство тренера…"
+          backLabel="Выйти"
+          onBack={handleTrainerSignOut}
+        />
+      );
+    }
+
+    if (chatRuntime.state.kind === 'idle' || chatRuntime.state.kind === 'loading') {
+      return (
+        <ChatRouteState
+          kind="loading"
+          message="Загружаем назначенные диалоги…"
+          backLabel="Выйти"
+          onBack={handleTrainerSignOut}
+        />
+      );
+    }
+
+    if (chatRuntime.state.kind === 'unavailable') {
+      return (
+        <ChatRouteState
+          kind="unavailable"
+          message={chatUnavailableMessage(chatRuntime.state.reason)}
+          backLabel="Выйти"
+          onBack={handleTrainerSignOut}
+          onRetry={chatRuntime.refresh}
+        />
+      );
+    }
+
+    if (chatRuntime.state.kind === 'error' || chatRuntime.state.session.role !== 'trainer') {
+      return (
+        <ChatRouteState
+          kind="error"
+          message={
+            chatRuntime.state.kind === 'error'
+              ? chatRuntime.state.message
+              : 'Сервер вернул неверную роль чата. Войдите снова.'
+          }
+          backLabel="Выйти"
+          onBack={handleTrainerSignOut}
+          onRetry={chatRuntime.refresh}
+        />
+      );
+    }
+
+    return (
+      <TrainerChatsScreen
+        accountId={profile.user.id}
+        routeConversationId={trainerConversationIdFromRoute(route)}
+        session={chatRuntime.state.session}
+        api={chatRuntimeApi}
+        realtime={chatRealtime}
+        online={online}
+        photoUploadsEnabled={chatRuntime.state.session.photo_uploads_enabled}
+        onNavigateConversation={(conversationId) =>
+          navigate(trainerConversationRoute(conversationId))
+        }
+        onBackToInbox={() => navigate(appRoutes.trainerChats)}
+        onSessionExpired={handleActiveSessionExpired}
+        registerObjectUrl={chatRuntime.registerObjectUrl}
+        {...(trainerSignOutBusy ? {} : { onSignOut: handleTrainerSignOut })}
+      />
+    );
+  }
+
   const defaultAuthenticatedRoute = routeForOnboardingStatus(profile.user.onboardingStatus);
 
   if (route === appRoutes.paymentSuccess) {
@@ -437,11 +689,18 @@ export const App = (): ReactNode => {
     return <SubscriptionVerificationState loading onRetry={() => loadSubscription()} />;
   }
 
+  const chatControlledUnavailable = chatRuntime.state.kind === 'unavailable';
+  const chatFabHidden =
+    blockingDialogOpen || !isChatFabRoute(route) || chatControlledUnavailable || !chatEnabled;
+
   const withActiveNavigation = (content: ReactNode): ReactNode =>
     profile.user.onboardingStatus === 'active' ? (
       <ActiveAppShell
         route={route}
         navigationDisabled={workoutCompletionBusy}
+        chatFabHidden={chatFabHidden}
+        chatUnreadCount={chatRuntime.unreadCount}
+        onOpenChat={() => navigate(appRoutes.chat)}
         onNavigate={navigateActiveTab}
       >
         {content}
@@ -467,15 +726,18 @@ export const App = (): ReactNode => {
     return withActiveNavigation(
       <SettingsScreen
         hasSurvey={profile.survey !== null}
+        chatAvailable={chatEnabled && !chatControlledUnavailable}
         onClose={() => navigate(routeForOnboardingStatus(profile.user.onboardingStatus))}
+        onOpenChat={() => navigate(appRoutes.chat)}
         onEditSurvey={() => navigate(appRoutes.editSurvey)}
         onOpenPayment={() => navigate(appRoutes.payment)}
         onSubscriptionUpdated={handleSubscriptionUpdated}
-        onSignedOut={() => {
-          setSession({ kind: 'unauthenticated' });
-          navigate(appRoutes.login, true);
-        }}
+        onSignedOut={finishSignedOut}
         onSessionExpired={handleActiveSessionExpired}
+        onChatSessionSuspend={chatRuntime.suspendNow}
+        onChatSessionRestart={chatRuntime.restartNow}
+        onChatSessionEnd={chatRuntime.disposeNow}
+        onBlockingDialogChange={setBlockingDialogOpen}
       />,
     );
   }
@@ -523,6 +785,64 @@ export const App = (): ReactNode => {
           setSession({ kind: 'unauthenticated' });
           navigate(appRoutes.login, true);
         }}
+      />
+    );
+  }
+
+  if (route === appRoutes.chat) {
+    const backToActiveApp = (): void => navigate(appRoutes.home);
+
+    if (chatRuntime.state.kind === 'idle' || chatRuntime.state.kind === 'loading') {
+      return (
+        <ChatRouteState
+          kind="loading"
+          message="Загружаем диалог и проверяем защищённую сессию…"
+          onBack={backToActiveApp}
+        />
+      );
+    }
+
+    if (chatRuntime.state.kind === 'unavailable') {
+      return (
+        <ChatRouteState
+          kind="unavailable"
+          message={chatUnavailableMessage(chatRuntime.state.reason)}
+          showEmailFallback
+          onBack={backToActiveApp}
+          onRetry={chatRuntime.refresh}
+        />
+      );
+    }
+
+    if (chatRuntime.state.kind === 'error' || chatRuntime.state.session.role !== 'client') {
+      return (
+        <ChatRouteState
+          kind="error"
+          message={
+            chatRuntime.state.kind === 'error'
+              ? chatRuntime.state.message
+              : 'Сервер вернул неверную роль чата. Войдите снова.'
+          }
+          onBack={backToActiveApp}
+          onRetry={chatRuntime.refresh}
+        />
+      );
+    }
+
+    return (
+      <ClientChatScreen
+        accountId={profile.user.id}
+        ownDisplayName={clientDisplayName(profile)}
+        session={chatRuntime.state.session}
+        api={chatRuntimeApi}
+        realtime={chatRealtime}
+        online={online}
+        photoUploadsEnabled={chatRuntime.state.session.photo_uploads_enabled}
+        supportEmail={supportEmail}
+        onBack={backToActiveApp}
+        onSessionExpired={handleActiveSessionExpired}
+        onConversationStateChange={chatRuntime.updateClientConversationState}
+        registerObjectUrl={chatRuntime.registerObjectUrl}
       />
     );
   }
@@ -596,6 +916,9 @@ export const App = (): ReactNode => {
     <ActiveAppShell
       route={route}
       navigationDisabled={workoutCompletionBusy}
+      chatFabHidden={chatFabHidden}
+      chatUnreadCount={chatRuntime.unreadCount}
+      onOpenChat={() => navigate(appRoutes.chat)}
       onNavigate={navigateActiveTab}
     >
       {activeContent}

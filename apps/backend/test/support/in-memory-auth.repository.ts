@@ -3,6 +3,7 @@ import type {
   CreateUserInput,
   CreateUserResult,
   OneTimeTokenInput,
+  RevokeRefreshSessionInFamilyInput,
   RefreshSessionInput,
   RotateRefreshSessionInput,
   RotateRefreshSessionResult,
@@ -90,6 +91,10 @@ export class InMemoryAuthRepository implements AuthRepository {
     }
 
     if (current.revokedAt !== null) {
+      if (current.replacedByTokenId === null) {
+        return { status: 'invalid' };
+      }
+
       await this.revokeAllRefreshSessions(current.userId, input.now);
       return { status: 'reused' };
     }
@@ -120,12 +125,54 @@ export class InMemoryAuthRepository implements AuthRepository {
     return { status: 'rotated', user: cloneUser(user) };
   }
 
-  public async revokeRefreshSessionByHash(tokenHash: string, now: Date): Promise<void> {
-    const session = this.refreshSessions.get(tokenHash);
+  public async revokeRefreshSessionInFamily(
+    input: RevokeRefreshSessionInFamilyInput,
+  ): Promise<boolean> {
+    const current = this.refreshSessions.get(input.currentTokenHash);
 
-    if (session !== undefined && session.revokedAt === null) {
-      session.revokedAt = cloneDate(now);
+    if (current === undefined || current.userId !== input.expectedUserId) {
+      return false;
     }
+
+    const sessionsById = new Map(
+      [...this.refreshSessions.values()].map((session) => [session.id, session] as const),
+    );
+    const visited = new Set<string>();
+    let familySession = sessionsById.get(input.ancestorSessionId);
+
+    while (
+      familySession !== undefined &&
+      familySession.userId === input.expectedUserId &&
+      !visited.has(familySession.id)
+    ) {
+      if (familySession.id === current.id) {
+        let targetSession: RefreshSessionRecord | undefined = current;
+        const revokedTargetIds = new Set<string>();
+
+        while (
+          targetSession !== undefined &&
+          targetSession.userId === input.expectedUserId &&
+          !revokedTargetIds.has(targetSession.id)
+        ) {
+          targetSession.revokedAt ??= cloneDate(input.now);
+          revokedTargetIds.add(targetSession.id);
+          targetSession =
+            targetSession.replacedByTokenId === null
+              ? undefined
+              : sessionsById.get(targetSession.replacedByTokenId);
+        }
+
+        return true;
+      }
+
+      visited.add(familySession.id);
+      familySession =
+        familySession.replacedByTokenId === null
+          ? undefined
+          : sessionsById.get(familySession.replacedByTokenId);
+    }
+
+    return false;
   }
 
   public async revokeAllRefreshSessions(userId: string, now: Date): Promise<void> {

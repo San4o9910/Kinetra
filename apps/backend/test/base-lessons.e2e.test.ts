@@ -44,6 +44,8 @@ const errorCode = (body: unknown): string => {
 };
 
 const profileFor = (userId: string, onboardingStatus: OnboardingStatus): MeResponse => ({
+  account_role: 'client',
+  trainer_profile: null,
   user: {
     id: userId,
     email: 'base-lessons@example.com',

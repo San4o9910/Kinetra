@@ -68,6 +68,12 @@ export interface MessageResponse {
 }
 
 export type OnboardingStatus = 'survey_pending' | 'onboarding_pending' | 'base_lessons' | 'active';
+export type AccountRole = 'client' | 'trainer';
+
+export interface TrainerProfile {
+  readonly display_name: string;
+  readonly avatar_url: string | null;
+}
 
 export type SurveyGender = 'male' | 'female';
 export type SurveyAgeRange = '18-25' | '26-35' | '36-45' | '46-55' | '55+';
@@ -128,6 +134,8 @@ export interface ProfileSubscription {
 }
 
 export interface MeResponse {
+  readonly account_role: AccountRole;
+  readonly trainer_profile: TrainerProfile | null;
   readonly user: ProfileUser;
   readonly survey: SurveyAnswer | null;
   readonly subscription: ProfileSubscription;
@@ -387,4 +395,220 @@ export interface DeleteAccountRequest {
 export interface CompleteWorkoutRequest {
   readonly video_id: string;
   readonly program_week: number;
+}
+
+export type ChatRole = AccountRole;
+export type ChatMessageKind = 'text' | 'photo';
+export type ChatPhotoStatus = 'processing' | 'ready' | 'attached' | 'failed';
+
+export interface CanonicalChatTextValue {
+  readonly value: string;
+  readonly codePointLength: number;
+  readonly hasForbiddenControl: boolean;
+}
+
+const chatBoundaryWhitespacePattern = /^\p{White_Space}+|\p{White_Space}+$/gu;
+const isForbiddenChatControl = (character: string): boolean => {
+  const codePoint = character.codePointAt(0);
+  return (
+    codePoint !== undefined &&
+    ((codePoint >= 0 && codePoint <= 8) ||
+      (codePoint >= 11 && codePoint <= 31) ||
+      codePoint === 127)
+  );
+};
+
+export const canonicalizeChatTextValue = (rawValue: string): CanonicalChatTextValue => {
+  const value = rawValue
+    .replace(/\r\n?/gu, '\n')
+    .normalize('NFC')
+    .replace(chatBoundaryWhitespacePattern, '');
+
+  const codePoints = Array.from(value);
+
+  return {
+    value,
+    codePointLength: codePoints.length,
+    hasForbiddenControl: codePoints.some(isForbiddenChatControl),
+  };
+};
+
+export interface ChatCounterpartProfile {
+  readonly display_name: string;
+  readonly avatar_url: string | null;
+}
+
+export interface ChatPhotoDto {
+  readonly id: string;
+  readonly status: ChatPhotoStatus;
+  readonly mime_type: 'image/webp';
+  readonly width: number;
+  readonly height: number;
+  readonly size_bytes: number;
+  readonly expires_at: string | null;
+  readonly failure_code?: string;
+  readonly retry_allowed?: boolean;
+}
+
+export interface ChatMessageDto {
+  readonly id: string;
+  readonly conversation_id: string;
+  readonly sequence: number;
+  readonly client_message_id: string;
+  readonly sender_role: ChatRole;
+  readonly is_mine: boolean;
+  readonly sender_name: string;
+  readonly kind: ChatMessageKind;
+  readonly text: string | null;
+  readonly photo: ChatPhotoDto | null;
+  readonly created_at: string;
+}
+
+export interface ChatConversationStateDto {
+  readonly last_message_sequence: number;
+  readonly own_last_read_sequence: number;
+  readonly counterpart_last_read_sequence: number;
+  readonly unread_count: number;
+}
+
+export interface ChatClientConversationDto {
+  readonly id: string;
+  readonly trainer: ChatCounterpartProfile;
+  readonly last_message_sequence: number;
+  readonly last_read_sequence: number;
+  readonly counterpart_last_read_sequence: number;
+  readonly unread_count: number;
+}
+
+export interface ChatClientSessionResponse {
+  readonly role: 'client';
+  readonly enabled: boolean;
+  readonly photo_uploads_enabled: boolean;
+  readonly available: boolean;
+  readonly conversation: ChatClientConversationDto | null;
+}
+
+export interface ChatTrainerSessionResponse {
+  readonly role: 'trainer';
+  readonly enabled: boolean;
+  readonly photo_uploads_enabled: boolean;
+  readonly profile: TrainerProfile;
+  readonly unread_count: number;
+}
+
+export type ChatSessionResponse = ChatClientSessionResponse | ChatTrainerSessionResponse;
+
+export interface ChatConversationResponse {
+  readonly conversation: ChatClientConversationDto;
+}
+
+export interface ChatClientInboxProfile {
+  readonly display_name: string;
+  readonly secondary_label: string;
+  readonly avatar_url: string | null;
+}
+
+export interface ChatLastMessageSummary {
+  readonly kind: ChatMessageKind;
+  readonly preview: string;
+  readonly created_at: string;
+}
+
+export interface ChatConversationSummaryDto {
+  readonly id: string;
+  readonly client: ChatClientInboxProfile;
+  readonly last_message: ChatLastMessageSummary | null;
+  readonly unread_count: number;
+  readonly activity_at: string;
+}
+
+export interface ChatConversationSummaryResponse {
+  readonly conversation: ChatConversationSummaryDto;
+}
+
+export interface ChatConversationListResponse {
+  readonly items: readonly ChatConversationSummaryDto[];
+  readonly next_cursor: string | null;
+}
+
+export interface ChatMessagePageResponse {
+  readonly messages: readonly ChatMessageDto[];
+  readonly conversation_state: ChatConversationStateDto;
+  readonly next_before_sequence: number | null;
+  readonly has_more_before: boolean;
+  readonly next_after_sequence: number | null;
+  readonly has_more_after: boolean;
+}
+
+export interface ChatTextMessageRequest {
+  readonly client_message_id: string;
+  readonly kind: 'text';
+  readonly text: string;
+}
+
+export interface ChatPhotoMessageRequest {
+  readonly client_message_id: string;
+  readonly kind: 'photo';
+  readonly text?: string | null;
+  readonly photo_id: string;
+}
+
+export type ChatSendMessageRequest = ChatTextMessageRequest | ChatPhotoMessageRequest;
+
+export interface ChatSendMessageResponse {
+  readonly message: ChatMessageDto;
+  readonly conversation_state: ChatConversationStateDto;
+  readonly replayed: boolean;
+}
+
+export interface ChatReadRequest {
+  readonly through_sequence: number;
+}
+
+export interface ChatReadResponse {
+  readonly conversation_state: ChatConversationStateDto;
+}
+
+export interface ChatPhotoResponse {
+  readonly photo: ChatPhotoDto;
+}
+
+export interface ChatPhotoAccessResponse {
+  readonly url: string;
+  readonly expires_at: string;
+}
+
+export interface ChatMessageNewEvent {
+  readonly message: ChatMessageDto;
+}
+
+export interface ChatConversationUpdatedEvent {
+  readonly conversation_id: string;
+  readonly last_message: ChatLastMessageSummary | null;
+  readonly unread_count: number;
+}
+
+export interface ChatReadUpdatedEvent {
+  readonly conversation_id: string;
+  readonly reader_role: ChatRole;
+  readonly through_sequence: number;
+  readonly read_at: string;
+}
+
+export interface ChatSessionInvalidatedEvent {
+  readonly reason: 'session_inactive' | 'account_changed' | 'token_expired';
+}
+
+export interface ChatServerToClientEvents {
+  'chat:message:new': (event: ChatMessageNewEvent) => void;
+  'chat:conversation:updated': (event: ChatConversationUpdatedEvent) => void;
+  'chat:read:updated': (event: ChatReadUpdatedEvent) => void;
+  'chat:session:invalidated': (event: ChatSessionInvalidatedEvent) => void;
+}
+
+export interface ChatClientToServerEvents {
+  'chat:sync': (
+    event: { readonly conversation_id: string; readonly last_sequence: number },
+    acknowledge: (response: { readonly delta_required: boolean }) => void,
+  ) => void;
 }

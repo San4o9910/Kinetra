@@ -19,6 +19,7 @@ interface WindowClientFixture {
 interface ServiceWorkerHarness {
   readonly notifications: NotificationRecord[];
   readonly openedWindows: string[];
+  readonly cachePuts: string[];
   readonly listener: (type: string) => ServiceWorkerListener;
   readonly setWindowClients: (clients: readonly WindowClientFixture[]) => void;
 }
@@ -32,6 +33,7 @@ const createHarness = async (): Promise<ServiceWorkerHarness> => {
   const listeners = new Map<string, ServiceWorkerListener>();
   const notifications: NotificationRecord[] = [];
   const openedWindows: string[] = [];
+  const cachePuts: string[] = [];
   let windowClients: readonly WindowClientFixture[] = [];
   const self = {
     location: { origin: 'https://kinetra.app' },
@@ -59,7 +61,15 @@ const createHarness = async (): Promise<ServiceWorkerHarness> => {
     match: async () => undefined,
     open: async () => ({
       addAll: async () => undefined,
-      put: async () => undefined,
+      put: async (request: RequestInfo | URL) => {
+        cachePuts.push(
+          typeof request === 'string'
+            ? request
+            : request instanceof URL
+              ? request.href
+              : request.url,
+        );
+      },
     }),
   };
   const context = createContext({
@@ -74,6 +84,7 @@ const createHarness = async (): Promise<ServiceWorkerHarness> => {
   return {
     notifications,
     openedWindows,
+    cachePuts,
     listener: (type) => {
       const listener = listeners.get(type);
       assert.notEqual(listener, undefined, `Service worker listener ${type} was not registered.`);
@@ -83,6 +94,23 @@ const createHarness = async (): Promise<ServiceWorkerHarness> => {
       windowClients = clients;
     },
   };
+};
+
+const dispatchFetch = async (harness: ServiceWorkerHarness, request: Request): Promise<boolean> => {
+  let response: Promise<Response> | null = null;
+  harness.listener('fetch')({
+    request,
+    respondWith: (pending: Promise<Response>) => {
+      response = pending;
+    },
+  });
+
+  if (response === null) {
+    return false;
+  }
+
+  await response;
+  return true;
 };
 
 const dispatchPush = async (
@@ -226,4 +254,26 @@ test('T13 malformed or external notification clicks never open an external origi
   );
 
   console.log('KINETRA_T13_SERVICE_WORKER=PASS');
+});
+
+test('T12 private chat API and signed media are never handled by the Cache API', async () => {
+  const harness = await createHarness();
+
+  assert.equal(
+    await dispatchFetch(
+      harness,
+      new Request('https://kinetra.app/api/v1/chat/conversations', { method: 'GET' }),
+    ),
+    false,
+  );
+  assert.equal(
+    await dispatchFetch(
+      harness,
+      new Request('https://kinetra.app/chat-media/photo.webp?X-Amz-Signature=private-signature', {
+        method: 'GET',
+      }),
+    ),
+    false,
+  );
+  assert.deepEqual(harness.cachePuts, []);
 });

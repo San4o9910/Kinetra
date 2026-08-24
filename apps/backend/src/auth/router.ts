@@ -22,10 +22,16 @@ import {
   type RefreshCookieConfig,
 } from './cookies.js';
 import { HttpError } from './errors.js';
-import { PASSWORD_RESET_REQUEST_MESSAGE, type AuthService } from './service.js';
+import type { LogoutSubjectProofVerifier } from './middleware.js';
+import {
+  PASSWORD_RESET_REQUEST_MESSAGE,
+  type AuthService,
+  type LogoutSessionProof,
+} from './service.js';
 
 export interface AuthRouterOptions {
   readonly service: AuthService;
+  readonly accessTokenVerifier: LogoutSubjectProofVerifier;
   readonly refreshCookie: RefreshCookieConfig;
   readonly passwordResetRateLimiter: RequestHandler;
 }
@@ -97,6 +103,29 @@ const readIdentifier = (body: JsonObject): string => {
   }
 
   return candidate.value;
+};
+
+const optionalVerifiedLogoutProof = async (
+  request: Request,
+  verifier: LogoutSubjectProofVerifier,
+): Promise<LogoutSessionProof | undefined> => {
+  const authorization = request.get('authorization');
+
+  if (authorization === undefined) {
+    return undefined;
+  }
+
+  const parts = authorization.trim().split(/\s+/u);
+  if (parts.length !== 2 || parts[0]?.toLowerCase() !== 'bearer' || !parts[1]) {
+    throw new HttpError(401, 'AUTHENTICATION_REQUIRED', 'A valid access token is required.');
+  }
+
+  try {
+    const claims = await verifier.verifyLogoutSubjectProof(parts[1]);
+    return { userId: claims.sub, sessionId: claims.sid };
+  } catch {
+    throw new HttpError(401, 'AUTHENTICATION_REQUIRED', 'A valid access token is required.');
+  }
 };
 
 export const createAuthRouter = (options: AuthRouterOptions): Router => {
@@ -171,8 +200,12 @@ export const createAuthRouter = (options: AuthRouterOptions): Router => {
     const body = asJsonObjectOrEmpty(request.body);
     assertNoUserIdOverride(body);
     const refreshToken = readCookie(request, options.refreshCookie.name);
-    await options.service.logout(refreshToken);
-    clearRefreshTokenCookie(response, options.refreshCookie);
+    const proof = await optionalVerifiedLogoutProof(request, options.accessTokenVerifier);
+    await options.service.logout(refreshToken, proof);
+
+    // Logout never mutates the origin-wide cookie in its response. A valid bearer
+    // may revoke only its own refresh rotation family. Bearerless legacy requests
+    // are server-side no-ops so an old tab cannot revoke a newer account's cookie.
     response.status(204).send();
   });
 

@@ -5,6 +5,7 @@ import type {
   CreateUserInput,
   CreateUserResult,
   OneTimeTokenInput,
+  RevokeRefreshSessionInFamilyInput,
   RefreshSessionInput,
   RotateRefreshSessionInput,
   RotateRefreshSessionResult,
@@ -21,18 +22,16 @@ interface UserRow extends QueryResultRow {
   updated_at: Date | string;
 }
 
+interface RefreshSessionOwnerRow extends QueryResultRow {
+  user_id: string;
+}
+
 interface RotationRow extends QueryResultRow {
   refresh_id: string;
   refresh_user_id: string;
   refresh_expires_at: Date | string;
   refresh_revoked_at: Date | string | null;
-  user_id: string;
-  user_email: string | null;
-  user_phone: string | null;
-  user_password_hash: string;
-  user_email_verified: boolean;
-  user_created_at: Date | string;
-  user_updated_at: Date | string;
+  refresh_replaced_by_token_id: string | null;
 }
 
 interface OneTimeTokenRow extends QueryResultRow {
@@ -43,6 +42,11 @@ interface OneTimeTokenRow extends QueryResultRow {
 }
 
 interface OneTimeTokenOwnerRow extends QueryResultRow {
+  user_id: string;
+}
+
+interface RefreshSessionIdentityRow extends QueryResultRow {
+  id: string;
   user_id: string;
 }
 
@@ -59,24 +63,26 @@ const mapUser = (row: UserRow): UserRecord => ({
   updatedAt: asDate(row.updated_at),
 });
 
-const mapRotationUser = (row: RotationRow): UserRecord => ({
-  id: row.user_id,
-  email: row.user_email,
-  phone: row.user_phone,
-  passwordHash: row.user_password_hash,
-  emailVerified: row.user_email_verified,
-  createdAt: asDate(row.user_created_at),
-  updatedAt: asDate(row.user_updated_at),
-});
-
 const isUniqueViolation = (error: unknown): error is { code: string; constraint?: string } =>
   typeof error === 'object' &&
   error !== null &&
   'code' in error &&
   (error as { code?: unknown }).code === '23505';
 
+export type AuthRefreshMutationOperation = 'rotate' | 'logout';
+
+export interface PostgresAuthRepositoryHooks {
+  readonly afterUserLocked?: (
+    operation: AuthRefreshMutationOperation,
+    userId: string,
+  ) => Promise<void>;
+}
+
 export class PostgresAuthRepository implements AuthRepository {
-  public constructor(private readonly pool: Pool) {}
+  public constructor(
+    private readonly pool: Pool,
+    private readonly hooks: PostgresAuthRepositoryHooks = {},
+  ) {}
 
   public async findUserByEmail(email: string): Promise<UserRecord | null> {
     const result = await this.pool.query<UserRow>(
@@ -110,14 +116,7 @@ export class PostgresAuthRepository implements AuthRepository {
          )
          VALUES ($1, $2, $3, $4, $5, CASE WHEN $5 THEN $6 ELSE NULL END, $6, $6)
          RETURNING id, email, phone, password_hash, email_verified, created_at, updated_at`,
-        [
-          input.id,
-          input.email,
-          input.phone,
-          input.passwordHash,
-          input.emailVerified,
-          input.now,
-        ],
+        [input.id, input.email, input.phone, input.passwordHash, input.emailVerified, input.now],
       );
       const row = result.rows[0];
 
@@ -154,24 +153,47 @@ export class PostgresAuthRepository implements AuthRepository {
 
     try {
       await client.query('BEGIN');
+      const ownerResult = await client.query<RefreshSessionOwnerRow>(
+        `SELECT user_id
+         FROM refresh_tokens
+         WHERE token_hash = $1`,
+        [input.currentTokenHash],
+      );
+      const owner = ownerResult.rows[0];
+
+      if (owner === undefined) {
+        await client.query('COMMIT');
+        return { status: 'invalid' };
+      }
+
+      // Every refresh rotation/revocation locks the owning user first, matching
+      // password reset and account deletion lock order.
+      const userResult = await client.query<UserRow>(
+        `SELECT id, email, phone, password_hash, email_verified, created_at, updated_at
+         FROM users
+         WHERE id = $1
+         FOR UPDATE`,
+        [owner.user_id],
+      );
+      const user = userResult.rows[0];
+
+      if (user === undefined) {
+        await client.query('COMMIT');
+        return { status: 'invalid' };
+      }
+
+      await this.hooks.afterUserLocked?.('rotate', owner.user_id);
       const result = await client.query<RotationRow>(
         `SELECT
            rt.id AS refresh_id,
            rt.user_id AS refresh_user_id,
            rt.expires_at AS refresh_expires_at,
            rt.revoked_at AS refresh_revoked_at,
-           u.id AS user_id,
-           u.email AS user_email,
-           u.phone AS user_phone,
-           u.password_hash AS user_password_hash,
-           u.email_verified AS user_email_verified,
-           u.created_at AS user_created_at,
-           u.updated_at AS user_updated_at
+           rt.replaced_by_token_id AS refresh_replaced_by_token_id
          FROM refresh_tokens rt
-         JOIN users u ON u.id = rt.user_id
-         WHERE rt.token_hash = $1
-         FOR UPDATE OF rt`,
-        [input.currentTokenHash],
+         WHERE rt.token_hash = $1 AND rt.user_id = $2
+         FOR UPDATE`,
+        [input.currentTokenHash, owner.user_id],
       );
       const row = result.rows[0];
 
@@ -181,14 +203,18 @@ export class PostgresAuthRepository implements AuthRepository {
       }
 
       if (row.refresh_revoked_at !== null) {
-        await client.query(
-          `UPDATE refresh_tokens
-           SET revoked_at = COALESCE(revoked_at, $2)
-           WHERE user_id = $1 AND revoked_at IS NULL`,
-          [row.refresh_user_id, input.now],
-        );
+        if (row.refresh_replaced_by_token_id !== null) {
+          await client.query(
+            `UPDATE refresh_tokens
+             SET revoked_at = COALESCE(revoked_at, $2)
+             WHERE user_id = $1 AND revoked_at IS NULL`,
+            [row.refresh_user_id, input.now],
+          );
+        }
         await client.query('COMMIT');
-        return { status: 'reused' };
+        return row.refresh_replaced_by_token_id === null
+          ? { status: 'invalid' }
+          : { status: 'reused' };
       }
 
       if (asDate(row.refresh_expires_at).getTime() <= input.now.getTime()) {
@@ -218,7 +244,7 @@ export class PostgresAuthRepository implements AuthRepository {
         [row.refresh_id, input.now, input.replacement.id],
       );
       await client.query('COMMIT');
-      return { status: 'rotated', user: mapRotationUser(row) };
+      return { status: 'rotated', user: mapUser(user) };
     } catch (error) {
       await this.rollbackQuietly(client);
       throw error;
@@ -227,22 +253,123 @@ export class PostgresAuthRepository implements AuthRepository {
     }
   }
 
-  public async revokeRefreshSessionByHash(tokenHash: string, now: Date): Promise<void> {
-    await this.pool.query(
-      `UPDATE refresh_tokens
-       SET revoked_at = COALESCE(revoked_at, $2)
-       WHERE token_hash = $1`,
-      [tokenHash, now],
-    );
+  public async revokeRefreshSessionInFamily(
+    input: RevokeRefreshSessionInFamilyInput,
+  ): Promise<boolean> {
+    const client = await this.pool.connect();
+
+    try {
+      await client.query('BEGIN');
+      const ownerResult = await client.query<RefreshSessionOwnerRow>(
+        `SELECT user_id
+         FROM refresh_tokens
+         WHERE token_hash = $1`,
+        [input.currentTokenHash],
+      );
+      const owner = ownerResult.rows[0];
+
+      if (owner === undefined || owner.user_id !== input.expectedUserId) {
+        await client.query('COMMIT');
+        return false;
+      }
+
+      // Keep the global auth lock order user -> refresh sessions. Once held,
+      // no concurrent rotation can extend this user's chain during traversal.
+      const userLock = await client.query(
+        `SELECT id
+         FROM users
+         WHERE id = $1
+         FOR UPDATE`,
+        [input.expectedUserId],
+      );
+
+      if (userLock.rowCount !== 1) {
+        await client.query('COMMIT');
+        return false;
+      }
+
+      await this.hooks.afterUserLocked?.('logout', input.expectedUserId);
+      const currentResult = await client.query<RefreshSessionIdentityRow>(
+        `SELECT id, user_id
+         FROM refresh_tokens
+         WHERE token_hash = $1 AND user_id = $2
+         FOR UPDATE`,
+        [input.currentTokenHash, input.expectedUserId],
+      );
+      const current = currentResult.rows[0];
+
+      if (current === undefined || current.user_id !== input.expectedUserId) {
+        await client.query('COMMIT');
+        return false;
+      }
+
+      const result = await client.query(
+        `WITH RECURSIVE
+         proof_family (id, replaced_by_token_id) AS (
+           SELECT id, replaced_by_token_id
+           FROM refresh_tokens
+           WHERE id = $1::uuid AND user_id = $2::uuid
+
+           UNION
+
+           SELECT child.id, child.replaced_by_token_id
+           FROM proof_family AS parent
+           JOIN refresh_tokens AS child ON child.id = parent.replaced_by_token_id
+           WHERE child.user_id = $2::uuid
+         ),
+         target_family (id, replaced_by_token_id) AS (
+           SELECT id, replaced_by_token_id
+           FROM refresh_tokens
+           WHERE id = $3::uuid AND user_id = $2::uuid
+
+           UNION
+
+           SELECT child.id, child.replaced_by_token_id
+           FROM target_family AS parent
+           JOIN refresh_tokens AS child ON child.id = parent.replaced_by_token_id
+           WHERE child.user_id = $2::uuid
+         )
+         UPDATE refresh_tokens AS target_session
+         SET revoked_at = COALESCE(target_session.revoked_at, $4)
+         WHERE target_session.user_id = $2::uuid
+           AND target_session.id IN (SELECT id FROM target_family)
+           AND EXISTS (
+             SELECT 1
+             FROM proof_family
+             WHERE proof_family.id = $3::uuid
+           )
+         RETURNING target_session.id`,
+        [input.ancestorSessionId, input.expectedUserId, current.id, input.now],
+      );
+      await client.query('COMMIT');
+      return (result.rowCount ?? 0) > 0;
+    } catch (error) {
+      await this.rollbackQuietly(client);
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   public async revokeAllRefreshSessions(userId: string, now: Date): Promise<void> {
-    await this.pool.query(
-      `UPDATE refresh_tokens
-       SET revoked_at = COALESCE(revoked_at, $2)
-       WHERE user_id = $1 AND revoked_at IS NULL`,
-      [userId, now],
-    );
+    const client = await this.pool.connect();
+
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [userId]);
+      await client.query(
+        `UPDATE refresh_tokens
+         SET revoked_at = COALESCE(revoked_at, $2)
+         WHERE user_id = $1 AND revoked_at IS NULL`,
+        [userId, now],
+      );
+      await client.query('COMMIT');
+    } catch (error) {
+      await this.rollbackQuietly(client);
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   public async storePasswordResetToken(input: OneTimeTokenInput): Promise<void> {
@@ -436,8 +563,8 @@ export class PostgresAuthRepository implements AuthRepository {
   private async rollbackQuietly(client: PoolClient): Promise<void> {
     try {
       await client.query('ROLLBACK');
-    } catch (rollbackError) {
-      console.error('Failed to roll back PostgreSQL transaction.', rollbackError);
+    } catch {
+      console.error('Failed to roll back PostgreSQL transaction.');
     }
   }
 }

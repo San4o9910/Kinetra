@@ -10,14 +10,19 @@ export const appRoutes = Object.freeze({
   progress: '/progress',
   settings: '/settings',
   editSurvey: '/settings/survey',
+  chat: '/chat',
+  trainerChats: '/trainer/chats',
   payment: '/payment',
   paymentSuccess: '/payment/success',
   paymentCancel: '/payment/cancel',
 } as const);
 
-export type AppRoute = (typeof appRoutes)[keyof typeof appRoutes];
+export type StaticAppRoute = (typeof appRoutes)[keyof typeof appRoutes];
+export type TrainerConversationRoute = `/trainer/chats/${string}`;
+export type AppRoute = StaticAppRoute | TrainerConversationRoute;
 
-const knownRoutes = new Set<AppRoute>(Object.values(appRoutes));
+const knownRoutes = new Set<string>(Object.values(appRoutes));
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
 export const routeForOnboardingStatus = (status: OnboardingStatus): AppRoute => {
   switch (status) {
@@ -34,7 +39,31 @@ export const routeForOnboardingStatus = (status: OnboardingStatus): AppRoute => 
 
 export const normalizeAppRoute = (pathname: string): AppRoute => {
   const normalized = pathname.length > 1 ? pathname.replace(/\/+$/u, '') : pathname;
-  return knownRoutes.has(normalized as AppRoute) ? (normalized as AppRoute) : appRoutes.login;
+
+  if (knownRoutes.has(normalized)) {
+    return normalized as StaticAppRoute;
+  }
+
+  const trainerMatch = /^\/trainer\/chats\/([^/]+)$/u.exec(normalized);
+
+  if (trainerMatch?.[1] !== undefined && UUID_PATTERN.test(trainerMatch[1])) {
+    return `/trainer/chats/${trainerMatch[1].toLowerCase()}`;
+  }
+
+  return appRoutes.login;
+};
+
+export const trainerConversationRoute = (conversationId: string): TrainerConversationRoute => {
+  if (!UUID_PATTERN.test(conversationId)) {
+    throw new Error('Trainer conversation ID must be a UUID.');
+  }
+
+  return `/trainer/chats/${conversationId.toLowerCase()}`;
+};
+
+export const trainerConversationIdFromRoute = (route: AppRoute): string | null => {
+  const match = /^\/trainer\/chats\/([^/]+)$/u.exec(route);
+  return match?.[1] !== undefined && UUID_PATTERN.test(match[1]) ? match[1].toLowerCase() : null;
 };
 
 export const isSettingsRoute = (route: AppRoute): boolean =>
@@ -44,6 +73,15 @@ export const isPaymentRoute = (route: AppRoute): boolean =>
   route === appRoutes.payment ||
   route === appRoutes.paymentSuccess ||
   route === appRoutes.paymentCancel;
+
+export const isTrainerRoute = (route: AppRoute): boolean =>
+  route === appRoutes.trainerChats || trainerConversationIdFromRoute(route) !== null;
+
+export const isChatFabRoute = (route: AppRoute): boolean =>
+  route === appRoutes.home ||
+  route === appRoutes.schedule ||
+  route === appRoutes.progress ||
+  route === appRoutes.settings;
 
 export const isActiveAppRoute = (route: AppRoute): boolean =>
   route === appRoutes.home ||

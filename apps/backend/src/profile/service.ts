@@ -11,6 +11,14 @@ const toIsoString = (value: Date | null): string | null =>
   value === null ? null : value.toISOString();
 
 const toResponse = (profile: UserProfileSnapshot): MeResponse => ({
+  account_role: profile.accountRole,
+  trainer_profile:
+    profile.trainerProfile === null
+      ? null
+      : {
+          display_name: profile.trainerProfile.displayName,
+          avatar_url: profile.trainerProfile.avatarUrl,
+        },
   user: {
     id: profile.id,
     email: profile.email,

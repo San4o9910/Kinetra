@@ -28,10 +28,12 @@ export interface SettingsViewProps {
   readonly pushBusy: boolean;
   readonly pushError: string | null;
   readonly hasSurvey: boolean;
+  readonly chatAvailable: boolean;
   readonly themePreference: ThemePreference;
   readonly resolvedTheme: ResolvedTheme;
   readonly supportEmail: string;
   readonly onClose: () => void;
+  readonly onOpenChat: () => void;
   readonly onNotificationsChange: (preferences: NotificationPreferences) => void;
   readonly onEnablePush: () => void;
   readonly onDisablePush: () => void;
@@ -340,10 +342,12 @@ export const SettingsView = ({
   pushBusy,
   pushError,
   hasSurvey,
+  chatAvailable,
   themePreference,
   resolvedTheme,
   supportEmail,
   onClose,
+  onOpenChat,
   onNotificationsChange,
   onEnablePush,
   onDisablePush,
@@ -521,18 +525,28 @@ export const SettingsView = ({
 
         <Section title="Поддержка" testId="settings-support-section">
           <div className="settings-group">
-            <a
-              className="settings-row settings-menu-link"
-              data-testid="settings-contact-coach"
-              href={`mailto:${supportEmail}`}
-            >
-              <SettingsIcon name="coach" />
-              <span className="settings-row-copy">
-                <strong>Связаться с тренером</strong>
-                <small>{supportEmail}</small>
-              </span>
-              <ChevronIcon />
-            </a>
+            {chatAvailable ? (
+              <MenuButton
+                icon="coach"
+                title="Связаться с тренером"
+                detail="Открыть защищённый чат"
+                testId="settings-contact-coach"
+                onClick={onOpenChat}
+              />
+            ) : (
+              <a
+                className="settings-row settings-menu-link"
+                data-testid="settings-contact-coach"
+                href={`mailto:${supportEmail}`}
+              >
+                <SettingsIcon name="coach" />
+                <span className="settings-row-copy">
+                  <strong>Связаться с тренером</strong>
+                  <small>{supportEmail}</small>
+                </span>
+                <ChevronIcon />
+              </a>
+            )}
             <MenuButton
               icon="about"
               title="О приложении"

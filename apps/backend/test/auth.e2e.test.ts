@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import { test } from 'node:test';
+
+import { SignJWT } from 'jose';
 
 import { createApp } from '../src/app.js';
 import { BcryptPasswordHasher } from '../src/auth/password.js';
 import { createFixedWindowRateLimiter } from '../src/auth/rate-limit.js';
-import {
-  AuthService,
-  type AuthServiceConfig,
-} from '../src/auth/service.js';
+import { AuthService, type AuthServiceConfig } from '../src/auth/service.js';
 import {
   hashOpaqueToken,
   HmacJwtAccessTokenService,
@@ -36,8 +36,15 @@ interface TestHarness {
 
 interface HarnessOptions {
   readonly auth?: Partial<AuthServiceConfig>;
+  readonly clockNow?: Date;
   readonly resetRateLimitMax?: number;
 }
+
+const ACCESS_TOKEN_SECRET = 'test-only-kinetra-access-secret-with-more-than-32-characters';
+const ACCESS_TOKEN_ISSUER = 'kinetra-test';
+const ACCESS_TOKEN_AUDIENCE = 'kinetra-pwa-test';
+const ACCESS_TOKEN_TTL_SECONDS = 900;
+const DAY_IN_MILLISECONDS = 24 * 60 * 60 * 1_000;
 
 const defaultAuthConfig: AuthServiceConfig = {
   phoneLoginEnabled: true,
@@ -73,15 +80,41 @@ const cookieValue = (cookie: string): string => {
   return decodeURIComponent(cookie.slice(separatorIndex + 1));
 };
 
+const tamperJwtSignature = (token: string): string => {
+  const parts = token.split('.');
+  assert.equal(parts.length, 3);
+  const signature = parts[2];
+  assert.notEqual(signature, undefined);
+  assert.notEqual(signature, '');
+  const replacement = signature?.startsWith('A') === true ? 'B' : 'A';
+  return `${parts[0]}.${parts[1]}.${replacement}${signature?.slice(1) ?? ''}`;
+};
+
+const signNoncanonicalAccessProof = async (
+  userId: string,
+  issuedAt: number,
+  expiresAt: number,
+): Promise<string> =>
+  new SignJWT({ sid: randomUUID(), type: 'access' })
+    .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
+    .setSubject(userId)
+    .setIssuer(ACCESS_TOKEN_ISSUER)
+    .setAudience(ACCESS_TOKEN_AUDIENCE)
+    .setIssuedAt(issuedAt)
+    .setExpirationTime(expiresAt)
+    .setJti(randomUUID())
+    .sign(new TextEncoder().encode(ACCESS_TOKEN_SECRET));
+
 const startHarness = async (options: HarnessOptions = {}): Promise<TestHarness> => {
   const repository = new InMemoryAuthRepository();
   const delivery = new CapturingAuthTokenDelivery();
-  const clock = new MutableClock(new Date('2026-08-19T08:00:00.000Z'));
+  const clock = new MutableClock(options.clockNow ?? new Date('2026-08-19T08:00:00.000Z'));
+  const authConfig = { ...defaultAuthConfig, ...options.auth };
   const accessTokens = new HmacJwtAccessTokenService(
-    'test-only-kinetra-access-secret-with-more-than-32-characters',
-    'kinetra-test',
-    'kinetra-pwa-test',
-    900,
+    ACCESS_TOKEN_SECRET,
+    ACCESS_TOKEN_ISSUER,
+    ACCESS_TOKEN_AUDIENCE,
+    ACCESS_TOKEN_TTL_SECONDS,
   );
   const service = new AuthService({
     repository,
@@ -90,15 +123,16 @@ const startHarness = async (options: HarnessOptions = {}): Promise<TestHarness> 
     accessTokens,
     tokenDelivery: delivery,
     clock,
-    config: { ...defaultAuthConfig, ...options.auth },
+    config: authConfig,
   });
   const runtime: AuthRuntime = {
     service,
+    accessTokenVerifier: accessTokens,
     refreshCookie: {
       name: 'kinetra_refresh_test',
       secure: false,
       sameSite: 'lax',
-      maxAgeMs: 30 * 24 * 60 * 60 * 1000,
+      maxAgeMs: authConfig.refreshTtlMs,
     },
     passwordResetRateLimiter: createFixedWindowRateLimiter({
       windowMs: 60_000,
@@ -149,11 +183,15 @@ const postJson = async (
   path: string,
   body: unknown,
   cookie?: string,
+  authorization?: string,
 ): Promise<ApiResult> => {
   const headers: Record<string, string> = { 'content-type': 'application/json' };
 
   if (cookie !== undefined) {
     headers.cookie = cookie;
+  }
+  if (authorization !== undefined) {
+    headers.authorization = authorization;
   }
 
   const response = await fetch(`${harness.baseUrl}${path}`, {
@@ -215,6 +253,54 @@ test('email registration and login use bcrypt and reject a wrong password', asyn
     assert.equal(login.status, 200);
     assert.notEqual(login.cookie, null);
   } finally {
+    await harness.close();
+  }
+});
+
+test('unexpected database errors are logged without PostgreSQL details or row values', async () => {
+  const harness = await startHarness();
+  const sensitiveDetail = 'Failing row contains private trainer chat message text.';
+  const databaseError = Object.assign(new Error('violates check constraint'), {
+    code: '23514',
+    detail: sensitiveDetail,
+    query: 'INSERT INTO chat_messages (body) VALUES (private trainer chat message text)',
+  });
+  const originalCreateUser = harness.repository.createUser.bind(harness.repository);
+  const originalConsoleError = console.error;
+  const capturedLogs: unknown[][] = [];
+
+  harness.repository.createUser = async () => {
+    throw databaseError;
+  };
+  console.error = (...values: unknown[]): void => {
+    capturedLogs.push(values);
+  };
+
+  try {
+    const response = await fetch(`${harness.baseUrl}/api/v1/auth/register`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-request-id': 'redacted-error-regression',
+      },
+      body: JSON.stringify({
+        email: 'logger-regression@example.com',
+        password: 'StrongPass123',
+      }),
+    });
+
+    assert.equal(response.status, 500);
+    const responseBody = asObject(await response.json());
+    assert.equal(errorCode(responseBody), 'INTERNAL_ERROR');
+    const serializedLogs = JSON.stringify(capturedLogs);
+    assert.equal(serializedLogs.includes('redacted-error-regression'), true);
+    assert.equal(serializedLogs.includes('23514'), true);
+    assert.equal(serializedLogs.includes(sensitiveDetail), false);
+    assert.equal(serializedLogs.includes('private trainer chat message text'), false);
+    assert.equal(serializedLogs.includes('violates check constraint'), false);
+  } finally {
+    harness.repository.createUser = originalCreateUser;
+    console.error = originalConsoleError;
     await harness.close();
   }
 });
@@ -286,12 +372,7 @@ test('refresh rotation detects reuse and logout revokes the current session', as
     assert.equal(reusedOldToken.status, 401);
     assert.equal(errorCode(reusedOldToken.body), 'INVALID_REFRESH_TOKEN');
 
-    const replacementWasRevoked = await postJson(
-      harness,
-      '/api/v1/auth/refresh',
-      {},
-      secondCookie,
-    );
+    const replacementWasRevoked = await postJson(harness, '/api/v1/auth/refresh', {}, secondCookie);
     assert.equal(replacementWasRevoked.status, 401);
 
     const login = await postJson(harness, '/api/v1/auth/login', {
@@ -301,21 +382,312 @@ test('refresh rotation detects reuse and logout revokes the current session', as
     assert.equal(login.status, 200);
     assert.notEqual(login.cookie, null);
     const loginCookie = login.cookie as string;
+    const loginAccessToken = readString(asObject(login.body), 'accessToken');
 
-    const logout = await postJson(harness, '/api/v1/auth/logout', {}, loginCookie);
+    const logout = await postJson(
+      harness,
+      '/api/v1/auth/logout',
+      {},
+      loginCookie,
+      `Bearer ${loginAccessToken}`,
+    );
     assert.equal(logout.status, 204);
+    assert.equal(logout.cookie, null);
     const storedSession = harness.repository.peekRefreshSession(
       hashOpaqueToken(cookieValue(loginCookie)),
     );
     assert.notEqual(storedSession?.revokedAt, null);
 
+    const refreshAfterLogout = await postJson(harness, '/api/v1/auth/refresh', {}, loginCookie);
+    assert.equal(refreshAfterLogout.status, 401);
+  } finally {
+    await harness.close();
+  }
+});
+
+test('day-zero logout proof revokes only its day-31 sliding refresh family', async () => {
+  const verifierNow = new Date();
+  const harness = await startHarness({
+    clockNow: new Date(verifierNow.getTime() - 31 * DAY_IN_MILLISECONDS),
+  });
+
+  try {
+    const registration = await registerEmailUser(harness);
+    assert.equal(registration.status, 201);
+    assert.notEqual(registration.cookie, null);
+    const dayZeroCookie = registration.cookie as string;
+    const dayZeroProof = readString(asObject(registration.body), 'accessToken');
+
+    harness.clock.advance(29 * DAY_IN_MILLISECONDS);
+    const rotatedFamily = await postJson(harness, '/api/v1/auth/refresh', {}, dayZeroCookie);
+    assert.equal(rotatedFamily.status, 200);
+    assert.notEqual(rotatedFamily.cookie, null);
+    const dayTwentyNineCookie = rotatedFamily.cookie as string;
+
+    const unrelatedFamily = await postJson(harness, '/api/v1/auth/login', {
+      email: 'athlete@example.com',
+      password: 'StrongPass123',
+    });
+    assert.equal(unrelatedFamily.status, 200);
+    assert.notEqual(unrelatedFamily.cookie, null);
+    const unrelatedFamilyCookie = unrelatedFamily.cookie as string;
+
+    const otherAccount = await postJson(harness, '/api/v1/auth/register', {
+      email: 'logout-family-other@example.com',
+      password: 'StrongPass123',
+    });
+    assert.equal(otherAccount.status, 201);
+    assert.notEqual(otherAccount.cookie, null);
+    const otherAccountCookie = otherAccount.cookie as string;
+
+    harness.clock.advance(2 * DAY_IN_MILLISECONDS);
+    await assert.rejects(harness.accessTokens.verify(dayZeroProof, harness.clock.now()));
+
+    const unrelatedFamilyLogout = await postJson(
+      harness,
+      '/api/v1/auth/logout',
+      {},
+      unrelatedFamilyCookie,
+      `Bearer ${dayZeroProof}`,
+    );
+    assert.equal(unrelatedFamilyLogout.status, 204);
+    assert.equal(unrelatedFamilyLogout.cookie, null);
+
+    const otherAccountLogout = await postJson(
+      harness,
+      '/api/v1/auth/logout',
+      {},
+      otherAccountCookie,
+      `Bearer ${dayZeroProof}`,
+    );
+    assert.equal(otherAccountLogout.status, 204);
+    assert.equal(otherAccountLogout.cookie, null);
+
+    const remoteRefreshWonRace = await postJson(
+      harness,
+      '/api/v1/auth/refresh',
+      {},
+      dayTwentyNineCookie,
+    );
+    assert.equal(remoteRefreshWonRace.status, 200);
+    assert.notEqual(remoteRefreshWonRace.cookie, null);
+    const remoteReplacementCookie = remoteRefreshWonRace.cookie as string;
+    const secondRemoteRefreshWonRace = await postJson(
+      harness,
+      '/api/v1/auth/refresh',
+      {},
+      remoteReplacementCookie,
+    );
+    assert.equal(secondRemoteRefreshWonRace.status, 200);
+    assert.notEqual(secondRemoteRefreshWonRace.cookie, null);
+    const latestRemoteReplacementCookie = secondRemoteRefreshWonRace.cookie as string;
+
+    const logout = await postJson(
+      harness,
+      '/api/v1/auth/logout',
+      {},
+      dayTwentyNineCookie,
+      `Bearer ${dayZeroProof}`,
+    );
+    assert.equal(logout.status, 204);
+    assert.equal(logout.cookie, null, 'family-bound logout must never emit Set-Cookie');
+    assert.notEqual(
+      harness.repository.peekRefreshSession(hashOpaqueToken(cookieValue(dayTwentyNineCookie)))
+        ?.revokedAt,
+      null,
+    );
+    assert.notEqual(
+      harness.repository.peekRefreshSession(hashOpaqueToken(cookieValue(remoteReplacementCookie)))
+        ?.revokedAt,
+      null,
+      'a refresh-first replacement descendant must be revoked by the queued family logout',
+    );
+    assert.notEqual(
+      harness.repository.peekRefreshSession(
+        hashOpaqueToken(cookieValue(latestRemoteReplacementCookie)),
+      )?.revokedAt,
+      null,
+      'family logout must follow and revoke replacement descendants beyond one hop',
+    );
+
     const refreshAfterLogout = await postJson(
       harness,
       '/api/v1/auth/refresh',
       {},
-      loginCookie,
+      latestRemoteReplacementCookie,
     );
     assert.equal(refreshAfterLogout.status, 401);
+
+    const unrelatedFamilySurvives = await postJson(
+      harness,
+      '/api/v1/auth/refresh',
+      {},
+      unrelatedFamilyCookie,
+    );
+    assert.equal(unrelatedFamilySurvives.status, 200);
+
+    const otherAccountSurvives = await postJson(
+      harness,
+      '/api/v1/auth/refresh',
+      {},
+      otherAccountCookie,
+    );
+    assert.equal(otherAccountSurvives.status, 200);
+  } finally {
+    await harness.close();
+  }
+});
+
+test('logout rejects tampered, future-issued, and noncanonical subject proofs', async () => {
+  const harness = await startHarness();
+
+  try {
+    const registration = await registerEmailUser(harness);
+    assert.equal(registration.status, 201);
+    assert.notEqual(registration.cookie, null);
+    const refreshCookie = registration.cookie as string;
+    const refreshHash = hashOpaqueToken(cookieValue(refreshCookie));
+    const userId = readString(asObject(asObject(registration.body).user), 'id');
+    const verifierNow = new Date();
+    const issuedProof = readString(asObject(registration.body), 'accessToken');
+    const verifierNowSeconds = Math.floor(verifierNow.getTime() / 1_000);
+    const futureIssuedProof = await signNoncanonicalAccessProof(
+      userId,
+      verifierNowSeconds + 60,
+      verifierNowSeconds + 60 + ACCESS_TOKEN_TTL_SECONDS,
+    );
+    const noncanonicalTtlProof = await signNoncanonicalAccessProof(
+      userId,
+      verifierNowSeconds - 60,
+      verifierNowSeconds - 60 + ACCESS_TOKEN_TTL_SECONDS - 1,
+    );
+
+    for (const invalidProof of [
+      tamperJwtSignature(issuedProof),
+      futureIssuedProof,
+      noncanonicalTtlProof,
+    ]) {
+      const rejectedLogout = await postJson(
+        harness,
+        '/api/v1/auth/logout',
+        {},
+        refreshCookie,
+        `Bearer ${invalidProof}`,
+      );
+      assert.equal(rejectedLogout.status, 401);
+      assert.equal(rejectedLogout.cookie, null);
+      assert.equal(harness.repository.peekRefreshSession(refreshHash)?.revokedAt, null);
+    }
+
+    const refreshAfterRejectedProofs = await postJson(
+      harness,
+      '/api/v1/auth/refresh',
+      {},
+      refreshCookie,
+    );
+    assert.equal(refreshAfterRejectedProofs.status, 200);
+  } finally {
+    await harness.close();
+  }
+});
+
+test('subject-bound logout never revokes or clears another tab account refresh cookie', async () => {
+  const harness = await startHarness();
+
+  try {
+    const accountA = await postJson(harness, '/api/v1/auth/register', {
+      email: 'account-a@example.test',
+      password: 'StrongPass123',
+    });
+    const accountB = await postJson(harness, '/api/v1/auth/register', {
+      email: 'account-b@example.test',
+      password: 'StrongPass123',
+    });
+    assert.equal(accountA.status, 201);
+    assert.equal(accountB.status, 201);
+    assert.notEqual(accountA.cookie, null);
+    assert.notEqual(accountB.cookie, null);
+    const accountAAccessToken = readString(asObject(accountA.body), 'accessToken');
+    const accountACookie = accountA.cookie as string;
+    const accountBCookie = accountB.cookie as string;
+
+    const mismatchedLogout = await postJson(
+      harness,
+      '/api/v1/auth/logout',
+      {},
+      accountBCookie,
+      `Bearer ${accountAAccessToken}`,
+    );
+    assert.equal(mismatchedLogout.status, 204);
+    assert.equal(
+      mismatchedLogout.cookie,
+      null,
+      'a subject mismatch must not emit a cookie-clearing Set-Cookie header',
+    );
+    assert.equal(
+      harness.repository.peekRefreshSession(hashOpaqueToken(cookieValue(accountBCookie)))
+        ?.revokedAt,
+      null,
+    );
+
+    const matchingLogout = await postJson(
+      harness,
+      '/api/v1/auth/logout',
+      {},
+      accountACookie,
+      `Bearer ${accountAAccessToken}`,
+    );
+    assert.equal(matchingLogout.status, 204);
+    assert.equal(
+      matchingLogout.cookie,
+      null,
+      'a late bearer-bound logout response must not clear a newer account cookie',
+    );
+    assert.notEqual(
+      harness.repository.peekRefreshSession(hashOpaqueToken(cookieValue(accountACookie)))
+        ?.revokedAt,
+      null,
+    );
+
+    const accountBRefresh = await postJson(harness, '/api/v1/auth/refresh', {}, accountBCookie);
+    assert.equal(accountBRefresh.status, 200);
+  } finally {
+    await harness.close();
+  }
+});
+
+test('bearerless late logout is a no-op and never emits Set-Cookie', async () => {
+  const harness = await startHarness();
+
+  try {
+    await postJson(harness, '/api/v1/auth/register', {
+      email: 'legacy-account-a@example.test',
+      password: 'StrongPass123',
+    });
+    const newerAccount = await postJson(harness, '/api/v1/auth/register', {
+      email: 'legacy-account-b@example.test',
+      password: 'StrongPass123',
+    });
+    assert.equal(newerAccount.status, 201);
+    assert.notEqual(newerAccount.cookie, null);
+    const newerAccountCookie = newerAccount.cookie as string;
+
+    const lateLegacyLogout = await postJson(harness, '/api/v1/auth/logout', {}, newerAccountCookie);
+    assert.equal(lateLegacyLogout.status, 204);
+    assert.equal(lateLegacyLogout.cookie, null, 'bearerless logout must never emit Set-Cookie');
+    assert.equal(
+      harness.repository.peekRefreshSession(hashOpaqueToken(cookieValue(newerAccountCookie)))
+        ?.revokedAt,
+      null,
+    );
+
+    const newerAccountRefresh = await postJson(
+      harness,
+      '/api/v1/auth/refresh',
+      {},
+      newerAccountCookie,
+    );
+    assert.equal(newerAccountRefresh.status, 200);
   } finally {
     await harness.close();
   }
@@ -361,12 +733,7 @@ test('password reset is non-enumerating, one-time, hashed, and revokes refresh s
     assert.equal(reused.status, 400);
     assert.equal(errorCode(reused.body), 'INVALID_OR_EXPIRED_RESET_TOKEN');
 
-    const oldSession = await postJson(
-      harness,
-      '/api/v1/auth/refresh',
-      {},
-      originalCookie,
-    );
+    const oldSession = await postJson(harness, '/api/v1/auth/refresh', {}, originalCookie);
     assert.equal(oldSession.status, 401);
 
     const oldPassword = await postJson(harness, '/api/v1/auth/login', {

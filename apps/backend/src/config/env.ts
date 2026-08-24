@@ -82,17 +82,45 @@ const parseEnum = <T extends string>(
   return value;
 };
 
-const parseOrigins = (rawValue: string | undefined): string[] => {
-  const origins = (rawValue ?? 'http://localhost:5173')
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean);
+export const parseCorsOrigins = (
+  rawValue: string | undefined,
+  nodeEnvironment: NodeEnvironment = 'development',
+): readonly string[] => {
+  const entries = (rawValue ?? 'http://localhost:5173').split(',').map((origin) => origin.trim());
 
-  if (origins.length === 0) {
+  if (entries.length === 0 || entries.some((origin) => origin.length === 0)) {
     throw new Error('CORS_ORIGIN must contain at least one origin.');
   }
 
-  return origins;
+  const normalized = entries.map((origin) => {
+    let parsed: URL;
+
+    try {
+      parsed = new URL(origin);
+    } catch {
+      throw new Error('CORS_ORIGIN entries must be exact HTTP or HTTPS origins.');
+    }
+
+    if (
+      !['http:', 'https:'].includes(parsed.protocol) ||
+      parsed.origin === 'null' ||
+      parsed.username.length > 0 ||
+      parsed.password.length > 0 ||
+      parsed.pathname !== '/' ||
+      parsed.search.length > 0 ||
+      parsed.hash.length > 0
+    ) {
+      throw new Error('CORS_ORIGIN entries must be exact HTTP or HTTPS origins.');
+    }
+
+    if (nodeEnvironment === 'production' && parsed.protocol !== 'https:') {
+      throw new Error('CORS_ORIGIN entries must use HTTPS in production.');
+    }
+
+    return parsed.origin;
+  });
+
+  return Object.freeze([...new Set(normalized)]);
 };
 
 const trimmedOrNull = (rawValue: string | undefined): string | null => {
@@ -274,6 +302,21 @@ const nodeEnv = parseEnum<NodeEnvironment>('NODE_ENV', process.env.NODE_ENV, 'de
   'test',
   'production',
 ]);
+const s3 = parseS3Environment(nodeEnv);
+const chatEnabled = parseBoolean('CHAT_ENABLED', process.env.CHAT_ENABLED, false);
+const chatPhotoUploadsEnabled = parseBoolean(
+  'CHAT_PHOTO_UPLOADS_ENABLED',
+  process.env.CHAT_PHOTO_UPLOADS_ENABLED,
+  false,
+);
+
+if (chatPhotoUploadsEnabled && !chatEnabled) {
+  throw new Error('CHAT_PHOTO_UPLOADS_ENABLED=true requires CHAT_ENABLED=true.');
+}
+
+if (chatPhotoUploadsEnabled && s3 === null) {
+  throw new Error('CHAT_PHOTO_UPLOADS_ENABLED=true requires complete private S3 configuration.');
+}
 const refreshCookieSecure = parseBoolean(
   'AUTH_REFRESH_COOKIE_SECURE',
   process.env.AUTH_REFRESH_COOKIE_SECURE,
@@ -332,13 +375,24 @@ export const env = Object.freeze({
   nodeEnv,
   host: process.env.HOST ?? '0.0.0.0',
   port: parseInteger('PORT', process.env.PORT, 3000, 1, 65_535),
-  corsOrigins: parseOrigins(process.env.CORS_ORIGIN),
+  corsOrigins: parseCorsOrigins(process.env.CORS_ORIGIN, nodeEnv),
   trustProxyHops: parseInteger('TRUST_PROXY_HOPS', process.env.TRUST_PROXY_HOPS, 0, 0, 10),
   databaseUrl:
     process.env.DATABASE_URL ?? 'postgresql://kinetra:kinetra_local_only@localhost:5432/kinetra',
-  s3: parseS3Environment(nodeEnv),
+  s3,
   yookassa: parseYooKassaEnvironment(nodeEnv),
   vapid: parseVapidEnvironment(nodeEnv),
+  chat: Object.freeze({
+    enabled: chatEnabled,
+    photoUploadsEnabled: chatPhotoUploadsEnabled,
+    mediaUrlTtlSeconds: parseInteger(
+      'CHAT_MEDIA_URL_TTL_SECONDS',
+      process.env.CHAT_MEDIA_URL_TTL_SECONDS,
+      300,
+      60,
+      900,
+    ),
+  }),
   auth: Object.freeze({
     jwtAccessSecret,
     jwtAccessTtlSeconds: parseInteger(

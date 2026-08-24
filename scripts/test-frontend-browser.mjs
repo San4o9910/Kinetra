@@ -6,6 +6,7 @@ import { createServer } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { Server as SocketIOServer } from 'socket.io';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const frontendDist = path.join(root, 'apps/frontend/dist');
@@ -66,12 +67,17 @@ const buildFrontendForBrowserTest = async () => {
   const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 
   await runCommand(npmCommand, ['run', 'build', '-w', '@kinetra/shared']);
-  await runCommand(npmCommand, ['run', 'build', '-w', '@kinetra/frontend'], {
-    env: {
-      ...process.env,
-      VITE_API_URL: browserApiOrigin,
+  await runCommand(
+    npmCommand,
+    ['run', 'build', '-w', '@kinetra/frontend', '--', '--mode', 'browser-test'],
+    {
+      env: {
+        ...process.env,
+        VITE_API_URL: browserApiOrigin,
+        VITE_PRIVATE_MEDIA_ORIGIN: frontendOrigin,
+      },
     },
-  });
+  );
 
   const assetDirectory = path.join(frontendDist, 'assets');
   const builtAssets = await readdir(assetDirectory);
@@ -475,6 +481,8 @@ const baseLessonsPayload = () => {
 let surveyVersion = 0;
 let rejectNextRefresh = false;
 let profile = {
+  account_role: 'client',
+  trainer_profile: null,
   user: {
     id: '00000000-0000-4000-8000-000000000001',
     email: 'browser-test@example.com',
@@ -665,6 +673,24 @@ const createMockApiServer = () =>
       }
 
       json(response, 200, profile);
+      return;
+    }
+
+    if (request.method === 'GET' && request.url === '/api/v1/chat/session') {
+      if (!hasValidAccessToken(request)) {
+        json(response, 401, {
+          error: { code: 'AUTHENTICATION_REQUIRED', message: 'A valid access token is required.' },
+        });
+        return;
+      }
+
+      json(response, 200, {
+        role: 'client',
+        enabled: false,
+        available: false,
+        photo_uploads_enabled: false,
+        conversation: null,
+      });
       return;
     }
 
@@ -2357,6 +2383,13 @@ const runBrowserScenario = async () => {
     await waitFor('login screen', () => exists('login-screen'));
     assert.equal(await pathname(), '/login');
     assert.equal(await cdp.evaluate("localStorage.getItem('kinetra.accessToken')"), null);
+    assert.equal(
+      await cdp.evaluate(
+        "window.isSecureContext && typeof navigator.locks?.request === 'function'",
+      ),
+      true,
+      'Authenticated browser acceptance requires origin-wide Web Locks.',
+    );
 
     await submitLogin();
 
@@ -4080,5 +4113,1952 @@ const runBrowserScenario = async () => {
   }
 };
 
+const t12ClientId = '90000000-0000-4000-8000-000000000001';
+const t12TrainerId = '90000000-0000-4000-8000-000000000002';
+const t12ConversationId = '91000000-0000-4000-8000-000000000001';
+const t12OtherConversationId = '91000000-0000-4000-8000-000000000099';
+const t12OtherPhotoId = '93000000-0000-4000-8000-000000000099';
+const t12ViewportMatrix = [
+  { width: 320, height: 568 },
+  { width: 428, height: 926 },
+  { width: 768, height: 1024 },
+  { width: 1440, height: 900 },
+];
+const t12ThemeMatrix = ['light', 'dark', 'system'];
+
+const t12AccountForToken = (token) => {
+  if (token.startsWith('t12-access-client-')) return 'client';
+  if (token.startsWith('t12-access-trainer-')) return 'trainer';
+  return null;
+};
+
+const t12AccountForRequest = (request) => {
+  const authorization = String(request.headers.authorization ?? '');
+  return authorization.startsWith('Bearer ')
+    ? t12AccountForToken(authorization.slice('Bearer '.length))
+    : null;
+};
+
+const t12Profile = (role) => {
+  const trainer = role === 'trainer';
+  return {
+    account_role: role,
+    trainer_profile: trainer ? { display_name: 'Ирина Тренер', avatar_url: null } : null,
+    user: {
+      id: trainer ? t12TrainerId : t12ClientId,
+      email: trainer ? 'chat-trainer@example.test' : 'chat-client@example.test',
+      phone: null,
+      emailVerified: true,
+      avatarUrl: null,
+      username: trainer ? 'chat-trainer' : 'chat-client',
+      firstName: trainer ? 'Ирина' : 'Анна',
+      onboardingStatus: 'active',
+      notificationEnabled: true,
+      level: 'beginner',
+      timezone: 'Europe/Moscow',
+      createdAt: '2026-08-23T08:00:00.000Z',
+      updatedAt: '2026-08-23T08:00:00.000Z',
+    },
+    survey: null,
+    subscription: trainer
+      ? {
+          provider: null,
+          status: 'none',
+          isActive: false,
+          startsAt: null,
+          expiresAt: null,
+          amountMinor: null,
+          currency: null,
+        }
+      : {
+          provider: 'yukassa',
+          status: 'active',
+          isActive: true,
+          startsAt: initialSubscriptionStartsAt,
+          expiresAt: initialSubscriptionExpiresAt,
+          amountMinor: 79_900,
+          currency: 'RUB',
+        },
+  };
+};
+
+const createT12BrowserServer = () => {
+  const state = {
+    conversationCreated: false,
+    messages: [],
+    clientReadSequence: 0,
+    trainerReadSequence: 0,
+    loginCount: { client: 0, trainer: 0 },
+    logoutCount: { client: 0, trainer: 0 },
+    refreshCount: { client: 0, trainer: 0 },
+    currentAccessToken: { client: null, trainer: null },
+    messageSenders: [],
+    messageRequestAttempts: new Map(),
+    messageBroadcastCount: new Map(),
+    readUpdates: [],
+    socketConnections: { client: new Set(), trainer: new Set() },
+    sockets: { client: new Set(), trainer: new Set() },
+    socketConnectionCount: { client: 0, trainer: 0 },
+    socketDisconnectCount: { client: 0, trainer: 0 },
+    deltaQueries: [],
+    duplicateMessageId: null,
+    missedMessageId: null,
+    photoUploadKeyOrder: [],
+    photoUploadAttempts: new Map(),
+    photos: new Map(),
+    photoAccessRequests: [],
+    accountDeleteAuthorization: null,
+    accountDeleteExpectedAuthorization: null,
+    accountDeleteCount: 0,
+    pushSubscriptionDeleteCount: 0,
+    browserPushUnsubscribed: false,
+    mediaDeletionJobs: [],
+    staleSessionRace: null,
+  };
+
+  const accountId = (role) => (role === 'client' ? t12ClientId : t12TrainerId);
+  const otherRole = (role) => (role === 'client' ? 'trainer' : 'client');
+  const lastSequence = () => state.messages.length;
+  const readSequence = (role) =>
+    role === 'client' ? state.clientReadSequence : state.trainerReadSequence;
+  const unreadCount = (role) =>
+    state.messages.filter(
+      (message) => message.sender_role === otherRole(role) && message.sequence > readSequence(role),
+    ).length;
+  const conversationState = (role) => ({
+    last_message_sequence: lastSequence(),
+    own_last_read_sequence: readSequence(role),
+    counterpart_last_read_sequence: readSequence(otherRole(role)),
+    unread_count: unreadCount(role),
+  });
+  const projectMessage = (message, role) => ({
+    ...message,
+    is_mine: message.sender_role === role,
+  });
+  const appendMessage = ({ senderRole, kind, text, photo = null, clientMessageId = null }) => {
+    const sequence = state.messages.length + 1;
+    const message = {
+      id: `92000000-0000-4000-8000-${String(sequence).padStart(12, '0')}`,
+      conversation_id: t12ConversationId,
+      sequence,
+      client_message_id:
+        clientMessageId ?? `94000000-0000-4000-8000-${String(sequence).padStart(12, '0')}`,
+      sender_role: senderRole,
+      is_mine: true,
+      sender_name: senderRole === 'client' ? 'Анна Клиент' : 'Ирина Тренер',
+      kind,
+      text,
+      photo,
+      created_at: new Date(Date.UTC(2026, 7, 24, 10, sequence, 0)).toISOString(),
+    };
+    state.messages.push(message);
+    state.messageSenders.push(senderRole);
+    return message;
+  };
+  const readyPhoto = (id, ownerRole = 'client') => ({
+    id,
+    status: 'ready',
+    mime_type: 'image/webp',
+    width: 192,
+    height: 192,
+    size_bytes: 1_024,
+    expires_at: fixtureTimestamp(1),
+    owner_role: ownerRole,
+    object_key: `chat/browser-test/${id}.webp`,
+    attached: false,
+  });
+  const publicPhoto = (photo) => ({
+    id: photo.id,
+    status: photo.attached ? 'attached' : photo.status,
+    mime_type: photo.mime_type,
+    width: photo.width,
+    height: photo.height,
+    size_bytes: photo.size_bytes,
+    expires_at: photo.attached ? null : photo.expires_at,
+  });
+  const lastMessage = () => {
+    const message = state.messages.at(-1);
+    return message === undefined
+      ? null
+      : {
+          kind: message.kind,
+          preview: message.kind === 'photo' ? 'Фото' : message.text,
+          created_at: message.created_at,
+        };
+  };
+  const clientConversation = () => ({
+    id: t12ConversationId,
+    trainer: { display_name: 'Ирина Тренер', avatar_url: null },
+    last_message_sequence: lastSequence(),
+    last_read_sequence: state.clientReadSequence,
+    counterpart_last_read_sequence: state.trainerReadSequence,
+    unread_count: unreadCount('client'),
+  });
+  const inboxConversation = () => ({
+    id: t12ConversationId,
+    client: {
+      display_name: 'Анна Клиент',
+      secondary_label: 'chat-client@example.test',
+      avatar_url: null,
+    },
+    last_message: lastMessage(),
+    unread_count: unreadCount('trainer'),
+    activity_at: state.messages.at(-1)?.created_at ?? '2026-08-24T09:00:00.000Z',
+  });
+  const chatSession = (role) =>
+    role === 'client'
+      ? {
+          role: 'client',
+          enabled: true,
+          available: true,
+          photo_uploads_enabled: true,
+          conversation: state.conversationCreated ? clientConversation() : null,
+        }
+      : {
+          role: 'trainer',
+          enabled: true,
+          photo_uploads_enabled: true,
+          profile: { display_name: 'Ирина Тренер', avatar_url: null },
+          unread_count: unreadCount('trainer'),
+        };
+
+  let staleSessionReleasePromise = null;
+  let resolveStaleSessionRequests = null;
+  const releaseStaleSessionRace = () => {
+    const race = state.staleSessionRace;
+    if (race === null || race.released) return;
+    race.released = true;
+    resolveStaleSessionRequests?.();
+    resolveStaleSessionRequests = null;
+    staleSessionReleasePromise = null;
+  };
+
+  let namespace;
+  const emitConversationUpdated = (role) => {
+    namespace.to(`account:${accountId(role)}`).emit('chat:conversation:updated', {
+      conversation_id: t12ConversationId,
+      last_message: lastMessage(),
+      unread_count: unreadCount(role),
+    });
+  };
+  const emitMessage = (message) => {
+    state.messageBroadcastCount.set(
+      message.id,
+      (state.messageBroadcastCount.get(message.id) ?? 0) + 1,
+    );
+    for (const role of ['client', 'trainer']) {
+      namespace.to(`account:${accountId(role)}`).emit('chat:message:new', {
+        message: projectMessage(message, role),
+      });
+      emitConversationUpdated(role);
+    }
+  };
+  const emitMessageToRole = (message, role) => {
+    state.messageBroadcastCount.set(
+      message.id,
+      (state.messageBroadcastCount.get(message.id) ?? 0) + 1,
+    );
+    namespace.to(`account:${accountId(role)}`).emit('chat:message:new', {
+      message: projectMessage(message, role),
+    });
+    emitConversationUpdated(role);
+  };
+
+  const unauthorized = (response) =>
+    json(response, 401, {
+      error: { code: 'AUTHENTICATION_REQUIRED', message: 'Authentication is required.' },
+    });
+
+  const server = createServer(async (request, response) => {
+    response.setHeader('Access-Control-Allow-Origin', frontendOrigin);
+    response.setHeader('Access-Control-Allow-Credentials', 'true');
+    response.setHeader(
+      'Access-Control-Allow-Headers',
+      'Authorization, Content-Type, Idempotency-Key',
+    );
+    response.setHeader('Access-Control-Allow-Methods', 'GET, PUT, POST, DELETE, OPTIONS');
+    response.setHeader('Access-Control-Allow-Private-Network', 'true');
+    response.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    response.setHeader('Vary', 'Origin, Access-Control-Request-Private-Network');
+
+    if (request.method === 'OPTIONS') {
+      response.writeHead(204);
+      response.end();
+      return;
+    }
+
+    const requestUrl = new URL(request.url ?? '/', frontendOrigin);
+    const { pathname } = requestUrl;
+
+    if (request.method === 'GET' && pathname === '/browser-test-health') {
+      json(response, 200, { status: 'ok', scenario: 't12' });
+      return;
+    }
+
+    if (request.method === 'GET' && pathname.startsWith('/__browser-test/t12/photo/')) {
+      const body = await readFile(path.join(frontendDist, 'icons/icon-192.png'));
+      response.writeHead(200, {
+        'Content-Type': 'image/png',
+        'Cache-Control': 'private, no-store',
+      });
+      response.end(body);
+      return;
+    }
+
+    if (request.method === 'POST' && pathname === '/__browser-test/t12/duplicate-event') {
+      const message = appendMessage({
+        senderRole: 'trainer',
+        kind: 'text',
+        text: 'Дубликат realtime должен отобразиться один раз',
+      });
+      state.duplicateMessageId = message.id;
+      const payload = { message: projectMessage(message, 'client') };
+      namespace.to(`account:${t12ClientId}`).emit('chat:message:new', payload);
+      namespace.to(`account:${t12ClientId}`).emit('chat:message:new', payload);
+      emitConversationUpdated('client');
+      emitConversationUpdated('client');
+      namespace.to(`account:${t12TrainerId}`).emit('chat:message:new', {
+        message: projectMessage(message, 'trainer'),
+      });
+      emitConversationUpdated('trainer');
+      json(response, 200, { message_id: message.id, sequence: message.sequence });
+      return;
+    }
+
+    if (request.method === 'POST' && pathname === '/__browser-test/t12/disconnect-delta') {
+      for (const socket of state.sockets.client) {
+        socket.conn.close();
+      }
+      const message = appendMessage({
+        senderRole: 'trainer',
+        kind: 'text',
+        text: 'Пропущенное сообщение восстановлено через REST delta',
+      });
+      state.missedMessageId = message.id;
+      namespace.to(`account:${t12TrainerId}`).emit('chat:message:new', {
+        message: projectMessage(message, 'trainer'),
+      });
+      emitConversationUpdated('trainer');
+      json(response, 200, { message_id: message.id, sequence: message.sequence });
+      return;
+    }
+
+    if (request.method === 'POST' && pathname === '/__browser-test/t12/stale-session/arm') {
+      assert.equal(
+        state.staleSessionRace,
+        null,
+        'The deterministic stale-session race may only be armed once.',
+      );
+      assert.equal(unreadCount('client'), 0);
+      assert.equal(unreadCount('trainer'), 0);
+      staleSessionReleasePromise = new Promise((resolve) => {
+        resolveStaleSessionRequests = resolve;
+      });
+      state.staleSessionRace = {
+        snapshots: {
+          client: chatSession('client'),
+          trainer: chatSession('trainer'),
+        },
+        heldRequests: { client: 0, trainer: 0 },
+        staleResponses: { client: 0, trainer: 0 },
+        eventMessageIds: [],
+        eventEmitted: false,
+        released: false,
+      };
+      for (const role of ['client', 'trainer']) {
+        for (const socket of state.sockets[role]) socket.conn.close();
+      }
+      json(response, 200, {
+        client_unread: state.staleSessionRace.snapshots.client.conversation.unread_count,
+        trainer_unread: state.staleSessionRace.snapshots.trainer.unread_count,
+      });
+      return;
+    }
+
+    if (request.method === 'POST' && pathname === '/__browser-test/t12/stale-session/emit') {
+      const race = state.staleSessionRace;
+      assert.notEqual(race, null, 'The stale-session race must be armed before its event.');
+      assert.deepEqual(race.heldRequests, { client: 1, trainer: 1 });
+      assert.equal(race.eventEmitted, false);
+      const clientUnreadMessage = appendMessage({
+        senderRole: 'trainer',
+        kind: 'text',
+        text: 'Новое событие не должно быть затёрто старой client session',
+      });
+      const trainerUnreadMessage = appendMessage({
+        senderRole: 'client',
+        kind: 'text',
+        text: 'Новое событие не должно быть затёрто старой trainer session',
+      });
+      race.eventMessageIds = [clientUnreadMessage.id, trainerUnreadMessage.id];
+      race.eventEmitted = true;
+      emitConversationUpdated('client');
+      emitConversationUpdated('trainer');
+      json(response, 200, {
+        client_unread: unreadCount('client'),
+        trainer_unread: unreadCount('trainer'),
+      });
+      return;
+    }
+
+    if (request.method === 'POST' && pathname === '/__browser-test/t12/stale-session/release') {
+      const race = state.staleSessionRace;
+      assert.notEqual(race, null, 'The stale-session race must be armed before release.');
+      assert.equal(race.eventEmitted, true, 'The newer socket event must precede stale release.');
+      releaseStaleSessionRace();
+      json(response, 200, { released: true });
+      return;
+    }
+
+    if (request.method === 'POST' && pathname === '/__browser-test/t12/push-unsubscribed') {
+      state.browserPushUnsubscribed = true;
+      response.writeHead(204, { 'Cache-Control': 'no-store' });
+      response.end();
+      return;
+    }
+
+    if (request.method === 'POST' && pathname === '/api/v1/auth/login') {
+      const body = await readJsonBody(request);
+      const role =
+        body.identifier === 'chat-client@example.test' && body.password === 'client-password'
+          ? 'client'
+          : body.identifier === 'chat-trainer@example.test' && body.password === 'trainer-password'
+            ? 'trainer'
+            : null;
+      if (role === null) {
+        json(response, 401, {
+          error: { code: 'INVALID_CREDENTIALS', message: 'Invalid credentials.' },
+        });
+        return;
+      }
+      state.loginCount[role] += 1;
+      const profile = t12Profile(role);
+      const accessToken = `t12-access-${role}-login-${state.loginCount[role]}`;
+      state.currentAccessToken[role] = accessToken;
+      json(
+        response,
+        200,
+        {
+          user: {
+            id: profile.user.id,
+            email: profile.user.email,
+            phone: null,
+            emailVerified: true,
+            createdAt: profile.user.createdAt,
+          },
+          accessToken,
+          tokenType: 'Bearer',
+          expiresIn: 900,
+        },
+        {
+          'Set-Cookie': `kinetra_refresh=t12-${role}; HttpOnly; Path=/api/v1/auth; SameSite=Lax`,
+        },
+      );
+      return;
+    }
+
+    if (request.method === 'POST' && pathname === '/api/v1/auth/refresh') {
+      const cookie = String(request.headers.cookie ?? '');
+      const role = cookie.includes('kinetra_refresh=t12-client')
+        ? 'client'
+        : cookie.includes('kinetra_refresh=t12-trainer')
+          ? 'trainer'
+          : null;
+      if (role === null) {
+        unauthorized(response);
+        return;
+      }
+      state.refreshCount[role] += 1;
+      const profile = t12Profile(role);
+      const accessToken = `t12-access-${role}-refresh-${state.refreshCount[role]}`;
+      state.currentAccessToken[role] = accessToken;
+      json(response, 200, {
+        user: {
+          id: profile.user.id,
+          email: profile.user.email,
+          phone: null,
+          emailVerified: true,
+          createdAt: profile.user.createdAt,
+        },
+        accessToken,
+        tokenType: 'Bearer',
+        expiresIn: 900,
+      });
+      return;
+    }
+
+    if (request.method === 'POST' && pathname === '/api/v1/auth/logout') {
+      const cookie = String(request.headers.cookie ?? '');
+      const role =
+        t12AccountForRequest(request) ??
+        (cookie.includes('kinetra_refresh=t12-client')
+          ? 'client'
+          : cookie.includes('kinetra_refresh=t12-trainer')
+            ? 'trainer'
+            : null);
+      if (role !== null) state.logoutCount[role] += 1;
+      response.writeHead(204, {
+        'Set-Cookie': 'kinetra_refresh=; HttpOnly; Path=/api/v1/auth; Max-Age=0; SameSite=Lax',
+      });
+      response.end();
+      return;
+    }
+
+    const role = t12AccountForRequest(request);
+    if (pathname.startsWith('/api/') && role === null) {
+      unauthorized(response);
+      return;
+    }
+
+    if (request.method === 'GET' && pathname === '/api/v1/me') {
+      json(response, 200, t12Profile(role));
+      return;
+    }
+
+    if (request.method === 'GET' && pathname === '/api/v1/settings/subscription') {
+      json(response, 200, {
+        status: 'active',
+        provider: 'yukassa',
+        starts_at: initialSubscriptionStartsAt,
+        expires_at: initialSubscriptionExpiresAt,
+        amount: 799,
+        currency: 'RUB',
+        auto_renew: true,
+        days_remaining: 30,
+      });
+      return;
+    }
+
+    if (request.method === 'GET' && pathname === '/api/v1/settings/profile') {
+      const profile = t12Profile(role);
+      json(response, 200, {
+        email: profile.user.email,
+        phone: null,
+        created_at: profile.user.createdAt,
+        onboarding_status: 'active',
+        notification_preferences: {
+          workout_reminders: true,
+          reminder_time: '09:00',
+          weekly_survey_reminder: true,
+        },
+      });
+      return;
+    }
+
+    if (request.method === 'DELETE' && pathname === '/api/v1/push/subscriptions') {
+      state.pushSubscriptionDeleteCount += 1;
+      response.writeHead(204, { 'Cache-Control': 'no-store' });
+      response.end();
+      return;
+    }
+
+    if (request.method === 'DELETE' && pathname === '/api/v1/settings/account') {
+      assert.equal(role, 'client', 'Only the T12 client account is deleted in this scenario.');
+      assert.deepEqual(await readJsonBody(request), { confirm: 'DELETE' });
+      state.accountDeleteAuthorization = String(request.headers.authorization ?? '');
+      assert.equal(
+        state.accountDeleteAuthorization,
+        state.accountDeleteExpectedAuthorization,
+        'Account deletion must use the access token captured before browser push cleanup.',
+      );
+      assert.equal(
+        state.browserPushUnsubscribed,
+        true,
+        'Strict browser push unsubscribe must complete before account deletion starts.',
+      );
+      state.accountDeleteCount += 1;
+      for (const photo of state.photos.values()) {
+        state.mediaDeletionJobs.push({
+          object_key: photo.object_key,
+          reason: 'account_deleted',
+          attempts: 0,
+        });
+      }
+      state.conversationCreated = false;
+      state.messages.length = 0;
+      response.writeHead(204, {
+        'Cache-Control': 'no-store',
+        'Set-Cookie': 'kinetra_refresh=; HttpOnly; Path=/api/v1/auth; Max-Age=0; SameSite=Lax',
+      });
+      response.end();
+      return;
+    }
+
+    if (request.method === 'GET' && pathname === '/api/v1/program/current-week') {
+      json(response, 200, programWeekPayload(1));
+      return;
+    }
+
+    if (request.method === 'GET' && pathname === '/api/v1/chat/session') {
+      const race = state.staleSessionRace;
+      if (race !== null && !race.released && race.heldRequests[role] === 0) {
+        race.heldRequests[role] += 1;
+        const staleSnapshot = race.snapshots[role];
+        const releasePromise = staleSessionReleasePromise;
+        assert.notEqual(releasePromise, null);
+        await releasePromise;
+        race.staleResponses[role] += 1;
+        json(response, 200, staleSnapshot);
+        return;
+      }
+      json(response, 200, chatSession(role));
+      return;
+    }
+
+    if (request.method === 'POST' && pathname === '/api/v1/chat/conversations') {
+      assert.equal(role, 'client', 'Only the client may create the T12 conversation.');
+      state.conversationCreated = true;
+      json(response, 201, { conversation: clientConversation() });
+      setImmediate(() => {
+        emitConversationUpdated('client');
+        emitConversationUpdated('trainer');
+      });
+      return;
+    }
+
+    if (request.method === 'GET' && pathname === '/api/v1/chat/conversations') {
+      assert.equal(role, 'trainer', 'Only the trainer may load the T12 inbox.');
+      const filter = requestUrl.searchParams.get('filter') ?? 'all';
+      const query = (requestUrl.searchParams.get('query') ?? '').toLocaleLowerCase('ru-RU');
+      const matches =
+        state.conversationCreated &&
+        (filter !== 'unread' || unreadCount('trainer') > 0) &&
+        (query.length === 0 || 'анна клиент chat-client@example.test'.includes(query));
+      json(response, 200, {
+        items: matches ? [inboxConversation()] : [],
+        next_cursor: null,
+      });
+      return;
+    }
+
+    const conversationSummaryMatch = pathname.match(/^\/api\/v1\/chat\/conversations\/([^/]+)$/u);
+    if (request.method === 'GET' && conversationSummaryMatch !== null) {
+      if (role !== 'trainer') {
+        json(response, 403, {
+          error: { code: 'CHAT_NOT_AVAILABLE', message: 'Trainer access is required.' },
+        });
+        return;
+      }
+      if (!state.conversationCreated || conversationSummaryMatch[1] !== t12ConversationId) {
+        json(response, 404, {
+          error: { code: 'CHAT_RESOURCE_NOT_FOUND', message: 'Chat resource not found.' },
+        });
+        return;
+      }
+      json(response, 200, { conversation: inboxConversation() });
+      return;
+    }
+
+    const photoUploadMatch = pathname.match(/^\/api\/v1\/chat\/conversations\/([^/]+)\/photos$/u);
+    if (request.method === 'POST' && photoUploadMatch !== null) {
+      assert.equal(photoUploadMatch[1], t12ConversationId);
+      assert.equal(role, 'client');
+      assert.match(String(request.headers['content-type'] ?? ''), /^multipart\/form-data;/u);
+      const idempotencyKey = String(request.headers['idempotency-key'] ?? '');
+      assert.ok(idempotencyKey.length > 0, 'Photo upload requires an Idempotency-Key.');
+      for await (const chunk of request) {
+        // Drain the deterministic browser fixture upload without parsing private bytes.
+        void chunk;
+      }
+      if (!state.photoUploadKeyOrder.includes(idempotencyKey)) {
+        state.photoUploadKeyOrder.push(idempotencyKey);
+      }
+      const attempts = (state.photoUploadAttempts.get(idempotencyKey) ?? 0) + 1;
+      state.photoUploadAttempts.set(idempotencyKey, attempts);
+      const photoIndex = state.photoUploadKeyOrder.indexOf(idempotencyKey) + 1;
+
+      if (photoIndex === 2 && attempts === 1) {
+        json(response, 503, {
+          error: {
+            code: 'CHAT_PHOTO_STORAGE_UNAVAILABLE',
+            message: 'Photo storage is temporarily unavailable.',
+          },
+        });
+        return;
+      }
+
+      const photoId = `93000000-0000-4000-8000-${String(photoIndex).padStart(12, '0')}`;
+      let photo = state.photos.get(photoId);
+      if (photo === undefined) {
+        photo = readyPhoto(photoId);
+        state.photos.set(photoId, photo);
+      }
+      json(response, attempts === 1 ? 201 : 200, { photo: publicPhoto(photo) });
+      return;
+    }
+
+    const photoStatusMatch = pathname.match(/^\/api\/v1\/chat\/photos\/([^/]+)\/status$/u);
+    if (request.method === 'GET' && photoStatusMatch !== null) {
+      const photo = state.photos.get(photoStatusMatch[1]);
+      const allowed =
+        photo !== undefined &&
+        (photo.owner_role === role ||
+          (photo.attached && (role === 'client' || role === 'trainer')));
+      if (!allowed) {
+        json(response, 404, {
+          error: { code: 'CHAT_RESOURCE_NOT_FOUND', message: 'Chat resource not found.' },
+        });
+        return;
+      }
+      json(response, 200, { photo: publicPhoto(photo) });
+      return;
+    }
+
+    const photoAccessMatch = pathname.match(/^\/api\/v1\/chat\/photos\/([^/]+)\/access$/u);
+    if (request.method === 'GET' && photoAccessMatch !== null) {
+      const photo = state.photos.get(photoAccessMatch[1]);
+      const allowed =
+        photo !== undefined &&
+        (photo.owner_role === role ||
+          (photo.attached && (role === 'client' || role === 'trainer')));
+      state.photoAccessRequests.push({ role, photoId: photoAccessMatch[1], allowed });
+      if (!allowed) {
+        json(response, 404, {
+          error: { code: 'CHAT_RESOURCE_NOT_FOUND', message: 'Chat resource not found.' },
+        });
+        return;
+      }
+      json(response, 200, {
+        url: `${frontendOrigin}/__browser-test/t12/photo/${photo.id}`,
+        expires_at: fixtureTimestamp(1),
+      });
+      return;
+    }
+
+    const messagesMatch = pathname.match(/^\/api\/v1\/chat\/conversations\/([^/]+)\/messages$/u);
+    if (messagesMatch !== null && messagesMatch[1] !== t12ConversationId) {
+      json(response, 404, {
+        error: { code: 'CHAT_CONVERSATION_NOT_FOUND', message: 'Conversation not found.' },
+      });
+      return;
+    }
+
+    if (request.method === 'GET' && messagesMatch !== null) {
+      const before = Number(requestUrl.searchParams.get('before_sequence') ?? 0);
+      const after = Number(requestUrl.searchParams.get('after_sequence') ?? 0);
+      const filtered = state.messages.filter((message) => {
+        if (Number.isInteger(before) && before > 0) return message.sequence < before;
+        if (Number.isInteger(after) && after > 0) return message.sequence > after;
+        return true;
+      });
+      if (Number.isInteger(after) && after > 0) {
+        state.deltaQueries.push({
+          role,
+          afterSequence: after,
+          returnedSequences: filtered.map(({ sequence }) => sequence),
+        });
+      }
+      json(response, 200, {
+        messages: filtered.map((message) => projectMessage(message, role)),
+        conversation_state: conversationState(role),
+        next_before_sequence: null,
+        has_more_before: false,
+        next_after_sequence: filtered.at(-1)?.sequence ?? null,
+        has_more_after: false,
+      });
+      return;
+    }
+
+    if (request.method === 'POST' && messagesMatch !== null) {
+      const body = await readJsonBody(request);
+      assert.ok(body.kind === 'text' || body.kind === 'photo');
+      assert.equal(typeof body.client_message_id, 'string');
+      assert.ok(body.client_message_id.length > 0);
+      if (body.kind === 'text') {
+        assert.equal(typeof body.text, 'string');
+        assert.ok(body.text.trim().length > 0);
+      } else {
+        assert.ok(body.text === null || typeof body.text === 'string');
+        assert.equal(typeof body.photo_id, 'string');
+      }
+      const requestAttemptKey = `${role}:${body.client_message_id}`;
+      const requestAttempt = (state.messageRequestAttempts.get(requestAttemptKey) ?? 0) + 1;
+      state.messageRequestAttempts.set(requestAttemptKey, requestAttempt);
+      const replay = state.messages.find(
+        (message) =>
+          message.sender_role === role && message.client_message_id === body.client_message_id,
+      );
+      if (replay !== undefined) {
+        json(response, 200, {
+          message: projectMessage(replay, role),
+          conversation_state: conversationState(role),
+          replayed: true,
+        });
+        return;
+      }
+      let attachedPhoto = null;
+      if (body.kind === 'photo') {
+        const photo = state.photos.get(body.photo_id);
+        assert.notEqual(photo, undefined, 'Photo message must reference an uploaded photo.');
+        assert.equal(photo.owner_role, role);
+        assert.equal(photo.attached, false);
+        photo.attached = true;
+        attachedPhoto = publicPhoto(photo);
+      }
+      const message = appendMessage({
+        senderRole: role,
+        kind: body.kind,
+        text:
+          body.text === null || body.text === undefined || body.text.trim().length === 0
+            ? null
+            : body.text.trim(),
+        photo: attachedPhoto,
+        clientMessageId: body.client_message_id,
+      });
+      if (
+        role === 'client' &&
+        body.kind === 'text' &&
+        body.text.trim() === 'Сообщение клиента через realtime' &&
+        requestAttempt === 1
+      ) {
+        emitMessageToRole(message, 'trainer');
+        await sleep(100);
+        response.destroy();
+        return;
+      }
+      json(response, 201, {
+        message: projectMessage(message, role),
+        conversation_state: conversationState(role),
+        replayed: false,
+      });
+      setImmediate(() => emitMessage(message));
+      return;
+    }
+
+    const readMatch = pathname.match(/^\/api\/v1\/chat\/conversations\/([^/]+)\/read$/u);
+    if (request.method === 'PUT' && readMatch !== null) {
+      assert.equal(readMatch[1], t12ConversationId);
+      const body = await readJsonBody(request);
+      assert.equal(Number.isInteger(body.through_sequence), true);
+      const throughSequence = Math.max(0, Math.min(body.through_sequence, lastSequence()));
+      if (role === 'client')
+        state.clientReadSequence = Math.max(state.clientReadSequence, throughSequence);
+      if (role === 'trainer')
+        state.trainerReadSequence = Math.max(state.trainerReadSequence, throughSequence);
+      state.readUpdates.push({ role, throughSequence });
+      json(response, 200, { conversation_state: conversationState(role) });
+      setImmediate(() => {
+        const payload = {
+          conversation_id: t12ConversationId,
+          reader_role: role,
+          through_sequence: throughSequence,
+          read_at: new Date().toISOString(),
+        };
+        namespace.to(`account:${t12ClientId}`).emit('chat:read:updated', payload);
+        namespace.to(`account:${t12TrainerId}`).emit('chat:read:updated', payload);
+      });
+      return;
+    }
+
+    if (pathname.startsWith('/api/')) {
+      json(response, 404, { error: { code: 'NOT_FOUND', message: 'Not found.' } });
+      return;
+    }
+
+    const requested = pathname === '/' ? '/index.html' : pathname;
+    let filePath = path.join(frontendDist, requested);
+    try {
+      const fileStat = await stat(filePath);
+      if (!fileStat.isFile()) filePath = path.join(frontendDist, 'index.html');
+    } catch {
+      filePath = path.join(frontendDist, 'index.html');
+    }
+    const body = await readFile(filePath);
+    response.writeHead(200, {
+      'Content-Type': contentTypes.get(path.extname(filePath)) ?? 'application/octet-stream',
+      'Cache-Control': 'no-store',
+    });
+    response.end(body);
+  });
+
+  const socketServer = new SocketIOServer(server, {
+    cors: { origin: frontendOrigin, credentials: true },
+    transports: ['websocket'],
+  });
+  namespace = socketServer.of('/chat');
+  namespace.use((socket, next) => {
+    const accessToken =
+      typeof socket.handshake.auth.accessToken === 'string'
+        ? socket.handshake.auth.accessToken
+        : '';
+    const role = t12AccountForToken(accessToken);
+    if (role === null) {
+      next(new Error('Authentication required.'));
+      return;
+    }
+    socket.data.role = role;
+    next();
+  });
+  namespace.on('connection', (socket) => {
+    const role = socket.data.role;
+    state.socketConnectionCount[role] += 1;
+    state.socketConnections[role].add(socket.id);
+    state.sockets[role].add(socket);
+    void socket.join(`account:${accountId(role)}`);
+    socket.on('chat:sync', (_event, acknowledge) => acknowledge({ delta_required: false }));
+    socket.on('disconnect', () => {
+      state.socketDisconnectCount[role] += 1;
+      state.socketConnections[role].delete(socket.id);
+      state.sockets[role].delete(socket);
+    });
+  });
+
+  return { server, socketServer, state, releaseStaleSessionRace };
+};
+
+const launchT12BrowserContext = async (profileDirectory, width, height) => {
+  let chromeErrors = '';
+  const chrome = spawn(
+    findChrome(),
+    [
+      '--headless=new',
+      '--no-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-background-networking',
+      '--disable-gpu',
+      '--no-proxy-server',
+      '--disable-features=LocalNetworkAccessChecks',
+      '--disable-default-apps',
+      '--disable-extensions',
+      '--disable-sync',
+      '--no-first-run',
+      '--mute-audio',
+      '--remote-debugging-pipe',
+      `--user-data-dir=${profileDirectory}`,
+      `${frontendOrigin}/login`,
+    ],
+    { stdio: ['ignore', 'ignore', 'pipe', 'pipe', 'pipe'] },
+  );
+  chrome.stderr.on('data', (chunk) => {
+    chromeErrors += chunk.toString();
+  });
+  const commandStream = chrome.stdio[3];
+  const responseStream = chrome.stdio[4];
+  assert.notEqual(commandStream, null, 'Chrome did not expose its T12 CDP command pipe.');
+  assert.notEqual(responseStream, null, 'Chrome did not expose its T12 CDP response pipe.');
+  const cdp = new CdpClient(commandStream, responseStream);
+  await cdp.connect();
+  await cdp.attachToPage();
+  await cdp.send('Runtime.enable');
+  await cdp.send('Page.enable');
+  await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
+    source: `(() => {
+      const pushStorageKey = 'kinetra.t12-browser.push-active.v1';
+      const state = {
+        online: true,
+        visibility: 'visible',
+        pushSubscribed: sessionStorage.getItem(pushStorageKey) === 'true',
+        pushUnsubscribeCalls: 0,
+        lifecycleOrder: [],
+      };
+      const persistPush = () => {
+        if (state.pushSubscribed) sessionStorage.setItem(pushStorageKey, 'true');
+        else sessionStorage.removeItem(pushStorageKey);
+      };
+      const subscription = {
+        endpoint: ${JSON.stringify(browserPushEndpoint)},
+        expirationTime: null,
+        toJSON: () => ({
+          endpoint: ${JSON.stringify(browserPushEndpoint)},
+          expirationTime: null,
+          keys: {
+            p256dh: ${JSON.stringify(browserPushP256dh)},
+            auth: ${JSON.stringify(browserPushAuth)},
+          },
+        }),
+        unsubscribe: async () => {
+          state.lifecycleOrder.push('browser-unsubscribe:start');
+          state.pushUnsubscribeCalls += 1;
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          state.pushSubscribed = false;
+          persistPush();
+          state.lifecycleOrder.push('browser-unsubscribe:done');
+          await fetch('/__browser-test/t12/push-unsubscribed', {
+            method: 'POST',
+            credentials: 'include',
+          });
+          return true;
+        },
+      };
+      try {
+        Object.defineProperty(document, 'visibilityState', {
+          configurable: true,
+          get: () => state.visibility,
+        });
+        Object.defineProperty(document, 'hidden', {
+          configurable: true,
+          get: () => state.visibility === 'hidden',
+        });
+      } catch {
+        // Assertions on the exposed state still fail if the browser forbids this test override.
+      }
+      try {
+        Object.defineProperty(Navigator.prototype, 'onLine', {
+          configurable: true,
+          get: () => state.online,
+        });
+      } catch {
+        // Assertions on navigator.onLine expose unsupported browser versions.
+      }
+      if (typeof PushManager !== 'undefined') {
+        Object.defineProperty(PushManager.prototype, 'getSubscription', {
+          configurable: true,
+          value: async () => state.pushSubscribed ? subscription : null,
+        });
+      }
+      Object.defineProperty(window, '__kinetraT12BrowserTest', {
+        configurable: false,
+        value: {
+          state,
+          setVisibility: (visibility) => {
+            state.visibility = visibility;
+            document.dispatchEvent(new Event('visibilitychange'));
+          },
+          setOnline: (online) => {
+            state.online = online;
+            window.dispatchEvent(new Event(online ? 'online' : 'offline'));
+          },
+          activatePushSubscription: () => {
+            state.pushSubscribed = true;
+            persistPush();
+          },
+        },
+      });
+    })();`,
+  });
+  await cdp.send('Emulation.setDeviceMetricsOverride', {
+    width,
+    height,
+    screenWidth: width,
+    screenHeight: height,
+    deviceScaleFactor: 1,
+    mobile: width < 600,
+  });
+  await cdp.send('Page.navigate', { url: `${frontendOrigin}/login` });
+
+  const exists = (testId) =>
+    cdp.evaluate(`document.querySelector(${JSON.stringify(selector(testId))}) !== null`);
+  const pathname = () => cdp.evaluate('window.location.pathname');
+  const bodyText = () => cdp.evaluate("document.body?.innerText ?? ''");
+  const text = (testId) =>
+    cdp.evaluate(
+      `document.querySelector(${JSON.stringify(selector(testId))})?.textContent?.trim() ?? null`,
+    );
+  const disabled = (testId) =>
+    cdp.evaluate(`Boolean(document.querySelector(${JSON.stringify(selector(testId))})?.disabled)`);
+  const click = (testId) =>
+    cdp.evaluate(`document.querySelector(${JSON.stringify(selector(testId))})?.click()`);
+  const setValue = (testId, value) =>
+    cdp.evaluate(`(() => {
+      const element = document.querySelector(${JSON.stringify(selector(testId))});
+      if (!(element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement)) {
+        throw new Error('T12 input not found: ${testId}');
+      }
+      const prototype = element instanceof HTMLTextAreaElement
+        ? HTMLTextAreaElement.prototype
+        : HTMLInputElement.prototype;
+      const setter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
+      setter?.call(element, ${JSON.stringify(value)});
+      element.dispatchEvent(new Event('input', { bubbles: true }));
+      element.dispatchEvent(new Event('change', { bubbles: true }));
+    })()`);
+  const navigate = (route) => cdp.send('Page.navigate', { url: `${frontendOrigin}${route}` });
+  const setVisibility = (visibility) =>
+    cdp.evaluate(`window.__kinetraT12BrowserTest.setVisibility(${JSON.stringify(visibility)})`);
+  const setOnline = (online) =>
+    cdp.evaluate(`window.__kinetraT12BrowserTest.setOnline(${JSON.stringify(online)})`);
+  const setViewport = (nextWidth, nextHeight) =>
+    cdp.send('Emulation.setDeviceMetricsOverride', {
+      width: nextWidth,
+      height: nextHeight,
+      screenWidth: nextWidth,
+      screenHeight: nextHeight,
+      deviceScaleFactor: 1,
+      mobile: nextWidth < 600,
+    });
+  const setTheme = async (theme) => {
+    await cdp.send('Emulation.setEmulatedMedia', {
+      media: '',
+      features: [
+        {
+          name: 'prefers-color-scheme',
+          value: theme === 'light' ? 'light' : 'dark',
+        },
+      ],
+    });
+    await cdp.evaluate(`(() => {
+      const next = ${JSON.stringify(theme)};
+      localStorage.setItem('kinetra.theme.v1', next);
+      window.dispatchEvent(new StorageEvent('storage', {
+        key: 'kinetra.theme.v1',
+        newValue: next,
+      }));
+    })()`);
+  };
+  const layoutMetrics = () =>
+    cdp.evaluate(`(() => {
+      const root = document.documentElement;
+      const fab = document.querySelector(${JSON.stringify(selector('chat-fab'))});
+      const tabBar = document.querySelector('nav');
+      const fabRect = fab?.getBoundingClientRect() ?? null;
+      const tabRect = tabBar?.getBoundingClientRect() ?? null;
+      return {
+        innerWidth: window.innerWidth,
+        innerHeight: window.innerHeight,
+        scrollWidth: root.scrollWidth,
+        theme: root.dataset.theme ?? null,
+        themePreference: root.dataset.themePreference ?? null,
+        fab: fabRect === null ? null : {
+          width: fabRect.width,
+          height: fabRect.height,
+          right: fabRect.right,
+          bottom: fabRect.bottom,
+        },
+        tab: tabRect === null ? null : {
+          top: tabRect.top,
+          bottom: tabRect.bottom,
+        },
+      };
+    })()`);
+  const cspImageSources = () =>
+    cdp.evaluate(`(() => {
+      const content = document.querySelector(
+        'meta[http-equiv="Content-Security-Policy" i]',
+      )?.getAttribute('content') ?? '';
+      const directive = content.split(';').map((part) => part.trim()).find(
+        (part) => part.startsWith('img-src '),
+      );
+      return directive === undefined ? [] : directive.split(/\\s+/u).slice(1);
+    })()`);
+  const selectPhoto = (name) =>
+    cdp.evaluate(`(async () => {
+      const input = document.querySelector(${JSON.stringify(selector('chat-photo-input'))});
+      if (!(input instanceof HTMLInputElement)) throw new Error('T12 photo input not found.');
+      const response = await fetch('/icons/icon-192.png', { cache: 'no-store' });
+      const blob = await response.blob();
+      const file = new File([blob], ${JSON.stringify(name)}, { type: 'image/png' });
+      const transfer = new DataTransfer();
+      transfer.items.add(file);
+      Object.defineProperty(input, 'files', { configurable: true, value: transfer.files });
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    })()`);
+  const messageCount = (messageId) =>
+    cdp.evaluate(
+      `document.querySelectorAll('[data-message-id=${JSON.stringify(messageId)}]').length`,
+    );
+  const viewerOpen = () =>
+    cdp.evaluate(
+      `Boolean(document.querySelector(${JSON.stringify(selector('chat-photo-viewer'))})?.open)`,
+    );
+  const activatePushSubscription = () =>
+    cdp.evaluate('window.__kinetraT12BrowserTest.activatePushSubscription()');
+  const pushLifecycle = () =>
+    cdp.evaluate(`(() => ({
+      subscribed: window.__kinetraT12BrowserTest.state.pushSubscribed,
+      unsubscribeCalls: window.__kinetraT12BrowserTest.state.pushUnsubscribeCalls,
+      order: [...window.__kinetraT12BrowserTest.state.lifecycleOrder],
+    }))()`);
+  const authenticatedFetch = (route, token) =>
+    cdp.evaluate(`fetch(${JSON.stringify(route)}, {
+      headers: { Authorization: ${JSON.stringify(`Bearer ${token}`)} },
+      credentials: 'include',
+      cache: 'no-store',
+    }).then(async (response) => ({
+      status: response.status,
+      body: await response.json().catch(() => null),
+    }))`);
+  const draftKeys = () =>
+    cdp.evaluate(`Object.keys(sessionStorage).filter((key) =>
+      key.startsWith('kinetra.chat.draft.v1:'))`);
+  const clickButtonWithText = (label) =>
+    cdp.evaluate(`(() => {
+      const button = [...document.querySelectorAll('button')].find(
+        (candidate) => candidate.textContent?.trim() === ${JSON.stringify(label)},
+      );
+      if (!(button instanceof HTMLButtonElement)) throw new Error('Button not found: ${label}');
+      button.click();
+    })()`);
+
+  return {
+    chrome,
+    cdp,
+    exists,
+    pathname,
+    bodyText,
+    text,
+    disabled,
+    click,
+    setValue,
+    navigate,
+    setVisibility,
+    setOnline,
+    setViewport,
+    setTheme,
+    layoutMetrics,
+    cspImageSources,
+    selectPhoto,
+    messageCount,
+    viewerOpen,
+    activatePushSubscription,
+    pushLifecycle,
+    authenticatedFetch,
+    draftKeys,
+    clickButtonWithText,
+    chromeErrors: () => chromeErrors,
+  };
+};
+
+const runT12BrowserScenario = async () => {
+  const fixture = createT12BrowserServer();
+  const clientProfileDirectory = await mkdtemp(path.join(os.tmpdir(), 'kinetra-browser-'));
+  const trainerProfileDirectory = await mkdtemp(path.join(os.tmpdir(), 'kinetra-browser-'));
+  let client = null;
+  let trainer = null;
+
+  const loginContext = async (context, identifier, password, expectedPath, expectedTestId) => {
+    await waitFor(`${identifier} login screen`, () => context.exists('login-screen'));
+    await context.setValue('login-identifier', identifier);
+    await context.setValue('login-password', password);
+    await waitFor(
+      `${identifier} enabled login`,
+      async () => !(await context.disabled('login-submit')),
+    );
+    await context.click('login-submit');
+    await waitFor(
+      `${identifier} authenticated route`,
+      async () => {
+        return (
+          (await context.pathname()) === expectedPath && (await context.exists(expectedTestId))
+        );
+      },
+      25_000,
+    );
+  };
+
+  const assertResponsiveThemeMatrix = async () => {
+    for (const { width, height } of t12ViewportMatrix) {
+      for (const theme of t12ThemeMatrix) {
+        await Promise.all([
+          client.setViewport(width, height),
+          trainer.setViewport(width, height),
+          client.setTheme(theme),
+          trainer.setTheme(theme),
+        ]);
+        const expectedResolvedTheme = theme === 'light' ? 'light' : 'dark';
+        await waitFor(`${width}x${height} ${theme} theme application`, async () => {
+          const [clientMetrics, trainerMetrics] = await Promise.all([
+            client.layoutMetrics(),
+            trainer.layoutMetrics(),
+          ]);
+          return (
+            clientMetrics.themePreference === theme &&
+            trainerMetrics.themePreference === theme &&
+            clientMetrics.theme === expectedResolvedTheme &&
+            trainerMetrics.theme === expectedResolvedTheme
+          );
+        });
+        const [clientMetrics, trainerMetrics] = await Promise.all([
+          client.layoutMetrics(),
+          trainer.layoutMetrics(),
+        ]);
+        for (const [surface, metrics] of [
+          ['client', clientMetrics],
+          ['trainer', trainerMetrics],
+        ]) {
+          assert.equal(metrics.innerWidth, width, `${surface} viewport width must be exact.`);
+          assert.equal(metrics.innerHeight, height, `${surface} viewport height must be exact.`);
+          assert.ok(
+            metrics.scrollWidth <= width,
+            `${surface} horizontally overflows at ${width}x${height} in ${theme}.`,
+          );
+        }
+        assert.notEqual(clientMetrics.fab, null, 'Client home must expose the chat FAB.');
+        assert.equal(clientMetrics.fab.width, 56);
+        assert.equal(clientMetrics.fab.height, 56);
+        assert.ok(clientMetrics.fab.right <= width);
+        if (clientMetrics.tab !== null) {
+          assert.ok(
+            clientMetrics.fab.bottom <= clientMetrics.tab.top,
+            `FAB overlaps bottom navigation at ${width}x${height} in ${theme}.`,
+          );
+        }
+      }
+    }
+
+    await Promise.all([
+      client.setViewport(390, 844),
+      trainer.setViewport(1280, 900),
+      client.setTheme('system'),
+      trainer.setTheme('system'),
+    ]);
+  };
+
+  try {
+    await listen(fixture.server, apiPort);
+    const health = await fetch(`${browserApiOrigin}/browser-test-health`);
+    assert.equal(health.status, 200);
+    assert.deepEqual(await health.json(), { status: 'ok', scenario: 't12' });
+
+    client = await launchT12BrowserContext(clientProfileDirectory, 390, 844);
+    trainer = await launchT12BrowserContext(trainerProfileDirectory, 1280, 900);
+    await Promise.all([
+      loginContext(client, 'chat-client@example.test', 'client-password', '/', 'main-screen'),
+      loginContext(
+        trainer,
+        'chat-trainer@example.test',
+        'trainer-password',
+        '/trainer/chats',
+        'trainer-chat-screen',
+      ),
+    ]);
+    assert.deepEqual(fixture.state.loginCount, { client: 1, trainer: 1 });
+    for (const [label, context] of [
+      ['client', client],
+      ['trainer', trainer],
+    ]) {
+      const imageSources = await context.cspImageSources();
+      assert.deepEqual(
+        [...new Set(imageSources)].sort(),
+        ["'self'", 'blob:', frontendOrigin].sort(),
+        `${label} CSP img-src must be limited to self, blob and the private media origin.`,
+      );
+      assert.equal(imageSources.length, 3);
+      assert.equal(
+        imageSources.some((source) => ['*', 'https:', 'http:'].includes(source)),
+        false,
+      );
+    }
+
+    await client.navigate('/trainer/chats');
+    await waitFor(
+      'client trainer-route guard',
+      async () =>
+        (await client.pathname()) === '/' &&
+        (await client.exists('main-screen')) &&
+        (await client.exists('chat-fab')),
+      20_000,
+    );
+
+    await trainer.navigate('/chat');
+    await waitFor(
+      'trainer client-route guard',
+      async () =>
+        (await trainer.pathname()) === '/trainer/chats' &&
+        (await trainer.exists('trainer-chat-screen')),
+      20_000,
+    );
+    await waitFor(
+      'two authenticated T12 sockets',
+      () =>
+        fixture.state.socketConnections.client.size === 1 &&
+        fixture.state.socketConnections.trainer.size === 1,
+      20_000,
+    );
+    await waitFor(
+      'trainer initial empty inbox',
+      async () => (await trainer.bodyText()).includes('Диалогов пока нет.'),
+      20_000,
+    );
+    await assertResponsiveThemeMatrix();
+
+    await client.click('chat-fab');
+    await waitFor('client chat route', async () => (await client.pathname()) === '/chat');
+    await waitFor('client empty conversation', () => client.exists('chat-empty-state'), 20_000);
+    assert.equal(fixture.state.conversationCreated, true);
+
+    await waitFor(
+      'trainer realtime-created conversation without navigation',
+      () => trainer.exists('trainer-conversation-row'),
+      20_000,
+    );
+    await client.setValue('chat-message-input', 'Сообщение клиента через realtime');
+    await waitFor(
+      'enabled client chat send',
+      async () => !(await client.disabled('chat-send-button')),
+    );
+    await client.click('chat-send-button');
+    await waitFor(
+      'committed text with lost response keeps its bound draft and one failed bubble',
+      async () =>
+        fixture.state.messages.length === 1 &&
+        (await client.bodyText()).includes('Сообщение клиента через realtime') &&
+        (await client.bodyText()).includes('Не отправлено') &&
+        (await client.bodyText()).includes('Повторить') &&
+        (await client.cdp.evaluate(
+          `document.querySelector(${JSON.stringify(selector('chat-message-input'))})?.value ?? null`,
+        )) === 'Сообщение клиента через realtime' &&
+        (await client.draftKeys()).length === 1,
+      20_000,
+    );
+    const committedAfterLostResponse = fixture.state.messages[0];
+    assert.equal(await client.messageCount(committedAfterLostResponse.id), 1);
+    assert.equal(fixture.state.messageBroadcastCount.get(committedAfterLostResponse.id), 1);
+    await client.click('chat-send-button');
+    await waitFor(
+      'idempotent retry reconciles the single canonical message',
+      async () =>
+        fixture.state.messageRequestAttempts.get(
+          `client:${committedAfterLostResponse.client_message_id}`,
+        ) === 2 &&
+        (await client.messageCount(committedAfterLostResponse.id)) === 1 &&
+        (await client.bodyText()).includes('Отправлено') &&
+        !(await client.bodyText()).includes('Не отправлено'),
+      20_000,
+    );
+    assert.equal(fixture.state.messages.length, 1);
+    assert.equal(fixture.state.messageBroadcastCount.get(committedAfterLostResponse.id), 1);
+    assert.equal((await client.draftKeys()).length, 0);
+    assert.deepEqual(fixture.state.messageSenders, ['client']);
+
+    await waitFor(
+      'trainer realtime unread preview',
+      async () => {
+        const text = await trainer.bodyText();
+        const unreadLabel = await trainer.cdp.evaluate(
+          "document.querySelector('.trainer-conversation-badge')?.getAttribute('aria-label') ?? null",
+        );
+        return (
+          text.includes('Сообщение клиента через realtime') && unreadLabel === '1 непрочитанных'
+        );
+      },
+      20_000,
+    );
+    await trainer.click('trainer-conversation-row');
+    await waitFor(
+      'trainer conversation detail',
+      async () =>
+        (await trainer.pathname()) === `/trainer/chats/${t12ConversationId}` &&
+        (await trainer.exists('chat-conversation-screen')) &&
+        (await trainer.bodyText()).includes('Сообщение клиента через realtime'),
+      20_000,
+    );
+    await waitFor(
+      'trainer visible-message read cursor',
+      () => fixture.state.trainerReadSequence === 1,
+      20_000,
+    );
+    await waitFor(
+      'client realtime read receipt',
+      async () => (await client.bodyText()).includes('Прочитано'),
+      20_000,
+    );
+
+    await client.navigate('/');
+    await waitFor(
+      'client home restored with existing conversation',
+      async () =>
+        (await client.pathname()) === '/' &&
+        (await client.exists('main-screen')) &&
+        (await client.exists('chat-fab')),
+      20_000,
+    );
+    await waitFor(
+      'client socket restored after home reload',
+      () => fixture.state.socketConnections.client.size === 1,
+      20_000,
+    );
+    await trainer.setValue('chat-message-input', 'Ответ тренера для FAB');
+    await waitFor(
+      'enabled trainer chat send',
+      async () => !(await trainer.disabled('chat-send-button')),
+    );
+    await trainer.click('chat-send-button');
+    await waitFor(
+      'trainer canonical sent message',
+      () =>
+        fixture.state.messages.length === 2 &&
+        fixture.state.messageSenders.join(',') === 'client,trainer',
+      20_000,
+    );
+    await waitFor(
+      'client FAB realtime unread badge',
+      async () => (await client.text('chat-fab-badge')) === '1',
+      20_000,
+    );
+
+    await client.click('chat-fab');
+    await waitFor(
+      'client realtime answer history',
+      async () =>
+        (await client.pathname()) === '/chat' &&
+        (await client.bodyText()).includes('Ответ тренера для FAB'),
+      20_000,
+    );
+    await waitFor(
+      'client visible-message read cursor',
+      () => fixture.state.clientReadSequence === 2,
+      20_000,
+    );
+    await waitFor(
+      'trainer realtime read receipt',
+      async () => (await trainer.bodyText()).includes('Прочитано'),
+      20_000,
+    );
+
+    await client.setVisibility('hidden');
+    await waitFor(
+      'client hidden visibility seam',
+      async () => (await client.cdp.evaluate('document.visibilityState')) === 'hidden',
+    );
+    await sleep(150);
+    const readBeforeHiddenMessage = fixture.state.clientReadSequence;
+    const duplicateResponse = await fetch(
+      `${browserApiOrigin}/__browser-test/t12/duplicate-event`,
+      { method: 'POST' },
+    );
+    assert.equal(duplicateResponse.status, 200);
+    const duplicatePayload = await duplicateResponse.json();
+    await waitFor(
+      'hidden duplicate realtime message rendered once',
+      async () =>
+        (await client.bodyText()).includes('Дубликат realtime должен отобразиться один раз') &&
+        (await client.messageCount(duplicatePayload.message_id)) === 1,
+      20_000,
+    );
+    await sleep(650);
+    assert.equal(
+      fixture.state.clientReadSequence,
+      readBeforeHiddenMessage,
+      'A hidden chat document must not acknowledge an incoming message as read.',
+    );
+    assert.equal(fixture.state.duplicateMessageId, duplicatePayload.message_id);
+    await client.click('chat-back');
+    await waitFor(
+      'duplicate event keeps server-authoritative FAB unread at one',
+      async () =>
+        (await client.exists('main-screen')) && (await client.text('chat-fab-badge')) === '1',
+      20_000,
+    );
+    assert.equal(fixture.state.clientReadSequence, readBeforeHiddenMessage);
+    await client.click('chat-fab');
+    await waitFor(
+      'hidden chat history deduplicates the realtime message',
+      async () =>
+        (await client.exists('chat-conversation-screen')) &&
+        (await client.messageCount(duplicatePayload.message_id)) === 1,
+      20_000,
+    );
+    assert.equal(fixture.state.clientReadSequence, readBeforeHiddenMessage);
+    await client.setVisibility('visible');
+    await waitFor(
+      'duplicate message read after visibility restoration',
+      () => fixture.state.clientReadSequence === duplicatePayload.sequence,
+      20_000,
+    );
+    await client.click('chat-back');
+    await waitFor(
+      'read acknowledgement resets server-authoritative FAB badge',
+      async () =>
+        (await client.exists('main-screen')) &&
+        (await client.exists('chat-fab')) &&
+        !(await client.exists('chat-fab-badge')),
+      20_000,
+    );
+
+    await trainer.navigate('/trainer/chats');
+    await waitFor(
+      'trainer inbox ready without unread before stale-session race',
+      async () =>
+        (await trainer.pathname()) === '/trainer/chats' &&
+        (await trainer.exists('trainer-conversation-row')) &&
+        (await trainer.cdp.evaluate(
+          "document.querySelector('.trainer-conversation-badge')?.getAttribute('aria-label') ?? null",
+        )) === null &&
+        fixture.state.socketConnections.trainer.size === 1,
+      20_000,
+    );
+    const connectionsBeforeStaleRace = {
+      client: fixture.state.socketConnectionCount.client,
+      trainer: fixture.state.socketConnectionCount.trainer,
+    };
+    const staleRaceArmResponse = await fetch(
+      `${browserApiOrigin}/__browser-test/t12/stale-session/arm`,
+      { method: 'POST' },
+    );
+    assert.equal(staleRaceArmResponse.status, 200);
+    assert.deepEqual(await staleRaceArmResponse.json(), {
+      client_unread: 0,
+      trainer_unread: 0,
+    });
+    await waitFor(
+      'both reconnect session requests held with stale unread snapshots',
+      () =>
+        fixture.state.staleSessionRace?.heldRequests.client === 1 &&
+        fixture.state.staleSessionRace.heldRequests.trainer === 1 &&
+        fixture.state.socketConnectionCount.client > connectionsBeforeStaleRace.client &&
+        fixture.state.socketConnectionCount.trainer > connectionsBeforeStaleRace.trainer &&
+        fixture.state.socketConnections.client.size === 1 &&
+        fixture.state.socketConnections.trainer.size === 1,
+      25_000,
+    );
+    const staleRaceEventResponse = await fetch(
+      `${browserApiOrigin}/__browser-test/t12/stale-session/emit`,
+      { method: 'POST' },
+    );
+    assert.equal(staleRaceEventResponse.status, 200);
+    assert.deepEqual(await staleRaceEventResponse.json(), {
+      client_unread: 1,
+      trainer_unread: 1,
+    });
+    await waitFor(
+      'newer conversation event updates FAB and trainer inbox before stale REST release',
+      async () =>
+        (await client.text('chat-fab-badge')) === '1' &&
+        (await trainer.cdp.evaluate(
+          "document.querySelector('.trainer-conversation-badge')?.getAttribute('aria-label') ?? null",
+        )) === '1 непрочитанных',
+      20_000,
+    );
+    const staleRaceReleaseResponse = await fetch(
+      `${browserApiOrigin}/__browser-test/t12/stale-session/release`,
+      { method: 'POST' },
+    );
+    assert.equal(staleRaceReleaseResponse.status, 200);
+    assert.deepEqual(await staleRaceReleaseResponse.json(), { released: true });
+    await waitFor(
+      'server completes both stale lower-unread session responses',
+      () =>
+        fixture.state.staleSessionRace?.staleResponses.client === 1 &&
+        fixture.state.staleSessionRace.staleResponses.trainer === 1,
+      20_000,
+    );
+    await sleep(650);
+    assert.equal(await client.text('chat-fab-badge'), '1');
+    assert.equal(
+      await trainer.cdp.evaluate(
+        "document.querySelector('.trainer-conversation-badge')?.getAttribute('aria-label') ?? null",
+      ),
+      '1 непрочитанных',
+      'A stale trainer session response must not roll the newer inbox unread count back.',
+    );
+    assert.equal(fixture.state.staleSessionRace?.eventMessageIds.length, 2);
+
+    await client.click('chat-fab');
+    await waitFor('client chat reopened for photo flow', () =>
+      client.exists('chat-conversation-screen'),
+    );
+
+    await waitFor(
+      'photo attachment enabled by server session capability',
+      async () => !(await client.disabled('chat-attachment-button')),
+    );
+    await client.selectPhoto('t12-success.png');
+    await waitFor(
+      'successful photo upload ready in composer',
+      async () =>
+        (await client.exists('chat-photo-draft')) &&
+        !(await client.exists('chat-photo-retry')) &&
+        !(await client.disabled('chat-send-button')) &&
+        fixture.state.photoUploadKeyOrder.length === 1,
+      20_000,
+    );
+    const successfulPhotoKey = fixture.state.photoUploadKeyOrder[0];
+    assert.equal(fixture.state.photoUploadAttempts.get(successfulPhotoKey), 1);
+    await client.setValue('chat-message-input', 'Подпись к безопасной фотографии');
+    await client.click('chat-send-button');
+    await waitFor(
+      'canonical photo message and signed thumbnail',
+      async () =>
+        fixture.state.messages.some(
+          ({ kind, text }) => kind === 'photo' && text === 'Подпись к безопасной фотографии',
+        ) &&
+        !(await client.exists('chat-photo-draft')) &&
+        (await client.exists('chat-photo-thumbnail')) &&
+        !(await client.disabled('chat-photo-thumbnail')),
+      20_000,
+    );
+    const attachedPhoto = [...fixture.state.photos.values()].find(({ attached }) => attached);
+    assert.notEqual(attachedPhoto, undefined);
+    await client.click('chat-photo-thumbnail');
+    await waitFor('fullscreen photo viewer', () => client.viewerOpen());
+    await waitFor(
+      'fullscreen viewer decoded signed image',
+      () =>
+        client.cdp.evaluate(`(() => {
+          const viewer = document.querySelector(${JSON.stringify(selector('chat-photo-viewer'))});
+          const image = viewer?.querySelector('img');
+          return image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0;
+        })()`),
+      20_000,
+    );
+    await client.click('chat-photo-viewer-close');
+    await waitFor('photo viewer close via History API', async () => !(await client.viewerOpen()));
+    await waitFor(
+      'photo viewer returns focus to thumbnail',
+      async () =>
+        (await client.cdp.evaluate(
+          `document.activeElement?.getAttribute('data-testid') ?? null`,
+        )) === 'chat-photo-thumbnail',
+    );
+
+    const messageCountBeforeFailedDraft = fixture.state.messages.length;
+    await client.selectPhoto('t12-retry.png');
+    await waitFor(
+      'failed photo upload retry state',
+      async () =>
+        (await client.exists('chat-photo-draft')) &&
+        (await client.exists('chat-photo-retry')) &&
+        (await client.bodyText()).includes('Photo storage is temporarily unavailable.'),
+      20_000,
+    );
+    assert.equal(fixture.state.photoUploadKeyOrder.length, 2);
+    const retryPhotoKey = fixture.state.photoUploadKeyOrder[1];
+    assert.equal(fixture.state.photoUploadAttempts.get(retryPhotoKey), 1);
+    await client.click('chat-photo-retry');
+    await waitFor(
+      'failed photo retry uses same key and becomes ready',
+      async () =>
+        fixture.state.photoUploadAttempts.get(retryPhotoKey) === 2 &&
+        !(await client.exists('chat-photo-retry')) &&
+        !(await client.disabled('chat-send-button')),
+      20_000,
+    );
+    assert.deepEqual(fixture.state.photoUploadKeyOrder, [successfulPhotoKey, retryPhotoKey]);
+    await client.click('chat-photo-remove');
+    await waitFor(
+      'retried photo removed without creating a message',
+      async () =>
+        !(await client.exists('chat-photo-draft')) &&
+        fixture.state.messages.length === messageCountBeforeFailedDraft,
+    );
+
+    const historyMessageIds = fixture.state.messages.map(({ id }) => id);
+    await client.navigate('/chat');
+    await waitFor(
+      'chat history restored after full reload',
+      async () =>
+        (await client.exists('chat-conversation-screen')) &&
+        (await client.bodyText()).includes('Сообщение клиента через realtime') &&
+        (await client.bodyText()).includes('Ответ тренера для FAB') &&
+        (await client.bodyText()).includes('Подпись к безопасной фотографии'),
+      20_000,
+    );
+    for (const messageId of historyMessageIds) {
+      assert.equal(await client.messageCount(messageId), 1, `Reload duplicated ${messageId}.`);
+    }
+    assert.equal(await client.exists('chat-photo-thumbnail'), true);
+
+    const deltaQueriesBeforeDisconnect = fixture.state.deltaQueries.length;
+    const socketConnectionsBeforeDisconnect = fixture.state.socketConnectionCount.client;
+    const socketDisconnectsBeforeDisconnect = fixture.state.socketDisconnectCount.client;
+    const disconnectResponse = await fetch(
+      `${browserApiOrigin}/__browser-test/t12/disconnect-delta`,
+      { method: 'POST' },
+    );
+    assert.equal(disconnectResponse.status, 200);
+    const disconnectPayload = await disconnectResponse.json();
+    await waitFor(
+      'socket reconnect restores missed message through REST delta',
+      async () =>
+        fixture.state.socketConnections.client.size === 1 &&
+        fixture.state.socketConnectionCount.client > socketConnectionsBeforeDisconnect &&
+        fixture.state.socketDisconnectCount.client > socketDisconnectsBeforeDisconnect &&
+        fixture.state.deltaQueries.length > deltaQueriesBeforeDisconnect &&
+        fixture.state.deltaQueries.some(
+          ({ role, returnedSequences }) =>
+            role === 'client' && returnedSequences.includes(disconnectPayload.sequence),
+        ) &&
+        (await client.bodyText()).includes('Пропущенное сообщение восстановлено через REST delta'),
+      25_000,
+    );
+    assert.equal(await client.messageCount(disconnectPayload.message_id), 1);
+    assert.equal(fixture.state.missedMessageId, disconnectPayload.message_id);
+
+    await client.setOnline(false);
+    await waitFor(
+      'offline composer state',
+      async () =>
+        (await client.exists('chat-offline-note')) &&
+        (await client.disabled('chat-send-button')) &&
+        (await client.disabled('chat-attachment-button')),
+    );
+    const messageCountBeforeOfflineDraft = fixture.state.messages.length;
+    await client.setValue('chat-message-input', 'Offline draft remains session scoped');
+    await waitFor('offline session draft persisted', async () => {
+      const keys = await client.draftKeys();
+      return keys.length === 1 && keys[0].includes(t12ClientId);
+    });
+    await client.click('chat-send-button');
+    await sleep(250);
+    assert.equal(fixture.state.messages.length, messageCountBeforeOfflineDraft);
+    await client.setOnline(true);
+    await waitFor(
+      'offline draft survives returning online',
+      async () =>
+        !(await client.exists('chat-offline-note')) &&
+        (await client.cdp.evaluate(
+          `document.querySelector(${JSON.stringify(selector('chat-message-input'))})?.value ?? null`,
+        )) === 'Offline draft remains session scoped',
+    );
+
+    const clientAccessToken = fixture.state.currentAccessToken.client;
+    const trainerAccessToken = fixture.state.currentAccessToken.trainer;
+    assert.equal(typeof clientAccessToken, 'string');
+    assert.equal(typeof trainerAccessToken, 'string');
+    const [foreignConversation, foreignPhoto, trainerUnattachedPhoto] = await Promise.all([
+      client.authenticatedFetch(
+        `/api/v1/chat/conversations/${t12OtherConversationId}/messages`,
+        clientAccessToken,
+      ),
+      client.authenticatedFetch(`/api/v1/chat/photos/${t12OtherPhotoId}/access`, clientAccessToken),
+      trainer.authenticatedFetch(
+        `/api/v1/chat/photos/${[...fixture.state.photos.values()].find(({ attached }) => !attached).id}/access`,
+        trainerAccessToken,
+      ),
+    ]);
+    assert.equal(foreignConversation.status, 404);
+    assert.equal(foreignPhoto.status, 404);
+    assert.equal(trainerUnattachedPhoto.status, 404);
+    assert.equal(foreignPhoto.body.error.code, 'CHAT_RESOURCE_NOT_FOUND');
+    assert.equal(trainerUnattachedPhoto.body.error.code, 'CHAT_RESOURCE_NOT_FOUND');
+
+    await client.setValue('chat-message-input', 'Черновик должен удалиться при выходе');
+    await waitFor('account-scoped client chat draft before logout', async () => {
+      const keys = await client.draftKeys();
+      return keys.length === 1 && keys[0].includes(t12ClientId);
+    });
+    await client.navigate('/settings');
+    await waitFor('client settings for logout', () => client.exists('settings-screen'), 20_000);
+    await client.click('logout');
+    await waitFor('client logout confirmation', () => client.exists('logout-confirm'));
+    await client.click('logout-confirm');
+    await waitFor(
+      'client logout route and socket teardown',
+      async () =>
+        (await client.exists('login-screen')) &&
+        fixture.state.logoutCount.client === 1 &&
+        fixture.state.socketConnections.client.size === 0,
+      20_000,
+    );
+    assert.deepEqual(await client.draftKeys(), [], 'Client logout must clear T12 chat drafts.');
+
+    await loginContext(client, 'chat-client@example.test', 'client-password', '/', 'main-screen');
+    await client.click('chat-fab');
+    await waitFor('client chat restored before account deletion', () =>
+      client.exists('chat-conversation-screen'),
+    );
+    await client.setValue('chat-message-input', 'Черновик удаляется вместе с аккаунтом');
+    await waitFor(
+      'account deletion draft persisted',
+      async () => (await client.draftKeys()).length === 1,
+    );
+    await client.click('chat-back');
+    await waitFor('client home before account deletion', () => client.exists('main-screen'));
+    await client.activatePushSubscription();
+    await waitFor(
+      'T13 browser push seam ready for destructive lifecycle',
+      async () =>
+        (await client.pushLifecycle()).subscribed &&
+        (await client.cdp.evaluate(
+          `navigator.serviceWorker.getRegistration().then((registration) => registration !== undefined)`,
+        )),
+      20_000,
+    );
+    await client.click('tab-settings');
+    await waitFor('settings account deletion surface', () =>
+      client.exists('settings-account-section'),
+    );
+    fixture.state.accountDeleteExpectedAuthorization = `Bearer ${fixture.state.currentAccessToken.client}`;
+    await client.click('settings-delete-account');
+    await waitFor('account deletion warning', () => client.exists('settings-delete-continue'));
+    await client.click('settings-delete-continue');
+    await waitFor('account deletion confirmation', () =>
+      client.exists('settings-delete-confirmation'),
+    );
+    await client.setValue('settings-delete-confirmation', 'DELETE');
+    await waitFor(
+      'account deletion confirmation enabled',
+      async () => !(await client.disabled('settings-delete-confirm')),
+    );
+    await client.click('settings-delete-confirm');
+    await waitFor(
+      'account deletion captured-token lifecycle and socket teardown',
+      async () =>
+        fixture.state.accountDeleteCount === 1 &&
+        fixture.state.socketConnections.client.size === 0 &&
+        (await client.exists('login-screen')),
+      20_000,
+    );
+    assert.deepEqual(await client.draftKeys(), []);
+    assert.deepEqual(await client.pushLifecycle(), {
+      subscribed: false,
+      unsubscribeCalls: 1,
+      order: ['browser-unsubscribe:start', 'browser-unsubscribe:done'],
+    });
+    assert.equal(fixture.state.pushSubscriptionDeleteCount, 0);
+    assert.equal(
+      fixture.state.accountDeleteAuthorization,
+      fixture.state.accountDeleteExpectedAuthorization,
+    );
+    assert.equal(fixture.state.mediaDeletionJobs.length, fixture.state.photos.size);
+    assert.ok(fixture.state.mediaDeletionJobs.length >= 2);
+    assert.equal(
+      new Set(fixture.state.mediaDeletionJobs.map(({ object_key: objectKey }) => objectKey)).size,
+      fixture.state.mediaDeletionJobs.length,
+    );
+
+    await trainer.clickButtonWithText('Выйти');
+    await waitFor(
+      'trainer logout route and socket teardown',
+      async () =>
+        (await trainer.exists('login-screen')) &&
+        fixture.state.logoutCount.trainer === 1 &&
+        fixture.state.socketConnections.trainer.size === 0,
+      20_000,
+    );
+
+    assert.ok(fixture.state.messageSenders.includes('client'));
+    assert.ok(fixture.state.messageSenders.includes('trainer'));
+    assert.ok(
+      fixture.state.readUpdates.some(
+        ({ role, throughSequence }) => role === 'trainer' && throughSequence === 1,
+      ),
+    );
+    assert.ok(
+      fixture.state.readUpdates.some(
+        ({ role, throughSequence }) => role === 'client' && throughSequence >= 2,
+      ),
+    );
+  } catch (error) {
+    for (const [label, context] of [
+      ['client', client],
+      ['trainer', trainer],
+    ]) {
+      if (context === null) continue;
+      try {
+        const diagnostics = await context.cdp.evaluate(`JSON.stringify({
+          url: window.location.href,
+          text: document.body?.innerText?.slice(0, 2000) ?? '',
+          drafts: Object.keys(sessionStorage).filter((key) => key.startsWith('kinetra.chat.draft.v1:')),
+        })`);
+        console.error(`T12 ${label} diagnostics: ${diagnostics}`);
+      } catch (diagnosticError) {
+        console.error(`Could not collect T12 ${label} diagnostics.`, diagnosticError);
+      }
+      const chromeErrors = context.chromeErrors();
+      if (chromeErrors.trim().length > 0) console.error(chromeErrors.slice(-4_000));
+    }
+    throw error;
+  } finally {
+    fixture.releaseStaleSessionRace();
+    client?.cdp.close();
+    trainer?.cdp.close();
+    await Promise.all([
+      terminateChrome(client?.chrome ?? null),
+      terminateChrome(trainer?.chrome ?? null),
+    ]);
+    await new Promise((resolve) => fixture.socketServer.close(resolve));
+    await close(fixture.server);
+    await Promise.all([
+      removeProfileDirectory(clientProfileDirectory),
+      removeProfileDirectory(trainerProfileDirectory),
+    ]);
+    await assertNoBrowserProfileDirectories();
+  }
+
+  console.log('KINETRA_T12_BROWSER_E2E=PASS');
+};
+
 await buildFrontendForBrowserTest();
 await runBrowserScenario();
+await runT12BrowserScenario();
