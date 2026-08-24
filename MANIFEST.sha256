@@ -115,7 +115,7 @@ e9bf1beb859b71919eaa8b661f3c92c811f3636bf2400a5fe862767236b6ed42  ./apps/backend
 789d1efdde412b141598af441238bd4af79bf42502253e7cecb3a6d827f29438  ./apps/backend/test/chat-cleanup.test.ts
 019379079791438da7108250e74c0052fe853764e83fbf595f533f901ab4cf10  ./apps/backend/test/chat-client-ip.test.ts
 df38e7b84534f6fcbcb5387aaf5ad07b2e9b6cc36bc0865beea28475454fcbaf  ./apps/backend/test/chat-photo-security.test.ts
-b11b8ca37ccb814a36180e7c78c28ac4a27514b9556497b3e5c6f34f4b01db6e  ./apps/backend/test/chat-trainer-cli.test.ts
+4288034feae8df55c0fc0b340bd31e45085afc63e8e0a2168007dd89a7a4de31  ./apps/backend/test/chat-trainer-cli.test.ts
 f3e2842c33680e36905de8c7d2d7cdddfb6c8752fcdc4b7bc51918a7b7ccb3cf  ./apps/backend/test/chat.e2e.test.ts
 57f641707aefd337b65d44925795fa12c3abe58ed369616e41b144385b7c6476  ./apps/backend/test/chat.postgres.test.ts
 6ce8c1539d51b8db3a096c9268fc045732e5aac883cc88379163666af85ee979  ./apps/backend/test/chat.socket.test.ts

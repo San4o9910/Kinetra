@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { dirname, resolve } from 'node:path';
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 interface CommandResult {
   readonly code: number | null;
@@ -9,17 +11,17 @@ interface CommandResult {
   readonly stderr: string;
 }
 
+const testDirectory = dirname(fileURLToPath(import.meta.url));
+const repositoryRoot = resolve(testDirectory, '../../..');
+const trainerCliPath = resolve(testDirectory, '../src/chat/trainer-cli.ts');
+
 const runTrainerCli = async (arguments_: readonly string[]): Promise<CommandResult> =>
   new Promise<CommandResult>((resolve, reject) => {
-    const child = spawn(
-      process.execPath,
-      ['--import', 'tsx', 'apps/backend/src/chat/trainer-cli.ts', ...arguments_],
-      {
-        cwd: process.cwd(),
-        env: { ...process.env, DATABASE_URL: '' },
-        stdio: ['ignore', 'pipe', 'pipe'],
-      },
-    );
+    const child = spawn(process.execPath, ['--import', 'tsx', trainerCliPath, ...arguments_], {
+      cwd: repositoryRoot,
+      env: { ...process.env, DATABASE_URL: '' },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
     child.stdout.on('data', (chunk: Buffer) => stdout.push(chunk));
@@ -46,7 +48,7 @@ test('trainer operator CLI exposes strict grant, reassign and revoke argument co
 
   for (const [command, expected] of helpCases) {
     const result = await runTrainerCli([command, '--help']);
-    assert.equal(result.code, 0);
+    assert.equal(result.code, 0, `${command} --help failed: ${result.stderr}`);
     assert.equal(result.stderr, '');
     assert.equal(result.stdout.trim(), expected);
   }
