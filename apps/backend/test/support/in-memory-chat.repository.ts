@@ -171,14 +171,37 @@ export class InMemoryChatRepository implements ChatRepository {
     );
   }
 
-  public async withCurrentConversation<T>(
+  public async getRealtimeConversation(
     conversationId: string,
-    operation: (conversation: ChatConversationSnapshot | null) => Promise<T>,
-  ): Promise<T> {
-    return this.withLocalLock(this.conversationLocks, conversationId, () => {
-      const conversation = this.conversations.get(conversationId);
-      return operation(conversation === undefined ? null : cloneConversation(conversation));
-    });
+  ): Promise<ChatConversationSnapshot | null> {
+    const conversation = this.conversations.get(conversationId);
+
+    if (conversation === undefined) {
+      return null;
+    }
+
+    const client = this.actors.get(conversation.client.userId);
+    const trainer = this.actors.get(conversation.trainer.userId);
+    return client?.role === 'client' &&
+      client.onboardingStatus === 'active' &&
+      trainer?.role === 'trainer'
+      ? cloneConversation(conversation)
+      : null;
+  }
+
+  public async findRealtimeRecipientConversation(
+    userId: string,
+    role: 'client' | 'trainer',
+    conversationId: string,
+  ): Promise<ChatConversationSnapshot | null> {
+    const conversation = await this.getRealtimeConversation(conversationId);
+
+    if (conversation === null) {
+      return null;
+    }
+
+    const participant = role === 'client' ? conversation.client : conversation.trainer;
+    return participant.userId === userId ? conversation : null;
   }
 
   private async withLocalLock<T>(
@@ -235,7 +258,10 @@ export class InMemoryChatRepository implements ChatRepository {
     clientUserId: string,
     now: Date,
   ): Promise<CreateConversationResult | null> {
-    const existing = await this.findConversationForClient(clientUserId);
+    const existingSnapshot = [...this.conversations.values()].find(
+      (candidate) => candidate.client.userId === clientUserId,
+    );
+    const existing = existingSnapshot === undefined ? null : cloneConversation(existingSnapshot);
 
     if (existing !== null) {
       return { created: false, conversation: existing };

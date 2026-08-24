@@ -1,4 +1,4 @@
-import {
+import React, {
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -37,9 +37,11 @@ import {
   fetchMe,
   getSubscription,
   invalidateInMemorySession,
-  logout,
+  prepareLogout,
   preparePushSubscriptionDeletion,
   refreshInMemoryAccessToken,
+  type PreparedLogoutAttempt,
+  type PreparedPushSubscriptionDeletion,
 } from './lib/api';
 import { bestEffortUnsubscribeFromPush } from './pwa/pushNotifications';
 import { createFeatureChatRealtimeClient } from './realtime/socket';
@@ -179,6 +181,37 @@ const ChatRouteState = ({
   </main>
 );
 
+export type TrainerSignOutUiState = 'pending' | 'failed';
+
+export const TrainerSignOutState = React.memo(
+  ({
+    state,
+    onRetry,
+  }: {
+    readonly state: TrainerSignOutUiState;
+    readonly onRetry: () => void;
+  }): ReactNode => (
+    <main className="chat-bootstrap-shell" data-testid={`trainer-sign-out-${state}`}>
+      <section className="chat-bootstrap-card" aria-live="assertive">
+        <p className="survey-kicker">ЗАЩИЩЁННЫЙ ВЫХОД</p>
+        <h1>{state === 'pending' ? 'Завершаем сессию' : 'Выход не завершен'}</h1>
+        <p>
+          {state === 'pending'
+            ? 'Подтверждаем отзыв сессии на сервере. Рабочие диалоги временно скрыты.'
+            : 'Сервер не подтвердил отзыв сессии. Вы по-прежнему вошли в аккаунт.'}
+        </p>
+        {state === 'failed' ? (
+          <div className="chat-bootstrap-actions">
+            <button className="primary-button" type="button" onClick={onRetry}>
+              Повторить
+            </button>
+          </div>
+        ) : null}
+      </section>
+    </main>
+  ),
+);
+
 type SessionState =
   | { readonly kind: 'booting' }
   | { readonly kind: 'unauthenticated' }
@@ -191,6 +224,11 @@ type SubscriptionLoadState =
   | { readonly kind: 'loading' }
   | { readonly kind: 'ready'; readonly subscription: SubscriptionResponse }
   | { readonly kind: 'error'; readonly message: string };
+
+interface TrainerSignOutAttempt {
+  readonly logout: PreparedLogoutAttempt;
+  readonly deleteSubscription: PreparedPushSubscriptionDeletion;
+}
 
 const routeAtStartup = (): AppRoute =>
   typeof window === 'undefined' ? appRoutes.login : normalizeAppRoute(window.location.pathname);
@@ -225,14 +263,19 @@ export const App = (): ReactNode => {
   const [route, navigate] = useBrowserRoute();
   const [workoutCompletionBusy, setWorkoutCompletionBusy] = useState(false);
   const [blockingDialogOpen, setBlockingDialogOpen] = useState(false);
-  const [trainerSignOutBusy, setTrainerSignOutBusy] = useState(false);
+  const [trainerSignOutState, setTrainerSignOutState] = useState<'idle' | TrainerSignOutUiState>(
+    'idle',
+  );
   const [subscriptionState, setSubscriptionState] = useState<SubscriptionLoadState>({
     kind: 'idle',
   });
   const subscriptionControllerRef = useRef<AbortController | null>(null);
   const subscriptionRequestVersionRef = useRef(0);
   const chatDisposeRef = useRef<() => void>(() => undefined);
+  const chatSuspendRef = useRef<() => void>(() => undefined);
   const trainerSignOutBusyRef = useRef(false);
+  const trainerSignOutAttemptRef = useRef<TrainerSignOutAttempt | null>(null);
+  const authenticatedUserIdRef = useRef<string | null>(null);
   const online = useOnlineStatus();
   const chatRealtime = useMemo(
     () => createFeatureChatRealtimeClient(ensureAccessToken, refreshInMemoryAccessToken),
@@ -392,6 +435,8 @@ export const App = (): ReactNode => {
     onSessionExpired: handleActiveSessionExpired,
   });
   chatDisposeRef.current = chatRuntime.disposeNow;
+  chatSuspendRef.current = chatRuntime.suspendNow;
+  authenticatedUserIdRef.current = authenticatedUserId;
 
   const finishSignedOut = useCallback((): void => {
     subscriptionControllerRef.current?.abort();
@@ -407,23 +452,71 @@ export const App = (): ReactNode => {
       return;
     }
 
+    let attempt = trainerSignOutAttemptRef.current;
+
+    if (attempt === null || !attempt.logout.isCurrent()) {
+      try {
+        attempt = {
+          logout: prepareLogout(),
+          deleteSubscription: preparePushSubscriptionDeletion(),
+        };
+        trainerSignOutAttemptRef.current = attempt;
+      } catch {
+        setTrainerSignOutState('failed');
+        return;
+      }
+    }
+
     trainerSignOutBusyRef.current = true;
-    setTrainerSignOutBusy(true);
-    const deleteSubscription = preparePushSubscriptionDeletion();
-    chatDisposeRef.current();
+    setTrainerSignOutState('pending');
+    chatSuspendRef.current();
 
     void settleBestEffortWithin(
-      (control) => bestEffortUnsubscribeFromPush({ ...control, deleteSubscription }),
+      (control) =>
+        bestEffortUnsubscribeFromPush({
+          ...control,
+          deleteSubscription: attempt.deleteSubscription,
+        }),
       PUSH_BEST_EFFORT_TIMEOUT_MS,
     )
-      .then(() => logout())
-      .catch(() => undefined)
-      .finally(() => {
+      .then(() => attempt.logout.execute())
+      .then((completion) => {
+        if (
+          trainerSignOutAttemptRef.current !== attempt ||
+          authenticatedUserIdRef.current !== attempt.logout.subjectId ||
+          !attempt.logout.isCompletionCurrent(completion)
+        ) {
+          return;
+        }
+
+        trainerSignOutAttemptRef.current = null;
         trainerSignOutBusyRef.current = false;
-        setTrainerSignOutBusy(false);
+        setTrainerSignOutState('idle');
+        chatDisposeRef.current();
         finishSignedOut();
+      })
+      .catch(() => {
+        if (
+          trainerSignOutAttemptRef.current !== attempt ||
+          authenticatedUserIdRef.current !== attempt.logout.subjectId
+        ) {
+          return;
+        }
+
+        trainerSignOutBusyRef.current = false;
+        setTrainerSignOutState('failed');
       });
   }, [finishSignedOut]);
+
+  useEffect(() => {
+    const attempt = trainerSignOutAttemptRef.current;
+
+    if (attempt !== null && authenticatedUserId !== attempt.logout.subjectId) {
+      trainerSignOutAttemptRef.current = null;
+      trainerSignOutBusyRef.current = false;
+      setTrainerSignOutState('idle');
+    }
+  }, [authenticatedUserId]);
 
   useEffect(() => {
     if (authenticatedUserId === null || authenticatedRole !== 'client') {
@@ -571,6 +664,10 @@ export const App = (): ReactNode => {
   const profile = session.profile;
 
   if (profile.account_role === 'trainer') {
+    if (trainerSignOutState !== 'idle') {
+      return <TrainerSignOutState state={trainerSignOutState} onRetry={handleTrainerSignOut} />;
+    }
+
     if (!isTrainerRoute(route)) {
       return (
         <ChatRouteState
@@ -636,7 +733,7 @@ export const App = (): ReactNode => {
         onBackToInbox={() => navigate(appRoutes.trainerChats)}
         onSessionExpired={handleActiveSessionExpired}
         registerObjectUrl={chatRuntime.registerObjectUrl}
-        {...(trainerSignOutBusy ? {} : { onSignOut: handleTrainerSignOut })}
+        onSignOut={handleTrainerSignOut}
       />
     );
   }

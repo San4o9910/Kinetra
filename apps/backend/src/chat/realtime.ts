@@ -7,7 +7,12 @@ import { resolveChatClientIp } from './client-ip.js';
 import type { ChatDomainEvent, ChatEventHub } from './event-hub.js';
 import type { ChatRateLimiter } from './rate-limit.js';
 import type { ChatActor, ChatConversationSnapshot, ChatRole } from './repository.js';
-import { conversationUnreadFor, projectMessageFor, type ChatService } from './service.js';
+import {
+  conversationUnreadFor,
+  projectMessageFor,
+  type ChatService,
+  type ChatSocketSyncAdmission,
+} from './service.js';
 
 export interface ChatRealtimeDependencies {
   readonly accessTokenVerifier: AccessTokenVerifier;
@@ -28,6 +33,13 @@ interface SocketError extends Error {
   data?: { readonly code: string };
 }
 
+interface ActiveSyncAttempt {
+  readonly conversationId: string;
+  readonly userId: string;
+  detached: boolean;
+  released: boolean;
+}
+
 const socketError = (code: string, message: string): SocketError => {
   const error: SocketError = new Error(message);
   error.data = { code };
@@ -35,6 +47,9 @@ const socketError = (code: string, message: string): SocketError => {
 };
 
 const roomFor = (userId: string): string => `account:${userId}`;
+
+const MAX_ACTIVE_SYNCS_PER_SOCKET = 4;
+const MAX_ACTIVE_SYNCS_PER_PRINCIPAL = 8;
 
 const accessTokenExpired = (claims: AccessTokenClaims): boolean => Date.now() >= claims.exp * 1_000;
 
@@ -94,6 +109,87 @@ export const attachChatRealtime = (
   const identities = new WeakMap<Socket, SocketIdentity>();
   const activeCounts = new Map<string, number>();
   const countedSockets = new WeakSet<Socket>();
+  const activeSyncs = new WeakMap<Socket, Map<string, ActiveSyncAttempt>>();
+  const activePrincipalSyncCounts = new Map<string, number>();
+
+  const detachSyncAttempt = (socket: Socket, attempt: ActiveSyncAttempt): void => {
+    if (attempt.detached) {
+      return;
+    }
+
+    attempt.detached = true;
+    const socketAttempts = activeSyncs.get(socket);
+
+    if (socketAttempts?.get(attempt.conversationId) === attempt) {
+      socketAttempts.delete(attempt.conversationId);
+
+      if (socketAttempts.size === 0) {
+        activeSyncs.delete(socket);
+      }
+    }
+  };
+
+  const releaseSyncAttempt = (socket: Socket, attempt: ActiveSyncAttempt): void => {
+    if (attempt.released) {
+      return;
+    }
+
+    attempt.released = true;
+    detachSyncAttempt(socket, attempt);
+
+    const principalRemaining = Math.max(
+      0,
+      (activePrincipalSyncCounts.get(attempt.userId) ?? 1) - 1,
+    );
+
+    if (principalRemaining === 0) {
+      activePrincipalSyncCounts.delete(attempt.userId);
+    } else {
+      activePrincipalSyncCounts.set(attempt.userId, principalRemaining);
+    }
+  };
+
+  const releaseSocketSyncAttempts = (socket: Socket): void => {
+    const attempts = activeSyncs.get(socket);
+
+    if (attempts === undefined) {
+      return;
+    }
+
+    for (const attempt of [...attempts.values()]) {
+      // Disconnect detaches socket ownership immediately, but the principal
+      // slot remains charged until the already-started storage work settles.
+      // Otherwise reconnect churn could exceed the aggregate in-flight cap.
+      detachSyncAttempt(socket, attempt);
+    }
+  };
+
+  const reserveSyncAttempt = (
+    socket: Socket,
+    userId: string,
+    conversationId: string,
+  ): ActiveSyncAttempt | null => {
+    const socketAttempts = activeSyncs.get(socket) ?? new Map<string, ActiveSyncAttempt>();
+
+    if (
+      socketAttempts.has(conversationId) ||
+      socketAttempts.size >= MAX_ACTIVE_SYNCS_PER_SOCKET ||
+      (activePrincipalSyncCounts.get(userId) ?? 0) >= MAX_ACTIVE_SYNCS_PER_PRINCIPAL
+    ) {
+      return null;
+    }
+
+    const attempt: ActiveSyncAttempt = {
+      conversationId,
+      userId,
+      detached: false,
+      released: false,
+    };
+    socketAttempts.set(conversationId, attempt);
+    activeSyncs.set(socket, socketAttempts);
+    activePrincipalSyncCounts.set(userId, (activePrincipalSyncCounts.get(userId) ?? 0) + 1);
+    return attempt;
+  };
 
   const releaseConnectionCount = (socket: Socket, userId: string): void => {
     if (!countedSockets.has(socket)) {
@@ -123,11 +219,14 @@ export const attachChatRealtime = (
     socket.disconnect(true);
   };
 
-  const emitToActiveAccount = async (
-    userId: string,
+  const emitToActiveParticipant = async (
+    conversation: ChatConversationSnapshot,
+    role: ChatRole,
     eventName: string,
     payload: unknown,
   ): Promise<void> => {
+    const userId = role === 'client' ? conversation.client.userId : conversation.trainer.userId;
+
     await Promise.all(
       socketsFor(userId).map(async (socket) => {
         const identity = identities.get(socket);
@@ -141,16 +240,22 @@ export const attachChatRealtime = (
           return;
         }
 
-        let status: 'active' | 'session_inactive' | 'account_changed' = 'session_inactive';
+        let status: 'active' | 'session_inactive' | 'account_changed' | 'not_participant' =
+          'session_inactive';
 
         try {
-          status = await dependencies.service.validateSocketIdentity(
+          status = await dependencies.service.validateRealtimeRecipient(
+            conversation,
             userId,
             identity.claims.sid,
-            identity.actor.role,
+            role,
           );
         } catch {
           status = 'session_inactive';
+        }
+
+        if (status === 'not_participant') {
+          return;
         }
 
         if (status !== 'active') {
@@ -173,13 +278,15 @@ export const attachChatRealtime = (
 
   const emitConversationUpdate = async (conversation: ChatConversationSnapshot): Promise<void> => {
     await Promise.all([
-      emitToActiveAccount(
-        conversation.client.userId,
+      emitToActiveParticipant(
+        conversation,
+        'client',
         'chat:conversation:updated',
         conversationUpdateFor(conversation, 'client'),
       ),
-      emitToActiveAccount(
-        conversation.trainer.userId,
+      emitToActiveParticipant(
+        conversation,
+        'trainer',
         'chat:conversation:updated',
         conversationUpdateFor(conversation, 'trainer'),
       ),
@@ -195,43 +302,40 @@ export const attachChatRealtime = (
       return;
     }
 
-    await dependencies.service.withRealtimeConversation(
-      event.conversation.id,
-      async (conversation) => {
-        if (conversation === null) {
-          return;
-        }
+    const conversation = await dependencies.service.getRealtimeConversation(event.conversation.id);
 
-        if (event.kind === 'conversation_updated') {
-          await emitConversationUpdate(conversation);
-          return;
-        }
+    if (conversation === null) {
+      return;
+    }
 
-        if (event.kind === 'message_created') {
-          await Promise.all([
-            emitToActiveAccount(conversation.client.userId, 'chat:message:new', {
-              message: projectMessageFor(event.message, conversation.client.userId),
-            }),
-            emitToActiveAccount(conversation.trainer.userId, 'chat:message:new', {
-              message: projectMessageFor(event.message, conversation.trainer.userId),
-            }),
-          ]);
-          await emitConversationUpdate(conversation);
-          return;
-        }
+    if (event.kind === 'conversation_updated') {
+      await emitConversationUpdate(conversation);
+      return;
+    }
 
-        const payload = {
-          conversation_id: conversation.id,
-          reader_role: event.readerRole,
-          through_sequence: event.throughSequence,
-          read_at: event.readAt.toISOString(),
-        };
-        await Promise.all([
-          emitToActiveAccount(conversation.client.userId, 'chat:read:updated', payload),
-          emitToActiveAccount(conversation.trainer.userId, 'chat:read:updated', payload),
-        ]);
-      },
-    );
+    if (event.kind === 'message_created') {
+      await Promise.all([
+        emitToActiveParticipant(conversation, 'client', 'chat:message:new', {
+          message: projectMessageFor(event.message, conversation.client.userId),
+        }),
+        emitToActiveParticipant(conversation, 'trainer', 'chat:message:new', {
+          message: projectMessageFor(event.message, conversation.trainer.userId),
+        }),
+      ]);
+      await emitConversationUpdate(conversation);
+      return;
+    }
+
+    const payload = {
+      conversation_id: conversation.id,
+      reader_role: event.readerRole,
+      through_sequence: event.throughSequence,
+      read_at: event.readAt.toISOString(),
+    };
+    await Promise.all([
+      emitToActiveParticipant(conversation, 'client', 'chat:read:updated', payload),
+      emitToActiveParticipant(conversation, 'trainer', 'chat:read:updated', payload),
+    ]);
   };
 
   namespace.use((socket, next) => {
@@ -351,17 +455,32 @@ export const attachChatRealtime = (
           return;
         }
 
+        const conversationId = typedPayload.conversation_id.toLowerCase();
+        let admission: ChatSocketSyncAdmission;
+
+        try {
+          admission = dependencies.service.admitSocketSync({
+            userId,
+            sessionId: identity.claims.sid,
+            ip: identity.clientIp,
+          });
+        } catch {
+          return;
+        }
+
+        const attempt = reserveSyncAttempt(socket, userId, conversationId);
+
+        if (attempt === null) {
+          return;
+        }
+
         void dependencies.service
-          .authorizeSocketSync(
-            {
-              userId,
-              sessionId: identity.claims.sid,
-              ip: identity.clientIp,
-            },
-            typedPayload.conversation_id,
-            lastSequence as number,
-          )
+          .authorizeSocketSync(admission, conversationId, lastSequence as number)
           .then(() => {
+            if (!socket.connected || attempt.detached) {
+              return;
+            }
+
             if (accessTokenExpired(identity.claims)) {
               invalidateSocket(socket, 'token_expired');
               return;
@@ -369,6 +488,10 @@ export const attachChatRealtime = (
             acknowledge?.({ delta_required: true });
           })
           .catch((error: unknown) => {
+            if (!socket.connected || attempt.detached) {
+              return;
+            }
+
             if (error instanceof HttpError && error.statusCode === 401) {
               socket.emit('chat:session:invalidated', { reason: 'session_inactive' });
               socket.disconnect(true);
@@ -376,12 +499,14 @@ export const attachChatRealtime = (
               socket.emit('chat:session:invalidated', { reason: 'account_changed' });
               socket.disconnect(true);
             }
-          });
+          })
+          .finally(() => releaseSyncAttempt(socket, attempt));
       },
     );
 
     socket.once('disconnect', () => {
       clearTimeout(expiryTimer);
+      releaseSocketSyncAttempts(socket);
       releaseConnectionCount(socket, userId);
     });
   });

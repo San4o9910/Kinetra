@@ -234,31 +234,76 @@ const timelineSort = (left: ChatTimelineMessage, right: ChatTimelineMessage): nu
     : createdComparison;
 };
 
+const messageMatchesRequestPayload = (
+  message: ChatTimelineMessage | ChatMessageDto,
+  request: ChatMessageRequest,
+): boolean =>
+  message.kind === request.kind &&
+  message.text === request.text &&
+  (request.kind === 'text' ? message.photo === null : message.photo?.id === request.photo_id);
+
+const ownMessageReconciliationKey = (
+  message: ChatTimelineMessage | ChatMessageDto,
+): string | undefined => {
+  if (!message.is_mine || (message.kind === 'text' && message.photo !== null)) {
+    return undefined;
+  }
+
+  const photoId = message.kind === 'photo' ? message.photo?.id : null;
+  if (message.kind === 'photo' && photoId === undefined) {
+    return undefined;
+  }
+
+  return JSON.stringify([
+    message.conversation_id,
+    message.sender_role,
+    message.client_message_id,
+    message.kind,
+    message.text,
+    photoId,
+  ]);
+};
+
+const ownOptimisticMatchesCanonical = (
+  optimistic: ChatTimelineMessage,
+  canonical: ChatTimelineMessage | ChatMessageDto,
+): boolean =>
+  optimistic.sequence === null &&
+  optimistic.is_mine &&
+  optimistic.pending_request !== undefined &&
+  canonical.sequence !== null &&
+  canonical.is_mine &&
+  ownMessageReconciliationKey(optimistic) === ownMessageReconciliationKey(canonical) &&
+  messageMatchesRequestPayload(optimistic, optimistic.pending_request) &&
+  messageMatchesRequestPayload(canonical, optimistic.pending_request);
+
+export const findMatchingOwnOptimisticMessage = (
+  messages: readonly ChatTimelineMessage[],
+  canonical: ChatMessageDto,
+): ChatTimelineMessage | undefined =>
+  canonical.is_mine
+    ? messages.find((message) => ownOptimisticMatchesCanonical(message, canonical))
+    : undefined;
+
+export const nextRealtimeUnreadCount = (
+  currentUnreadCount: number,
+  message: Pick<ChatMessageDto, 'is_mine'>,
+  alreadyPresentByServerId: boolean,
+): number =>
+  message.is_mine || alreadyPresentByServerId ? currentUnreadCount : currentUnreadCount + 1;
+
 export const mergeTimelineMessages = (
   current: readonly ChatTimelineMessage[],
   incoming: readonly (ChatTimelineMessage | ChatMessageDto)[],
   counterpartLastReadSequence = 0,
 ): readonly ChatTimelineMessage[] => {
   const byId = new Map<string, ChatTimelineMessage>();
-  const idByClientMessageId = new Map<string, string>();
 
   const add = (candidate: ChatTimelineMessage | ChatMessageDto): void => {
     const normalized: ChatTimelineMessage =
       'delivery_status' in candidate
         ? candidate
         : toTimelineMessage(candidate, counterpartLastReadSequence);
-    const priorId = idByClientMessageId.get(normalized.client_message_id);
-
-    if (priorId !== undefined && priorId !== normalized.id) {
-      const prior = byId.get(priorId);
-      const canonicalWins = normalized.sequence !== null || prior?.sequence === null;
-
-      if (!canonicalWins) {
-        return;
-      }
-
-      byId.delete(priorId);
-    }
 
     const sameId = byId.get(normalized.id);
     if (sameId !== undefined && sameId.sequence !== null && normalized.sequence === null) {
@@ -266,11 +311,33 @@ export const mergeTimelineMessages = (
     }
 
     byId.set(normalized.id, normalized);
-    idByClientMessageId.set(normalized.client_message_id, normalized.id);
   };
 
   current.forEach(add);
   incoming.forEach(add);
+
+  const ownCanonicalReconciliationKeys = new Set<string>();
+  for (const message of byId.values()) {
+    if (message.sequence !== null) {
+      const key = ownMessageReconciliationKey(message);
+      if (key !== undefined) {
+        ownCanonicalReconciliationKeys.add(key);
+      }
+    }
+  }
+
+  for (const message of byId.values()) {
+    const key = ownMessageReconciliationKey(message);
+    if (
+      message.sequence === null &&
+      message.pending_request !== undefined &&
+      key !== undefined &&
+      messageMatchesRequestPayload(message, message.pending_request) &&
+      ownCanonicalReconciliationKeys.has(key)
+    ) {
+      byId.delete(message.id);
+    }
+  }
 
   return [...byId.values()]
     .map((message) =>
@@ -293,7 +360,10 @@ export const markTimelineMessageFailed = (
   errorMessage: string,
 ): readonly ChatTimelineMessage[] =>
   messages.map((message) =>
-    message.client_message_id === clientMessageId && message.sequence === null
+    message.client_message_id === clientMessageId &&
+    message.sequence === null &&
+    message.is_mine &&
+    message.pending_request !== undefined
       ? { ...message, delivery_status: 'failed', error_message: errorMessage }
       : message,
   );
@@ -303,7 +373,12 @@ export const markTimelineMessageSending = (
   clientMessageId: string,
 ): readonly ChatTimelineMessage[] =>
   messages.map((message) => {
-    if (message.client_message_id !== clientMessageId || message.sequence !== null) {
+    if (
+      message.client_message_id !== clientMessageId ||
+      message.sequence !== null ||
+      !message.is_mine ||
+      message.pending_request === undefined
+    ) {
       return message;
     }
 

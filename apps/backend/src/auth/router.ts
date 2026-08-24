@@ -201,11 +201,20 @@ export const createAuthRouter = (options: AuthRouterOptions): Router => {
     assertNoUserIdOverride(body);
     const refreshToken = readCookie(request, options.refreshCookie.name);
     const proof = await optionalVerifiedLogoutProof(request, options.accessTokenVerifier);
-    await options.service.logout(refreshToken, proof);
+    const revoked = await options.service.logout(refreshToken, proof);
+
+    if (proof !== undefined && !revoked) {
+      throw new HttpError(
+        409,
+        'LOGOUT_NOT_CONFIRMED',
+        'The server could not confirm revocation of this refresh session.',
+      );
+    }
 
     // Logout never mutates the origin-wide cookie in its response. A valid bearer
-    // may revoke only its own refresh rotation family. Bearerless legacy requests
-    // are server-side no-ops so an old tab cannot revoke a newer account's cookie.
+    // succeeds only after confirmed revocation of its own refresh rotation family.
+    // Bearerless legacy requests remain server-side no-ops so an old tab cannot
+    // revoke a newer account's cookie.
     response.status(204).send();
   });
 

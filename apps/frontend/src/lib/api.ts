@@ -125,6 +125,22 @@ export type PreparedPushSubscriptionDeletion = (
   signal?: AbortSignal,
 ) => Promise<void>;
 
+export interface PreparedLogoutCompletion {
+  readonly subjectId: string;
+  readonly authEpoch: number;
+  readonly attemptNonce: string;
+  readonly completionEpoch: number;
+}
+
+export interface PreparedLogoutAttempt {
+  readonly subjectId: string;
+  readonly authEpoch: number;
+  readonly attemptNonce: string;
+  readonly execute: () => Promise<PreparedLogoutCompletion>;
+  readonly isCurrent: () => boolean;
+  readonly isCompletionCurrent: (completion: PreparedLogoutCompletion) => boolean;
+}
+
 const errorKindForStatus = (status: number): ApiErrorKind => {
   if (status === 401) {
     return 'auth';
@@ -157,6 +173,7 @@ export class ApiClient {
   private logoutAccessToken: string | null = null;
   private authSubjectId: string | null = null;
   private authEpoch = 0;
+  private logoutAttemptSequence = 0;
   private terminalSubjectMismatch = false;
   private authMutationQueue: Promise<void> = Promise.resolve();
   private refreshInFlight: {
@@ -237,17 +254,30 @@ export class ApiClient {
     return (await this.refreshAccessToken()) !== null;
   }
 
-  public async logout(): Promise<void> {
+  public prepareLogout(): PreparedLogoutAttempt {
     const subjectId = this.authSubjectId;
     const accessToken = this.logoutAccessToken;
-    const epoch = this.invalidateInMemorySession();
+    const authEpoch = this.authEpoch;
 
-    try {
-      if (subjectId === null || accessToken === null) {
-        return;
+    if (subjectId === null || accessToken === null) {
+      throw new ApiRequestError('Сессия завершена. Войдите в аккаунт.', 401, 'NO_SESSION', 'auth');
+    }
+
+    this.logoutAttemptSequence += 1;
+    const attemptNonce = `${authEpoch}:${this.logoutAttemptSequence}`;
+    const isCurrent = (): boolean =>
+      this.authEpoch === authEpoch && this.authSubjectId === subjectId;
+
+    const execute = async (): Promise<PreparedLogoutCompletion> => {
+      if (!isCurrent()) {
+        throw this.authSessionChangedError();
       }
 
-      await this.enqueueAuthMutation(async () => {
+      return this.enqueueAuthMutation(async () => {
+        if (!isCurrent()) {
+          throw this.authSessionChangedError();
+        }
+
         // Never rotate the shared refresh cookie as part of logout. Without
         // cross-tab Web Locks, a late account-A refresh response could overwrite
         // a newer account-B login cookie. The server atomically revokes only when
@@ -255,6 +285,7 @@ export class ApiClient {
         const response = await this.safeFetch('/api/v1/auth/logout', {
           method: 'POST',
           credentials: 'include',
+          redirect: 'error',
           headers: {
             Accept: 'application/json',
             Authorization: `Bearer ${accessToken}`,
@@ -263,22 +294,51 @@ export class ApiClient {
           body: '{}',
         });
 
-        if (!response.ok && response.status !== 401) {
+        if (!response.ok) {
           await this.throwResponseError(response);
         }
+
+        if (response.status !== 204) {
+          throw new ApiRequestError(
+            'Сервер не подтвердил отзыв сессии.',
+            response.status,
+            'LOGOUT_NOT_CONFIRMED',
+            errorKindForStatus(response.status),
+          );
+        }
+
+        if (!isCurrent()) {
+          throw this.authSessionChangedError();
+        }
+
+        const completionEpoch = this.invalidateInMemorySession();
+        return { subjectId, authEpoch, attemptNonce, completionEpoch };
       });
-    } catch (error) {
-      if (error instanceof ApiRequestError && error.code === 'AUTH_COORDINATION_UNAVAILABLE') {
-        // Local logout remains safe when this browser cannot provide an
-        // origin-wide mutation lock; never fall back to a racy cookie request.
-        return;
-      }
-      throw error;
-    } finally {
-      if (this.authEpoch === epoch) {
-        this.accessToken = null;
-      }
+    };
+
+    return {
+      subjectId,
+      authEpoch,
+      attemptNonce,
+      execute,
+      isCurrent,
+      isCompletionCurrent: (completion) =>
+        completion.subjectId === subjectId &&
+        completion.authEpoch === authEpoch &&
+        completion.attemptNonce === attemptNonce &&
+        this.authEpoch === completion.completionEpoch &&
+        this.authSubjectId === null &&
+        this.accessToken === null &&
+        this.logoutAccessToken === null,
+    };
+  }
+
+  public async logout(): Promise<void> {
+    if (this.authSubjectId === null || this.logoutAccessToken === null) {
+      return;
     }
+
+    await this.prepareLogout().execute();
   }
 
   public async fetchMe(signal?: AbortSignal): Promise<MeResponse> {
@@ -1093,6 +1153,7 @@ const apiClient = new ApiClient({ baseUrl: apiBaseUrl });
 export const login = (identifier: string, password: string): Promise<AuthSessionResponse> =>
   apiClient.login(identifier, password);
 export const bootstrapSession = (): Promise<boolean> => apiClient.bootstrapSession();
+export const prepareLogout = (): PreparedLogoutAttempt => apiClient.prepareLogout();
 export const logout = (): Promise<void> => apiClient.logout();
 export const fetchMe = (signal?: AbortSignal): Promise<MeResponse> => apiClient.fetchMe(signal);
 export const saveSurvey = (survey: SurveySubmission): Promise<MeResponse> =>

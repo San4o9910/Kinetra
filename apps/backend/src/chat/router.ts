@@ -8,6 +8,7 @@ import {
 
 import { HttpError } from '../auth/errors.js';
 import { requireAuthenticatedPrincipal } from '../auth/middleware.js';
+import { env } from '../config/env.js';
 import { resolveChatClientIp } from './client-ip.js';
 import { acquireChatMultipartSlot, ChatMediaError, readSinglePhotoMultipart } from './media.js';
 import {
@@ -25,6 +26,9 @@ export interface ChatRouterDependencies {
   readonly service: ChatService;
   readonly authMiddleware: RequestHandler;
   readonly trustedProxyHops?: number;
+  readonly photoUploadIdleTimeoutMs?: number;
+  readonly photoUploadTotalTimeoutMs?: number;
+  readonly acquireMultipartSlot?: () => () => void;
 }
 
 const disablePrivateCaching = (_request: Request, response: Response, next: NextFunction): void => {
@@ -55,19 +59,49 @@ const conversationIdFrom = (request: Request): string =>
 
 const photoIdFrom = (request: Request): string => parseStrictly(uuidSchema, request.params.photoId);
 
-const forwardChatError = (error: unknown, next: NextFunction): void => {
-  if (error instanceof ChatMediaError) {
-    next(new HttpError(error.statusCode, error.code, error.message));
+const forwardChatError = (
+  error: unknown,
+  request: Request,
+  response: Response,
+  next: NextFunction,
+): void => {
+  const forwardedError =
+    error instanceof ChatMediaError
+      ? new HttpError(error.statusCode, error.code, error.message)
+      : error;
+  const incompleteBody = !request.complete;
+  const timedOut = error instanceof ChatMediaError && error.code === 'CHAT_PHOTO_UPLOAD_TIMEOUT';
+
+  if (incompleteBody || timedOut) {
+    request.pause();
+
+    if (
+      !response.headersSent &&
+      !response.writableEnded &&
+      !response.destroyed &&
+      !request.socket.destroyed &&
+      request.socket.writable
+    ) {
+      response.shouldKeepAlive = false;
+      response.setHeader('Connection', 'close');
+      next(forwardedError);
+    } else {
+      request.destroy();
+    }
+
     return;
   }
 
-  next(error);
+  next(forwardedError);
 };
 
 export const createChatRouter = ({
   service,
   authMiddleware,
   trustedProxyHops = 0,
+  photoUploadIdleTimeoutMs = env.chat.photoUploadIdleTimeoutMs,
+  photoUploadTotalTimeoutMs = env.chat.photoUploadTotalTimeoutMs,
+  acquireMultipartSlot = acquireChatMultipartSlot,
 }: ChatRouterDependencies): Router => {
   const router = Router();
   router.use(disablePrivateCaching);
@@ -201,16 +235,21 @@ export const createChatRouter = ({
       conversationId = conversationIdFrom(request);
       clientUploadId = parseStrictly(uuidSchema, request.get('idempotency-key'));
       context = requestContext(request, trustedProxyHops);
-      releaseMultipartSlot = acquireChatMultipartSlot();
     } catch (error) {
-      forwardChatError(error, next);
+      forwardChatError(error, request, response, next);
       return;
     }
 
     void (async () => {
       const admission = await service.preflightPhotoUpload(context);
-      const upload = await readSinglePhotoMultipart(request, (bytes) =>
-        service.accountPhotoUploadBytes(admission, bytes),
+      releaseMultipartSlot = acquireMultipartSlot();
+      const upload = await readSinglePhotoMultipart(
+        request,
+        (bytes) => service.accountPhotoUploadBytes(admission, bytes),
+        {
+          idleTimeoutMs: photoUploadIdleTimeoutMs,
+          totalTimeoutMs: photoUploadTotalTimeoutMs,
+        },
       );
       return service.uploadPhotoAfterPreflight(
         context,
@@ -227,7 +266,7 @@ export const createChatRouter = ({
 
         response.status(result.statusCode).json({ photo: result.photo });
       })
-      .catch((error: unknown) => forwardChatError(error, next))
+      .catch((error: unknown) => forwardChatError(error, request, response, next))
       .finally(() => releaseMultipartSlot?.());
   });
 

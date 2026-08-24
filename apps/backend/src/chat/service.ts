@@ -146,6 +146,13 @@ class PhotoUploadAdmission {
   ) {}
 }
 
+export class ChatSocketSyncAdmission {
+  public constructor(
+    public readonly service: ChatService,
+    public readonly context: ChatRequestContext,
+  ) {}
+}
+
 const resourceNotFound = (): HttpError =>
   new HttpError(404, 'CHAT_RESOURCE_NOT_FOUND', 'The chat resource was not found.');
 
@@ -288,11 +295,35 @@ export class ChatService {
       : 'account_changed';
   }
 
-  public async withRealtimeConversation<T>(
+  public async getRealtimeConversation(
     conversationId: string,
-    operation: (conversation: ChatConversationSnapshot | null) => Promise<T>,
-  ): Promise<T> {
-    return this.repository.withCurrentConversation(conversationId, operation);
+  ): Promise<ChatConversationSnapshot | null> {
+    return this.repository.getRealtimeConversation(conversationId);
+  }
+
+  public async validateRealtimeRecipient(
+    conversation: ChatConversationSnapshot,
+    userId: string,
+    sessionId: string,
+    expectedRole: ChatRole,
+  ): Promise<'active' | 'session_inactive' | 'account_changed' | 'not_participant'> {
+    const identityStatus = await this.validateSocketIdentity(userId, sessionId, expectedRole);
+
+    if (identityStatus !== 'active') {
+      return identityStatus;
+    }
+
+    const current = await this.repository.findRealtimeRecipientConversation(
+      userId,
+      expectedRole,
+      conversation.id,
+    );
+
+    return current !== null &&
+      current.client.userId === conversation.client.userId &&
+      current.trainer.userId === conversation.trainer.userId
+      ? 'active'
+      : 'not_participant';
   }
 
   public async getSession(context: ChatRequestContext): Promise<ChatSessionDto> {
@@ -341,6 +372,7 @@ export class ChatService {
     readonly created: boolean;
     readonly conversation: NonNullable<Extract<ChatSessionDto, { role: 'client' }>['conversation']>;
   }> {
+    this.consumeConversationCreationLimits(context);
     const actor = await this.requireActor(context);
 
     if (actor.role !== 'client') {
@@ -478,13 +510,21 @@ export class ChatService {
     };
   }
 
+  public admitSocketSync(context: ChatRequestContext): ChatSocketSyncAdmission {
+    this.consumeHistoryLimits(context);
+    return new ChatSocketSyncAdmission(this, context);
+  }
+
   public async authorizeSocketSync(
-    context: ChatRequestContext,
+    admission: ChatSocketSyncAdmission,
     conversationId: string,
     lastSequence: number,
   ): Promise<void> {
-    const actor = await this.requireSocketActor(context);
-    this.consumeHistoryLimits(context);
+    if (admission.service !== this) {
+      throw new HttpError(403, 'CHAT_NOT_AVAILABLE', 'Chat sync admission is invalid.');
+    }
+
+    const actor = await this.requireSocketActor(admission.context);
     const page = await this.repository.listMessages({
       userId: actor.userId,
       conversationId,
@@ -880,6 +920,17 @@ export class ChatService {
         scope: 'history',
         key,
         maximum: 120,
+        windowMs: 60_000,
+      });
+    }
+  }
+
+  private consumeConversationCreationLimits(context: ChatRequestContext): void {
+    for (const key of [`principal:${context.userId}`, `ip:${context.ip}`]) {
+      this.rateLimiter.consume({
+        scope: 'conversation_create',
+        key,
+        maximum: 20,
         windowMs: 60_000,
       });
     }

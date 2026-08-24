@@ -330,9 +330,11 @@ Email обрезается по краям, домен приводится к A
 - user ID не принимается из body как источник личности.
 
 Cookie-mutating login/refresh/logout операции frontend сериализуются origin-wide через Web Locks.
-Если browser не предоставляет `navigator.locks`, mutations fail-closed; локальный logout не делает
-сетевой refresh и не рискует перезаписать cookie другого аккаунта. Bound logout использует captured
-access token, а backend никогда не отправляет `Set-Cookie` в ответе. Refresh cookie отзывается только
+Если browser не предоставляет `navigator.locks`, mutations fail-closed; незавершённый logout не
+делает сетевой refresh, сохраняет signed-in state и не рискует перезаписать cookie другого аккаунта.
+Bound logout использует captured access token, а backend никогда не отправляет `Set-Cookie` в ответе.
+Только точный `204` после server-confirmed revocation считается success; несовпавшая cookie/family
+даёт `409 LOGOUT_NOT_CONFIRMED` и честный retry UI. Refresh cookie отзывается только
 если её session ID совпадает с signed `sid` proof либо является его потомком в той же rotation chain
 и принадлежит signed `sub`; другая login family того же пользователя и другой аккаунт не
 затрагиваются. Refresh/logout сериализуются на server по user row до refresh rows: refresh-first

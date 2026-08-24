@@ -46,6 +46,7 @@ export const createComposerAcknowledgement = (
   nonce: number,
 ): ChatComposerAcknowledgement | null => {
   const payloadMatches =
+    message.is_mine &&
     message.client_message_id === request.client_message_id &&
     message.kind === request.kind &&
     message.text === request.text &&

@@ -12,6 +12,7 @@ import type {
   PushPermission,
 } from '../src/pwa/pushNotifications.js';
 
+import { TrainerSignOutState } from '../src/App.js';
 import { runAccountDeletionLifecycle } from '../src/features/settings/accountLifecycle.js';
 import { restartChatRuntime } from '../src/features/chat/runtime.js';
 import { SettingsDialogs } from '../src/features/settings/SettingsDialogs.js';
@@ -234,6 +235,43 @@ test('settings dialogs expose renewal cancellation and two-stage destructive del
   assert.ok(stageTwo.includes('Политика конфиденциальности'));
   assert.ok(stageTwo.includes('Мастерство'));
   assert.ok(stageTwo.includes('Пик'));
+});
+
+test('logout failure stays visibly incomplete and exposes an explicit retry', () => {
+  const failedSettingsLogout = renderToStaticMarkup(
+    createElement(SettingsDialogs, {
+      activeDialog: 'logout',
+      appVersion: '0.4.0',
+      privacyUrl: 'https://kinetra.app/privacy',
+      deleteStage: 1,
+      deleteConfirmation: '',
+      busy: false,
+      error: 'Выход не завершен. Сервер не подтвердил отзыв сессии.',
+      onClose: () => undefined,
+      onContinueDelete: () => undefined,
+      onDeleteConfirmationChange: () => undefined,
+      onCancelSubscription: () => undefined,
+      onLogout: () => undefined,
+      onDelete: () => undefined,
+    }),
+  );
+  assert.ok(failedSettingsLogout.includes('Выход не завершен'));
+  assert.match(failedSettingsLogout, /data-testid="logout-confirm"[^>]*>Повторить/iu);
+
+  const pendingTrainerLogout = renderToStaticMarkup(
+    createElement(TrainerSignOutState, { state: 'pending', onRetry: () => undefined }),
+  );
+  assert.ok(pendingTrainerLogout.includes('data-testid="trainer-sign-out-pending"'));
+  assert.ok(pendingTrainerLogout.includes('Рабочие диалоги временно скрыты'));
+  assert.equal(pendingTrainerLogout.includes('Диалоги</h1>'), false);
+
+  const failedTrainerLogout = renderToStaticMarkup(
+    createElement(TrainerSignOutState, { state: 'failed', onRetry: () => undefined }),
+  );
+  assert.ok(failedTrainerLogout.includes('data-testid="trainer-sign-out-failed"'));
+  assert.ok(failedTrainerLogout.includes('Выход не завершен'));
+  assert.ok(failedTrainerLogout.includes('Вы по-прежнему вошли в аккаунт'));
+  assert.ok(failedTrainerLogout.includes('Повторить'));
 });
 
 test('settings model fixes date, time, debounce and subscription-state contracts', () => {

@@ -11,6 +11,8 @@ export const CHAT_IMAGE_MAX_CONCURRENCY = 2;
 export const CHAT_IMAGE_MAX_QUEUE_LENGTH = 8;
 export const CHAT_IMAGE_COMMAND_TIMEOUT_MS = 15_000;
 export const CHAT_IMAGE_STDERR_MAX_BYTES = 64 * 1024;
+export const CHAT_PHOTO_UPLOAD_IDLE_TIMEOUT_MS = 15_000;
+export const CHAT_PHOTO_UPLOAD_TOTAL_TIMEOUT_MS = 120_000;
 
 export class ChatMediaError extends Error {
   public constructor(
@@ -26,6 +28,11 @@ export class ChatMediaError extends Error {
 export interface ParsedPhotoUpload {
   readonly bytes: Buffer;
   readonly declaredMimeType: string | null;
+}
+
+export interface ChatMultipartReadOptions {
+  readonly idleTimeoutMs?: number;
+  readonly totalTimeoutMs?: number;
 }
 
 export class ChatMultipartAdmissionController {
@@ -57,6 +64,10 @@ export class ChatMultipartAdmissionController {
       released = true;
       this.active -= 1;
     };
+  }
+
+  public get activeCount(): number {
+    return this.active;
   }
 }
 
@@ -143,6 +154,7 @@ const parseHeaderLines = (rawHeaders: string): Map<string, string> => {
 export const readSinglePhotoMultipart = async (
   request: Request,
   accountStreamedBytes: (bytes: number) => void = () => undefined,
+  options: ChatMultipartReadOptions = {},
 ): Promise<ParsedPhotoUpload> => {
   const boundary = multipartBoundaryFrom(request.get('content-type'));
   const declaredLength = request.get('content-length');
@@ -159,22 +171,133 @@ export const readSinglePhotoMultipart = async (
     }
   }
 
-  const chunks: Buffer[] = [];
-  let totalBytes = 0;
+  const idleTimeoutMs = options.idleTimeoutMs ?? CHAT_PHOTO_UPLOAD_IDLE_TIMEOUT_MS;
+  const totalTimeoutMs = options.totalTimeoutMs ?? CHAT_PHOTO_UPLOAD_TOTAL_TIMEOUT_MS;
 
-  for await (const rawChunk of request) {
-    const chunk = Buffer.isBuffer(rawChunk) ? rawChunk : Buffer.from(rawChunk as Uint8Array);
-    totalBytes += chunk.length;
-    accountStreamedBytes(chunk.length);
-
-    if (totalBytes > CHAT_PHOTO_INPUT_MAX_BYTES + 64 * 1024) {
-      throw new ChatMediaError(413, 'CHAT_PHOTO_TOO_LARGE', 'Photo input exceeds 10 MiB.');
-    }
-
-    chunks.push(chunk);
+  if (
+    !Number.isSafeInteger(idleTimeoutMs) ||
+    idleTimeoutMs < 1 ||
+    !Number.isSafeInteger(totalTimeoutMs) ||
+    totalTimeoutMs <= idleTimeoutMs
+  ) {
+    throw new Error('Multipart read deadlines are invalid.');
   }
 
-  const body = Buffer.concat(chunks, totalBytes);
+  const body = await new Promise<Buffer>((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let totalBytes = 0;
+    let terminal = false;
+    let idleTimer: NodeJS.Timeout | undefined;
+
+    function cleanup(): void {
+      if (idleTimer !== undefined) {
+        clearTimeout(idleTimer);
+      }
+
+      clearTimeout(totalTimer);
+
+      request.removeListener('data', onData);
+      request.removeListener('end', onEnd);
+      request.removeListener('error', onError);
+      request.removeListener('aborted', onAborted);
+      request.removeListener('close', onClose);
+    }
+
+    function finish(error?: unknown): void {
+      if (terminal) {
+        return;
+      }
+
+      terminal = true;
+      cleanup();
+
+      if (error === undefined) {
+        resolve(Buffer.concat(chunks, totalBytes));
+      } else {
+        request.pause();
+        const ignoreLateStreamError = (): void => undefined;
+        const removeLateStreamGuard = (): void => {
+          request.removeListener('error', ignoreLateStreamError);
+        };
+        request.on('error', ignoreLateStreamError);
+        request.once('close', removeLateStreamGuard);
+        reject(error);
+      }
+    }
+
+    function timeout(): void {
+      finish(
+        new ChatMediaError(
+          408,
+          'CHAT_PHOTO_UPLOAD_TIMEOUT',
+          'Photo upload body was not received within the allowed time.',
+        ),
+      );
+    }
+
+    function armIdleTimer(): void {
+      if (idleTimer !== undefined) {
+        clearTimeout(idleTimer);
+      }
+
+      idleTimer = setTimeout(timeout, idleTimeoutMs);
+      idleTimer.unref();
+    }
+
+    function onData(rawChunk: Buffer | Uint8Array | string): void {
+      if (terminal) {
+        return;
+      }
+
+      const chunk = Buffer.isBuffer(rawChunk) ? rawChunk : Buffer.from(rawChunk);
+
+      try {
+        totalBytes += chunk.length;
+        accountStreamedBytes(chunk.length);
+
+        if (totalBytes > CHAT_PHOTO_INPUT_MAX_BYTES + 64 * 1024) {
+          finish(new ChatMediaError(413, 'CHAT_PHOTO_TOO_LARGE', 'Photo input exceeds 10 MiB.'));
+          return;
+        }
+
+        chunks.push(chunk);
+        armIdleTimer();
+      } catch (error) {
+        finish(error);
+      }
+    }
+
+    function onEnd(): void {
+      finish();
+    }
+
+    function onError(error: Error): void {
+      finish(error);
+    }
+
+    function onAborted(): void {
+      finish(new ChatMediaError(400, 'CHAT_INVALID_REQUEST', 'Photo upload was aborted.'));
+    }
+
+    function onClose(): void {
+      if (!request.complete) {
+        onAborted();
+      }
+    }
+
+    armIdleTimer();
+    const totalTimer = setTimeout(timeout, totalTimeoutMs);
+    totalTimer.unref();
+    request.on('data', onData);
+    request.once('end', onEnd);
+    request.once('error', onError);
+    request.once('aborted', onAborted);
+    request.once('close', onClose);
+
+    if (request.aborted) {
+      onAborted();
+    }
+  });
   const opening = Buffer.from(`--${boundary}\r\n`, 'utf8');
 
   if (!body.subarray(0, opening.length).equals(opening)) {

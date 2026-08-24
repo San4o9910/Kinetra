@@ -297,6 +297,11 @@ test('a delayed acknowledgement for failed draft A does not clear edited draft B
   const acknowledgement = createComposerAcknowledgement(canonicalA, requestA, 2);
   assert.notEqual(acknowledgement, null);
   assert.equal(
+    createComposerAcknowledgement({ ...canonicalA, is_mine: false }, requestA, 3),
+    null,
+    'a counterpart collision must never acknowledge or clear the local draft',
+  );
+  assert.equal(
     shouldClearAcknowledgedComposerDraft(acknowledgement!, requestA, {
       text: requestA.text,
       photoId: null,

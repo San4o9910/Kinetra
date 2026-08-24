@@ -215,10 +215,12 @@ export interface ChatRepository {
     objectKey: string,
     operation: (lease: ChatMediaObjectLease) => Promise<T>,
   ): Promise<T>;
-  withCurrentConversation<T>(
+  getRealtimeConversation(conversationId: string): Promise<ChatConversationSnapshot | null>;
+  findRealtimeRecipientConversation(
+    userId: string,
+    role: ChatRole,
     conversationId: string,
-    operation: (conversation: ChatConversationSnapshot | null) => Promise<T>,
-  ): Promise<T>;
+  ): Promise<ChatConversationSnapshot | null>;
   findActor(userId: string): Promise<ChatActor | null>;
   isSessionActive(userId: string, sessionId: string, now: Date): Promise<boolean>;
   findConversationForClient(userId: string): Promise<ChatConversationSnapshot | null>;

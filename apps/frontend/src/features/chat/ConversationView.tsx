@@ -12,9 +12,11 @@ import {
   applyConversationState,
   advanceChatRestSequence,
   createOptimisticMessage,
+  findMatchingOwnOptimisticMessage,
   markTimelineMessageFailed,
   markTimelineMessageSending,
   mergeTimelineMessages,
+  nextRealtimeUnreadCount,
   nextChatReadSequence,
   reconcileTimelineReadState,
 } from './model';
@@ -343,18 +345,12 @@ export const ConversationView = ({
         if (event.type === 'message:new' && event.message.conversation_id === conversationId) {
           const wasNearBottom = listRef.current?.isNearBottom() ?? true;
           const alreadyPresent = messagesRef.current.some(
-            (message) =>
-              message.id === event.message.id ||
-              message.client_message_id === event.message.client_message_id,
+            (message) => message.id === event.message.id,
           );
-          const reconciledOwnOptimistic = event.message.is_mine
-            ? messagesRef.current.find(
-                (message) =>
-                  message.client_message_id === event.message.client_message_id &&
-                  message.sequence === null &&
-                  message.pending_request !== undefined,
-              )
-            : undefined;
+          const reconciledOwnOptimistic = findMatchingOwnOptimisticMessage(
+            messagesRef.current,
+            event.message,
+          );
           const merged = mergeTimelineMessages(
             messagesRef.current,
             [event.message],
@@ -365,10 +361,11 @@ export const ConversationView = ({
           setConversationState((current) => ({
             ...current,
             last_message_sequence: Math.max(current.last_message_sequence, event.message.sequence),
-            unread_count:
-              event.message.is_mine || alreadyPresent
-                ? current.unread_count
-                : current.unread_count + 1,
+            unread_count: nextRealtimeUnreadCount(
+              current.unread_count,
+              event.message,
+              alreadyPresent,
+            ),
           }));
           if (reconciledOwnOptimistic?.pending_request !== undefined) {
             const acknowledgement = createComposerAcknowledgement(
