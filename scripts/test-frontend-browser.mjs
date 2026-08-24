@@ -73,6 +73,7 @@ const buildFrontendForBrowserTest = async () => {
     {
       env: {
         ...process.env,
+        NODE_ENV: 'production',
         VITE_API_URL: browserApiOrigin,
         VITE_PRIVATE_MEDIA_ORIGIN: frontendOrigin,
       },
@@ -5966,7 +5967,8 @@ const runT12BrowserScenario = async () => {
       'retried photo removed without creating a message',
       async () =>
         !(await client.exists('chat-photo-draft')) &&
-        fixture.state.messages.length === messageCountBeforeFailedDraft,
+        fixture.state.messages.length === messageCountBeforeFailedDraft &&
+        (await client.draftKeys()).length === 0,
     );
 
     const historyMessageIds = fixture.state.messages.map(({ id }) => id);
@@ -6102,7 +6104,9 @@ const runT12BrowserScenario = async () => {
       async () =>
         (await client.pushLifecycle()).subscribed &&
         (await client.cdp.evaluate(
-          `navigator.serviceWorker.getRegistration().then((registration) => registration !== undefined)`,
+          `navigator.serviceWorker.getRegistration('/').then(
+            (registration) => registration?.active?.state === 'activated',
+          )`,
         )),
       20_000,
     );
@@ -6178,11 +6182,36 @@ const runT12BrowserScenario = async () => {
     ]) {
       if (context === null) continue;
       try {
-        const diagnostics = await context.cdp.evaluate(`JSON.stringify({
-          url: window.location.href,
-          text: document.body?.innerText?.slice(0, 2000) ?? '',
-          drafts: Object.keys(sessionStorage).filter((key) => key.startsWith('kinetra.chat.draft.v1:')),
-        })`);
+        const diagnostics = await context.cdp.evaluate(`(async () => {
+          let serviceWorkers = [];
+          if ('serviceWorker' in navigator) {
+            try {
+              const registrations = await navigator.serviceWorker.getRegistrations();
+              serviceWorkers = registrations.map((registration) => ({
+                scope: registration.scope,
+                active: registration.active?.state ?? null,
+                installing: registration.installing?.state ?? null,
+                waiting: registration.waiting?.state ?? null,
+              }));
+            } catch {
+              serviceWorkers = [{ error: 'registration-inspection-failed' }];
+            }
+          }
+          const pushState = window.__kinetraT12BrowserTest?.state ?? null;
+          return JSON.stringify({
+            url: window.location.href,
+            readyState: document.readyState,
+            text: document.body?.innerText?.slice(0, 2000) ?? '',
+            drafts: Object.keys(sessionStorage).filter((key) => key.startsWith('kinetra.chat.draft.v1:')),
+            push: pushState === null ? null : {
+              subscribed: pushState.pushSubscribed,
+              unsubscribeCalls: pushState.pushUnsubscribeCalls,
+              lifecycleOrder: [...pushState.lifecycleOrder],
+            },
+            serviceWorkers,
+            historyState: window.history.state,
+          });
+        })()`);
         console.error(`T12 ${label} diagnostics: ${diagnostics}`);
       } catch (diagnosticError) {
         console.error(`Could not collect T12 ${label} diagnostics.`, diagnosticError);
