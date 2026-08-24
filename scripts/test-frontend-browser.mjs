@@ -6121,6 +6121,51 @@ const runT12BrowserScenario = async () => {
       20_000,
     );
 
+    await trainer.navigate(`/trainer/chats/${t12ConversationId}`);
+    await waitFor(
+      'trainer conversation restored before retryable logout',
+      () => trainer.exists('chat-conversation-screen'),
+      20_000,
+    );
+    await trainer.setValue('chat-message-input', 'Черновик тренера сохраняется до server ACK');
+    await waitFor(
+      'trainer account-scoped draft before failed logout',
+      async () => {
+        const keys = await trainer.draftKeys();
+        return keys.length === 1 && keys[0].includes(t12TrainerId);
+      },
+      20_000,
+    );
+    const capturedTrainerLogoutBearer = `Bearer ${fixture.state.currentAccessToken.trainer}`;
+    await trainer.clickButtonWithText('Выйти');
+    await waitFor(
+      'trainer logout failure remains explicitly signed in and retryable',
+      async () =>
+        (await trainer.exists('trainer-sign-out-failed')) &&
+        !(await trainer.exists('login-screen')) &&
+        (await trainer.bodyText()).includes('Выход не завершен') &&
+        (await trainer.bodyText()).includes('Вы по-прежнему вошли в аккаунт') &&
+        fixture.state.logoutCount.trainer === 1 &&
+        fixture.state.socketConnections.trainer.size === 0,
+      20_000,
+    );
+    assert.equal((await trainer.draftKeys()).length, 1);
+    assert.deepEqual(fixture.state.logoutAuthorizations.trainer, [capturedTrainerLogoutBearer]);
+    await trainer.clickButtonWithText('Повторить');
+    await waitFor(
+      'trainer retry confirms logout before route and draft teardown',
+      async () =>
+        (await trainer.exists('login-screen')) &&
+        fixture.state.logoutCount.trainer === 2 &&
+        fixture.state.socketConnections.trainer.size === 0,
+      20_000,
+    );
+    assert.deepEqual(fixture.state.logoutAuthorizations.trainer, [
+      capturedTrainerLogoutBearer,
+      capturedTrainerLogoutBearer,
+    ]);
+    assert.deepEqual(await trainer.draftKeys(), []);
+
     await client.setValue('chat-message-input', 'Черновик должен удалиться при выходе');
     await waitFor('account-scoped client chat draft before logout', async () => {
       const keys = await client.draftKeys();
@@ -6207,51 +6252,6 @@ const runT12BrowserScenario = async () => {
       new Set(fixture.state.mediaDeletionJobs.map(({ object_key: objectKey }) => objectKey)).size,
       fixture.state.mediaDeletionJobs.length,
     );
-
-    await trainer.navigate(`/trainer/chats/${t12ConversationId}`);
-    await waitFor(
-      'trainer conversation restored before retryable logout',
-      () => trainer.exists('chat-conversation-screen'),
-      20_000,
-    );
-    await trainer.setValue('chat-message-input', 'Черновик тренера сохраняется до server ACK');
-    await waitFor(
-      'trainer account-scoped draft before failed logout',
-      async () => {
-        const keys = await trainer.draftKeys();
-        return keys.length === 1 && keys[0].includes(t12TrainerId);
-      },
-      20_000,
-    );
-    const capturedTrainerLogoutBearer = `Bearer ${fixture.state.currentAccessToken.trainer}`;
-    await trainer.clickButtonWithText('Выйти');
-    await waitFor(
-      'trainer logout failure remains explicitly signed in and retryable',
-      async () =>
-        (await trainer.exists('trainer-sign-out-failed')) &&
-        !(await trainer.exists('login-screen')) &&
-        (await trainer.bodyText()).includes('Выход не завершен') &&
-        (await trainer.bodyText()).includes('Вы по-прежнему вошли в аккаунт') &&
-        fixture.state.logoutCount.trainer === 1 &&
-        fixture.state.socketConnections.trainer.size === 0,
-      20_000,
-    );
-    assert.equal((await trainer.draftKeys()).length, 1);
-    assert.deepEqual(fixture.state.logoutAuthorizations.trainer, [capturedTrainerLogoutBearer]);
-    await trainer.clickButtonWithText('Повторить');
-    await waitFor(
-      'trainer retry confirms logout before route and draft teardown',
-      async () =>
-        (await trainer.exists('login-screen')) &&
-        fixture.state.logoutCount.trainer === 2 &&
-        fixture.state.socketConnections.trainer.size === 0,
-      20_000,
-    );
-    assert.deepEqual(fixture.state.logoutAuthorizations.trainer, [
-      capturedTrainerLogoutBearer,
-      capturedTrainerLogoutBearer,
-    ]);
-    assert.deepEqual(await trainer.draftKeys(), []);
 
     assert.ok(fixture.state.messageSenders.includes('client'));
     assert.ok(fixture.state.messageSenders.includes('trainer'));
