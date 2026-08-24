@@ -4912,6 +4912,17 @@ const createT12BrowserServer = () => {
         requestAttempt === 1
       ) {
         emitMessageToRole(message, 'trainer');
+        const committedPayload = JSON.stringify({
+          message: projectMessage(message, role),
+          conversation_state: conversationState(role),
+          replayed: false,
+        });
+        response.writeHead(201, {
+          'Content-Length': Buffer.byteLength(committedPayload),
+          'Content-Type': 'application/json; charset=utf-8',
+        });
+        response.flushHeaders();
+        response.write(committedPayload.slice(0, Math.max(1, committedPayload.length - 1)));
         await sleep(100);
         response.destroy();
         return;
