@@ -11,8 +11,10 @@ import {
   chatFabAccessibleName,
   chatUnreadBadge,
   createOptimisticMessage,
+  findMatchingOwnOptimisticMessage,
   markTimelineMessageFailed,
   mergeTimelineMessages,
+  nextRealtimeUnreadCount,
   nextChatReadSequence,
   restorePrependScrollTop,
   sortChatInbox,
@@ -148,6 +150,242 @@ test('T12 optimistic message is reconciled once by client_message_id despite dup
     ).unread_count,
     0,
     'a stale response with a lower read cursor must not restore an old unread badge',
+  );
+});
+
+test('T12 counterpart client_message_id collision does not replace an own optimistic message', () => {
+  const request = {
+    client_message_id: '30000000-0000-4000-8000-000000000021',
+    kind: 'text' as const,
+    text: 'Одинаковый текст',
+  };
+  const optimistic = createOptimisticMessage(
+    '20000000-0000-4000-8000-000000000001',
+    'client',
+    'Анна',
+    request,
+  );
+  const counterpart = canonicalMessage({
+    id: '10000000-0000-4000-8000-000000000021',
+    client_message_id: request.client_message_id,
+    sender_role: 'trainer',
+    is_mine: false,
+    sender_name: 'Тренер',
+    text: request.text,
+  });
+
+  assert.equal(findMatchingOwnOptimisticMessage([optimistic], counterpart), undefined);
+  assert.deepEqual(
+    mergeTimelineMessages([optimistic], [counterpart]).map(({ id }) => id),
+    [counterpart.id, optimistic.id],
+  );
+});
+
+test('T12 cross-sender collision reconciles both arrival orders without corrupting unread or photos', () => {
+  const sharedClientMessageId = '30000000-0000-4000-8000-000000000031';
+  const request = {
+    client_message_id: sharedClientMessageId,
+    kind: 'photo' as const,
+    text: 'Моё фото',
+    photo_id: '40000000-0000-4000-8000-000000000031',
+  };
+  const optimistic = createOptimisticMessage(
+    '20000000-0000-4000-8000-000000000001',
+    'client',
+    'Анна',
+    request,
+  );
+  const counterpart = canonicalMessage({
+    id: '10000000-0000-4000-8000-000000000031',
+    sequence: 1,
+    client_message_id: sharedClientMessageId,
+    sender_role: 'trainer',
+    is_mine: false,
+    sender_name: 'Тренер',
+    kind: 'photo',
+    text: 'Фото тренера',
+    photo: { id: '40000000-0000-4000-8000-000000000032', status: 'attached' },
+  });
+  const ownCanonical = canonicalMessage({
+    id: '10000000-0000-4000-8000-000000000032',
+    sequence: 2,
+    client_message_id: sharedClientMessageId,
+    kind: 'photo',
+    text: request.text,
+    photo: { id: request.photo_id, status: 'attached' },
+  });
+
+  let unread = 0;
+  const counterpartFirst = mergeTimelineMessages([optimistic], [counterpart]);
+  unread = nextRealtimeUnreadCount(unread, counterpart, false);
+  assert.deepEqual(
+    counterpartFirst.map(({ id }) => id),
+    [counterpart.id, optimistic.id],
+  );
+  const counterpartThenOwn = mergeTimelineMessages(counterpartFirst, [ownCanonical], 2);
+  unread = nextRealtimeUnreadCount(unread, ownCanonical, false);
+  assert.equal(unread, 1);
+  assert.deepEqual(
+    counterpartThenOwn.map(({ id, photo, delivery_status }) => ({
+      id,
+      photoId: photo?.id ?? null,
+      deliveryStatus: delivery_status,
+    })),
+    [
+      {
+        id: counterpart.id,
+        photoId: counterpart.photo?.id ?? null,
+        deliveryStatus: 'sent',
+      },
+      { id: ownCanonical.id, photoId: request.photo_id, deliveryStatus: 'read' },
+    ],
+  );
+
+  unread = 0;
+  const ownFirst = mergeTimelineMessages([optimistic], [ownCanonical]);
+  unread = nextRealtimeUnreadCount(unread, ownCanonical, false);
+  const ownThenCounterpart = mergeTimelineMessages(ownFirst, [counterpart]);
+  unread = nextRealtimeUnreadCount(unread, counterpart, false);
+  assert.equal(unread, 1);
+  assert.deepEqual(
+    ownThenCounterpart.map(({ id }) => id),
+    [counterpart.id, ownCanonical.id],
+  );
+
+  const duplicate = mergeTimelineMessages(ownThenCounterpart, [counterpart]);
+  unread = nextRealtimeUnreadCount(unread, counterpart, true);
+  assert.equal(unread, 1, 'the same server message id must not increment unread twice');
+  assert.equal(duplicate.filter(({ id }) => id === counterpart.id).length, 1);
+});
+
+test('T12 only a same-context own canonical payload reconciles an optimistic message', () => {
+  const request = {
+    client_message_id: '30000000-0000-4000-8000-000000000022',
+    kind: 'text' as const,
+    text: 'Моя отправка',
+  };
+  const optimistic = createOptimisticMessage(
+    '20000000-0000-4000-8000-000000000001',
+    'client',
+    'Анна',
+    request,
+  );
+  const canonical = canonicalMessage({
+    id: '10000000-0000-4000-8000-000000000022',
+    client_message_id: request.client_message_id,
+    text: request.text,
+  });
+
+  assert.equal(findMatchingOwnOptimisticMessage([optimistic], canonical)?.id, optimistic.id);
+  assert.deepEqual(mergeTimelineMessages([optimistic], [canonical]), [
+    { ...canonical, delivery_status: 'sent' },
+  ]);
+
+  const mismatches = [
+    canonicalMessage({
+      ...canonical,
+      id: '10000000-0000-4000-8000-000000000023',
+      conversation_id: '20000000-0000-4000-8000-000000000099',
+    }),
+    canonicalMessage({
+      ...canonical,
+      id: '10000000-0000-4000-8000-000000000024',
+      sender_role: 'trainer',
+    }),
+    canonicalMessage({
+      ...canonical,
+      id: '10000000-0000-4000-8000-000000000025',
+      text: 'Другой payload',
+    }),
+  ];
+  for (const mismatch of mismatches) {
+    assert.equal(findMatchingOwnOptimisticMessage([optimistic], mismatch), undefined);
+    assert.equal(mergeTimelineMessages([optimistic], [mismatch]).length, 2);
+  }
+});
+
+test('T12 canonical identity remains message.id across senders, reassignment and reload', () => {
+  const sharedClientMessageId = '30000000-0000-4000-8000-000000000026';
+  const ownClient = canonicalMessage({
+    id: '10000000-0000-4000-8000-000000000026',
+    sequence: 1,
+    client_message_id: sharedClientMessageId,
+    sender_role: 'client',
+    is_mine: true,
+    sender_name: 'Анна',
+  });
+  const oldTrainerOne = canonicalMessage({
+    id: '10000000-0000-4000-8000-000000000027',
+    sequence: 2,
+    client_message_id: sharedClientMessageId,
+    sender_role: 'trainer',
+    is_mine: false,
+    sender_name: 'Старый тренер 1',
+  });
+  const oldTrainerTwo = canonicalMessage({
+    id: '10000000-0000-4000-8000-000000000028',
+    sequence: 3,
+    client_message_id: sharedClientMessageId,
+    sender_role: 'trainer',
+    is_mine: false,
+    sender_name: 'Старый тренер 2',
+  });
+
+  const firstLoad = mergeTimelineMessages(
+    [],
+    [oldTrainerTwo, oldTrainerOne, ownClient, oldTrainerOne],
+  );
+  assert.deepEqual(
+    firstLoad.map(({ id }) => id),
+    [ownClient.id, oldTrainerOne.id, oldTrainerTwo.id],
+  );
+
+  const reloaded = mergeTimelineMessages(firstLoad, [ownClient, oldTrainerOne, oldTrainerTwo]);
+  assert.deepEqual(
+    reloaded.map(({ id }) => id),
+    [ownClient.id, oldTrainerOne.id, oldTrainerTwo.id],
+    'a reload only removes duplicate server message ids',
+  );
+});
+
+test('T12 failed retry reconciles idempotently only when its full photo payload matches', () => {
+  const request = {
+    client_message_id: '30000000-0000-4000-8000-000000000029',
+    kind: 'photo' as const,
+    text: 'После тренировки',
+    photo_id: '40000000-0000-4000-8000-000000000029',
+  };
+  const optimistic = createOptimisticMessage(
+    '20000000-0000-4000-8000-000000000001',
+    'client',
+    'Анна',
+    request,
+  );
+  const failed = markTimelineMessageFailed([optimistic], request.client_message_id, 'Нет сети');
+  const wrongPhoto = canonicalMessage({
+    id: '10000000-0000-4000-8000-000000000029',
+    client_message_id: request.client_message_id,
+    kind: 'photo',
+    text: request.text,
+    photo: { id: '40000000-0000-4000-8000-000000000099', status: 'ready' },
+  });
+  assert.equal(mergeTimelineMessages(failed, [wrongPhoto]).length, 2);
+
+  const canonical = canonicalMessage({
+    id: '10000000-0000-4000-8000-000000000030',
+    client_message_id: request.client_message_id,
+    kind: 'photo',
+    text: request.text,
+    photo: { id: request.photo_id, status: 'ready' },
+  });
+  const retryAcknowledged = mergeTimelineMessages(failed, [canonical, canonical]);
+  assert.deepEqual(
+    retryAcknowledged.map(({ id }) => id),
+    [canonical.id],
+  );
+  assert.deepEqual(
+    mergeTimelineMessages(retryAcknowledged, [canonical]).map(({ id }) => id),
+    [canonical.id],
   );
 });
 

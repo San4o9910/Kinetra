@@ -2,14 +2,50 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 
-import pg from 'pg';
+import pg, { type Pool as PgPool } from 'pg';
 
+import { ChatEventHub } from '../src/chat/event-hub.js';
 import { PostgresChatRepository } from '../src/chat/postgres-chat.repository.js';
+import { NoopChatRateLimiter } from '../src/chat/rate-limit.js';
+import { ChatService } from '../src/chat/service.js';
 import { PostgresSettingsRepository } from '../src/settings/postgres-settings.repository.js';
+import {
+  FakeChatImageProcessor,
+  FakeChatMediaStore,
+  FixedChatClock,
+} from './support/fake-chat-media.js';
 
 const databaseUrl = process.env.DATABASE_URL;
 const postgresTestRequired = process.env.KINETRA_REQUIRE_POSTGRES_TEST === 'true';
 const { Pool } = pg;
+
+const waitForAdvisoryWait = async (
+  pool: PgPool,
+  applicationName: string,
+  description: string,
+): Promise<void> => {
+  const deadline = Date.now() + 5_000;
+
+  while (Date.now() < deadline) {
+    const waiters = await pool.query<{ readonly count: string }>(
+      `SELECT COUNT(*)::text AS count
+       FROM pg_locks AS lock
+       JOIN pg_stat_activity AS activity ON activity.pid = lock.pid
+       WHERE lock.locktype = 'advisory'
+         AND lock.granted = false
+         AND activity.application_name = $1`,
+      [applicationName],
+    );
+
+    if (Number(waiters.rows[0]?.count ?? '0') >= 1) {
+      return;
+    }
+
+    await new Promise<void>((resolve) => setTimeout(resolve, 20));
+  }
+
+  throw new Error(`Timed out waiting for ${description}.`);
+};
 
 const createReserveBarrier = (): ((operation: 'send' | 'reserve') => Promise<void>) => {
   let arrivals = 0;
@@ -79,7 +115,14 @@ test(
     const settingsRepository = new PostgresSettingsRepository(pool);
     const lockTimeoutPool = new Pool({ connectionString: databaseUrl, max: 1 });
     const lockTimeoutSettingsRepository = new PostgresSettingsRepository(lockTimeoutPool);
+    const createConcurrencyApplicationName = `kinetra-create-${randomUUID()}`;
+    const createConcurrencyPool = new Pool({
+      connectionString: databaseUrl,
+      max: 2,
+      application_name: createConcurrencyApplicationName,
+    });
     const clientId = randomUUID();
+    const clientSessionId = randomUUID();
     const trainerId = randomUUID();
     const secondTrainerId = randomUUID();
     const createRaceClientId = randomUUID();
@@ -125,6 +168,19 @@ test(
          VALUES ($1, 'Тренер Kinetra', true, true, $2, $2),
                 ($3, 'Второй тренер', true, false, $2, $2)`,
         [trainerId, now, secondTrainerId],
+      );
+      await pool.query(
+        `INSERT INTO refresh_tokens (
+           id, user_id, token_hash, expires_at, created_at
+         )
+         VALUES ($1, $2, $3, $4, $5)`,
+        [
+          clientSessionId,
+          clientId,
+          '7'.repeat(64),
+          new Date(now.getTime() + 24 * 60 * 60 * 1000),
+          now,
+        ],
       );
 
       await assert.rejects(
@@ -277,20 +333,199 @@ test(
         1,
       );
 
-      const concurrent = await Promise.all([
-        repository.createOrGetConversation(clientId, now),
-        repository.createOrGetConversation(clientId, now),
-      ]);
+      let signalFirstCreateLock!: () => void;
+      let releaseFirstCreateLock!: () => void;
+      const firstCreateLocked = new Promise<void>((resolve) => {
+        signalFirstCreateLock = resolve;
+      });
+      const holdFirstCreateLock = new Promise<void>((resolve) => {
+        releaseFirstCreateLock = resolve;
+      });
+      let createLockAcquisitions = 0;
+      const concurrentCreateRepository = new PostgresChatRepository(createConcurrencyPool, {
+        afterAdminUsersLocked: async (operation) => {
+          if (operation !== 'create') {
+            return;
+          }
+
+          createLockAcquisitions += 1;
+
+          if (createLockAcquisitions === 1) {
+            signalFirstCreateLock();
+            await holdFirstCreateLock;
+          }
+        },
+      });
+      const createEventHub = new ChatEventHub();
+      let creationEvents = 0;
+      const unsubscribeCreateEvents = createEventHub.subscribe(async (event) => {
+        if (event.kind === 'conversation_updated') {
+          creationEvents += 1;
+        }
+      });
+      const concurrentCreateService = new ChatService({
+        repository: concurrentCreateRepository,
+        eventPublisher: createEventHub,
+        rateLimiter: new NoopChatRateLimiter(),
+        imageProcessor: new FakeChatImageProcessor(),
+        mediaStore: new FakeChatMediaStore(),
+        clock: new FixedChatClock(now),
+        enabled: true,
+        photoUploadsEnabled: true,
+        mediaUrlTtlSeconds: 300,
+        cursorSecret: 'test-only-postgres-create-concurrency-secret',
+      });
+      const createContext = {
+        userId: clientId,
+        sessionId: clientSessionId,
+        ip: '198.51.100.8',
+      } as const;
+      const firstCreate = concurrentCreateService.createConversation(createContext);
+      await firstCreateLocked;
+      const secondCreate = concurrentCreateService.createConversation(createContext);
+      let createWaitObservationError: unknown = null;
+
+      try {
+        await waitForAdvisoryWait(
+          pool,
+          createConcurrencyApplicationName,
+          'the second service request to block on the trainer-administration advisory lock',
+        );
+      } catch (error) {
+        createWaitObservationError = error;
+      } finally {
+        releaseFirstCreateLock();
+      }
+
+      const concurrent = await Promise.all([firstCreate, secondCreate]).finally(
+        unsubscribeCreateEvents,
+      );
+
+      if (createWaitObservationError !== null) {
+        throw createWaitObservationError;
+      }
+
       assert.notEqual(concurrent[0], null);
       assert.notEqual(concurrent[1], null);
       assert.equal(concurrent[0]!.conversation.id, concurrent[1]!.conversation.id);
       assert.equal(concurrent.filter((result) => result?.created).length, 1);
+      assert.equal(createLockAcquisitions, 2);
+      assert.equal(creationEvents, 1);
       const conversationId = concurrent[0]!.conversation.id;
       assert.equal(
         (await repository.findTrainerConversation(trainerId, conversationId))?.id,
         conversationId,
       );
       assert.equal(await repository.findTrainerConversation(secondTrainerId, conversationId), null);
+      let replayAdminLockCalls = 0;
+      const replayRepository = new PostgresChatRepository(pool, {
+        afterAdminUsersLocked: async (operation) => {
+          if (operation === 'create') {
+            replayAdminLockCalls += 1;
+          }
+        },
+      });
+      const existingReplay = await replayRepository.createOrGetConversation(clientId, now);
+      assert.equal(existingReplay?.created, false);
+      assert.equal(existingReplay?.conversation.id, conversationId);
+      assert.equal(
+        replayAdminLockCalls,
+        0,
+        'existing conversation replay must bypass the global trainer-administration lock',
+      );
+
+      const hiddenNeedle = randomUUID().replaceAll('-', '');
+      const hiddenEmailNeedle = `emailoracle${hiddenNeedle}`;
+      const hiddenUsernameNeedle = `usernameoracle${hiddenNeedle}`;
+      const hiddenPhone = `+7888${Date.now().toString().slice(-7)}`;
+      const hiddenPhoneFragment = hiddenPhone.slice(3, -2);
+      const hiddenEmail = `c${hiddenEmailNeedle}@example.com`;
+      const hiddenUsername = `profile-${hiddenUsernameNeedle}`;
+      const paginationCursor = {
+        activityAt: new Date(now.getTime() + 1),
+        conversationId: 'ffffffff-ffff-4fff-bfff-ffffffffffff',
+      } as const;
+      const listFor = (
+        trainerUserId: string,
+        query: string | null,
+        cursor: { readonly activityAt: Date; readonly conversationId: string } | null = null,
+        limit = 20,
+      ) =>
+        repository.listTrainerConversations({
+          trainerUserId,
+          filter: 'all',
+          query,
+          cursor,
+          limit,
+        });
+      assert.deepEqual(await listFor(trainerId, clientId.slice(0, 12)), {
+        items: [],
+        hasMore: false,
+      });
+      const hiddenQueries = [hiddenEmailNeedle, hiddenUsernameNeedle, hiddenPhoneFragment];
+      const hiddenMembershipBefore = await Promise.all(
+        hiddenQueries.flatMap((query) => [
+          listFor(trainerId, query, null, 1),
+          listFor(trainerId, query, paginationCursor, 1),
+        ]),
+      );
+
+      for (const page of hiddenMembershipBefore) {
+        assert.deepEqual(page, { items: [], hasMore: false });
+      }
+
+      const inboxPageBeforeHiddenMutation = await listFor(trainerId, null, null, 1);
+      const inboxCursorPageBeforeHiddenMutation = await listFor(
+        trainerId,
+        null,
+        paginationCursor,
+        1,
+      );
+      const visiblePageBeforeHiddenMutation = await listFor(trainerId, 'Анна', null, 1);
+      assert.equal(inboxPageBeforeHiddenMutation.items.length, 1);
+      assert.equal(
+        inboxPageBeforeHiddenMutation.hasMore,
+        true,
+        'the hidden-field check must exercise a real hasMore=true inbox page',
+      );
+      await pool.query(
+        `UPDATE users
+         SET email = $2, username = $3, phone = $4
+         WHERE id = $1`,
+        [clientId, hiddenEmail, hiddenUsername, hiddenPhone],
+      );
+      const hiddenMembershipAfter = await Promise.all(
+        hiddenQueries.flatMap((query) => [
+          listFor(trainerId, query, null, 1),
+          listFor(trainerId, query, paginationCursor, 1),
+        ]),
+      );
+      assert.deepEqual(
+        hiddenMembershipAfter,
+        hiddenMembershipBefore,
+        'raw contact mutations must not change membership, count, hasMore, or cursor pages',
+      );
+      assert.deepEqual(await listFor(trainerId, null, null, 1), inboxPageBeforeHiddenMutation);
+      assert.deepEqual(
+        await listFor(trainerId, null, paginationCursor, 1),
+        inboxCursorPageBeforeHiddenMutation,
+      );
+      assert.deepEqual(await listFor(trainerId, 'Анна', null, 1), visiblePageBeforeHiddenMutation);
+      assert.equal((await listFor(trainerId, 'Анна')).items.length, 1);
+      assert.equal((await listFor(trainerId, 'c***@example.com')).items.length, 1);
+      assert.equal((await listFor(trainerId, 'АННА')).items.length, 1);
+      assert.deepEqual(await listFor(trainerId, '%'), { items: [], hasMore: false });
+      assert.deepEqual(await listFor(trainerId, '_'), { items: [], hasMore: false });
+      assert.deepEqual(await listFor(trainerId, '\\'), { items: [], hasMore: false });
+      assert.deepEqual(await listFor(secondTrainerId, 'Анна'), {
+        items: [],
+        hasMore: false,
+      });
+      const safeProjectionJson = JSON.stringify((await listFor(trainerId, null)).items);
+      assert.equal(safeProjectionJson.includes(hiddenUsername), false);
+      assert.equal(safeProjectionJson.includes(hiddenPhone), false);
+      assert.equal(safeProjectionJson.includes(hiddenEmail), false);
+
       await pool.query(`UPDATE users SET first_name = $2 WHERE id = $1`, [
         clientId,
         'Я'.repeat(255),
@@ -702,6 +937,7 @@ test(
         ],
       ]);
       await lockTimeoutPool.end();
+      await createConcurrencyPool.end();
       await pool.end();
     }
   },

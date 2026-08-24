@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import { Readable } from 'node:stream';
 import { test } from 'node:test';
 import { deflateSync } from 'node:zlib';
 
@@ -114,22 +115,20 @@ const multipartRequest = (
   );
   const suffix = Buffer.from(`\r\n--${boundary}--\r\n`, 'utf8');
   const body = Buffer.concat([prefix, bytes, suffix]);
-  const request = {
-    get(name: string): string | undefined {
-      if (name.toLowerCase() === 'content-type') {
-        return `multipart/form-data; boundary=${boundary}`;
-      }
+  const request = Readable.from([
+    body.subarray(0, Math.floor(body.length / 2)),
+    body.subarray(Math.floor(body.length / 2)),
+  ]) as Readable & { get(name: string): string | undefined };
+  request.get = (name: string): string | undefined => {
+    if (name.toLowerCase() === 'content-type') {
+      return `multipart/form-data; boundary=${boundary}`;
+    }
 
-      if (name.toLowerCase() === 'content-length') {
-        return includeContentLength ? String(body.length) : undefined;
-      }
+    if (name.toLowerCase() === 'content-length') {
+      return includeContentLength ? String(body.length) : undefined;
+    }
 
-      return undefined;
-    },
-    async *[Symbol.asyncIterator]() {
-      yield body.subarray(0, Math.floor(body.length / 2));
-      yield body.subarray(Math.floor(body.length / 2));
-    },
+    return undefined;
   };
   return request as unknown as Request;
 };

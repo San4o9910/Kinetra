@@ -4191,6 +4191,7 @@ const createT12BrowserServer = () => {
     trainerReadSequence: 0,
     loginCount: { client: 0, trainer: 0 },
     logoutCount: { client: 0, trainer: 0 },
+    logoutAuthorizations: { client: [], trainer: [] },
     refreshCount: { client: 0, trainer: 0 },
     currentAccessToken: { client: null, trainer: null },
     messageSenders: [],
@@ -4426,6 +4427,26 @@ const createT12BrowserServer = () => {
       return;
     }
 
+    if (request.method === 'POST' && pathname === '/__browser-test/t12/cross-sender-collision') {
+      const ownClientMessage = state.messages.find(
+        ({ sender_role: senderRole }) => senderRole === 'client',
+      );
+      assert.notEqual(ownClientMessage, undefined);
+      const counterpartMessage = appendMessage({
+        senderRole: 'trainer',
+        kind: 'text',
+        text: 'Сообщение тренера с совпавшим client_message_id',
+        clientMessageId: ownClientMessage.client_message_id,
+      });
+      emitMessage(counterpartMessage);
+      json(response, 200, {
+        own_message_id: ownClientMessage.id,
+        counterpart_message_id: counterpartMessage.id,
+        client_message_id: ownClientMessage.client_message_id,
+      });
+      return;
+    }
+
     if (request.method === 'POST' && pathname === '/__browser-test/t12/disconnect-delta') {
       for (const socket of state.sockets.client) {
         socket.conn.close();
@@ -4597,7 +4618,18 @@ const createT12BrowserServer = () => {
           : cookie.includes('kinetra_refresh=t12-trainer')
             ? 'trainer'
             : null);
-      if (role !== null) state.logoutCount[role] += 1;
+      if (role !== null) {
+        state.logoutCount[role] += 1;
+        state.logoutAuthorizations[role].push(String(request.headers.authorization ?? ''));
+      }
+
+      if (role === 'trainer' && state.logoutCount.trainer === 1) {
+        json(response, 500, {
+          error: { code: 'INTERNAL_ERROR', message: 'Temporary trainer logout failure.' },
+        });
+        return;
+      }
+
       response.writeHead(204, {
         'Set-Cookie': 'kinetra_refresh=; HttpOnly; Path=/api/v1/auth; Max-Age=0; SameSite=Lax',
       });
@@ -6066,6 +6098,29 @@ const runT12BrowserScenario = async () => {
     assert.equal(foreignPhoto.body.error.code, 'CHAT_RESOURCE_NOT_FOUND');
     assert.equal(trainerUnattachedPhoto.body.error.code, 'CHAT_RESOURCE_NOT_FOUND');
 
+    const crossSenderCollisionResponse = await fetch(
+      `${browserApiOrigin}/__browser-test/t12/cross-sender-collision`,
+      { method: 'POST' },
+    );
+    assert.equal(crossSenderCollisionResponse.status, 200);
+    const crossSenderCollision = await crossSenderCollisionResponse.json();
+    await waitFor(
+      'cross-sender client_message_id collision retains both canonical messages',
+      async () =>
+        (await client.messageCount(crossSenderCollision.own_message_id)) === 1 &&
+        (await client.messageCount(crossSenderCollision.counterpart_message_id)) === 1 &&
+        (await client.bodyText()).includes('Сообщение тренера с совпавшим client_message_id'),
+      20_000,
+    );
+    await client.navigate('/chat');
+    await waitFor(
+      'cross-sender collision remains intact after canonical history reload',
+      async () =>
+        (await client.messageCount(crossSenderCollision.own_message_id)) === 1 &&
+        (await client.messageCount(crossSenderCollision.counterpart_message_id)) === 1,
+      20_000,
+    );
+
     await client.setValue('chat-message-input', 'Черновик должен удалиться при выходе');
     await waitFor('account-scoped client chat draft before logout', async () => {
       const keys = await client.draftKeys();
@@ -6153,15 +6208,50 @@ const runT12BrowserScenario = async () => {
       fixture.state.mediaDeletionJobs.length,
     );
 
+    await trainer.navigate(`/trainer/chats/${t12ConversationId}`);
+    await waitFor(
+      'trainer conversation restored before retryable logout',
+      () => trainer.exists('chat-conversation-screen'),
+      20_000,
+    );
+    await trainer.setValue('chat-message-input', 'Черновик тренера сохраняется до server ACK');
+    await waitFor(
+      'trainer account-scoped draft before failed logout',
+      async () => {
+        const keys = await trainer.draftKeys();
+        return keys.length === 1 && keys[0].includes(t12TrainerId);
+      },
+      20_000,
+    );
+    const capturedTrainerLogoutBearer = `Bearer ${fixture.state.currentAccessToken.trainer}`;
     await trainer.clickButtonWithText('Выйти');
     await waitFor(
-      'trainer logout route and socket teardown',
+      'trainer logout failure remains explicitly signed in and retryable',
       async () =>
-        (await trainer.exists('login-screen')) &&
+        (await trainer.exists('trainer-sign-out-failed')) &&
+        !(await trainer.exists('login-screen')) &&
+        (await trainer.bodyText()).includes('Выход не завершен') &&
+        (await trainer.bodyText()).includes('Вы по-прежнему вошли в аккаунт') &&
         fixture.state.logoutCount.trainer === 1 &&
         fixture.state.socketConnections.trainer.size === 0,
       20_000,
     );
+    assert.equal((await trainer.draftKeys()).length, 1);
+    assert.deepEqual(fixture.state.logoutAuthorizations.trainer, [capturedTrainerLogoutBearer]);
+    await trainer.clickButtonWithText('Повторить');
+    await waitFor(
+      'trainer retry confirms logout before route and draft teardown',
+      async () =>
+        (await trainer.exists('login-screen')) &&
+        fixture.state.logoutCount.trainer === 2 &&
+        fixture.state.socketConnections.trainer.size === 0,
+      20_000,
+    );
+    assert.deepEqual(fixture.state.logoutAuthorizations.trainer, [
+      capturedTrainerLogoutBearer,
+      capturedTrainerLogoutBearer,
+    ]);
+    assert.deepEqual(await trainer.draftKeys(), []);
 
     assert.ok(fixture.state.messageSenders.includes('client'));
     assert.ok(fixture.state.messageSenders.includes('trainer'));

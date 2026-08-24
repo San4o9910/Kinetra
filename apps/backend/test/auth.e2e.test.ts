@@ -450,7 +450,8 @@ test('day-zero logout proof revokes only its day-31 sliding refresh family', asy
       unrelatedFamilyCookie,
       `Bearer ${dayZeroProof}`,
     );
-    assert.equal(unrelatedFamilyLogout.status, 204);
+    assert.equal(unrelatedFamilyLogout.status, 409);
+    assert.equal(errorCode(unrelatedFamilyLogout.body), 'LOGOUT_NOT_CONFIRMED');
     assert.equal(unrelatedFamilyLogout.cookie, null);
 
     const otherAccountLogout = await postJson(
@@ -460,7 +461,8 @@ test('day-zero logout proof revokes only its day-31 sliding refresh family', asy
       otherAccountCookie,
       `Bearer ${dayZeroProof}`,
     );
-    assert.equal(otherAccountLogout.status, 204);
+    assert.equal(otherAccountLogout.status, 409);
+    assert.equal(errorCode(otherAccountLogout.body), 'LOGOUT_NOT_CONFIRMED');
     assert.equal(otherAccountLogout.cookie, null);
 
     const remoteRefreshWonRace = await postJson(
@@ -618,7 +620,8 @@ test('subject-bound logout never revokes or clears another tab account refresh c
       accountBCookie,
       `Bearer ${accountAAccessToken}`,
     );
-    assert.equal(mismatchedLogout.status, 204);
+    assert.equal(mismatchedLogout.status, 409);
+    assert.equal(errorCode(mismatchedLogout.body), 'LOGOUT_NOT_CONFIRMED');
     assert.equal(
       mismatchedLogout.cookie,
       null,

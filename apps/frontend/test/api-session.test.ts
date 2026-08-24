@@ -316,7 +316,7 @@ test('T12 origin-wide Web Lock serializes two clients before a competing login',
   }
 });
 
-test('T12 stale account-A refresh cannot overtake logout and account-B login', async () => {
+test('T12 an epoch change rejects queued account-A logout before account-B login', async () => {
   const operations: string[] = [];
   const protectedAuthorizations: string[] = [];
   const logoutAuthorizations: string[] = [];
@@ -371,7 +371,10 @@ test('T12 stale account-A refresh cannot overtake logout and account-B login', a
   );
   await refreshStarted;
 
-  const logoutAccountA = client.logout();
+  const logoutAccountA = client.logout().then(
+    () => null,
+    (error: unknown) => error,
+  );
   const loginAccountB = client.login('account-b@example.test', 'password-b');
   await Promise.resolve();
   assert.deepEqual(operations, ['login:account-a@example.test', 'refresh:account-a']);
@@ -380,17 +383,18 @@ test('T12 stale account-A refresh cannot overtake logout and account-B login', a
   const staleRefreshError = await staleRefreshResult;
   assert.ok(staleRefreshError instanceof ApiRequestError);
   assert.equal(staleRefreshError.code, 'NO_SESSION');
-  await logoutAccountA;
+  const logoutAccountAError = await logoutAccountA;
+  assert.ok(logoutAccountAError instanceof ApiRequestError);
+  assert.equal(logoutAccountAError.code, 'AUTH_SESSION_CHANGED');
   await loginAccountB;
 
   assert.equal(client.getInMemoryAccessToken(), 'account-b-token');
   await client.fetchMe();
   assert.deepEqual(protectedAuthorizations, ['Bearer account-b-token']);
-  assert.deepEqual(logoutAuthorizations, ['Bearer account-a-token']);
+  assert.deepEqual(logoutAuthorizations, []);
   assert.deepEqual(operations, [
     'login:account-a@example.test',
     'refresh:account-a',
-    'logout:account-a',
     'login:account-b@example.test',
   ]);
 });
@@ -419,8 +423,16 @@ test('T12 account-A logout cannot revoke an externally switched account-B cookie
       logoutCalls += 1;
       logoutAuthorizations.push(new Headers(init?.headers).get('authorization') ?? '');
       // Model the server's atomic subject mismatch: cookie B is not revoked and
-      // a bearer-bound response never emits a cookie-clearing Set-Cookie header.
-      return new Response(null, { status: 204 });
+      // the response honestly reports that account-A revocation was not confirmed.
+      return Response.json(
+        {
+          error: {
+            code: 'LOGOUT_NOT_CONFIRMED',
+            message: 'The server could not confirm revocation of this refresh session.',
+          },
+        },
+        { status: 409 },
+      );
     }
 
     throw new Error(`Unexpected request ${url.pathname}`);
@@ -429,10 +441,16 @@ test('T12 account-A logout cannot revoke an externally switched account-B cookie
 
   await accountATab.login('account-a@example.test', 'password-a');
   cookieSubjectId = accountBId;
-  await accountATab.logout();
+  await assert.rejects(
+    accountATab.logout(),
+    (error: unknown) =>
+      error instanceof ApiRequestError &&
+      error.status === 409 &&
+      error.code === 'LOGOUT_NOT_CONFIRMED',
+  );
 
-  assert.equal(accountATab.getInMemoryAccessToken(), null);
-  assert.equal(accountATab.getInMemoryAuthSubjectId(), null);
+  assert.equal(accountATab.getInMemoryAccessToken(), 'account-a-token');
+  assert.equal(accountATab.getInMemoryAuthSubjectId(), accountAId);
   assert.equal(logoutCalls, 1);
   assert.deepEqual(logoutAuthorizations, ['Bearer account-a-token']);
   assert.equal(refreshCalls, 0, 'logout must never rotate the shared refresh cookie');
@@ -442,6 +460,345 @@ test('T12 account-A logout cannot revoke an externally switched account-B cookie
   assert.equal(accountBTab.getInMemoryAuthSubjectId(), accountBId);
   assert.equal(accountBTab.getInMemoryAccessToken(), 'refreshed-1');
   assert.equal(logoutCalls, 1);
+});
+
+test('prepared logout keeps auth proof across network and 500 failures, then retries with bearer A', async () => {
+  const accountAId = '00000000-0000-4000-8000-00000000000a';
+  const logoutAuthorizations: string[] = [];
+  let logoutCall = 0;
+  const client = new ApiClient({
+    baseUrl: 'http://api.test',
+    fetchImpl: async (input, init) => {
+      const url = new URL(String(input));
+
+      if (url.pathname === '/api/v1/auth/login') {
+        return Response.json(session('account-a-token', accountAId));
+      }
+
+      if (url.pathname === '/api/v1/auth/logout') {
+        logoutCall += 1;
+        logoutAuthorizations.push(new Headers(init?.headers).get('authorization') ?? '');
+
+        if (logoutCall === 1) {
+          throw new TypeError('offline transport detail');
+        }
+
+        if (logoutCall === 2) {
+          return Response.json(
+            { error: { code: 'INTERNAL_ERROR', message: 'Temporary failure.' } },
+            { status: 500 },
+          );
+        }
+
+        return new Response(null, { status: 204 });
+      }
+
+      throw new Error(`Unexpected request ${url.pathname}`);
+    },
+  });
+
+  await client.login('account-a@example.test', 'password-a');
+  const prepared = client.prepareLogout();
+  assert.equal(prepared.subjectId, accountAId);
+  assert.equal(prepared.isCurrent(), true);
+
+  await assert.rejects(
+    prepared.execute(),
+    (error: unknown) =>
+      error instanceof ApiRequestError &&
+      error.code === 'NETWORK_ERROR' &&
+      error.kind === 'network',
+  );
+  assert.equal(prepared.isCurrent(), true);
+  assert.equal(client.getInMemoryAuthSubjectId(), accountAId);
+  assert.equal(client.getInMemoryAccessToken(), 'account-a-token');
+
+  await assert.rejects(
+    prepared.execute(),
+    (error: unknown) =>
+      error instanceof ApiRequestError && error.status === 500 && error.kind === 'server',
+  );
+  assert.equal(prepared.isCurrent(), true);
+  assert.equal(client.getInMemoryAuthSubjectId(), accountAId);
+
+  const completion = await prepared.execute();
+  assert.equal(completion.attemptNonce, prepared.attemptNonce);
+  assert.equal(prepared.isCompletionCurrent(completion), true);
+  assert.equal(client.getInMemoryAuthSubjectId(), null);
+  assert.equal(client.getInMemoryAccessToken(), null);
+  assert.deepEqual(logoutAuthorizations, [
+    'Bearer account-a-token',
+    'Bearer account-a-token',
+    'Bearer account-a-token',
+  ]);
+});
+
+test('prepared logout keeps its captured bearer when the same auth epoch refreshes', async () => {
+  const accountAId = '00000000-0000-4000-8000-00000000000a';
+  const logoutAuthorizations: string[] = [];
+  const client = new ApiClient({
+    baseUrl: 'http://api.test',
+    fetchImpl: async (input, init) => {
+      const url = new URL(String(input));
+
+      if (url.pathname === '/api/v1/auth/login') {
+        return Response.json(session('captured-account-a-token', accountAId));
+      }
+
+      if (url.pathname === '/api/v1/auth/refresh') {
+        return Response.json(session('rotated-same-session-token', accountAId));
+      }
+
+      if (url.pathname === '/api/v1/auth/logout') {
+        logoutAuthorizations.push(new Headers(init?.headers).get('authorization') ?? '');
+        return new Response(null, { status: 204 });
+      }
+
+      throw new Error(`Unexpected request ${url.pathname}`);
+    },
+  });
+
+  await client.login('account-a@example.test', 'password-a');
+  const prepared = client.prepareLogout();
+  await client.refreshInMemoryAccessToken();
+  assert.equal(client.getInMemoryAccessToken(), 'rotated-same-session-token');
+  assert.equal(prepared.isCurrent(), true);
+
+  const completion = await prepared.execute();
+  assert.equal(prepared.isCompletionCurrent(completion), true);
+  assert.deepEqual(logoutAuthorizations, ['Bearer captured-account-a-token']);
+});
+
+test('logout 401 is not mistaken for proof that the refresh family was revoked', async () => {
+  const accountAId = '00000000-0000-4000-8000-00000000000a';
+  const client = new ApiClient({
+    baseUrl: 'http://api.test',
+    fetchImpl: async (input) => {
+      const url = new URL(String(input));
+
+      if (url.pathname === '/api/v1/auth/login') {
+        return Response.json(session('account-a-token', accountAId));
+      }
+
+      if (url.pathname === '/api/v1/auth/logout') {
+        return Response.json(
+          { error: { code: 'AUTHENTICATION_REQUIRED', message: 'Invalid logout proof.' } },
+          { status: 401 },
+        );
+      }
+
+      throw new Error(`Unexpected request ${url.pathname}`);
+    },
+  });
+
+  await client.login('account-a@example.test', 'password-a');
+  const prepared = client.prepareLogout();
+  await assert.rejects(
+    prepared.execute(),
+    (error: unknown) =>
+      error instanceof ApiRequestError &&
+      error.code === 'AUTHENTICATION_REQUIRED' &&
+      error.kind === 'auth',
+  );
+  assert.equal(prepared.isCurrent(), true);
+  assert.equal(client.getInMemoryAuthSubjectId(), accountAId);
+  assert.equal(client.getInMemoryAccessToken(), 'account-a-token');
+});
+
+test('prepared logout accepts only the exact 204 terminal response', async () => {
+  const accountAId = '00000000-0000-4000-8000-00000000000a';
+
+  for (const status of [200, 202]) {
+    const client = new ApiClient({
+      baseUrl: 'http://api.test',
+      fetchImpl: async (input) => {
+        const url = new URL(String(input));
+
+        if (url.pathname === '/api/v1/auth/login') {
+          return Response.json(session('account-a-token', accountAId));
+        }
+
+        if (url.pathname === '/api/v1/auth/logout') {
+          return Response.json({ accepted: true }, { status });
+        }
+
+        throw new Error(`Unexpected request ${url.pathname}`);
+      },
+    });
+
+    await client.login('account-a@example.test', 'password-a');
+    const prepared = client.prepareLogout();
+    await assert.rejects(
+      prepared.execute(),
+      (error: unknown) => error instanceof ApiRequestError && error.code === 'LOGOUT_NOT_CONFIRMED',
+    );
+    assert.equal(prepared.isCurrent(), true);
+    assert.equal(client.getInMemoryAuthSubjectId(), accountAId);
+    assert.equal(client.getInMemoryAccessToken(), 'account-a-token');
+  }
+});
+
+test('an aborted logout remains incomplete and preserves the retry proof', async () => {
+  const accountAId = '00000000-0000-4000-8000-00000000000a';
+  const client = new ApiClient({
+    baseUrl: 'http://api.test',
+    fetchImpl: async (input) => {
+      const url = new URL(String(input));
+      if (url.pathname === '/api/v1/auth/login') {
+        return Response.json(session('account-a-token', accountAId));
+      }
+      throw new DOMException('logout deadline reached', 'AbortError');
+    },
+  });
+
+  await client.login('account-a@example.test', 'password-a');
+  const prepared = client.prepareLogout();
+  await assert.rejects(
+    prepared.execute(),
+    (error: unknown) => error instanceof DOMException && error.name === 'AbortError',
+  );
+  assert.equal(prepared.isCurrent(), true);
+  assert.equal(client.getInMemoryAuthSubjectId(), accountAId);
+  assert.equal(client.getInMemoryAccessToken(), 'account-a-token');
+});
+
+test('prepared logout reports unavailable Web Locks without clearing the signed-in session', async () => {
+  const windowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  const navigatorDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  const accountAId = '00000000-0000-4000-8000-00000000000a';
+  let logoutCalls = 0;
+  const client = new ApiClient({
+    baseUrl: 'http://api.test',
+    fetchImpl: async (input) => {
+      const url = new URL(String(input));
+
+      if (url.pathname === '/api/v1/auth/login') {
+        return Response.json(session('account-a-token', accountAId));
+      }
+
+      if (url.pathname === '/api/v1/auth/logout') {
+        logoutCalls += 1;
+        return new Response(null, { status: 204 });
+      }
+
+      throw new Error(`Unexpected request ${url.pathname}`);
+    },
+  });
+
+  await client.login('account-a@example.test', 'password-a');
+  const prepared = client.prepareLogout();
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: {} });
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: {} });
+
+  try {
+    await assert.rejects(
+      prepared.execute(),
+      (error: unknown) =>
+        error instanceof ApiRequestError &&
+        error.code === 'AUTH_COORDINATION_UNAVAILABLE' &&
+        error.kind === 'auth',
+    );
+    assert.equal(logoutCalls, 0);
+    assert.equal(prepared.isCurrent(), true);
+    assert.equal(client.getInMemoryAuthSubjectId(), accountAId);
+    assert.equal(client.getInMemoryAccessToken(), 'account-a-token');
+  } finally {
+    if (windowDescriptor === undefined) {
+      Reflect.deleteProperty(globalThis, 'window');
+    } else {
+      Object.defineProperty(globalThis, 'window', windowDescriptor);
+    }
+    if (navigatorDescriptor === undefined) {
+      Reflect.deleteProperty(globalThis, 'navigator');
+    } else {
+      Object.defineProperty(globalThis, 'navigator', navigatorDescriptor);
+    }
+  }
+});
+
+test('late account-A logout ACK cannot clear a newly logged-in account B', async () => {
+  const accountAId = '00000000-0000-4000-8000-00000000000a';
+  const accountBId = '00000000-0000-4000-8000-00000000000b';
+  let releaseLogout!: () => void;
+  let announceLogoutStarted!: () => void;
+  const logoutGate = new Promise<void>((resolve) => {
+    releaseLogout = resolve;
+  });
+  const logoutStarted = new Promise<void>((resolve) => {
+    announceLogoutStarted = resolve;
+  });
+  const client = new ApiClient({
+    baseUrl: 'http://api.test',
+    fetchImpl: async (input, init) => {
+      const url = new URL(String(input));
+
+      if (url.pathname === '/api/v1/auth/login') {
+        const identifier = (JSON.parse(String(init?.body)) as { readonly identifier: string })
+          .identifier;
+        return identifier.startsWith('account-b')
+          ? Response.json(session('account-b-token', accountBId))
+          : Response.json(session('account-a-token', accountAId));
+      }
+
+      if (url.pathname === '/api/v1/auth/logout') {
+        announceLogoutStarted();
+        await logoutGate;
+        return new Response(null, { status: 204 });
+      }
+
+      throw new Error(`Unexpected request ${url.pathname}`);
+    },
+  });
+
+  await client.login('account-a@example.test', 'password-a');
+  const preparedA = client.prepareLogout();
+  const lateLogoutA = preparedA.execute().then(
+    () => null,
+    (error: unknown) => error,
+  );
+  await logoutStarted;
+
+  const loginB = client.login('account-b@example.test', 'password-b');
+  releaseLogout();
+  const lateLogoutError = await lateLogoutA;
+  await loginB;
+
+  assert.ok(lateLogoutError instanceof ApiRequestError);
+  assert.equal(lateLogoutError.code, 'AUTH_SESSION_CHANGED');
+  assert.equal(preparedA.isCurrent(), false);
+  assert.equal(client.getInMemoryAuthSubjectId(), accountBId);
+  assert.equal(client.getInMemoryAccessToken(), 'account-b-token');
+});
+
+test('a failed prepared logout can be restored on reload without false signed-out state', async () => {
+  const accountAId = '00000000-0000-4000-8000-00000000000a';
+  const firstClient = new ApiClient({
+    baseUrl: 'http://api.test',
+    fetchImpl: async (input) => {
+      const url = new URL(String(input));
+      if (url.pathname === '/api/v1/auth/login') {
+        return Response.json(session('account-a-token', accountAId));
+      }
+      throw new TypeError('network unavailable');
+    },
+  });
+  await firstClient.login('account-a@example.test', 'password-a');
+  await assert.rejects(firstClient.prepareLogout().execute());
+  assert.equal(firstClient.getInMemoryAuthSubjectId(), accountAId);
+
+  const reloadedClient = new ApiClient({
+    baseUrl: 'http://api.test',
+    fetchImpl: async (input) => {
+      const url = new URL(String(input));
+      if (url.pathname === '/api/v1/auth/refresh') {
+        return Response.json(session('restored-account-a-token', accountAId));
+      }
+      throw new Error(`Unexpected request ${url.pathname}`);
+    },
+  });
+  assert.equal(await reloadedClient.bootstrapSession(), true);
+  assert.equal(reloadedClient.getInMemoryAuthSubjectId(), accountAId);
+  assert.equal(reloadedClient.getInMemoryAccessToken(), 'restored-account-a-token');
 });
 
 test('T12 terminal invalidation rejects a delayed account-A response before account-B login', async () => {
