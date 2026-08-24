@@ -1,6 +1,7 @@
 import { HttpError } from '../auth/errors.js';
 
 export type ChatRateScope =
+  | 'conversation_create'
   | 'history'
   | 'message'
   | 'photo_bytes_hour'

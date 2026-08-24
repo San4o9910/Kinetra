@@ -35,6 +35,11 @@ export interface VapidEnvironment {
   readonly subject: string;
 }
 
+export interface ChatPhotoUploadTimeoutEnvironment {
+  readonly idleTimeoutMs: number;
+  readonly totalTimeoutMs: number;
+}
+
 const DEVELOPMENT_ACCESS_SECRET = 'local-development-only-change-this-kinetra-access-secret-2026';
 
 const parseInteger = (
@@ -51,6 +56,37 @@ const parseInteger = (
   }
 
   return value;
+};
+
+export const parseChatPhotoUploadTimeouts = (
+  idleSecondsValue: string | undefined,
+  totalSecondsValue: string | undefined,
+): Readonly<ChatPhotoUploadTimeoutEnvironment> => {
+  const idleSeconds = parseInteger(
+    'CHAT_PHOTO_UPLOAD_IDLE_TIMEOUT_SECONDS',
+    idleSecondsValue,
+    15,
+    1,
+    30,
+  );
+  const totalSeconds = parseInteger(
+    'CHAT_PHOTO_UPLOAD_TOTAL_TIMEOUT_SECONDS',
+    totalSecondsValue,
+    120,
+    10,
+    120,
+  );
+
+  if (idleSeconds >= totalSeconds) {
+    throw new Error(
+      'CHAT_PHOTO_UPLOAD_IDLE_TIMEOUT_SECONDS must be less than CHAT_PHOTO_UPLOAD_TOTAL_TIMEOUT_SECONDS.',
+    );
+  }
+
+  return Object.freeze({
+    idleTimeoutMs: idleSeconds * 1000,
+    totalTimeoutMs: totalSeconds * 1000,
+  });
 };
 
 const parseBoolean = (name: string, rawValue: string | undefined, fallback: boolean): boolean => {
@@ -309,6 +345,10 @@ const chatPhotoUploadsEnabled = parseBoolean(
   process.env.CHAT_PHOTO_UPLOADS_ENABLED,
   false,
 );
+const chatPhotoUploadTimeouts = parseChatPhotoUploadTimeouts(
+  process.env.CHAT_PHOTO_UPLOAD_IDLE_TIMEOUT_SECONDS,
+  process.env.CHAT_PHOTO_UPLOAD_TOTAL_TIMEOUT_SECONDS,
+);
 
 if (chatPhotoUploadsEnabled && !chatEnabled) {
   throw new Error('CHAT_PHOTO_UPLOADS_ENABLED=true requires CHAT_ENABLED=true.');
@@ -385,6 +425,8 @@ export const env = Object.freeze({
   chat: Object.freeze({
     enabled: chatEnabled,
     photoUploadsEnabled: chatPhotoUploadsEnabled,
+    photoUploadIdleTimeoutMs: chatPhotoUploadTimeouts.idleTimeoutMs,
+    photoUploadTotalTimeoutMs: chatPhotoUploadTimeouts.totalTimeoutMs,
     mediaUrlTtlSeconds: parseInteger(
       'CHAT_MEDIA_URL_TTL_SECONDS',
       process.env.CHAT_MEDIA_URL_TTL_SECONDS,

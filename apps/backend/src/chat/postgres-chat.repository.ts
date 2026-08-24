@@ -10,6 +10,7 @@ import type {
   ChatParticipant,
   ChatPhotoSnapshot,
   ChatRepository,
+  ChatRole,
   ConversationPage,
   CreateConversationResult,
   ListConversationsInput,
@@ -51,11 +52,9 @@ interface ConversationRow extends QueryResultRow {
   readonly trainer_unread_count: number;
   readonly conversation_created_at: Date | string;
   readonly activity_at: Date | string;
-  readonly client_email: string | null;
-  readonly client_phone: string | null;
+  readonly client_display_name: string;
+  readonly client_secondary_label: string;
   readonly client_avatar_url: string | null;
-  readonly client_username: string | null;
-  readonly client_first_name: string | null;
   readonly trainer_display_name: string;
   readonly trainer_avatar_url: string | null;
   readonly message_id: string | null;
@@ -153,6 +152,39 @@ interface LockedUserRow extends QueryResultRow {
   readonly onboarding_status: ChatActor['onboardingStatus'];
 }
 
+const MASKED_CLIENT_EMAIL_SQL = `
+  substring(split_part(client.email, '@', 1) from 1 for 1)
+  || '***@'
+  || split_part(client.email, '@', 2)
+`;
+
+const MASKED_CLIENT_PHONE_SQL = `
+  substring(client.phone from 1 for 2)
+  || '***'
+  || right(client.phone, 2)
+`;
+
+const CLIENT_SECONDARY_LABEL_SQL = `
+  CASE
+    WHEN client.email IS NOT NULL THEN ${MASKED_CLIENT_EMAIL_SQL}
+    WHEN client.phone IS NOT NULL THEN ${MASKED_CLIENT_PHONE_SQL}
+    ELSE 'Клиент Kinetra'
+  END
+`;
+
+const CLIENT_DISPLAY_NAME_SQL = `
+  left(
+    COALESCE(
+      NULLIF(btrim(client.first_name), ''),
+      NULLIF(btrim(client.username), ''),
+      CASE WHEN client.email IS NULL THEN NULL ELSE ${MASKED_CLIENT_EMAIL_SQL} END,
+      CASE WHEN client.phone IS NULL THEN NULL ELSE ${MASKED_CLIENT_PHONE_SQL} END,
+      'Клиент Kinetra'
+    ),
+    120
+  )
+`;
+
 const CONVERSATION_SELECT = `
   SELECT
     conversation.id AS conversation_id,
@@ -165,11 +197,9 @@ const CONVERSATION_SELECT = `
     conversation.trainer_unread_count,
     conversation.created_at AS conversation_created_at,
     COALESCE(conversation.last_message_at, conversation.created_at) AS activity_at,
-    client.email AS client_email,
-    client.phone AS client_phone,
+    ${CLIENT_DISPLAY_NAME_SQL} AS client_display_name,
+    ${CLIENT_SECONDARY_LABEL_SQL} AS client_secondary_label,
     client.avatar_url AS client_avatar_url,
-    client.username AS client_username,
-    client.first_name AS client_first_name,
     trainer_profile.display_name AS trainer_display_name,
     trainer.avatar_url AS trainer_avatar_url,
     last_message.id AS message_id,
@@ -262,9 +292,6 @@ const maskPhone = (phone: string): string => {
   return `${phone.slice(0, 2)}***${suffix}`;
 };
 
-const secondaryLabel = (email: string | null, phone: string | null): string =>
-  email === null ? (phone === null ? 'Клиент Kinetra' : maskPhone(phone)) : maskEmail(email);
-
 const boundedDisplayName = (value: string): string => [...value].slice(0, 120).join('');
 
 const clientDisplayName = (input: {
@@ -351,13 +378,8 @@ const mapConversationMessage = (row: ConversationRow): ChatMessageSnapshot | nul
 const mapConversation = (row: ConversationRow): ChatConversationSnapshot => {
   const client: ChatParticipant = {
     userId: row.client_user_id,
-    displayName: clientDisplayName({
-      firstName: row.client_first_name,
-      username: row.client_username,
-      email: row.client_email,
-      phone: row.client_phone,
-    }),
-    secondaryLabel: secondaryLabel(row.client_email, row.client_phone),
+    displayName: row.client_display_name,
+    secondaryLabel: row.client_secondary_label,
     avatarUrl: row.client_avatar_url,
   };
   const trainer: ChatParticipant = {
@@ -511,24 +533,43 @@ export class PostgresChatRepository implements ChatRepository {
     }
   }
 
-  public async withCurrentConversation<T>(
+  public async getRealtimeConversation(
     conversationId: string,
-    operation: (conversation: ChatConversationSnapshot | null) => Promise<T>,
-  ): Promise<T> {
+  ): Promise<ChatConversationSnapshot | null> {
     const client = await this.pool.connect();
 
     try {
       await client.query('BEGIN');
-      const conversation = await this.loadConversationById(client, conversationId, true);
-      const result = await operation(conversation);
+      const conversation = await this.loadRealtimeConversation(client, conversationId, true);
       await client.query('COMMIT');
-      return result;
+      return conversation;
     } catch (error) {
       await rollbackQuietly(client);
       throw error;
     } finally {
       client.release();
     }
+  }
+
+  public async findRealtimeRecipientConversation(
+    userId: string,
+    role: ChatRole,
+    conversationId: string,
+  ): Promise<ChatConversationSnapshot | null> {
+    const result = await this.pool.query<ConversationRow>(
+      `${CONVERSATION_SELECT}
+       WHERE conversation.id = $1
+         AND client.onboarding_status = 'active'
+         AND trainer_profile.is_active = true
+         AND (
+           ($3::text = 'client' AND conversation.client_user_id = $2)
+           OR ($3::text = 'trainer' AND conversation.trainer_user_id = $2)
+         )
+       LIMIT 1`,
+      [conversationId, userId, role],
+    );
+    const row = result.rows[0];
+    return row === undefined ? null : mapConversation(row);
   }
 
   public async findActor(userId: string): Promise<ChatActor | null> {
@@ -625,6 +666,12 @@ export class PostgresChatRepository implements ChatRepository {
     clientUserId: string,
     now: Date,
   ): Promise<CreateConversationResult | null> {
+    const fastPathConversation = await this.findConversationForClient(clientUserId);
+
+    if (fastPathConversation !== null) {
+      return { created: false, conversation: fastPathConversation };
+    }
+
     const client = await this.pool.connect();
 
     try {
@@ -721,10 +768,8 @@ export class PostgresChatRepository implements ChatRepository {
       values.push(`%${escapeLikePattern(input.query)}%`);
       const parameter = `$${values.length}`;
       conditions.push(`(
-        client.first_name ILIKE ${parameter} ESCAPE '\\'
-        OR client.username ILIKE ${parameter} ESCAPE '\\'
-        OR client.email ILIKE ${parameter} ESCAPE '\\'
-        OR client.phone ILIKE ${parameter} ESCAPE '\\'
+        ${CLIENT_DISPLAY_NAME_SQL} ILIKE ${parameter} ESCAPE '\\'
+        OR ${CLIENT_SECONDARY_LABEL_SQL} ILIKE ${parameter} ESCAPE '\\'
       )`);
     }
 
@@ -1779,6 +1824,24 @@ export class PostgresChatRepository implements ChatRepository {
     const result = await queryable.query<ConversationRow>(
       `${CONVERSATION_SELECT}
        WHERE conversation.id = $1
+       LIMIT 1
+       ${lockForShare ? 'FOR SHARE OF conversation' : ''}`,
+      [conversationId],
+    );
+    const row = result.rows[0];
+    return row === undefined ? null : mapConversation(row);
+  }
+
+  private async loadRealtimeConversation(
+    queryable: Pool | PoolClient,
+    conversationId: string,
+    lockForShare = false,
+  ): Promise<ChatConversationSnapshot | null> {
+    const result = await queryable.query<ConversationRow>(
+      `${CONVERSATION_SELECT}
+       WHERE conversation.id = $1
+         AND client.onboarding_status = 'active'
+         AND trainer_profile.is_active = true
        LIMIT 1
        ${lockForShare ? 'FOR SHARE OF conversation' : ''}`,
       [conversationId],
