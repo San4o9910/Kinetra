@@ -72,6 +72,22 @@ export class ApiRequestError extends Error {
   }
 }
 
+const networkRequestError = (): ApiRequestError =>
+  new ApiRequestError(
+    'Не удалось связаться с сервером. Проверьте интернет и попробуйте ещё раз.',
+    0,
+    'NETWORK_ERROR',
+    'network',
+  );
+
+const invalidJsonResponseError = (status: number): ApiRequestError =>
+  new ApiRequestError(
+    'Сервер вернул некорректный ответ. Попробуйте ещё раз.',
+    status,
+    'INVALID_RESPONSE',
+    'server',
+  );
+
 interface ApiClientOptions {
   readonly baseUrl: string;
   readonly fetchImpl?: typeof fetch;
@@ -1027,12 +1043,7 @@ export class ApiClient {
         throw error;
       }
 
-      throw new ApiRequestError(
-        'Не удалось связаться с сервером. Проверьте интернет и попробуйте ещё раз.',
-        0,
-        'NETWORK_ERROR',
-        'network',
-      );
+      throw networkRequestError();
     }
   }
 
@@ -1041,7 +1052,22 @@ export class ApiClient {
       await this.throwResponseError(response);
     }
 
-    return (await response.json()) as T;
+    try {
+      return (await response.json()) as T;
+    } catch (error) {
+      if (isAbortError(error)) {
+        throw error;
+      }
+
+      if (
+        error instanceof TypeError ||
+        (error instanceof DOMException && error.name === 'NetworkError')
+      ) {
+        throw networkRequestError();
+      }
+
+      throw invalidJsonResponseError(response.status);
+    }
   }
 
   private async throwResponseError(response: Response): Promise<never> {

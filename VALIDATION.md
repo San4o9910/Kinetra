@@ -35,7 +35,7 @@ PostgreSQL 17 concurrency/migration tests и Chrome browser acceptance оста�
 | Real Socket.IO authorization/delivery    | PASS        | real ephemeral server + `socket.io-client`             |
 | Real ImageMagick photo security          | PASS        | ImageMagick 6.9.12-98, complete malicious matrix       |
 | PostgreSQL 17 migration/concurrency      | CI REQUIRED | PostgreSQL отсутствует локально                        |
-| Frontend unit/API/Service Worker tests   | PASS        | 130/130, 0 fail                                        |
+| Frontend unit/API/Service Worker tests   | PASS        | 132/132, 0 fail                                        |
 | Chrome client+trainer browser acceptance | CI REQUIRED | Chrome/Chromium отсутствует локально                   |
 | Production build                         | PASS        | backend + Vite production/browser-test, 126 modules    |
 | Changed-file Prettier                    | PASS        | 104/104 файлов, local и CI-base режимы                 |

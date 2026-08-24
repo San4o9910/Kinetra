@@ -4879,6 +4879,13 @@ const createT12BrowserServer = () => {
           message.sender_role === role && message.client_message_id === body.client_message_id,
       );
       if (replay !== undefined) {
+        const replayText =
+          body.text === null || body.text === undefined || body.text.trim().length === 0
+            ? null
+            : body.text.trim();
+        assert.equal(body.kind, replay.kind);
+        assert.equal(replayText, replay.text);
+        assert.equal(body.kind === 'photo' ? body.photo_id : null, replay.photo?.id ?? null);
         json(response, 200, {
           message: projectMessage(replay, role),
           conversation_state: conversationState(role),
@@ -5495,6 +5502,8 @@ const runT12BrowserScenario = async () => {
         (await client.bodyText()).includes('Сообщение клиента через realtime') &&
         (await client.bodyText()).includes('Не отправлено') &&
         (await client.bodyText()).includes('Повторить') &&
+        (await client.bodyText()).includes('Не удалось связаться с сервером.') &&
+        !(await client.bodyText()).includes('Failed to fetch') &&
         (await client.cdp.evaluate(
           `document.querySelector(${JSON.stringify(selector('chat-message-input'))})?.value ?? null`,
         )) === 'Сообщение клиента через realtime' &&
@@ -5502,9 +5511,17 @@ const runT12BrowserScenario = async () => {
       20_000,
     );
     const committedAfterLostResponse = fixture.state.messages[0];
-    assert.equal(await client.messageCount(committedAfterLostResponse.id), 1);
+    const optimisticAfterLostResponseId = `optimistic:${committedAfterLostResponse.client_message_id}`;
+    assert.equal(
+      fixture.state.messageRequestAttempts.get(
+        `client:${committedAfterLostResponse.client_message_id}`,
+      ),
+      1,
+    );
+    assert.equal(await client.messageCount(committedAfterLostResponse.id), 0);
+    assert.equal(await client.messageCount(optimisticAfterLostResponseId), 1);
     assert.equal(fixture.state.messageBroadcastCount.get(committedAfterLostResponse.id), 1);
-    await client.click('chat-send-button');
+    await client.clickButtonWithText('Повторить');
     await waitFor(
       'idempotent retry reconciles the single canonical message',
       async () =>
@@ -5512,8 +5529,13 @@ const runT12BrowserScenario = async () => {
           `client:${committedAfterLostResponse.client_message_id}`,
         ) === 2 &&
         (await client.messageCount(committedAfterLostResponse.id)) === 1 &&
+        (await client.messageCount(optimisticAfterLostResponseId)) === 0 &&
         (await client.bodyText()).includes('Отправлено') &&
-        !(await client.bodyText()).includes('Не отправлено'),
+        !(await client.bodyText()).includes('Не отправлено') &&
+        (await client.draftKeys()).length === 0 &&
+        (await client.cdp.evaluate(
+          `document.querySelector(${JSON.stringify(selector('chat-message-input'))})?.value ?? null`,
+        )) === '',
       20_000,
     );
     assert.equal(fixture.state.messages.length, 1);

@@ -90,6 +90,56 @@ test('an empty normalized Vite API origin keeps the runtime fallback', () => {
   );
 });
 
+test('a truncated successful JSON body maps to a localized network error', async () => {
+  const truncatedBody = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('{"status":"ok"'));
+      controller.error(new TypeError('secret browser transport detail'));
+    },
+  });
+  const client = new ApiClient({
+    baseUrl: 'http://api.test',
+    fetchImpl: async () =>
+      new Response(truncatedBody, {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+  });
+
+  await assert.rejects(
+    client.fetchHealth(new AbortController().signal),
+    (error: unknown) =>
+      error instanceof ApiRequestError &&
+      error.status === 0 &&
+      error.code === 'NETWORK_ERROR' &&
+      error.kind === 'network' &&
+      error.message ===
+        'Не удалось связаться с сервером. Проверьте интернет и попробуйте ещё раз.' &&
+      !error.message.includes('secret'),
+  );
+});
+
+test('malformed successful JSON maps to a localized server response error', async () => {
+  const client = new ApiClient({
+    baseUrl: 'http://api.test',
+    fetchImpl: async () =>
+      new Response('{not-json', {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+  });
+
+  await assert.rejects(
+    client.fetchHealth(new AbortController().signal),
+    (error: unknown) =>
+      error instanceof ApiRequestError &&
+      error.status === 200 &&
+      error.code === 'INVALID_RESPONSE' &&
+      error.kind === 'server' &&
+      error.message === 'Сервер вернул некорректный ответ. Попробуйте ещё раз.',
+  );
+});
+
 test('protected request refreshes once after a 401 and retries with the new access token', async () => {
   const calls: Array<{ readonly path: string; readonly authorization: string | null }> = [];
   let refreshCount = 0;

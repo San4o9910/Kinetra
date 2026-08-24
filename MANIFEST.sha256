@@ -6,7 +6,7 @@ bf0b9f2976cc6caa82bd0268fc6c19b11d72a7bf17624cf1fb866462e3811e31  ./.gitignore
 019a6ff828333978e4ecceae4a881852c6f850fbc6d86755f5e4c9c068727ec8  ./.prettierignore
 8d5d037d37c473731493478d381854fd597aa00d7d2d0eb1cce972975ee26327  ./.prettierrc.json
 54d76700939e48aa78dded751ae9726495702d965d3343b150f69c01f340324b  ./README.md
-d55d9ea2b0003e9e5d9eca1e867d45018609878204b967e4a82625a3f1db4fff  ./VALIDATION.md
+6dac5219901c46371277f01fad16f9a1193f6b856ed2f8ae8cdaa2eb1a4285cf  ./VALIDATION.md
 a1dc8f7c0bfd1dbe0f2692349ec1f5fd66e8bfbebc7faf16ddd8bd4b481ac786  ./apps/backend/migrations/001_auth.sql
 1cd2a247a646081b8eda1fc955c276a664c1820b47ce209aecbf6bfd3151cae6  ./apps/backend/migrations/002_content.sql
 6b6373b47ab05a889ad4c86c1df1e61ccd49c44d2298393e6e1bb55bbc074739  ./apps/backend/migrations/003_survey.sql
@@ -228,7 +228,7 @@ a5d06a6430813200fc666e73d4b58fffc6e6ee62cb567bd7186b9e25a291c5b4  ./apps/fronten
 6dd0d2c7543ac0e87bc6dc9e7ee29fe6c76e1f2a503bb7832e97c8d01e6763c8  ./apps/frontend/src/features/trainer-chat/index.ts
 876ece19605150ecce807fa7473c4403fd68ca56d01ce841f8263cee853f9c13  ./apps/frontend/src/features/trainer-chat/selectedConversation.ts
 5d48d620f85a1e5f1474bee60dde745b675565620553d0a70096388b3e7d1fb7  ./apps/frontend/src/hooks/useOnlineStatus.ts
-2ec90558db8b900968fdb009b38cf1d0cb58b91de5b2b985623709323f32edcd  ./apps/frontend/src/lib/api.ts
+9a16a0122e4ba777a485e4d2c9561aaca0635bd6c22cc94fdecae50443f199f2  ./apps/frontend/src/lib/api.ts
 c66a3e3320adb426e470b8afac330608948291f2231e2c981a9139a5feb61110  ./apps/frontend/src/main.tsx
 9c8d28bf5de111010e1ffa689b6bc2ee7385fb2d7c14ef882064b6204b140ecf  ./apps/frontend/src/pwa/pushNotifications.ts
 f65d6dc912ad0ce9c4cf7c69f71e4dbe2db849878a195f96f1d865d77d0c3577  ./apps/frontend/src/pwa/registerServiceWorker.ts
@@ -236,7 +236,7 @@ f65d6dc912ad0ce9c4cf7c69f71e4dbe2db849878a195f96f1d865d77d0c3577  ./apps/fronten
 9001b3644ed1613ce9f846702c050d07fc1dfb7de39d239f3f4901108dbdf2c1  ./apps/frontend/src/routing.ts
 b70cc260dd678486b87693e33ea2e460776c1f6465ddcbada4623a9617ea7bed  ./apps/frontend/src/styles.css
 8e6a482dec7d62533619e4354794d9248850e9171d650832e7acdf4c313ef0d8  ./apps/frontend/src/vite-env.d.ts
-583da1bb010c86aa50092bf43571641653cb6c38e997731103994a8e00e1bd1b  ./apps/frontend/test/api-session.test.ts
+adcc577c8b4db5565066509729d12ab75f61f929ab389c6debc6785f9c5a7ed2  ./apps/frontend/test/api-session.test.ts
 9d00f031dcc00f458cfc33950cc82cd2c08681ec6bf51ed2efdc2952fdc2253f  ./apps/frontend/test/base-lessons-api.test.ts
 02db13cd759c86de5bdfc31f73d1ad4383641929ca4e09838cb0c956e839ec96  ./apps/frontend/test/base-lessons.test.ts
 cd88d9d42d8fb0321643beae6f6e9c22b519e2ad67e52f87a14569b5e18f738b  ./apps/frontend/test/chat-csp.test.ts
@@ -284,6 +284,6 @@ ca34313e3e69827306dc65884bd88ff99e91e35c6bb29db8d9e4c3e49fb3f9a6  ./package-lock
 bd4cb891bf26046d9e953dd6ac99b6c0bad1f4699a41da9957dec153410e26f9  ./packages/shared/src/index.ts
 c8171db33a1b645b8c36d542cf4bfc5c47073df8842b846f91a6ebf083973c5e  ./packages/shared/tsconfig.json
 f048e3d2c18cdbc376ae2f5c68b990397dc454101664ea667251ce27b0129957  ./scripts/check-changed-format.mjs
-51a3c8b996d188755a5ef16563a69b005aa9d9bd379dbeac35245af2434f2edb  ./scripts/test-frontend-browser.mjs
+71db189c0d5ea2c01c9ab5121d8d6b9979c338c37b5d2973d8c2cbe7fef8ced0  ./scripts/test-frontend-browser.mjs
 31ae01ea7b08f6f22528a7fc44b3ee021c62f73b2e6ac31f0e8d9c8239724472  ./scripts/verify-project.mjs
 2b67887209f3334ebdc96426f5c2cb87480fb85ff2f75c0d42b0a944dae7922a  ./tsconfig.base.json
