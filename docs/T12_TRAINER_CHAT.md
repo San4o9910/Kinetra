@@ -174,9 +174,24 @@ Server events:
 - `chat:session:invalidated` — безопасный сигнал завершить session/reconnect без token details.
 
 Client event `chat:sync` сообщает только последний известный sequence; history не передаётся
-unbounded event. После reconnect клиент получает свежий in-memory token, подключается и повторяет
-`GET messages?after_sequence=...` до `has_more_after=false`, затем merge/dedupe по message ID и
-`client_message_id`. PostgreSQL, а не delivery event, остаётся доказательством отправки.
+unbounded event. Admission по подтверждённым handshake `userId` и IP выполняется синхронно до
+первого `await` и DB query. Одновременно допускается не более одного sync для пары
+socket/conversation, четырёх для socket и восьми для principal на всех его sockets; guards
+освобождаются после success/error. Disconnect немедленно снимает socket ownership и запрещает ACK,
+но уже начатая storage operation остаётся учтённой в principal cap до её terminal settlement, чтобы
+reconnect churn не обходил aggregate limit. После reconnect клиент получает свежий in-memory token,
+подключается и повторяет `GET messages?after_sequence=...` до `has_more_after=false`.
+
+Persisted canonical messages merge/dedupe-ятся только по server `message.id`.
+`client_message_id` применяется исключительно для замены собственного optimistic message при
+совпадении conversation, own role и payload/photo fingerprint; одинаковый client key разных
+senders не объединяет сообщения. PostgreSQL, а не delivery event, остаётся доказательством
+отправки.
+
+Realtime fanout сначала получает короткий согласованный conversation/recipient snapshot, затем
+commit/rollback и release PostgreSQL client. Socket/session validation и emit выполняются только
+после release. Перед delivery repository повторно проверяет актуальное участие и assignment, так
+что reassigned/inactive trainer, revoked session и stale participant snapshot не получают event.
 
 Без Socket.IO Redis adapter backend с realtime запускается только в одной replica. Sticky sessions
 не обеспечивают cross-instance broadcast. Перед масштабированием обязательны Redis pub/sub
@@ -191,6 +206,17 @@ Multipart endpoint принимает ровно один file field `photo` и 
 не более 20 megapixels и 8 192 px по стороне. SVG, GIF, animated PNG/WebP, AVIF, TIFF, PDF,
 HEIC/HEIF, corrupt и ambiguous/polyglot content отклоняются. UI явно сообщает, что HEIC нужно
 заменить на JPEG/PNG/WebP и не обещает конвертацию.
+
+До захвата одного из десяти process-wide multipart slots backend выполняет authenticated upload
+preflight. Чтение body ограничено application-level idle deadline 15 секунд и total deadline
+120 секунд по умолчанию. Timeout активно прекращает чтение, выполняет exactly-once cleanup и
+release slot, возвращает `408 CHAT_PHOTO_UPLOAD_TIMEOUT` с `Connection: close`, когда JSON response
+ещё возможен, и не запускает reserve, ImageMagick или S3. HTTP server request timeout установлен
+немного выше application total. Ingress body/idle timeout обязателен как defense in depth, но не
+заменяет эти application controls.
+Любой другой terminal reject до полного чтения body (включая streamed `413`/`429` или failed
+preflight при уже начатой отправке) также отвечает с `Connection: close`; unread bytes не остаются
+на keep-alive transport, а поздний stream error безопасно поглощается только до фактического close.
 
 В текущем repository dependency snapshot недоступен переносимый native Node image package, поэтому
 production adapter использует реальные OS binaries ImageMagick `identify` и `convert`, запуская их
@@ -335,6 +361,7 @@ Single-process MVP применяет server-side in-memory limits:
 | -------------------- | ------------------------------------ |
 | Socket handshake     | 20/min/IP                            |
 | Active sockets       | 5/client account, 10/trainer account |
+| Conversation create  | 20/min/principal и IP                |
 | Message send         | 30/min/principal и IP                |
 | History/read         | 120/min/principal                    |
 | Photo upload         | 5/min и 20/hour/principal            |
@@ -352,11 +379,14 @@ Redis/edge limiter.
 ```dotenv
 CHAT_ENABLED=false
 CHAT_PHOTO_UPLOADS_ENABLED=false
+CHAT_PHOTO_UPLOAD_IDLE_TIMEOUT_SECONDS=15
+CHAT_PHOTO_UPLOAD_TOTAL_TIMEOUT_SECONDS=120
 CHAT_MEDIA_URL_TTL_SECONDS=300
 ```
 
-`CHAT_MEDIA_URL_TTL_SECONDS` ограничен диапазоном 60–900. Оба feature flags по умолчанию false,
-включая production. Фото требуют полного private S3 configuration:
+Upload timeout ranges проверяются fail-closed: idle `1–30`, total `10–120` секунд и
+`idle < total`. `CHAT_MEDIA_URL_TTL_SECONDS` ограничен диапазоном 60–900. Оба feature flags по
+умолчанию false, включая production. Фото требуют полного private S3 configuration:
 
 ```dotenv
 S3_ENDPOINT=https://private-s3.example
@@ -388,8 +418,11 @@ HTTP разрешён только для явного loopback development/brow
 
 Первичная загрузка получает последние 30 сообщений, older pages используют keyset pagination, а
 reconnect — delta cursor. Optimistic item получает состояния `sending`, `sent`, `read`, `failed`;
-retry использует тот же `client_message_id`. Duplicate/reordered REST и Socket results схлопываются,
-порядок задаёт server sequence.
+retry использует тот же `client_message_id`. Duplicate/reordered persisted REST и Socket results
+схлопываются только по server `message.id`, а client key связывает только собственный optimistic
+item с его canonical response при совпадении payload fingerprint. Поэтому одинаковый client key
+counterpart или прежнего trainer после reassignment сохраняется как отдельное сообщение. Порядок
+задаёт server sequence.
 
 Draft хранится только в user-scoped `sessionStorage` и очищается после success, logout, account
 deletion или account switch. Message history, captions, signed URLs и upload bytes не сохраняются
@@ -404,11 +437,19 @@ browser Back, удерживает focus и возвращает его к ис�
 
 - TLS/WSS, exact CORS/Origin и точный `TRUST_PROXY_HOPS` обязательны в production.
 - Login/refresh/logout mutations сериализуются origin-wide через Web Locks. Browser без
-  `navigator.locks` fail-closed не отправляет cookie mutation; logout в таком окружении остаётся
-  только локальным. Logout никогда не запускает refresh: он использует captured bearer, а backend
+  `navigator.locks` fail-closed не отправляет cookie mutation и показывает незавершённый logout:
+  session остаётся явно signed in, а private chat скрыт до Retry или отмены blocking state.
+  Prepared logout до async работы захватывает subject, bearer, auth epoch и nonce; network/timeout,
+  coordination failure и server error не очищают auth session, draft или retry proof. Retry в том
+  же epoch использует тот же bearer, а только подтверждённая server revocation завершает logout и
+  очищает session. Subject/epoch fence не позволяет позднему ACK аккаунта A затронуть уже
+  смонтированный аккаунт B. Logout никогда не запускает refresh: он использует captured bearer, а backend
   атомарно отзывает cookie только при совпадении signed subject и принадлежности её session ID к
   rotation chain signed `sid`. Другая login family не затрагивается, и ответ никогда не содержит
-  `Set-Cookie`; bearerless legacy logout является server-side no-op. У expired logout-only proof нет
+  `Set-Cookie`; bearerless legacy logout является server-side no-op. Valid proof получает `204`
+  только после подтверждённой revocation (повтор уже отозванной proven family также terminal);
+  несовпавшая cookie/family даёт `409 LOGOUT_NOT_CONFIRMED`, поэтому frontend не показывает ложный
+  success. У expired logout-only proof нет
   age limit, потому что sliding refresh chain может жить дольше исходного cookie, но signature,
   canonical claims, точный access TTL и запрет future-issued proof обязательны. Normal API и
   Socket.IO verification не ослабляются. Последующий refresh намеренно logout-revoked token без

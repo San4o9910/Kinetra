@@ -278,6 +278,10 @@ const requiredFiles = [
   'apps/backend/test/chat.socket.test.ts',
   'apps/backend/test/chat-trainer-cli.test.ts',
   'apps/backend/test/chat-photo-security.test.ts',
+  'apps/backend/test/chat-merge-readiness.test.ts',
+  'apps/backend/test/chat-multipart-timeout.test.ts',
+  'apps/backend/test/chat-realtime-admission.test.ts',
+  'apps/backend/test/chat-realtime-postgres.test.ts',
   'apps/backend/test/chat-cleanup.test.ts',
   'apps/backend/test/chat-client-ip.test.ts',
   'apps/backend/test/support/fake-object-url-signer.ts',
@@ -569,6 +573,7 @@ for (const subjectBoundLogoutContract of [
   'verifier.verifyLogoutSubjectProof(parts[1])',
   'return { userId: claims.sub, sessionId: claims.sid }',
   'options.service.logout(refreshToken, proof)',
+  "'LOGOUT_NOT_CONFIRMED'",
   'Bearerless legacy requests',
 ]) {
   expectIncludes(
@@ -879,7 +884,9 @@ const changedFormatScript = await readText('scripts/check-changed-format.mjs');
 for (const changedFormatContract of [
   'refs/remotes/origin/${githubBaseRef}',
   'addDiff(`${reference}...HEAD`)',
-  'refusing a zero-file check',
+  "const developReference = 'refs/remotes/origin/develop'",
+  'addDiff(`${developReference}...HEAD`)',
+  'newly created GitHub branch requires origin/develop and fetch-depth 0',
   'GitHub Actions formatting requires a resolved pull-request or push base',
   'resolveConfig(absolutePath, { editorconfig: true })',
 ]) {
@@ -2883,9 +2890,12 @@ for (const screenContract of [
   'flushPendingNotifications()',
   "deleteConfirmation !== 'DELETE'",
   'runAccountDeletionLifecycle(deleteConfirmation',
-  '.then(() => logout())',
-  '.catch(() => undefined)',
-  '.finally(onSignedOut)',
+  'prepareLogout()',
+  'onChatSessionSuspend()',
+  '.then(() => preparedAttempt.execute())',
+  'onChatSessionRestart()',
+  'onChatSessionEnd()',
+  'onSignedOut()',
   '<SettingsView',
   '<SettingsDialogs',
 ]) {
@@ -3977,9 +3987,10 @@ for (const settingsPushContract of [
   'const disablePushOnDevice = (): void =>',
   'void unsubscribeFromPush()',
   'preparePushSubscriptionDeletion()',
-  'bestEffortUnsubscribeFromPush({ ...control, deleteSubscription })',
+  'bestEffortUnsubscribeFromPush({',
+  'deleteSubscription: preparedDeleteSubscription',
   'PUSH_BEST_EFFORT_TIMEOUT_MS',
-  '.then(() => logout())',
+  '.then(() => preparedAttempt.execute())',
   'runAccountDeletionLifecycle(deleteConfirmation',
   'prepareAccountDeletion,',
   'captureBrowserSubscription: getExistingPushSubscription',
@@ -4282,13 +4293,13 @@ for (const [validationCheck, allowedStatuses] of [
   ['Backend unit/API tests', ['NOT RUN', 'PASS']],
   ['Real Socket.IO authorization/delivery', ['NOT RUN', 'PASS']],
   ['Real ImageMagick photo security', ['NOT RUN', 'PASS']],
-  ['PostgreSQL 17 migration/concurrency', ['CI REQUIRED', 'PASS']],
+  ['PostgreSQL 17 migration/concurrency', ['CI REQUIRED']],
   ['Frontend unit/API/Service Worker tests', ['NOT RUN', 'PASS']],
-  ['Chrome client+trainer browser acceptance', ['CI REQUIRED', 'PASS']],
+  ['Chrome client+trainer browser acceptance', ['CI REQUIRED']],
   ['Production build', ['NOT RUN', 'PASS']],
   ['Changed-file Prettier', ['NOT RUN', 'PASS']],
   ['Tracked source manifest', ['NOT RUN', 'PASS']],
-  ['Composite quality gate', ['CI REQUIRED', 'PASS']],
+  ['Composite quality gate', ['CI REQUIRED']],
 ]) {
   const escapedValidationCheck = validationCheck.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
   const allowedStatusPattern = allowedStatuses.join('|');
@@ -4297,6 +4308,34 @@ for (const [validationCheck, allowedStatuses] of [
     new RegExp(`\\| ${escapedValidationCheck}\\s+\\| (?:${allowedStatusPattern})\\s+\\|`, 'u'),
     `T12 validation records an honest status: ${validationCheck}`,
   );
+}
+for (const correctionValidationContract of [
+  'Correction branch:** `fix/t12-merge-readiness`',
+  'Correction PR base:** `feature/t12-trainer-chat`',
+  'Closure matrix F1–F7',
+  'F1 / K13-RT-002',
+  'F2 / K13-RT-001',
+  'F3 / K13-BECORE-001',
+  'F4 / K13-BECORE-002',
+  'F5 / K13-FECHAT-001',
+  'F6 / W3-CHAT-001',
+  'F7 / KPR13-MEDIA-001',
+  'dynamic SHA/run/attempt evidence',
+  'GitHub Check Run/job summary',
+  'mutable Draft correction PR',
+  'Merge-ref run нельзя называть exact-head run',
+  'KINETRA_T12_MULTIPART_TIMEOUT=PASS',
+]) {
+  expectIncludes(
+    validationReport,
+    correctionValidationContract,
+    `T12 correction validation policy: ${correctionValidationContract}`,
+  );
+}
+if (/https?:\/\/[^\s)]*actions\/runs/iu.test(validationReport)) {
+  fail('T12 tracked validation does not embed a self-referential final Actions run URL');
+} else {
+  pass('T12 tracked validation does not embed a self-referential final Actions run URL');
 }
 
 // T12 — durable client/trainer chat, authenticated realtime and private photo lifecycle.
@@ -4607,6 +4646,8 @@ for (const environmentContract of [
   'VITE_PRIVATE_MEDIA_ORIGIN=',
   'CHAT_ENABLED=false',
   'CHAT_PHOTO_UPLOADS_ENABLED=false',
+  'CHAT_PHOTO_UPLOAD_IDLE_TIMEOUT_SECONDS=15',
+  'CHAT_PHOTO_UPLOAD_TOTAL_TIMEOUT_SECONDS=120',
   'CHAT_MEDIA_URL_TTL_SECONDS=300',
 ]) {
   expectMatches(
@@ -4618,6 +4659,9 @@ for (const environmentContract of [
 for (const environmentContract of [
   "parseBoolean('CHAT_ENABLED'",
   "'CHAT_PHOTO_UPLOADS_ENABLED'",
+  "'CHAT_PHOTO_UPLOAD_IDLE_TIMEOUT_SECONDS'",
+  "'CHAT_PHOTO_UPLOAD_TOTAL_TIMEOUT_SECONDS'",
+  'idleSeconds >= totalSeconds',
   'if (chatPhotoUploadsEnabled && !chatEnabled)',
   'if (chatPhotoUploadsEnabled && s3 === null)',
   "'CHAT_MEDIA_URL_TTL_SECONDS'",
@@ -4979,7 +5023,7 @@ for (const authSubjectContract of [
   'this.terminalSubjectMismatchError()',
   "error.code === 'AUTH_SESSION_CHANGED' &&",
   "error.kind === 'auth'",
-  "error.code === 'AUTH_COORDINATION_UNAVAILABLE'",
+  "'AUTH_COORDINATION_UNAVAILABLE'",
   'navigator.locks.request(',
 ]) {
   expectIncludes(
@@ -4993,16 +5037,16 @@ expectIncludes(
   'Authorization: `Bearer ${accessToken}`',
   'T12 frontend binds logout revocation to the captured in-memory subject',
 );
-const frontendLogoutMethod = frontendApi.slice(
-  frontendApi.indexOf('public async logout(): Promise<void>'),
+const frontendLogoutPreparation = frontendApi.slice(
+  frontendApi.indexOf('public prepareLogout(): PreparedLogoutAttempt'),
   frontendApi.indexOf('public async fetchMe('),
 );
 expectIncludes(
-  frontendLogoutMethod,
+  frontendLogoutPreparation,
   'const accessToken = this.logoutAccessToken',
   'T12 logout captures the current bearer before local invalidation',
 );
-if (frontendLogoutMethod.includes('requestRefreshSession')) {
+if (frontendLogoutPreparation.includes('requestRefreshSession')) {
   fail('T12 logout never rotates the origin-wide refresh cookie');
 } else {
   pass('T12 logout never rotates the origin-wide refresh cookie');
@@ -5130,6 +5174,8 @@ for (const documentationContract of [
   'npm run chat:trainer:revoke -w @kinetra/backend',
   'CHAT_ENABLED=false',
   'CHAT_PHOTO_UPLOADS_ENABLED=false',
+  'CHAT_PHOTO_UPLOAD_IDLE_TIMEOUT_SECONDS=15',
+  'CHAT_PHOTO_UPLOAD_TOTAL_TIMEOUT_SECONDS=120',
   'CHAT_MEDIA_URL_TTL_SECONDS=300',
   'VITE_PRIVATE_MEDIA_ORIGIN',
   "img-src 'self' blob:",
@@ -5174,6 +5220,18 @@ const chatPostgresTests = await readOptionalText('apps/backend/test/chat.postgre
 const chatSocketTests = await readOptionalText('apps/backend/test/chat.socket.test.ts');
 const chatTrainerCliTests = await readOptionalText('apps/backend/test/chat-trainer-cli.test.ts');
 const chatPhotoTests = await readOptionalText('apps/backend/test/chat-photo-security.test.ts');
+const chatMultipartTimeoutTests = await readOptionalText(
+  'apps/backend/test/chat-multipart-timeout.test.ts',
+);
+const chatRealtimeAdmissionTests = await readOptionalText(
+  'apps/backend/test/chat-realtime-admission.test.ts',
+);
+const chatRealtimePostgresTests = await readOptionalText(
+  'apps/backend/test/chat-realtime-postgres.test.ts',
+);
+const chatMergeReadinessTests = await readOptionalText(
+  'apps/backend/test/chat-merge-readiness.test.ts',
+);
 const chatClientIpTests = await readOptionalText('apps/backend/test/chat-client-ip.test.ts');
 const chatCspTests = await readOptionalText('apps/frontend/test/chat-csp.test.ts');
 const chatLifecycleTests = await readOptionalText('apps/frontend/test/chat-lifecycle.test.ts');
@@ -5187,7 +5245,246 @@ const trainerSelectedConversationTests = await readOptionalText(
   'apps/frontend/test/trainer-selected-conversation.test.ts',
 );
 const chatUiTests = await readOptionalText('apps/frontend/test/chat-ui.test.ts');
+const chatModelSource = await readOptionalText('apps/frontend/src/features/chat/model.ts');
+const chatConversationViewSource = await readOptionalText(
+  'apps/frontend/src/features/chat/ConversationView.tsx',
+);
+const chatComposerAcknowledgementSource = await readOptionalText(
+  'apps/frontend/src/features/chat/composerAcknowledgement.ts',
+);
 const allT12TestSources = `${backendTestSources}\n${frontendTestSources}\n${browserTest}`;
+
+for (const releaseFirstContract of [
+  'public async getRealtimeConversation(',
+  'findRealtimeRecipientConversation(',
+]) {
+  expectIncludes(
+    `${chatService}\n${chatPostgresRepository}\n${chatRealtime}`,
+    releaseFirstContract,
+    `T12 F1 release-first realtime contract: ${releaseFirstContract}`,
+  );
+}
+if (
+  `${chatService}\n${chatPostgresRepository}\n${chatRealtime}`.includes('withCurrentConversation')
+) {
+  fail('T12 F1 removes the reentrant withCurrentConversation callback path');
+} else {
+  pass('T12 F1 removes the reentrant withCurrentConversation callback path');
+}
+for (const releaseFirstAcceptance of [
+  'realtime fan-out releases its conversation snapshot before recipient validation',
+  'reassignment and session revocation during fan-out suppress stale recipients',
+  'one recipient validation failure cannot block delivery to another active socket',
+  'PostgreSQL realtime fan-out releases pool slots before validation at max=1 and max=10',
+  "pool.query<{ readonly available: number }>('SELECT 1 AS available')",
+]) {
+  expectIncludes(
+    `${chatRealtimeAdmissionTests}\n${chatRealtimePostgresTests}`,
+    releaseFirstAcceptance,
+    `T12 F1 executable release-first acceptance: ${releaseFirstAcceptance}`,
+  );
+}
+
+for (const syncAdmissionContract of [
+  'public admitSocketSync(context: ChatRequestContext): ChatSocketSyncAdmission',
+  'MAX_ACTIVE_SYNCS_PER_SOCKET = 4',
+  'MAX_ACTIVE_SYNCS_PER_PRINCIPAL = 8',
+  'socketAttempts.has(conversationId)',
+  'releaseSocketSyncAttempts(socket)',
+]) {
+  expectIncludes(
+    `${chatService}\n${chatRealtime}`,
+    syncAdmissionContract,
+    `T12 F2 bounded synchronous sync admission: ${syncAdmissionContract}`,
+  );
+}
+const socketSyncHandler = chatRealtime.slice(
+  chatRealtime.indexOf("socket.on(\n      'chat:sync'"),
+  chatRealtime.indexOf("socket.once('disconnect'"),
+);
+const syncAdmissionPosition = socketSyncHandler.indexOf('admitSocketSync({');
+const syncAuthorizationPosition = socketSyncHandler.indexOf('.authorizeSocketSync(');
+if (
+  syncAdmissionPosition >= 0 &&
+  syncAuthorizationPosition >= 0 &&
+  syncAdmissionPosition < syncAuthorizationPosition
+) {
+  pass('T12 F2 consumes sync admission before async repository authorization');
+} else {
+  fail('T12 F2 consumes sync admission before async repository authorization');
+}
+for (const syncAdmissionAcceptance of [
+  'chat:sync enforces one conversation attempt and the four-attempt socket cap',
+  'chat:sync keeps disconnected storage work inside the eight-attempt principal cap',
+  'chat:sync invalidates sockets on 401 and 403 authorization failures',
+  'chat:sync principal and IP admission rejects before repository work without disconnecting peers',
+  'chat:sync shares the real principal history burst limit across sockets before repository work',
+]) {
+  expectIncludes(
+    chatRealtimeAdmissionTests,
+    syncAdmissionAcceptance,
+    `T12 F2 executable sync admission acceptance: ${syncAdmissionAcceptance}`,
+  );
+}
+
+for (const conversationCreationContract of [
+  "scope: 'conversation_create'",
+  'this.consumeConversationCreationLimits(context);',
+  'const fastPathConversation = await this.findConversationForClient(clientUserId);',
+  'const existing = await this.loadConversationByClient(client, clientUserId);',
+]) {
+  expectIncludes(
+    `${chatService}\n${chatPostgresRepository}`,
+    conversationCreationContract,
+    `T12 F3 bounded conversation creation: ${conversationCreationContract}`,
+  );
+}
+for (const conversationCreationAcceptance of [
+  'conversation creation consumes principal and IP admission before any repository work',
+  'two genuinely overlapping admitted creates serialize and publish one canonical event',
+  'existing conversation replay must bypass the global trainer-administration lock',
+]) {
+  expectIncludes(
+    `${chatMergeReadinessTests}\n${chatPostgresTests}`,
+    conversationCreationAcceptance,
+    `T12 F3 executable conversation creation acceptance: ${conversationCreationAcceptance}`,
+  );
+}
+
+for (const safeSearchContract of [
+  'CLIENT_DISPLAY_NAME_SQL',
+  'CLIENT_SECONDARY_LABEL_SQL',
+  "ILIKE ${parameter} ESCAPE '\\\\'",
+]) {
+  expectIncludes(
+    chatPostgresRepository,
+    safeSearchContract,
+    `T12 F4 visible-only trainer search projection: ${safeSearchContract}`,
+  );
+}
+for (const safeSearchAcceptance of [
+  'hiddenUsername',
+  'hiddenPhoneFragment',
+  'safeProjectionJson.includes(hiddenUsername)',
+  "await listFor(trainerId, '%')",
+]) {
+  expectIncludes(
+    chatPostgresTests,
+    safeSearchAcceptance,
+    `T12 F4 executable hidden-contact search acceptance: ${safeSearchAcceptance}`,
+  );
+}
+
+for (const durableLogoutContract of [
+  'public prepareLogout(): PreparedLogoutAttempt',
+  'const subjectId = this.authSubjectId',
+  'const accessToken = this.logoutAccessToken',
+  'const authEpoch = this.authEpoch',
+  'const attemptNonce = `${authEpoch}:${this.logoutAttemptSequence}`',
+  'response.status !== 204',
+  "redirect: 'error'",
+  'isCompletionCurrent:',
+]) {
+  expectIncludes(
+    frontendApi,
+    durableLogoutContract,
+    `T12 F5 prepared logout contract: ${durableLogoutContract}`,
+  );
+}
+for (const durableLogoutAcceptance of [
+  'prepared logout keeps auth proof across network and 500 failures, then retries with bearer A',
+  'prepared logout reports unavailable Web Locks without clearing the signed-in session',
+  'prepared logout accepts only the exact 204 terminal response',
+  'late account-A logout ACK cannot clear a newly logged-in account B',
+  'a failed prepared logout can be restored on reload without false signed-out state',
+]) {
+  expectIncludes(
+    apiSessionFrontendTests,
+    durableLogoutAcceptance,
+    `T12 F5 executable prepared logout acceptance: ${durableLogoutAcceptance}`,
+  );
+}
+for (const durableLogoutBrowserAcceptance of [
+  'trainer logout failure remains explicitly signed in and retryable',
+  'trainer retry confirms logout before route and draft teardown',
+  'logoutAuthorizations.trainer',
+]) {
+  expectIncludes(
+    browserTest,
+    durableLogoutBrowserAcceptance,
+    `T12 F5 browser logout acceptance: ${durableLogoutBrowserAcceptance}`,
+  );
+}
+
+for (const senderAwareContract of [
+  'const byId = new Map<string, ChatTimelineMessage>();',
+  'canonical.is_mine',
+  'message.id === event.message.id',
+  'message.is_mine &&',
+  'nextRealtimeUnreadCount(',
+]) {
+  expectIncludes(
+    `${chatModelSource}\n${chatConversationViewSource}\n${chatComposerAcknowledgementSource}`,
+    senderAwareContract,
+    `T12 F6 sender-aware reconciliation: ${senderAwareContract}`,
+  );
+}
+for (const senderAwareAcceptance of [
+  'T12 counterpart client_message_id collision does not replace an own optimistic message',
+  'T12 only a same-context own canonical payload reconciles an optimistic message',
+  'T12 canonical identity remains message.id across senders, reassignment and reload',
+  'T12 cross-sender collision reconciles both arrival orders without corrupting unread or photos',
+  'cross-sender collision remains intact after canonical history reload',
+]) {
+  expectIncludes(
+    `${frontendTestSources}\n${browserTest}`,
+    senderAwareAcceptance,
+    `T12 F6 executable sender collision acceptance: ${senderAwareAcceptance}`,
+  );
+}
+
+for (const multipartDeadlineContract of [
+  'CHAT_PHOTO_UPLOAD_IDLE_TIMEOUT_MS = 15_000',
+  'CHAT_PHOTO_UPLOAD_TOTAL_TIMEOUT_MS = 120_000',
+  "'CHAT_PHOTO_UPLOAD_TIMEOUT'",
+  "request.removeListener('data', onData)",
+  "request.on('error', ignoreLateStreamError)",
+  'releaseMultipartSlot = acquireMultipartSlot();',
+  'httpServer.requestTimeout = env.chat.photoUploadTotalTimeoutMs + 5_000',
+]) {
+  expectIncludes(
+    `${chatMedia}\n${chatRouter}\n${backendServer}`,
+    multipartDeadlineContract,
+    `T12 F7 multipart deadline contract: ${multipartDeadlineContract}`,
+  );
+}
+const photoPreflightPosition = chatRouter.indexOf(
+  'const admission = await service.preflightPhotoUpload(context)',
+);
+const multipartSlotPosition = chatRouter.indexOf('releaseMultipartSlot = acquireMultipartSlot()');
+if (
+  photoPreflightPosition >= 0 &&
+  multipartSlotPosition >= 0 &&
+  photoPreflightPosition < multipartSlotPosition
+) {
+  pass('T12 F7 acquires the multipart slot only after authenticated preflight');
+} else {
+  fail('T12 F7 acquires the multipart slot only after authenticated preflight');
+}
+for (const multipartDeadlineAcceptance of [
+  'multipart reader enforces idle deadlines before the first byte and between chunks',
+  'multipart reader enforces total deadline against drip feeds and accepts bounded slow bodies',
+  'multipart reader settles once across client abort and an end/deadline boundary',
+  'real HTTP multipart slots time out, close connections and recover capacity',
+  'post-body service errors release the multipart slot',
+  'waitForClientRequestClose',
+]) {
+  expectIncludes(
+    chatMultipartTimeoutTests,
+    multipartDeadlineAcceptance,
+    `T12 F7 executable multipart deadline acceptance: ${multipartDeadlineAcceptance}`,
+  );
+}
 for (const exactTrainerConversationAcceptanceContract of [
   'active client chat is available without any Premium subscription',
   'trainer exact conversation summary is authorized without paginating the inbox',
@@ -5346,6 +5643,7 @@ for (const [source, marker] of [
   [chatSocketTests, 'KINETRA_T12_SOCKET_AUTHORIZATION=PASS'],
   [backendTestSources, 'KINETRA_T12_MESSAGE_DELIVERY=PASS'],
   [chatPostgresTests, 'KINETRA_T12_POSTGRES_INTEGRATION=PASS'],
+  [chatMultipartTimeoutTests, 'KINETRA_T12_MULTIPART_TIMEOUT=PASS'],
   [chatPhotoTests, 'KINETRA_T12_PHOTO_SECURITY=PASS'],
   [frontendTestSources, 'KINETRA_T12_CLIENT_UI=PASS'],
   [frontendTestSources, 'KINETRA_T12_TRAINER_ADMIN=PASS'],
@@ -5439,6 +5737,21 @@ if (
 } else {
   fail('T12 photo marker is emitted once and only after the complete executable matrix');
 }
+const multipartMarker = 'KINETRA_T12_MULTIPART_TIMEOUT=PASS';
+const multipartMarkerPosition = chatMultipartTimeoutTests.indexOf(multipartMarker);
+const multipartMarkerOccurrences = chatMultipartTimeoutTests.split(multipartMarker).length - 1;
+const finalMultipartAssertionPosition = chatMultipartTimeoutTests.lastIndexOf(
+  'failed preflight must not acquire a multipart slot',
+);
+if (
+  multipartMarkerOccurrences === 1 &&
+  finalMultipartAssertionPosition >= 0 &&
+  multipartMarkerPosition > finalMultipartAssertionPosition
+) {
+  pass('T12 multipart marker is emitted once and only after the real-HTTP timeout matrix');
+} else {
+  fail('T12 multipart marker is emitted once and only after the real-HTTP timeout matrix');
+}
 expectIncludes(
   chatPostgresTests,
   'KINETRA_REQUIRE_POSTGRES_TEST',
@@ -5478,6 +5791,8 @@ if (allT12TestSources.includes('KINETRA_T12_TEST_SUITE=PASS')) {
 for (const ciEnvironmentContract of [
   "CHAT_ENABLED: 'true'",
   "CHAT_PHOTO_UPLOADS_ENABLED: 'false'",
+  "CHAT_PHOTO_UPLOAD_IDLE_TIMEOUT_SECONDS: '15'",
+  "CHAT_PHOTO_UPLOAD_TOTAL_TIMEOUT_SECONDS: '120'",
   "CHAT_MEDIA_URL_TTL_SECONDS: '300'",
 ]) {
   expectIncludes(
@@ -5486,11 +5801,43 @@ for (const ciEnvironmentContract of [
     `CI provides deterministic T12 environment: ${ciEnvironmentContract}`,
   );
 }
+for (const correctionCiContract of [
+  'branches: [main, develop, fix/t12-merge-readiness]',
+  'branches: [main, develop, feature/t12-trainer-chat]',
+  'EXPECTED_BASE_SHA: ${{ github.event.pull_request.base.sha }}',
+  'EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}',
+  'test "$(git rev-parse HEAD^1)" = "$EXPECTED_BASE_SHA"',
+  'test "$(git rev-parse HEAD^2)" = "$EXPECTED_HEAD_SHA"',
+  'test "$checkout_sha" = "$GITHUB_SHA"',
+  'Checkout semantics: $semantics',
+  'tee -a "$GITHUB_STEP_SUMMARY"',
+]) {
+  expectIncludes(
+    ciWorkflow,
+    correctionCiContract,
+    `T12 correction CI checkout identity: ${correctionCiContract}`,
+  );
+}
+for (const repeatedCheckoutContract of [
+  '- name: Verify checkout identity',
+  'EXPECTED_BASE_SHA: ${{ github.event.pull_request.base.sha }}',
+  'EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}',
+  'tee -a "$GITHUB_STEP_SUMMARY"',
+]) {
+  const occurrences = ciWorkflow.split(repeatedCheckoutContract).length - 1;
+
+  if (occurrences === 3) {
+    pass(`CI verifies checkout identity in all three jobs: ${repeatedCheckoutContract}`);
+  } else {
+    fail(`CI verifies checkout identity in all three jobs: ${repeatedCheckoutContract}`);
+  }
+}
 const t12RequiredMarkers = [
   'KINETRA_T12_BACKEND_E2E=PASS',
   'KINETRA_T12_SOCKET_AUTHORIZATION=PASS',
   'KINETRA_T12_MESSAGE_DELIVERY=PASS',
   'KINETRA_T12_POSTGRES_INTEGRATION=PASS',
+  'KINETRA_T12_MULTIPART_TIMEOUT=PASS',
   'KINETRA_T12_PHOTO_SECURITY=PASS',
   'KINETRA_T12_CLIENT_UI=PASS',
   'KINETRA_T12_TRAINER_ADMIN=PASS',
@@ -5520,9 +5867,9 @@ if (
   ) &&
   t12SuitePosition > Math.max(...t12MarkerPositions)
 ) {
-  pass('CI greps all nine T12 markers in order before the single suite marker');
+  pass('CI greps all ten T12 markers in order before the single suite marker');
 } else {
-  fail('CI greps all nine T12 markers in order before the single suite marker');
+  fail('CI greps all ten T12 markers in order before the single suite marker');
 }
 for (const priorSuiteMarker of [
   'KINETRA_T04_TEST_SUITE=PASS',

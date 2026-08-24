@@ -137,14 +137,15 @@ rotation family проверяется в PostgreSQL. Подпись, HS256, `ty
 `sub`/`sid`/`jti`, safe `iat`/`exp`, точный access TTL и запрет future-issued proof остаются
 обязательными. Обычная API/Socket.IO-проверка истёкшие access tokens по-прежнему отклоняет.
 
-Logout всегда отвечает `204` без `Set-Cookie`. Legacy-вызов без `Authorization` является
-server-side no-op: иначе поздний запрос старой вкладки мог бы отозвать refresh cookie нового
-аккаунта. Современный frontend всегда отправляет family-bound bearer и локально завершает logout
-даже при недоступном backend.
+Подтверждённый family-bound logout отвечает ровно `204` без `Set-Cookie`. Повтор с той же proven
+cookie/family также идемпотентно получает `204`, если family уже отозвана. Valid bearer с
+отсутствующей или несовпавшей cookie/family получает `409 LOGOUT_NOT_CONFIRMED`: frontend сохраняет
+signed-in state и предлагает retry, а не показывает ложный успех. Redirect, `200` или `202` не
+являются terminal acknowledgement.
 
-Logout идемпотентен: отсутствие cookie не раскрывает информацию и тоже возвращает `204`. Уже
-выпущенный access JWT не хранится на сервере и истекает сам по короткому TTL; refresh этой сессии
-после logout невозможен.
+Legacy-вызов без `Authorization` остаётся `204` server-side no-op: иначе поздний запрос старой
+вкладки мог бы отозвать refresh cookie нового аккаунта. Уже выпущенный access JWT не хранится на
+сервере и истекает сам по короткому TTL; refresh подтверждённо отозванной сессии невозможен.
 
 ## POST /password-reset/request
 

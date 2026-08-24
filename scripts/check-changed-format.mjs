@@ -57,8 +57,18 @@ const addCommittedRange = async () => {
   if (githubEventPath !== undefined && githubEventPath.length > 0) {
     const event = JSON.parse(await readFile(githubEventPath, 'utf8'));
     const before = typeof event.before === 'string' ? event.before : '';
-    if (!/^[0-9a-f]{40}$/u.test(before) || /^0+$/u.test(before)) {
-      throw new Error('GitHub push event has no usable before commit; refusing a zero-file check.');
+    if (!/^[0-9a-f]{40}$/u.test(before)) {
+      throw new Error('GitHub push event has no valid before commit.');
+    }
+    if (/^0+$/u.test(before)) {
+      const developReference = 'refs/remotes/origin/develop';
+      if (!gitRefExists(developReference)) {
+        throw new Error(
+          'A newly created GitHub branch requires origin/develop and fetch-depth 0 for formatting.',
+        );
+      }
+      addDiff(`${developReference}...HEAD`);
+      return;
     }
     if (!gitRefExists(`${before}^{commit}`)) {
       throw new Error(
