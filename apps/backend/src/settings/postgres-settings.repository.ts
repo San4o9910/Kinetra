@@ -246,6 +246,51 @@ export class PostgresSettingsRepository implements SettingsRepository {
          ON CONFLICT (object_key) DO NOTHING`,
         [userId],
       );
+      const cancelledVideoUploads = await client.query<{
+        readonly id: string;
+        readonly object_key: string;
+        readonly s3_version_id: string | null;
+        readonly s3_multipart_upload_id: string | null;
+      }>(
+        `UPDATE trainer_video_uploads
+         SET status = 'cancelled',
+             cancelled_at = NOW(),
+             completed_at = COALESCE(completed_at, NOW()),
+             lease_token = NULL,
+             lease_expires_at = NULL
+         WHERE uploader_user_id = $1
+           AND status IN (
+             'creating','uploading','completing','verification_pending','verifying',
+             'verification_quarantined'
+           )
+         RETURNING id, object_key, s3_version_id, s3_multipart_upload_id`,
+        [userId],
+      );
+      for (const upload of cancelledVideoUploads.rows) {
+        await client.query(
+          `INSERT INTO video_media_deletion_jobs (
+             object_key, s3_version_id, reason, upload_id, abort_multipart_upload_id,
+             requested_at, not_before, next_attempt_at
+           ) VALUES ($1,$2,'cancelled_upload',$3,$4,NOW(),NOW() + INTERVAL '16 minutes',NOW() + INTERVAL '16 minutes')
+           ON CONFLICT (object_key, (COALESCE(s3_version_id, ''))) DO UPDATE SET
+             abort_multipart_upload_id=COALESCE(
+               video_media_deletion_jobs.abort_multipart_upload_id,
+               EXCLUDED.abort_multipart_upload_id
+             ),
+             not_before=GREATEST(video_media_deletion_jobs.not_before, EXCLUDED.not_before),
+             next_attempt_at=GREATEST(
+               video_media_deletion_jobs.next_attempt_at,
+               EXCLUDED.next_attempt_at
+             )`,
+          [upload.object_key, upload.s3_version_id, upload.id, upload.s3_multipart_upload_id],
+        );
+      }
+      await client.query(
+        `UPDATE trainer_video_uploads
+         SET uploader_display_name_snapshot = NULL
+         WHERE uploader_user_id = $1`,
+        [userId],
+      );
       const deleted = await client.query('DELETE FROM users WHERE id = $1 RETURNING id', [userId]);
       await client.query('COMMIT');
       return deleted.rowCount === 1 ? 'deleted' : 'not_found';

@@ -28,6 +28,8 @@ import { settleBestEffortWithin } from './features/settings/accountLifecycle';
 import { SurveyWizard } from './features/survey/SurveyWizard';
 import { ChatFloatingButton, ClientChatScreen, useChatRuntime } from './features/chat';
 import { TrainerChatsScreen } from './features/trainer-chat';
+import { TrainerAdminShell } from './features/trainer-shell/TrainerAdminShell';
+import { TrainerVideosScreen } from './features/trainer-videos/TrainerVideosScreen';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import {
   ApiRequestError,
@@ -576,6 +578,13 @@ export const App = (): ReactNode => {
     }
 
     if (session.profile.account_role === 'trainer') {
+      if (
+        route === appRoutes.trainerVideos &&
+        session.profile.trainer_profile?.can_manage_videos !== true
+      ) {
+        navigate(appRoutes.trainerChats, true);
+        return;
+      }
       if (!isTrainerRoute(route)) {
         navigate(appRoutes.trainerChats, true);
       }
@@ -679,31 +688,48 @@ export const App = (): ReactNode => {
       );
     }
 
+    const withTrainerShell = (content: ReactNode): ReactNode => (
+      <TrainerAdminShell
+        route={route}
+        canManageVideos={profile.trainer_profile?.can_manage_videos === true}
+        onNavigate={navigate}
+        onSignOut={handleTrainerSignOut}
+      >
+        {content}
+      </TrainerAdminShell>
+    );
+
+    if (route === appRoutes.trainerVideos) {
+      return withTrainerShell(
+        <TrainerVideosScreen online={online} onSessionExpired={handleActiveSessionExpired} />,
+      );
+    }
+
     if (chatRuntime.state.kind === 'idle' || chatRuntime.state.kind === 'loading') {
-      return (
+      return withTrainerShell(
         <ChatRouteState
           kind="loading"
           message="Загружаем назначенные диалоги…"
           backLabel="Выйти"
           onBack={handleTrainerSignOut}
-        />
+        />,
       );
     }
 
     if (chatRuntime.state.kind === 'unavailable') {
-      return (
+      return withTrainerShell(
         <ChatRouteState
           kind="unavailable"
           message={chatUnavailableMessage(chatRuntime.state.reason)}
           backLabel="Выйти"
           onBack={handleTrainerSignOut}
           onRetry={chatRuntime.refresh}
-        />
+        />,
       );
     }
 
     if (chatRuntime.state.kind === 'error' || chatRuntime.state.session.role !== 'trainer') {
-      return (
+      return withTrainerShell(
         <ChatRouteState
           kind="error"
           message={
@@ -714,11 +740,11 @@ export const App = (): ReactNode => {
           backLabel="Выйти"
           onBack={handleTrainerSignOut}
           onRetry={chatRuntime.refresh}
-        />
+        />,
       );
     }
 
-    return (
+    return withTrainerShell(
       <TrainerChatsScreen
         accountId={profile.user.id}
         routeConversationId={trainerConversationIdFromRoute(route)}
@@ -733,8 +759,7 @@ export const App = (): ReactNode => {
         onBackToInbox={() => navigate(appRoutes.trainerChats)}
         onSessionExpired={handleActiveSessionExpired}
         registerObjectUrl={chatRuntime.registerObjectUrl}
-        onSignOut={handleTrainerSignOut}
-      />
+      />,
     );
   }
 

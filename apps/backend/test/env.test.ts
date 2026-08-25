@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { parseChatPhotoUploadTimeouts, parseCorsOrigins } from '../src/config/env.js';
+import {
+  parseChatPhotoUploadTimeouts,
+  parseCorsOrigins,
+  parseS3Environment,
+  parseVideoUploadsEnvironment,
+} from '../src/config/env.js';
 
 test('CORS allowlist normalizes and deduplicates exact HTTP(S) origins', () => {
   assert.deepEqual(
@@ -67,4 +72,81 @@ test('chat photo body deadlines have safe defaults and fail closed', () => {
       /CHAT_PHOTO_UPLOAD_(?:IDLE|TOTAL)_TIMEOUT_SECONDS/u,
     );
   }
+});
+
+test('video upload settings default off with bounded production-safe values', () => {
+  assert.deepEqual(parseVideoUploadsEnvironment({}), {
+    enabled: false,
+    maxBytes: 2_147_483_648,
+    partSizeBytes: 16_777_216,
+    partUrlTtlSeconds: 900,
+    sessionTtlSeconds: 21_600,
+    maxActivePerTrainer: 3,
+    ffprobePath: 'ffprobe',
+    verifyLeaseSeconds: 300,
+    verifyDeadlineSeconds: 900,
+    verifyMaxAttempts: 8,
+    workerMaxStaleSeconds: 300,
+    deleteGraceSeconds: 86_400,
+    serverSideEncryption: 'AES256',
+    kmsKeyId: null,
+  });
+});
+
+test('video upload settings reject invalid limits, booleans and KMS combinations', () => {
+  for (const values of [
+    { TRAINER_VIDEO_UPLOADS_ENABLED: 'yes' },
+    { VIDEO_UPLOAD_MAX_BYTES: '0' },
+    { VIDEO_UPLOAD_PART_SIZE_BYTES: '5242879' },
+    { VIDEO_UPLOAD_PART_URL_TTL_SECONDS: '901' },
+    { VIDEO_UPLOAD_SESSION_TTL_SECONDS: '899' },
+    { VIDEO_UPLOAD_MAX_ACTIVE_PER_TRAINER: '11' },
+    { VIDEO_WORKER_MAX_STALE_SECONDS: '29' },
+    { VIDEO_MEDIA_DELETE_GRACE_SECONDS: '86399' },
+    { VIDEO_S3_SERVER_SIDE_ENCRYPTION: 'aws:kms' },
+    { VIDEO_S3_SERVER_SIDE_ENCRYPTION: 'AES256', VIDEO_S3_KMS_KEY_ID: 'alias/kinetra' },
+    { VIDEO_VERIFY_FFPROBE_PATH: `ffprobe\0unsafe` },
+  ] as const) {
+    assert.throws(() => parseVideoUploadsEnvironment(values), /VIDEO_|TRAINER_VIDEO/u);
+  }
+
+  assert.deepEqual(
+    parseVideoUploadsEnvironment({
+      TRAINER_VIDEO_UPLOADS_ENABLED: 'true',
+      VIDEO_S3_SERVER_SIDE_ENCRYPTION: 'aws:kms',
+      VIDEO_S3_KMS_KEY_ID: 'alias/kinetra-video',
+    }).kmsKeyId,
+    'alias/kinetra-video',
+  );
+});
+
+test('private S3 configuration is complete and HTTP is restricted to explicit loopback', () => {
+  assert.equal(parseS3Environment('test', {}), null);
+  assert.throws(
+    () => parseS3Environment('test', { S3_REGION: 'us-east-1' }),
+    /S3 configuration is incomplete/u,
+  );
+  const complete = {
+    S3_REGION: 'us-east-1',
+    S3_BUCKET: 'kinetra-test',
+    S3_ACCESS_KEY_ID: 'test-access',
+    S3_SECRET_ACCESS_KEY: 'test-secret',
+  };
+  assert.throws(
+    () => parseS3Environment('test', { ...complete, S3_ENDPOINT: 'http://s3.example.test' }),
+    /must use HTTPS/u,
+  );
+  assert.equal(
+    parseS3Environment('test', { ...complete, S3_ENDPOINT: 'http://127.0.0.1:9000' })
+      ?.forcePathStyle,
+    true,
+  );
+  assert.throws(
+    () =>
+      parseS3Environment('production', {
+        ...complete,
+        S3_ENDPOINT: 'http://127.0.0.1:9000',
+      }),
+    /must use HTTPS/u,
+  );
 });

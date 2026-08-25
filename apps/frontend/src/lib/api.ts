@@ -29,6 +29,12 @@ import type {
   ScheduleResponse,
   SettingsProfileResponse,
   SubscriptionResponse,
+  TrainerVideoPartRequest,
+  TrainerVideoAcceptedPartDto,
+  TrainerVideoPartUrlDto,
+  TrainerVideoProgramResponse,
+  TrainerVideoSlotDto,
+  TrainerVideoUploadDto,
   SurveyGoal,
   SurveySubmission,
   UpdateLessonProgressRequest,
@@ -451,6 +457,126 @@ export class ApiClient {
       method: 'GET',
       ...(signal === undefined ? {} : { signal }),
     });
+  }
+
+  public async getTrainerVideoProgram(signal?: AbortSignal): Promise<TrainerVideoProgramResponse> {
+    return this.authenticatedJsonRequest<TrainerVideoProgramResponse>(
+      '/api/v1/trainer/videos/program',
+      {
+        method: 'GET',
+        ...(signal === undefined ? {} : { signal }),
+      },
+    );
+  }
+
+  public async createTrainerVideoUpload(
+    input: { week_number: number; day_of_week: number; mime_type: 'video/mp4'; size_bytes: number },
+    idempotencyKey: string,
+    signal?: AbortSignal,
+  ): Promise<{ upload: TrainerVideoUploadDto }> {
+    return this.authenticatedJsonRequest('/api/v1/trainer/videos/uploads', {
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey },
+      body: JSON.stringify(input),
+      ...(signal === undefined ? {} : { signal }),
+    });
+  }
+
+  public async signTrainerVideoParts(
+    uploadId: string,
+    parts: readonly TrainerVideoPartRequest[],
+    signal?: AbortSignal,
+  ): Promise<{ parts: readonly TrainerVideoPartUrlDto[] }> {
+    return this.authenticatedJsonRequest(
+      `/api/v1/trainer/videos/uploads/${encodeURIComponent(uploadId)}/parts`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ parts }),
+        ...(signal === undefined ? {} : { signal }),
+      },
+    );
+  }
+
+  public async getTrainerVideoUpload(
+    uploadId: string,
+    signal?: AbortSignal,
+  ): Promise<{ upload: TrainerVideoUploadDto }> {
+    return this.authenticatedJsonRequest(
+      `/api/v1/trainer/videos/uploads/${encodeURIComponent(uploadId)}`,
+      {
+        method: 'GET',
+        ...(signal === undefined ? {} : { signal }),
+      },
+    );
+  }
+
+  public async getTrainerVideoUploadParts(
+    uploadId: string,
+    signal?: AbortSignal,
+  ): Promise<{ parts: readonly TrainerVideoAcceptedPartDto[] }> {
+    return this.authenticatedJsonRequest(
+      `/api/v1/trainer/videos/uploads/${encodeURIComponent(uploadId)}/parts`,
+      {
+        method: 'GET',
+        ...(signal === undefined ? {} : { signal }),
+      },
+    );
+  }
+
+  public async completeTrainerVideoUpload(
+    uploadId: string,
+    signal?: AbortSignal,
+  ): Promise<{ upload: TrainerVideoUploadDto }> {
+    return this.authenticatedJsonRequest(
+      `/api/v1/trainer/videos/uploads/${encodeURIComponent(uploadId)}/complete`,
+      {
+        method: 'POST',
+        body: '{}',
+        ...(signal === undefined ? {} : { signal }),
+      },
+    );
+  }
+
+  public async cancelTrainerVideoUpload(
+    uploadId: string,
+    signal?: AbortSignal,
+  ): Promise<{ upload: TrainerVideoUploadDto }> {
+    return this.authenticatedJsonRequest(
+      `/api/v1/trainer/videos/uploads/${encodeURIComponent(uploadId)}`,
+      {
+        method: 'DELETE',
+        body: '{}',
+        ...(signal === undefined ? {} : { signal }),
+      },
+    );
+  }
+
+  public async getTrainerVideoPreview(
+    videoId: string,
+    signal?: AbortSignal,
+  ): Promise<{ url: string; expires_at: string }> {
+    return this.authenticatedJsonRequest(
+      `/api/v1/trainer/videos/workouts/${encodeURIComponent(videoId)}/preview-url`,
+      {
+        method: 'GET',
+        ...(signal === undefined ? {} : { signal }),
+      },
+    );
+  }
+
+  public async unpublishTrainerVideo(
+    weekNumber: number,
+    dayOfWeek: number,
+    signal?: AbortSignal,
+  ): Promise<TrainerVideoSlotDto> {
+    return this.authenticatedJsonRequest(
+      `/api/v1/trainer/videos/weeks/${weekNumber}/days/${dayOfWeek}/unpublish`,
+      {
+        method: 'POST',
+        body: '{}',
+        ...(signal === undefined ? {} : { signal }),
+      },
+    );
   }
 
   public async getChatSession(signal?: AbortSignal): Promise<ChatSessionResponse> {
@@ -1183,6 +1309,50 @@ export const cancelSubscription = (): Promise<SubscriptionResponse> =>
   apiClient.cancelSubscription();
 export const getSettingsProfile = (signal?: AbortSignal): Promise<SettingsProfileResponse> =>
   apiClient.getSettingsProfile(signal);
+export const getTrainerVideoProgram = (
+  signal?: AbortSignal,
+): Promise<TrainerVideoProgramResponse> => apiClient.getTrainerVideoProgram(signal);
+export const createTrainerVideoUpload = (
+  input: { week_number: number; day_of_week: number; mime_type: 'video/mp4'; size_bytes: number },
+  idempotencyKey: string,
+  signal?: AbortSignal,
+): Promise<{ upload: TrainerVideoUploadDto }> =>
+  apiClient.createTrainerVideoUpload(input, idempotencyKey, signal);
+export const signTrainerVideoParts = (
+  uploadId: string,
+  parts: readonly TrainerVideoPartRequest[],
+  signal?: AbortSignal,
+): Promise<{ parts: readonly TrainerVideoPartUrlDto[] }> =>
+  apiClient.signTrainerVideoParts(uploadId, parts, signal);
+export const getTrainerVideoUpload = (
+  uploadId: string,
+  signal?: AbortSignal,
+): Promise<{ upload: TrainerVideoUploadDto }> => apiClient.getTrainerVideoUpload(uploadId, signal);
+export const getTrainerVideoUploadParts = (
+  uploadId: string,
+  signal?: AbortSignal,
+): Promise<{ parts: readonly TrainerVideoAcceptedPartDto[] }> =>
+  apiClient.getTrainerVideoUploadParts(uploadId, signal);
+export const completeTrainerVideoUpload = (
+  uploadId: string,
+  signal?: AbortSignal,
+): Promise<{ upload: TrainerVideoUploadDto }> =>
+  apiClient.completeTrainerVideoUpload(uploadId, signal);
+export const cancelTrainerVideoUpload = (
+  uploadId: string,
+  signal?: AbortSignal,
+): Promise<{ upload: TrainerVideoUploadDto }> =>
+  apiClient.cancelTrainerVideoUpload(uploadId, signal);
+export const getTrainerVideoPreview = (
+  videoId: string,
+  signal?: AbortSignal,
+): Promise<{ url: string; expires_at: string }> =>
+  apiClient.getTrainerVideoPreview(videoId, signal);
+export const unpublishTrainerVideo = (
+  weekNumber: number,
+  dayOfWeek: number,
+  signal?: AbortSignal,
+): Promise<TrainerVideoSlotDto> => apiClient.unpublishTrainerVideo(weekNumber, dayOfWeek, signal);
 export const getChatSession = (signal?: AbortSignal): Promise<ChatSessionResponse> =>
   apiClient.getChatSession(signal);
 export const createChatConversation = (signal?: AbortSignal): Promise<ChatConversationResponse> =>

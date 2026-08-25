@@ -73,6 +73,7 @@ export type AccountRole = 'client' | 'trainer';
 export interface TrainerProfile {
   readonly display_name: string;
   readonly avatar_url: string | null;
+  readonly can_manage_videos: boolean;
 }
 
 export type SurveyGender = 'male' | 'female';
@@ -139,6 +140,96 @@ export interface MeResponse {
   readonly user: ProfileUser;
   readonly survey: SurveyAnswer | null;
   readonly subscription: ProfileSubscription;
+}
+
+export type TrainerVideoUploadStatus =
+  | 'creating'
+  | 'uploading'
+  | 'completing'
+  | 'verification_pending'
+  | 'verifying'
+  | 'verification_quarantined'
+  | 'published'
+  | 'failed'
+  | 'cancelled'
+  | 'expired'
+  | 'superseded';
+
+export type TrainerVideoSlotState =
+  'empty' | 'uploading' | 'processing' | 'available' | 'replacing' | 'failed' | 'hidden';
+
+export interface TrainerVerifiedMediaDto {
+  readonly duration_seconds: number;
+  readonly width: number;
+  readonly height: number;
+  readonly video_codec: string;
+  readonly audio_codec: string | null;
+  readonly sha256: string;
+}
+
+export interface TrainerVideoUploadDto {
+  readonly id: string;
+  readonly video_id: string;
+  readonly week_number: number;
+  readonly day_of_week: number;
+  readonly status: TrainerVideoUploadStatus;
+  readonly expected_size_bytes: number;
+  readonly uploaded_bytes: number;
+  readonly part_size_bytes: number;
+  readonly part_count: number;
+  readonly expires_at: string;
+  readonly failure_code: string | null;
+  readonly verified_media: TrainerVerifiedMediaDto | null;
+}
+
+export interface TrainerVideoSlotDto {
+  readonly video_id: string;
+  readonly day_of_week: number;
+  readonly day_label: string;
+  readonly direction: ProgramDirection;
+  readonly title: string;
+  readonly duration_minutes: number;
+  readonly media: {
+    readonly available: boolean;
+    readonly revision: number;
+    readonly duration_seconds: number | null;
+    readonly uploaded_at: string | null;
+  };
+  readonly slot_state: TrainerVideoSlotState;
+  readonly live_upload: TrainerVideoUploadDto | null;
+  readonly latest_upload: TrainerVideoUploadDto | null;
+}
+
+export interface TrainerVideoProgramResponse {
+  readonly summary: {
+    readonly total: 84;
+    readonly available: number;
+    readonly processing: number;
+    readonly failed: number;
+  };
+  readonly weeks: readonly {
+    readonly week_number: number;
+    readonly title: string;
+    readonly days: readonly TrainerVideoSlotDto[];
+  }[];
+}
+
+export interface TrainerVideoPartRequest {
+  readonly part_number: number;
+  readonly checksum_sha256: string;
+}
+
+export interface TrainerVideoPartUrlDto {
+  readonly part_number: number;
+  readonly upload_url: string;
+  readonly expires_at: string;
+  readonly required_headers: Readonly<Record<'x-amz-checksum-sha256', string>>;
+}
+
+export interface TrainerVideoAcceptedPartDto {
+  readonly part_number: number;
+  readonly size_bytes: number;
+  readonly checksum_sha256: string;
 }
 
 export interface BaseLessonProgress {

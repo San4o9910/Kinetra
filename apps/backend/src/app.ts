@@ -26,6 +26,11 @@ import { createPushRouter } from './push/router.js';
 import { createProductionPushRuntime, type PushRuntime } from './push/runtime.js';
 import { createSettingsRouter } from './settings/router.js';
 import { createProductionSettingsRuntime, type SettingsRuntime } from './settings/runtime.js';
+import { createVideoAdminRouter } from './video-admin/router.js';
+import {
+  createProductionVideoAdminRuntime,
+  type VideoAdminRuntime,
+} from './video-admin/runtime.js';
 
 export interface CreateAppOptions {
   readonly authRuntime?: AuthRuntime;
@@ -37,6 +42,7 @@ export interface CreateAppOptions {
   readonly pushRuntime?: PushRuntime;
   readonly settingsRuntime?: SettingsRuntime;
   readonly paymentsRuntime?: PaymentsRuntime;
+  readonly videoAdminRuntime?: VideoAdminRuntime;
 }
 
 const requestIdFrom = (response: Response): string =>
@@ -70,6 +76,7 @@ export const createApp = (options: CreateAppOptions = {}) => {
   const pushRuntime = options.pushRuntime ?? createProductionPushRuntime();
   const settingsRuntime = options.settingsRuntime ?? createProductionSettingsRuntime();
   const paymentsRuntime = options.paymentsRuntime ?? createProductionPaymentsRuntime();
+  const videoAdminRuntime = options.videoAdminRuntime ?? createProductionVideoAdminRuntime();
 
   app.disable('x-powered-by');
 
@@ -126,6 +133,7 @@ export const createApp = (options: CreateAppOptions = {}) => {
     }),
   );
   app.use('/api/v1/payments', createPaymentsRouter(paymentsRuntime));
+  app.use('/api/v1/trainer/videos', createVideoAdminRouter(videoAdminRuntime));
 
   app.use((request: Request, response: Response<ApiErrorResponse>) => {
     response.status(404).json({

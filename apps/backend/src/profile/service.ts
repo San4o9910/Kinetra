@@ -18,6 +18,7 @@ const toResponse = (profile: UserProfileSnapshot): MeResponse => ({
       : {
           display_name: profile.trainerProfile.displayName,
           avatar_url: profile.trainerProfile.avatarUrl,
+          can_manage_videos: profile.trainerProfile.canManageVideos,
         },
   user: {
     id: profile.id,

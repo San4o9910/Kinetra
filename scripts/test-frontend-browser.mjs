@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises';
 import { createServer } from 'node:http';
@@ -64,21 +65,26 @@ const runCommand = async (command, args, options = {}) => {
 };
 
 const buildFrontendForBrowserTest = async () => {
-  const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  const typescriptCli = path.join(root, 'node_modules/typescript/bin/tsc');
+  const viteCli = path.join(root, 'node_modules/vite/bin/vite.js');
+  const frontendRoot = path.join(root, 'apps/frontend');
 
-  await runCommand(npmCommand, ['run', 'build', '-w', '@kinetra/shared']);
-  await runCommand(
-    npmCommand,
-    ['run', 'build', '-w', '@kinetra/frontend', '--', '--mode', 'browser-test'],
-    {
-      env: {
-        ...process.env,
-        NODE_ENV: 'production',
-        VITE_API_URL: browserApiOrigin,
-        VITE_PRIVATE_MEDIA_ORIGIN: frontendOrigin,
-      },
+  await runCommand(process.execPath, [typescriptCli, '-p', 'packages/shared/tsconfig.json']);
+  await runCommand(process.execPath, [
+    typescriptCli,
+    '-p',
+    'apps/frontend/tsconfig.json',
+    '--noEmit',
+  ]);
+  await runCommand(process.execPath, [viteCli, 'build', '--mode', 'browser-test'], {
+    cwd: frontendRoot,
+    env: {
+      ...process.env,
+      NODE_ENV: 'production',
+      VITE_API_URL: browserApiOrigin,
+      VITE_PRIVATE_MEDIA_ORIGIN: frontendOrigin,
     },
-  );
+  });
 
   const assetDirectory = path.join(frontendDist, 'assets');
   const builtAssets = await readdir(assetDirectory);
@@ -4144,7 +4150,9 @@ const t12Profile = (role) => {
   const trainer = role === 'trainer';
   return {
     account_role: role,
-    trainer_profile: trainer ? { display_name: 'Ирина Тренер', avatar_url: null } : null,
+    trainer_profile: trainer
+      ? { display_name: 'Ирина Тренер', avatar_url: null, can_manage_videos: true }
+      : null,
     user: {
       id: trainer ? t12TrainerId : t12ClientId,
       email: trainer ? 'chat-trainer@example.test' : 'chat-client@example.test',
@@ -4183,7 +4191,12 @@ const t12Profile = (role) => {
   };
 };
 
-const createT12BrowserServer = () => {
+const createT12BrowserServer = (syntheticVideo) => {
+  const syntheticDifferentVideo = Buffer.from(syntheticVideo);
+  syntheticDifferentVideo[0] ^= 0xff;
+  assert.equal(syntheticDifferentVideo.length, syntheticVideo.length);
+  const videoPreviewExpiresInSeconds = 120;
+  const videoPreviewSignature = 'a'.repeat(64);
   const state = {
     conversationCreated: false,
     messages: [],
@@ -4216,6 +4229,22 @@ const createT12BrowserServer = () => {
     browserPushUnsubscribed: false,
     mediaDeletionJobs: [],
     staleSessionRace: null,
+    videoUploadSequence: 0,
+    videoProgramGets: 0,
+    videoUploadCreates: 0,
+    videoPartSigns: 0,
+    videoPartPuts: 0,
+    videoTransientFailures: 0,
+    videoCancels: 0,
+    videoCompletes: 0,
+    videoPolls: 0,
+    videoUnpublishes: 0,
+    videoSlots: new Map(),
+    videoUploads: new Map(),
+    videoEvents: [],
+    videoEventSequence: 0,
+    videoUnexpectedXhrSends: 0,
+    videoResumeUploadId: null,
   };
 
   const accountId = (role) => (role === 'client' ? t12ClientId : t12TrainerId);
@@ -4324,6 +4353,200 @@ const createT12BrowserServer = () => {
           unread_count: unreadCount('trainer'),
         };
 
+  const videoDirections = [
+    'breathing',
+    'strength',
+    'body_therapy',
+    'functional',
+    'stretching',
+    'neuro',
+    'recovery',
+  ];
+  const videoDayLabels = [
+    'Понедельник',
+    'Вторник',
+    'Среда',
+    'Четверг',
+    'Пятница',
+    'Суббота',
+    'Воскресенье',
+  ];
+  const videoIdFor = (weekNumber, dayOfWeek) =>
+    `95000000-0000-4000-8000-${String(weekNumber * 10 + dayOfWeek).padStart(12, '0')}`;
+  const videoSlotKey = (weekNumber, dayOfWeek) => `${weekNumber}:${dayOfWeek}`;
+  const videoEvent = (type, record, partNumber = null) => {
+    const event = {
+      sequence: ++state.videoEventSequence,
+      type,
+      upload_id: record.id,
+      part_number: partNumber,
+    };
+    state.videoEvents.push(event);
+    return event;
+  };
+  const videoUploadDto = (status, id, sizeBytes, weekNumber, dayOfWeek) => ({
+    id,
+    video_id: videoIdFor(weekNumber, dayOfWeek),
+    week_number: weekNumber,
+    day_of_week: dayOfWeek,
+    status,
+    expected_size_bytes: sizeBytes,
+    uploaded_bytes: status === 'uploading' ? 0 : sizeBytes,
+    part_size_bytes: 5_242_880,
+    part_count: Math.ceil(sizeBytes / 5_242_880),
+    expires_at: fixtureTimestamp(1),
+    failure_code: null,
+    verified_media:
+      status === 'published'
+        ? {
+            duration_seconds: 10,
+            width: 1280,
+            height: 720,
+            video_codec: 'h264',
+            audio_codec: null,
+            sha256: 'a'.repeat(64),
+          }
+        : null,
+  });
+  const ensureVideoSlot = (weekNumber, dayOfWeek) => {
+    const key = videoSlotKey(weekNumber, dayOfWeek);
+    let slot = state.videoSlots.get(key);
+    if (slot === undefined) {
+      slot = {
+        key,
+        weekNumber,
+        dayOfWeek,
+        liveUploadId: null,
+        latestUploadId: null,
+        mediaAvailable: false,
+        revision: 0,
+      };
+      state.videoSlots.set(key, slot);
+    }
+    return slot;
+  };
+  const createVideoUploadRecord = ({
+    id,
+    weekNumber,
+    dayOfWeek,
+    sizeBytes,
+    behavior = 'normal',
+  }) => {
+    const slot = ensureVideoSlot(weekNumber, dayOfWeek);
+    assert.equal(slot.liveUploadId, null, `Browser fixture slot ${slot.key} is already busy.`);
+    const record = {
+      id,
+      weekNumber,
+      dayOfWeek,
+      behavior,
+      dto: videoUploadDto('uploading', id, sizeBytes, weekNumber, dayOfWeek),
+      acceptedParts: new Map(),
+      signedChecksums: new Map(),
+      partAttempts: new Map(),
+      polls: 0,
+      stats: {
+        signs: 0,
+        putStarts: 0,
+        abortedPuts: 0,
+        completes: 0,
+        cancels: 0,
+      },
+    };
+    state.videoUploads.set(id, record);
+    slot.liveUploadId = id;
+    slot.latestUploadId = id;
+    return record;
+  };
+  const requireVideoUpload = (uploadId) => {
+    const record = state.videoUploads.get(uploadId);
+    assert.notEqual(record, undefined, `Unknown browser video upload ${uploadId}.`);
+    return record;
+  };
+  const syntheticPartSize = 5_242_880;
+  const resumeRecord = createVideoUploadRecord({
+    id: '96900000-0000-4000-8000-000000000005',
+    weekNumber: 1,
+    dayOfWeek: 5,
+    sizeBytes: syntheticVideo.length,
+    behavior: 'resume',
+  });
+  resumeRecord.acceptedParts.set(1, {
+    size_bytes: Math.min(syntheticPartSize, syntheticVideo.length),
+    checksum_sha256: createHash('sha256')
+      .update(syntheticVideo.subarray(0, syntheticPartSize))
+      .digest('base64'),
+  });
+  state.videoResumeUploadId = resumeRecord.id;
+
+  const videoSlot = (weekNumber, dayOfWeek) => {
+    const slot = state.videoSlots.get(videoSlotKey(weekNumber, dayOfWeek));
+    const live =
+      slot?.liveUploadId === null || slot?.liveUploadId === undefined
+        ? null
+        : requireVideoUpload(slot.liveUploadId).dto;
+    const latest =
+      slot?.latestUploadId === null || slot?.latestUploadId === undefined
+        ? null
+        : requireVideoUpload(slot.latestUploadId).dto;
+    const mediaAvailable = slot?.mediaAvailable ?? false;
+    let slotState = 'empty';
+    if (live !== null) {
+      slotState = mediaAvailable
+        ? 'replacing'
+        : ['creating', 'uploading'].includes(live.status)
+          ? 'uploading'
+          : 'processing';
+    } else if (mediaAvailable) {
+      slotState = 'available';
+    } else if (latest?.status === 'published') {
+      slotState = 'hidden';
+    } else if (
+      ['failed', 'expired', 'superseded', 'verification_quarantined'].includes(latest?.status)
+    ) {
+      slotState = 'failed';
+    }
+    return {
+      video_id: videoIdFor(weekNumber, dayOfWeek),
+      day_of_week: dayOfWeek,
+      day_label: videoDayLabels[dayOfWeek - 1],
+      direction: videoDirections[dayOfWeek - 1],
+      title: `Тренировка ${weekNumber}.${dayOfWeek}`,
+      duration_minutes: 25,
+      media: {
+        available: mediaAvailable,
+        revision: slot?.revision ?? 0,
+        duration_seconds: latest?.status === 'published' ? 10 : null,
+        uploaded_at: latest?.status === 'published' ? fixtureTimestamp(0) : null,
+      },
+      slot_state: slotState,
+      live_upload: live,
+      latest_upload: latest,
+    };
+  };
+  const videoProgram = () => ({
+    summary: {
+      total: 84,
+      available: [...state.videoSlots.values()].filter((slot) => slot.mediaAvailable).length,
+      processing: [...state.videoSlots.values()].filter((slot) => {
+        if (slot.liveUploadId === null) return false;
+        return ['completing', 'verification_pending', 'verifying'].includes(
+          requireVideoUpload(slot.liveUploadId).dto.status,
+        );
+      }).length,
+      failed: [...state.videoSlots.values()].filter((slot) => {
+        if (slot.latestUploadId === null) return false;
+        return ['failed', 'expired', 'superseded', 'verification_quarantined'].includes(
+          requireVideoUpload(slot.latestUploadId).dto.status,
+        );
+      }).length,
+    },
+    weeks: Array.from({ length: 12 }, (_, weekIndex) => ({
+      week_number: weekIndex + 1,
+      title: `Неделя ${weekIndex + 1}`,
+      days: Array.from({ length: 7 }, (_, dayIndex) => videoSlot(weekIndex + 1, dayIndex + 1)),
+    })),
+  });
+
   let staleSessionReleasePromise = null;
   let resolveStaleSessionRequests = null;
   const releaseStaleSessionRace = () => {
@@ -4404,6 +4627,118 @@ const createT12BrowserServer = () => {
         'Cache-Control': 'private, no-store',
       });
       response.end(body);
+      return;
+    }
+
+    if (request.method === 'GET' && pathname === '/__browser-test/t14/synthetic.mp4') {
+      response.writeHead(200, {
+        'Content-Type': 'video/mp4',
+        'Content-Length': syntheticVideo.length,
+        'Cache-Control': 'private, no-store',
+      });
+      response.end(syntheticVideo);
+      return;
+    }
+    if (request.method === 'GET' && pathname === '/__browser-test/t14/synthetic-different.mp4') {
+      response.writeHead(200, {
+        'Content-Type': 'video/mp4',
+        'Content-Length': syntheticDifferentVideo.length,
+        'Cache-Control': 'private, no-store',
+      });
+      response.end(syntheticDifferentVideo);
+      return;
+    }
+    if (pathname === '/__browser-test/t14/must-not-send') {
+      state.videoUnexpectedXhrSends += 1;
+      json(response, 500, {
+        error: { code: 'UNEXPECTED_XHR_SEND', message: 'An already-aborted XHR was sent.' },
+      });
+      return;
+    }
+
+    const videoPartPutMatch = pathname.match(
+      /^\/__browser-test\/t14\/uploads\/([^/]+)\/parts\/(\d+)$/u,
+    );
+    if (request.method === 'PUT' && videoPartPutMatch !== null) {
+      assert.equal(request.headers.authorization, undefined);
+      assert.equal(request.headers.cookie, undefined);
+      assert.match(String(request.headers['x-amz-checksum-sha256'] ?? ''), /^[A-Za-z0-9+/]{43}=$/u);
+      const operationId = videoPartPutMatch[1];
+      const partNumber = Number(videoPartPutMatch[2]);
+      const record = requireVideoUpload(operationId);
+      const checksum = String(request.headers['x-amz-checksum-sha256']);
+      assert.equal(record.signedChecksums.get(partNumber), checksum);
+      const attempt = (record.partAttempts.get(partNumber) ?? 0) + 1;
+      record.partAttempts.set(partNumber, attempt);
+      state.videoPartPuts += 1;
+      record.stats.putStarts += 1;
+      videoEvent('put_start', record, partNumber);
+      let aborted = false;
+      const markAborted = () => {
+        if (aborted) return;
+        aborted = true;
+        record.stats.abortedPuts += 1;
+        videoEvent('put_aborted', record, partNumber);
+      };
+      request.once('aborted', markAborted);
+      response.once('close', () => {
+        if (!response.writableEnded) markAborted();
+      });
+      let bytes = 0;
+      try {
+        for await (const chunk of request) {
+          bytes += chunk.length;
+          await sleep(12);
+        }
+      } catch (caught) {
+        if (aborted || request.destroyed) {
+          markAborted();
+          return;
+        }
+        throw caught;
+      }
+      if (aborted || response.destroyed) return;
+      if (record.behavior === 'transient-first-part' && partNumber === 1 && attempt === 1) {
+        state.videoTransientFailures += 1;
+        videoEvent('transient_rejected', record, partNumber);
+        json(response, 503, {
+          error: { code: 'S3_TRANSIENT', message: 'Deterministic transient storage failure.' },
+        });
+        return;
+      }
+      if (record.behavior === 'fatal-first-part' && partNumber === 1) {
+        videoEvent(attempt === 3 ? 'fatal_rejected' : 'fatal_retry_rejected', record, partNumber);
+        json(response, 503, {
+          error: { code: 'S3_FATAL', message: 'Deterministic fatal part failure.' },
+        });
+        return;
+      }
+      if (record.behavior === 'fatal-first-part' && partNumber !== 1) {
+        await new Promise((resolve) => {
+          const timer = setTimeout(() => {
+            if (!response.destroyed && !response.writableEnded) {
+              response.writeHead(598, { 'Cache-Control': 'no-store' });
+              response.end();
+            }
+            resolve();
+          }, 15_000);
+          response.once('close', () => {
+            clearTimeout(timer);
+            resolve();
+          });
+        });
+        return;
+      }
+      record.acceptedParts.set(partNumber, {
+        size_bytes: bytes,
+        checksum_sha256: checksum,
+      });
+      videoEvent('put_accepted', record, partNumber);
+      response.writeHead(200, {
+        ETag: `"browser-part-${partNumber}"`,
+        'Cache-Control': 'no-store',
+      });
+      response.end();
       return;
     }
 
@@ -4645,6 +4980,212 @@ const createT12BrowserServer = () => {
 
     if (request.method === 'GET' && pathname === '/api/v1/me') {
       json(response, 200, t12Profile(role));
+      return;
+    }
+
+    if (request.method === 'GET' && pathname === '/api/v1/trainer/videos/program') {
+      assert.equal(role, 'trainer');
+      state.videoProgramGets += 1;
+      json(response, 200, videoProgram(), { 'Cache-Control': 'no-store' });
+      return;
+    }
+
+    if (request.method === 'POST' && pathname === '/api/v1/trainer/videos/uploads') {
+      assert.equal(role, 'trainer');
+      const body = await readJsonBody(request);
+      assert.equal(body.week_number, 1);
+      assert.equal([2, 3, 4, 6].includes(body.day_of_week), true);
+      assert.equal(body.mime_type, 'video/mp4');
+      assert.equal(Number.isInteger(body.size_bytes) && body.size_bytes > 0, true);
+      assert.match(String(request.headers['idempotency-key'] ?? ''), /^[0-9a-f-]{36}$/u);
+      state.videoUploadSequence += 1;
+      state.videoUploadCreates += 1;
+      const id = `96000000-0000-4000-8000-${String(state.videoUploadSequence).padStart(12, '0')}`;
+      const record = createVideoUploadRecord({
+        id,
+        weekNumber: body.week_number,
+        dayOfWeek: body.day_of_week,
+        sizeBytes: body.size_bytes,
+        behavior:
+          body.day_of_week === 3
+            ? 'transient-first-part'
+            : body.day_of_week === 4
+              ? 'fatal-first-part'
+              : 'normal',
+      });
+      videoEvent('upload_created', record);
+      json(response, 201, { upload: record.dto }, { 'Cache-Control': 'no-store' });
+      return;
+    }
+
+    const videoPartsMatch = pathname.match(
+      /^\/api\/v1\/trainer\/videos\/uploads\/([^/]+)\/parts$/u,
+    );
+    if (request.method === 'GET' && videoPartsMatch !== null) {
+      assert.equal(role, 'trainer');
+      const record = requireVideoUpload(videoPartsMatch[1]);
+      const parts = [...record.acceptedParts.entries()]
+        .map(([partNumber, accepted]) => ({
+          part_number: partNumber,
+          size_bytes: accepted.size_bytes,
+          checksum_sha256: accepted.checksum_sha256,
+        }))
+        .sort((left, right) => left.part_number - right.part_number);
+      json(response, 200, { parts }, { 'Cache-Control': 'no-store' });
+      return;
+    }
+    if (request.method === 'POST' && videoPartsMatch !== null) {
+      assert.equal(role, 'trainer');
+      const record = requireVideoUpload(videoPartsMatch[1]);
+      const slot = ensureVideoSlot(record.weekNumber, record.dayOfWeek);
+      assert.equal(slot.liveUploadId, record.id);
+      assert.equal(record.dto.status, 'uploading');
+      const body = await readJsonBody(request);
+      assert.equal(Array.isArray(body.parts), true);
+      state.videoPartSigns += body.parts.length;
+      record.stats.signs += body.parts.length;
+      for (const part of body.parts) {
+        assert.equal(Number.isInteger(part.part_number), true);
+        assert.match(String(part.checksum_sha256 ?? ''), /^[A-Za-z0-9+/]{43}=$/u);
+        record.signedChecksums.set(part.part_number, part.checksum_sha256);
+        videoEvent('part_signed', record, part.part_number);
+      }
+      json(
+        response,
+        200,
+        {
+          parts: body.parts.map((part) => ({
+            part_number: part.part_number,
+            upload_url: `${frontendOrigin}/__browser-test/t14/uploads/${videoPartsMatch[1]}/parts/${part.part_number}`,
+            expires_at: fixtureTimestamp(1),
+            required_headers: { 'x-amz-checksum-sha256': part.checksum_sha256 },
+          })),
+        },
+        { 'Cache-Control': 'no-store' },
+      );
+      return;
+    }
+
+    const videoCompleteMatch = pathname.match(
+      /^\/api\/v1\/trainer\/videos\/uploads\/([^/]+)\/complete$/u,
+    );
+    if (request.method === 'POST' && videoCompleteMatch !== null) {
+      assert.equal(role, 'trainer');
+      const record = requireVideoUpload(videoCompleteMatch[1]);
+      const slot = ensureVideoSlot(record.weekNumber, record.dayOfWeek);
+      assert.equal(slot.liveUploadId, record.id);
+      assert.deepEqual(await readJsonBody(request), {});
+      assert.equal(record.acceptedParts.size, record.dto.part_count);
+      state.videoCompletes += 1;
+      record.stats.completes += 1;
+      videoEvent('complete', record);
+      record.dto = {
+        ...record.dto,
+        status: 'verification_pending',
+        uploaded_bytes: record.dto.expected_size_bytes,
+      };
+      json(
+        response,
+        202,
+        { upload: record.dto },
+        { 'Cache-Control': 'no-store', 'Retry-After': '1' },
+      );
+      return;
+    }
+
+    const videoUploadMatch = pathname.match(/^\/api\/v1\/trainer\/videos\/uploads\/([^/]+)$/u);
+    if (request.method === 'DELETE' && videoUploadMatch !== null) {
+      assert.equal(role, 'trainer');
+      const record = requireVideoUpload(videoUploadMatch[1]);
+      const slot = ensureVideoSlot(record.weekNumber, record.dayOfWeek);
+      assert.equal(slot.liveUploadId, record.id);
+      assert.deepEqual(await readJsonBody(request), {});
+      state.videoCancels += 1;
+      record.stats.cancels += 1;
+      videoEvent('cancel', record);
+      const cancelled = {
+        ...record.dto,
+        status: 'cancelled',
+      };
+      record.dto = cancelled;
+      slot.latestUploadId = record.id;
+      slot.liveUploadId = null;
+      json(response, 200, { upload: cancelled }, { 'Cache-Control': 'no-store' });
+      return;
+    }
+    if (request.method === 'GET' && videoUploadMatch !== null) {
+      assert.equal(role, 'trainer');
+      const record = requireVideoUpload(videoUploadMatch[1]);
+      const slot = ensureVideoSlot(record.weekNumber, record.dayOfWeek);
+      assert.equal(slot.liveUploadId, record.id);
+      state.videoPolls += 1;
+      record.polls += 1;
+      if (record.polls === 1) {
+        record.dto = { ...record.dto, status: 'verifying' };
+      } else {
+        record.dto = videoUploadDto(
+          'published',
+          record.id,
+          record.dto.expected_size_bytes,
+          record.weekNumber,
+          record.dayOfWeek,
+        );
+        slot.mediaAvailable = true;
+        slot.revision += 1;
+        slot.latestUploadId = record.id;
+        slot.liveUploadId = null;
+        videoEvent('published', record);
+      }
+      json(
+        response,
+        200,
+        { upload: record.dto },
+        { 'Cache-Control': 'no-store', 'Retry-After': '1' },
+      );
+      return;
+    }
+
+    const videoPreviewMatch = pathname.match(
+      /^\/api\/v1\/trainer\/videos\/workouts\/([^/]+)\/preview-url$/u,
+    );
+    if (request.method === 'GET' && videoPreviewMatch !== null) {
+      assert.equal(role, 'trainer');
+      const slot = [...state.videoSlots.values()].find(
+        (candidate) =>
+          videoIdFor(candidate.weekNumber, candidate.dayOfWeek) === videoPreviewMatch[1],
+      );
+      assert.notEqual(slot, undefined);
+      assert.notEqual(slot.latestUploadId, null);
+      assert.equal(requireVideoUpload(slot.latestUploadId).dto.status, 'published');
+      json(
+        response,
+        200,
+        {
+          url: `${frontendOrigin}/__browser-test/t14/synthetic.mp4?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=KINETRA_BROWSER_TEST%2F20260825%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20260825T120000Z&X-Amz-Expires=${videoPreviewExpiresInSeconds}&X-Amz-SignedHeaders=host&X-Amz-Signature=${videoPreviewSignature}`,
+          expires_at: new Date(
+            browserFixtureNow + videoPreviewExpiresInSeconds * 1_000,
+          ).toISOString(),
+        },
+        { 'Cache-Control': 'no-store' },
+      );
+      return;
+    }
+
+    const videoUnpublishMatch = pathname.match(
+      /^\/api\/v1\/trainer\/videos\/weeks\/(\d+)\/days\/(\d+)\/unpublish$/u,
+    );
+    if (request.method === 'POST' && videoUnpublishMatch !== null) {
+      assert.equal(role, 'trainer');
+      assert.deepEqual(await readJsonBody(request), {});
+      const weekNumber = Number(videoUnpublishMatch[1]);
+      const dayOfWeek = Number(videoUnpublishMatch[2]);
+      const slot = ensureVideoSlot(weekNumber, dayOfWeek);
+      assert.notEqual(slot.latestUploadId, null);
+      assert.equal(requireVideoUpload(slot.latestUploadId).dto.status, 'published');
+      state.videoUnpublishes += 1;
+      if (slot.mediaAvailable) slot.revision += 1;
+      slot.mediaAvailable = false;
+      json(response, 200, videoSlot(weekNumber, dayOfWeek), { 'Cache-Control': 'no-store' });
       return;
     }
 
@@ -5101,6 +5642,10 @@ const launchT12BrowserContext = async (profileDirectory, width, height) => {
         pushSubscribed: sessionStorage.getItem(pushStorageKey) === 'true',
         pushUnsubscribeCalls: 0,
         lifecycleOrder: [],
+        t14XhrSendCalls: 0,
+        t14AbortBeforeNextXhr: false,
+        t14PreAbortedXhrTriggers: 0,
+        t14PreAbortedControllerCount: 0,
       };
       const persistPush = () => {
         if (state.pushSubscribed) sessionStorage.setItem(pushStorageKey, 'true');
@@ -5130,6 +5675,62 @@ const launchT12BrowserContext = async (profileDirectory, width, height) => {
           });
           return true;
         },
+      };
+      const NativeAbortController = window.AbortController;
+      const trackedT14Controllers = [];
+      let captureT14Controllers = false;
+      class TrackedT14AbortController extends NativeAbortController {
+        constructor() {
+          super();
+          if (captureT14Controllers) trackedT14Controllers.push(this);
+        }
+      }
+      Object.defineProperty(window, 'AbortController', {
+        configurable: true,
+        writable: true,
+        value: TrackedT14AbortController,
+      });
+      const NativeXmlHttpRequest = window.XMLHttpRequest;
+      const nativeXhrSend = NativeXmlHttpRequest.prototype.send;
+      NativeXmlHttpRequest.prototype.send = function (...args) {
+        state.t14XhrSendCalls += 1;
+        return nativeXhrSend.apply(this, args);
+      };
+      const nativeFetch = window.fetch.bind(window);
+      const abortAfterSignResponseJson = new WeakSet();
+      window.fetch = async (...args) => {
+        const response = await nativeFetch(...args);
+        const input = args[0];
+        const init = args[1];
+        const requestMethod = String(
+          init?.method ?? (input instanceof Request ? input.method : 'GET'),
+        ).toUpperCase();
+        const requestUrl = new URL(
+          input instanceof Request ? input.url : String(input),
+          window.location.href,
+        );
+        if (
+          state.t14AbortBeforeNextXhr &&
+          requestMethod === 'POST' &&
+          new RegExp('^/api/v1/trainer/videos/uploads/[^/]+/parts$', 'u').test(
+            requestUrl.pathname,
+          )
+        ) {
+          abortAfterSignResponseJson.add(response);
+        }
+        return response;
+      };
+      const nativeResponseJson = Response.prototype.json;
+      Response.prototype.json = async function (...args) {
+        const value = await nativeResponseJson.apply(this, args);
+        if (state.t14AbortBeforeNextXhr && abortAfterSignResponseJson.has(this)) {
+          state.t14AbortBeforeNextXhr = false;
+          captureT14Controllers = false;
+          state.t14PreAbortedXhrTriggers += 1;
+          state.t14PreAbortedControllerCount = trackedT14Controllers.length;
+          for (const controller of trackedT14Controllers.splice(0)) controller.abort();
+        }
+        return value;
       };
       try {
         Object.defineProperty(document, 'visibilityState', {
@@ -5172,6 +5773,12 @@ const launchT12BrowserContext = async (profileDirectory, width, height) => {
           activatePushSubscription: () => {
             state.pushSubscribed = true;
             persistPush();
+          },
+          armAbortBeforeNextVideoXhr: () => {
+            trackedT14Controllers.splice(0);
+            captureT14Controllers = true;
+            state.t14AbortBeforeNextXhr = true;
+            return state.t14XhrSendCalls;
           },
         },
       });
@@ -5363,6 +5970,85 @@ const launchT12BrowserContext = async (profileDirectory, width, height) => {
       Object.defineProperty(input, 'files', { configurable: true, value: transfer.files });
       input.dispatchEvent(new Event('change', { bubbles: true }));
     })()`);
+  const selectVideo = (name, variant = 'normal') =>
+    cdp.evaluate(`(async () => {
+      const input = document.querySelector(${JSON.stringify(selector('trainer-video-file-input'))});
+      if (!(input instanceof HTMLInputElement)) throw new Error('T14 video input not found.');
+      const response = await fetch(${JSON.stringify(
+        variant === 'different'
+          ? '/__browser-test/t14/synthetic-different.mp4'
+          : '/__browser-test/t14/synthetic.mp4',
+      )}, { cache: 'no-store' });
+      const blob = await response.blob();
+      const file = new File([blob], ${JSON.stringify(name)}, { type: 'video/mp4' });
+      const transfer = new DataTransfer();
+      transfer.items.add(file);
+      Object.defineProperty(input, 'files', { configurable: true, value: transfer.files });
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      return file.size;
+    })()`);
+  const armAbortBeforeNextVideoXhr = () =>
+    cdp.evaluate('window.__kinetraT12BrowserTest.armAbortBeforeNextVideoXhr()');
+  const videoXhrState = () =>
+    cdp.evaluate(`(() => ({
+      sendCalls: window.__kinetraT12BrowserTest.state.t14XhrSendCalls,
+      triggers: window.__kinetraT12BrowserTest.state.t14PreAbortedXhrTriggers,
+      controllerCount: window.__kinetraT12BrowserTest.state.t14PreAbortedControllerCount,
+    }))()`);
+  const videoSlotUi = (weekNumber, dayOfWeek) =>
+    cdp.evaluate(`(() => {
+      const progress = document.querySelector(${JSON.stringify(
+        selector(`trainer-video-progress-${weekNumber}-${dayOfWeek}`),
+      )});
+      const cancel = document.querySelector(${JSON.stringify(
+        selector(`trainer-video-cancel-${weekNumber}-${dayOfWeek}`),
+      )});
+      const resume = document.querySelector(${JSON.stringify(
+        selector(`trainer-video-resume-${weekNumber}-${dayOfWeek}`),
+      )});
+      const upload = document.querySelector(${JSON.stringify(
+        selector(`trainer-video-upload-${weekNumber}-${dayOfWeek}`),
+      )});
+      return {
+        progress: progress?.getAttribute('aria-valuenow') === null || progress === null
+          ? null
+          : Number(progress.getAttribute('aria-valuenow')),
+        cancel: cancel instanceof HTMLButtonElement,
+        cancelDisabled: cancel instanceof HTMLButtonElement ? cancel.disabled : null,
+        resume: resume instanceof HTMLButtonElement,
+        resumeDisabled: resume instanceof HTMLButtonElement ? resume.disabled : null,
+        upload: upload instanceof HTMLButtonElement,
+        uploadDisabled: upload instanceof HTMLButtonElement ? upload.disabled : null,
+      };
+    })()`);
+  const videoCapabilityState = (accessToken = null) =>
+    cdp.evaluate(`(async () => {
+      const signedNeedle = 'X-Amz-Signature=';
+      const preview = document.querySelector('.trainer-video-preview video');
+      const previewUrl = preview instanceof HTMLVideoElement ? (preview.currentSrc || preview.src) : null;
+      const localValues = Object.values(localStorage).map(String);
+      const sessionValues = Object.values(sessionStorage).map(String);
+      const historyState = JSON.stringify(window.history.state ?? null);
+      const cacheRequests = [];
+      for (const cacheName of await caches.keys()) {
+        const cache = await caches.open(cacheName);
+        cacheRequests.push(...(await cache.keys()).map((request) => request.url));
+      }
+      const token = ${JSON.stringify(accessToken ?? '')};
+      return {
+        previewUrl,
+        capabilityInDom: [...document.querySelectorAll('[src], [href]')].some((element) =>
+          String(element.getAttribute('src') ?? element.getAttribute('href') ?? '').includes(signedNeedle)
+        ),
+        capabilityInLocalStorage: localValues.some((value) => value.includes(signedNeedle)),
+        capabilityInSessionStorage: sessionValues.some((value) => value.includes(signedNeedle)),
+        capabilityInHistory: historyState.includes(signedNeedle),
+        capabilityInCache: cacheRequests.some((url) => url.includes(signedNeedle)),
+        accessTokenInStorage: token.length > 0 && [...localValues, ...sessionValues].some((value) =>
+          value.includes(token)
+        ),
+      };
+    })()`);
   const messageCount = (messageId) =>
     cdp.evaluate(
       `document.querySelectorAll('[data-message-id=${JSON.stringify(messageId)}]').length`,
@@ -5422,6 +6108,11 @@ const launchT12BrowserContext = async (profileDirectory, width, height) => {
     layoutMetrics,
     cspImageSources,
     selectPhoto,
+    selectVideo,
+    armAbortBeforeNextVideoXhr,
+    videoXhrState,
+    videoSlotUi,
+    videoCapabilityState,
     messageCount,
     viewerOpen,
     viewerHistoryId,
@@ -5435,7 +6126,56 @@ const launchT12BrowserContext = async (profileDirectory, width, height) => {
 };
 
 const runT12BrowserScenario = async () => {
-  const fixture = createT12BrowserServer();
+  const syntheticVideoDirectory = await mkdtemp(
+    path.join(os.tmpdir(), 'kinetra-t14-video-fixture-'),
+  );
+  const syntheticVideoPath = path.join(syntheticVideoDirectory, 'synthetic.mp4');
+  await runCommand(
+    'ffmpeg',
+    [
+      '-nostdin',
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-f',
+      'lavfi',
+      '-i',
+      'testsrc2=size=960x540:rate=30:duration=10',
+      '-an',
+      '-c:v',
+      'libx264',
+      '-preset',
+      'ultrafast',
+      '-b:v',
+      '8M',
+      '-maxrate',
+      '8M',
+      '-bufsize',
+      '16M',
+      '-pix_fmt',
+      'yuv420p',
+      '-movflags',
+      '+faststart',
+      '-y',
+      syntheticVideoPath,
+    ],
+    { stdio: 'ignore' },
+  );
+  const syntheticVideo = await readFile(syntheticVideoPath);
+  assert.ok(syntheticVideo.length > 5_242_880);
+  const fixture = createT12BrowserServer(syntheticVideo);
+  const t14BrowserEvidence = {
+    parallelSlots: false,
+    cancelIsolation: false,
+    fatalSiblingAbort: false,
+    resumeIdentity: false,
+    nativePreAbortedNoSend: false,
+    previewPrivateUrl: false,
+    previewCapabilityCleared: false,
+    reloadPolling: false,
+    logoutCapabilityCleared: false,
+    coexistence: false,
+  };
   const clientProfileDirectory = await mkdtemp(path.join(os.tmpdir(), 'kinetra-browser-'));
   const trainerProfileDirectory = await mkdtemp(path.join(os.tmpdir(), 'kinetra-browser-'));
   let client = null;
@@ -5554,6 +6294,414 @@ const runT12BrowserScenario = async () => {
         false,
       );
     }
+
+    await client.navigate('/trainer/videos');
+    await waitFor(
+      'client video-admin route guard',
+      async () =>
+        (await client.pathname()) === '/' &&
+        (await client.exists('main-screen')) &&
+        fixture.state.videoProgramGets === 0,
+      20_000,
+    );
+
+    await trainer.cdp.evaluate(`(() => {
+      const link = [...document.querySelectorAll('a')].find(
+        (candidate) => candidate.textContent?.trim() === 'Видео'
+      );
+      if (!(link instanceof HTMLAnchorElement)) throw new Error('T14 trainer video nav missing.');
+      link.click();
+    })()`);
+    await waitFor(
+      'trainer video inventory independent of chat runtime',
+      async () =>
+        (await trainer.pathname()) === '/trainer/videos' &&
+        (await trainer.exists('trainer-video-screen')) &&
+        fixture.state.videoProgramGets >= 1 &&
+        (await trainer.bodyText()).includes('Готово 0 из 84'),
+      20_000,
+    );
+    const inventoryShape = await trainer.cdp.evaluate(`(() => ({
+      weekButtons: document.querySelectorAll('nav[aria-label="Недели программы"] button').length,
+      visibleSlots: document.querySelectorAll('.trainer-video-slot').length,
+      fileAccept: document.querySelector('[data-testid="trainer-video-file-input"]')?.getAttribute('accept') ?? null,
+      internalKeysVisible: /storage_key|multipart_upload_id|videos\\/workouts\\//u.test(document.body.innerText),
+    }))()`);
+    assert.deepEqual(inventoryShape, {
+      weekButtons: 12,
+      visibleSlots: 7,
+      fileAccept: 'video/mp4,.mp4',
+      internalKeysVisible: false,
+    });
+
+    for (const width of [320, 428, 768, 959, 960, 1440]) {
+      await trainer.setViewport(width, width < 700 ? 820 : 900);
+      const metrics = await trainer.cdp.evaluate(`(() => ({
+        width: window.innerWidth,
+        scrollWidth: document.documentElement.scrollWidth,
+        targets: [...document.querySelectorAll('nav[aria-label="Недели программы"] button')]
+          .every((button) => {
+            const rect = button.getBoundingClientRect();
+            return rect.width >= 44 && rect.height >= 44;
+          }),
+      }))()`);
+      assert.equal(metrics.width, width);
+      assert.ok(
+        metrics.scrollWidth <= width,
+        `T14 video admin overflows horizontally at ${width}px.`,
+      );
+      assert.equal(metrics.targets, true, `T14 week target is below 44px at ${width}px.`);
+    }
+    await trainer.setViewport(1280, 900);
+
+    await trainer.cdp.send('Network.enable');
+    await trainer.cdp.send('Network.emulateNetworkConditions', {
+      offline: false,
+      latency: 5,
+      downloadThroughput: 20_000_000,
+      uploadThroughput: 20_000_000,
+      connectionType: 'wifi',
+    });
+
+    await trainer.click('trainer-video-upload-1-6');
+    await sleep(100);
+    const xhrSendCallsBeforeAbort = await trainer.armAbortBeforeNextVideoXhr();
+    assert.equal(
+      await trainer.selectVideo('synthetic-workout-pre-aborted.mp4'),
+      syntheticVideo.length,
+    );
+    await waitFor(
+      'T14 actual browser aborts before the first video XHR send',
+      async () => {
+        const xhrState = await trainer.videoXhrState();
+        const slot = fixture.state.videoSlots.get('1:6');
+        const record =
+          slot?.liveUploadId === null || slot?.liveUploadId === undefined
+            ? null
+            : fixture.state.videoUploads.get(slot.liveUploadId);
+        return (
+          xhrState.triggers === 1 &&
+          xhrState.controllerCount >= 2 &&
+          record?.stats.signs >= 1 &&
+          (await trainer.videoSlotUi(1, 6)).cancelDisabled === false
+        );
+      },
+      20_000,
+    );
+    const preAbortedSlot = fixture.state.videoSlots.get('1:6');
+    assert.notEqual(preAbortedSlot, undefined);
+    assert.notEqual(preAbortedSlot.liveUploadId, null);
+    const preAbortedRecord = fixture.state.videoUploads.get(preAbortedSlot.liveUploadId);
+    assert.notEqual(preAbortedRecord, undefined);
+    assert.equal(preAbortedRecord.stats.putStarts, 0);
+    assert.equal(preAbortedRecord.stats.completes, 0);
+    assert.equal((await trainer.videoXhrState()).sendCalls, xhrSendCallsBeforeAbort);
+    assert.equal(fixture.state.videoUnexpectedXhrSends, 0);
+    t14BrowserEvidence.nativePreAbortedNoSend = true;
+    await trainer.click('trainer-video-cancel-1-6');
+    await waitFor(
+      'T14 pre-aborted fixture upload is explicitly cancelled',
+      async () =>
+        preAbortedRecord.stats.cancels === 1 && (await trainer.videoSlotUi(1, 6)).upload === true,
+      20_000,
+    );
+
+    await trainer.cdp.send('Network.emulateNetworkConditions', {
+      offline: false,
+      latency: 20,
+      downloadThroughput: 10_000_000,
+      uploadThroughput: 2_000_000,
+      connectionType: 'wifi',
+    });
+    await trainer.click('trainer-video-upload-1-2');
+    await sleep(100);
+    assert.equal(await trainer.selectVideo('synthetic-workout-day-2.mp4'), syntheticVideo.length);
+    await trainer.click('trainer-video-upload-1-3');
+    await sleep(100);
+    assert.equal(await trainer.selectVideo('synthetic-workout-day-3.mp4'), syntheticVideo.length);
+    await waitFor(
+      'T14 two slots expose independent intermediate progress and cancel controls',
+      async () => {
+        const [day2, day3] = await Promise.all([
+          trainer.videoSlotUi(1, 2),
+          trainer.videoSlotUi(1, 3),
+        ]);
+        return (
+          day2.progress > 0 &&
+          day2.progress < 100 &&
+          day3.progress > 0 &&
+          day3.progress < 100 &&
+          day2.cancel &&
+          day2.cancelDisabled === false &&
+          day3.cancel &&
+          day3.cancelDisabled === false
+        );
+      },
+      30_000,
+    );
+    const parallelDay2Slot = fixture.state.videoSlots.get('1:2');
+    const parallelDay3Slot = fixture.state.videoSlots.get('1:3');
+    assert.notEqual(parallelDay2Slot, undefined);
+    assert.notEqual(parallelDay3Slot, undefined);
+    assert.notEqual(parallelDay2Slot.liveUploadId, null);
+    assert.notEqual(parallelDay3Slot.liveUploadId, null);
+    assert.notEqual(parallelDay2Slot.liveUploadId, parallelDay3Slot.liveUploadId);
+    const parallelDay2Record = fixture.state.videoUploads.get(parallelDay2Slot.liveUploadId);
+    const parallelDay3Record = fixture.state.videoUploads.get(parallelDay3Slot.liveUploadId);
+    assert.notEqual(parallelDay2Record, undefined);
+    assert.notEqual(parallelDay3Record, undefined);
+    t14BrowserEvidence.parallelSlots = true;
+
+    await trainer.click('trainer-video-cancel-1-2');
+    await waitFor(
+      'T14 cancelling one slot leaves the sibling upload active',
+      async () => {
+        const day2 = await trainer.videoSlotUi(1, 2);
+        const day3 = await trainer.videoSlotUi(1, 3);
+        return (
+          parallelDay2Record.stats.cancels === 1 &&
+          parallelDay2Record.stats.completes === 0 &&
+          day2.upload &&
+          parallelDay3Record.stats.cancels === 0 &&
+          parallelDay3Slot.liveUploadId === parallelDay3Record.id &&
+          day3.cancel &&
+          day3.cancelDisabled === false
+        );
+      },
+      20_000,
+    );
+
+    await trainer.cdp.send('Network.emulateNetworkConditions', {
+      offline: false,
+      latency: 5,
+      downloadThroughput: 20_000_000,
+      uploadThroughput: 20_000_000,
+      connectionType: 'wifi',
+    });
+    await waitFor(
+      'T14 sibling upload reaches verification before a real page reload',
+      () =>
+        parallelDay3Record.stats.completes === 1 &&
+        parallelDay3Record.polls === 1 &&
+        parallelDay3Record.dto.status === 'verifying',
+      40_000,
+    );
+    await trainer.cdp.send('Page.reload', { ignoreCache: true });
+    await waitFor(
+      'T14 reload restores the processing slot and resumes durable status polling',
+      async () =>
+        (await trainer.pathname()) === '/trainer/videos' &&
+        (await trainer.exists('trainer-video-screen')) &&
+        (await trainer.bodyText()).includes('Файл загружен, проверяем'),
+      25_000,
+    );
+    await waitFor(
+      'T14 sibling slot reaches publication after the other slot is cancelled',
+      async () =>
+        parallelDay3Slot.mediaAvailable &&
+        parallelDay3Record.stats.completes === 1 &&
+        parallelDay3Record.polls >= 2 &&
+        fixture.state.videoTransientFailures === 1 &&
+        (await trainer.exists('trainer-video-preview-1-3')),
+      40_000,
+    );
+    assert.equal(parallelDay2Record.stats.completes, 0);
+    assert.equal(parallelDay3Record.stats.cancels, 0);
+    assert.equal(parallelDay3Record.stats.abortedPuts, 0);
+    assert.equal(parallelDay3Record.acceptedParts.size, parallelDay3Record.dto.part_count);
+    t14BrowserEvidence.cancelIsolation = true;
+    t14BrowserEvidence.reloadPolling = true;
+
+    await trainer.click('trainer-video-preview-1-3');
+    await waitFor(
+      'T14 preview uses a short SigV4-shaped capability without app tokens',
+      async () => {
+        const capability = await trainer.videoCapabilityState(
+          fixture.state.currentAccessToken.trainer,
+        );
+        if (capability.previewUrl === null) return false;
+        const url = new URL(capability.previewUrl);
+        return (
+          url.pathname === '/__browser-test/t14/synthetic.mp4' &&
+          url.searchParams.get('X-Amz-Algorithm') === 'AWS4-HMAC-SHA256' &&
+          url.searchParams.get('X-Amz-Expires') === '120' &&
+          /^[a-f0-9]{64}$/u.test(url.searchParams.get('X-Amz-Signature') ?? '') &&
+          !url.searchParams.has('token') &&
+          !url.searchParams.has('access_token') &&
+          capability.capabilityInDom &&
+          !capability.capabilityInLocalStorage &&
+          !capability.capabilityInSessionStorage &&
+          !capability.capabilityInHistory &&
+          !capability.capabilityInCache &&
+          !capability.accessTokenInStorage
+        );
+      },
+    );
+    t14BrowserEvidence.previewPrivateUrl = true;
+    await trainer.clickButtonWithText('Закрыть');
+    await waitFor(
+      'T14 closing preview removes the signed capability from browser-owned state',
+      async () => {
+        const capability = await trainer.videoCapabilityState(
+          fixture.state.currentAccessToken.trainer,
+        );
+        return (
+          capability.previewUrl === null &&
+          !capability.capabilityInDom &&
+          !capability.capabilityInLocalStorage &&
+          !capability.capabilityInSessionStorage &&
+          !capability.capabilityInHistory &&
+          !capability.capabilityInCache &&
+          !capability.accessTokenInStorage
+        );
+      },
+    );
+    t14BrowserEvidence.previewCapabilityCleared = true;
+    await trainer.cdp.evaluate('window.confirm = () => true');
+    await trainer.click('trainer-video-hide-1-3');
+    await waitFor(
+      'T14 soft unpublish returns the hidden placeholder state',
+      async () =>
+        fixture.state.videoUnpublishes === 1 &&
+        !parallelDay3Slot.mediaAvailable &&
+        (await trainer.bodyText()).includes('Скрыто — клиенты видят заглушку'),
+      20_000,
+    );
+
+    await trainer.click('trainer-video-upload-1-4');
+    await sleep(100);
+    assert.equal(await trainer.selectVideo('synthetic-workout-fatal.mp4'), syntheticVideo.length);
+    await waitFor(
+      'T14 fatal part failure aborts an active sibling XHR',
+      async () => {
+        const slot = fixture.state.videoSlots.get('1:4');
+        const record =
+          slot?.liveUploadId === null || slot?.liveUploadId === undefined
+            ? null
+            : fixture.state.videoUploads.get(slot.liveUploadId);
+        return (
+          record !== null &&
+          record.partAttempts.get(1) === 3 &&
+          record.stats.abortedPuts >= 1 &&
+          (await trainer.bodyText()).includes('Part upload failed with 503')
+        );
+      },
+      40_000,
+    );
+    const fatalSlot = fixture.state.videoSlots.get('1:4');
+    assert.notEqual(fatalSlot, undefined);
+    assert.notEqual(fatalSlot.liveUploadId, null);
+    const fatalRecord = fixture.state.videoUploads.get(fatalSlot.liveUploadId);
+    assert.notEqual(fatalRecord, undefined);
+    const fatalEvent = fixture.state.videoEvents.find(
+      (event) => event.upload_id === fatalRecord.id && event.type === 'fatal_rejected',
+    );
+    assert.notEqual(fatalEvent, undefined);
+    assert.equal(fatalRecord.stats.completes, 0);
+    assert.equal(
+      fixture.state.videoEvents.some(
+        (event) =>
+          event.upload_id === fatalRecord.id &&
+          event.part_number !== 1 &&
+          event.type === 'put_aborted',
+      ),
+      true,
+    );
+    await sleep(1_000);
+    assert.deepEqual(
+      fixture.state.videoEvents.filter(
+        (event) =>
+          event.upload_id === fatalRecord.id &&
+          event.sequence > fatalEvent.sequence &&
+          ['part_signed', 'put_start', 'complete'].includes(event.type),
+      ),
+      [],
+    );
+    t14BrowserEvidence.fatalSiblingAbort = true;
+    await trainer.clickButtonWithText('Закрыть');
+    await trainer.click('trainer-video-cancel-1-4');
+    await waitFor(
+      'T14 fatal fixture upload remains explicitly cancellable',
+      async () => fatalRecord.stats.cancels === 1 && (await trainer.videoSlotUi(1, 4)).upload,
+      20_000,
+    );
+
+    const resumeRecord = fixture.state.videoUploads.get(fixture.state.videoResumeUploadId);
+    assert.notEqual(resumeRecord, undefined);
+    assert.equal((await trainer.videoSlotUi(1, 5)).resumeDisabled, false);
+    const resumeMutationsBeforeMismatch = {
+      signs: resumeRecord.stats.signs,
+      puts: resumeRecord.stats.putStarts,
+      completes: resumeRecord.stats.completes,
+    };
+    await trainer.click('trainer-video-resume-1-5');
+    await sleep(100);
+    assert.equal(
+      await trainer.selectVideo('synthetic-workout-same-size-different.mp4', 'different'),
+      syntheticVideo.length,
+    );
+    await waitFor(
+      'T14 resume rejects a same-size different file before any mutation',
+      async () =>
+        (await trainer.bodyText()).includes('Выбран другой файл') &&
+        (await trainer.videoSlotUi(1, 5)).resumeDisabled === false,
+      20_000,
+    );
+    assert.deepEqual(
+      {
+        signs: resumeRecord.stats.signs,
+        puts: resumeRecord.stats.putStarts,
+        completes: resumeRecord.stats.completes,
+      },
+      resumeMutationsBeforeMismatch,
+    );
+    await trainer.clickButtonWithText('Закрыть');
+    await trainer.click('trainer-video-resume-1-5');
+    await sleep(100);
+    assert.equal(await trainer.selectVideo('synthetic-workout-resume.mp4'), syntheticVideo.length);
+    const resumeSlot = fixture.state.videoSlots.get('1:5');
+    assert.notEqual(resumeSlot, undefined);
+    await waitFor(
+      'T14 exact-file resume skips the accepted part and publishes',
+      async () =>
+        resumeSlot.mediaAvailable &&
+        resumeRecord.stats.completes === 1 &&
+        (await trainer.exists('trainer-video-preview-1-5')),
+      40_000,
+    );
+    assert.equal(
+      fixture.state.videoEvents.some(
+        (event) =>
+          event.upload_id === resumeRecord.id &&
+          event.part_number === 1 &&
+          ['part_signed', 'put_start'].includes(event.type),
+      ),
+      false,
+    );
+    assert.equal(
+      fixture.state.videoEvents.some(
+        (event) =>
+          event.upload_id === resumeRecord.id &&
+          event.part_number === 2 &&
+          event.type === 'put_accepted',
+      ),
+      true,
+    );
+    assert.equal(resumeRecord.acceptedParts.size, resumeRecord.dto.part_count);
+    t14BrowserEvidence.resumeIdentity = true;
+
+    const browserStorageLeaks = await trainer.cdp.evaluate(`({
+      local: Object.values(localStorage).some((value) => String(value).includes('X-Amz-')),
+      session: Object.values(sessionStorage).some((value) => String(value).includes('X-Amz-')),
+    })`);
+    assert.deepEqual(browserStorageLeaks, { local: false, session: false });
+
+    await trainer.navigate('/trainer/chats');
+    await waitFor(
+      'T12 chat remains usable after the T14 lifecycle',
+      () => trainer.exists('trainer-chat-screen'),
+      20_000,
+    );
 
     await client.navigate('/trainer/chats');
     await waitFor(
@@ -6165,6 +7313,24 @@ const runT12BrowserScenario = async () => {
       capturedTrainerLogoutBearer,
     ]);
     assert.deepEqual(await trainer.draftKeys(), []);
+    await waitFor(
+      'T14 logout keeps preview capability and access token out of storage',
+      async () => {
+        const capability = await trainer.videoCapabilityState(
+          fixture.state.currentAccessToken.trainer,
+        );
+        return (
+          capability.previewUrl === null &&
+          !capability.capabilityInDom &&
+          !capability.capabilityInLocalStorage &&
+          !capability.capabilityInSessionStorage &&
+          !capability.capabilityInHistory &&
+          !capability.capabilityInCache &&
+          !capability.accessTokenInStorage
+        );
+      },
+    );
+    t14BrowserEvidence.logoutCapabilityCleared = true;
 
     await client.setValue('chat-message-input', 'Черновик должен удалиться при выходе');
     await waitFor('account-scoped client chat draft before logout', async () => {
@@ -6265,6 +7431,19 @@ const runT12BrowserScenario = async () => {
         ({ role, throughSequence }) => role === 'client' && throughSequence >= 2,
       ),
     );
+    t14BrowserEvidence.coexistence = true;
+    assert.deepEqual(t14BrowserEvidence, {
+      parallelSlots: true,
+      cancelIsolation: true,
+      fatalSiblingAbort: true,
+      resumeIdentity: true,
+      nativePreAbortedNoSend: true,
+      previewPrivateUrl: true,
+      previewCapabilityCleared: true,
+      reloadPolling: true,
+      logoutCapabilityCleared: true,
+      coexistence: true,
+    });
   } catch (error) {
     for (const [label, context] of [
       ['client', client],
@@ -6323,10 +7502,13 @@ const runT12BrowserScenario = async () => {
     await Promise.all([
       removeProfileDirectory(clientProfileDirectory),
       removeProfileDirectory(trainerProfileDirectory),
+      rm(syntheticVideoDirectory, { recursive: true, force: true }),
     ]);
     await assertNoBrowserProfileDirectories();
   }
 
+  console.log('KINETRA_T14_T07_T12_T13_COEXISTENCE=PASS');
+  console.log('KINETRA_T14_BROWSER_E2E=PASS');
   console.log('KINETRA_T12_BROWSER_E2E=PASS');
 };
 

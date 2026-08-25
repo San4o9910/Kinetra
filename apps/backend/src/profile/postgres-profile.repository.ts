@@ -25,6 +25,7 @@ interface UserRow extends QueryResultRow {
   readonly updated_at: Date;
   readonly account_role: 'client' | 'trainer';
   readonly trainer_display_name: string | null;
+  readonly trainer_can_manage_videos: boolean | null;
 }
 
 interface OnboardingRow extends QueryResultRow {
@@ -261,7 +262,8 @@ export class PostgresProfileRepository implements ProfileRepository {
           user_record.created_at,
           user_record.updated_at,
           CASE WHEN trainer.user_id IS NULL THEN 'client' ELSE 'trainer' END AS account_role,
-          trainer.display_name AS trainer_display_name
+          trainer.display_name AS trainer_display_name,
+          trainer.can_manage_videos AS trainer_can_manage_videos
         FROM users AS user_record
         LEFT JOIN trainer_profiles AS trainer
           ON trainer.user_id = user_record.id
@@ -355,6 +357,7 @@ export class PostgresProfileRepository implements ProfileRepository {
           ? {
               displayName: user.trainer_display_name,
               avatarUrl: user.avatar_url,
+              canManageVideos: user.trainer_can_manage_videos === true,
             }
           : null,
       survey: survey === undefined ? null : mapSurvey(survey),

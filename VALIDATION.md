@@ -1,4 +1,68 @@
-# Kinetra T12 correction — validation contract
+# Kinetra validation contract
+
+## T14 local implementation state — 2026-08-25
+
+**Base:** `develop@e29def0814bea74afd175f7003eb7d9a1aaeaa7d`
+
+**Local branch:** `feature/t14-video-upload-s3-fix`
+
+T14 добавлен обычными TypeScript/TSX/SQL/CSS/Markdown исходниками. Production flag остаётся
+выключенным. Локальные typecheck, lint, unit tests, build, format и structure gates пройдены.
+PostgreSQL 17, versioned/unversioned S3 и Chrome acceptance остаются `CI REQUIRED`: эти runtime
+локально отсутствуют, а skip не является PASS marker. Реальная H.264 fixture через ffmpeg/ffprobe
+доступна и прошла.
+
+До публикации ветки здесь намеренно нет dynamic head SHA, PR URL или Actions URL. Draft PR, Ready,
+merge, deploy и production rollout не выполнялись.
+
+| Проверка                                      | Статус      | Фактический результат                                       |
+| --------------------------------------------- | ----------- | ----------------------------------------------------------- |
+| Structural contracts T01–T14                  | PASS        | 2 874/2 874 checks                                          |
+| TypeScript                                    | PASS        | shared, backend production/tests и frontend                 |
+| ESLint                                        | PASS        | `eslint apps packages scripts`                              |
+| Backend unit/API                              | PASS        | 181 total: 163 pass, 18 runtime skips, 0 fail               |
+| Frontend unit/API                             | PASS        | 160/160, 0 fail                                             |
+| Real MP4/H.264 ffmpeg/ffprobe                 | PASS        | `KINETRA_T14_VIDEO_VERIFICATION=PASS`                       |
+| PostgreSQL 17 migration/concurrency           | CI REQUIRED | `DATABASE_URL` и `psql` отсутствуют локально                |
+| Versioned/unversioned private S3              | CI REQUIRED | MinIO/Docker отсутствуют локально                           |
+| Chrome trainer upload acceptance              | CI REQUIRED | bundle и mock API PASS; Chrome/Chromium отсутствует         |
+| Production build                              | PASS        | shared + backend + Vite, 131 modules                        |
+| Operator CLI help                             | PASS        | strict grant/revoke/quarantine-retry contracts              |
+| Changed-file Prettier и `git diff --check`    | PASS        | 49 formatted files; whitespace errors отсутствуют           |
+| Tracked source manifest                       | PASS        | 321/321 source hashes; обновлён последним                   |
+| Authoritative full suite и десять T14 markers | CI REQUIRED | только exact-head/merge-ref GitHub Actions после публикации |
+
+Локальный browser harness собрал production bundle, проверил exact API origin и mock API, затем
+fail-closed завершился с `Chrome/Chromium was not found for the frontend browser test.` Backend
+PostgreSQL и S3 integration tests также корректно пропущены без соответствующих PASS markers. CI
+намеренно задаёт `KINETRA_REQUIRE_POSTGRES_TEST=true` и `KINETRA_REQUIRE_S3_TEST=true`, поэтому такие
+skip там являются ошибкой.
+
+Completion single-flight продлевает lease во время preflight/S3, повторно fence-ит token перед
+`CompleteMultipartUpload` и перед записью результата, а deadline/потеря lease отменяет активный S3
+request. PostgreSQL CAS использует фактический `clock_timestamp()` и bounded query/statement timeout.
+Verifier различает terminal media errors и runtime/infrastructure failures, вручную завершает
+игнорирующий SIGTERM process через SIGKILL и перед recovery heartbeat проверяет ffprobe, temp stream и
+private-S3 list/head/get. Quarantine сохраняет object и не является вечной глобальной блокировкой.
+Metadata/ETag/VersionId/SSE drift также остаётся retryable и не создаёт deletion job. Cleanup имеет
+общий abortable deadline; already-absent versioned object подтверждается без нового delete marker.
+Expiration учитывает живой completion lease, последний presigned part URL и bounded ambiguity grace,
+а поздний object переоткрывает completed cleanup job. Trainer authority mutations используют единый
+lock order `users → trainer_profiles`. После reload UI возобновляет bounded server polling с
+generation fencing; signed-looking preview capability удаляется из DOM/storage/history/cache после
+close и logout. Controlled stalled-body regression выполнен 30 раз без сбоя.
+
+## T12 acceptance — 2026-08-24
+
+Correction PR #14 влит в feature head `a5f8cc402349a7d88ad56e606de98f52170a2dc6`, после чего PR #13
+влит в `develop` commit `e29def0814bea74afd175f7003eb7d9a1aaeaa7d`. Оба merge commit имеют
+одинаковое итоговое tree `8e7daff2c51e264bff02ce32246a5b63f4de4c3c`. CI runs #108 и #109
+проверили correction PR; итоговый CI #110 после интеграции фикса также завершился успешно. Поэтому
+T12 принят и является базой T14.
+
+---
+
+## T12 correction — сохранённый validation contract
 
 **Дата:** 2026-08-24
 

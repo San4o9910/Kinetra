@@ -257,13 +257,6 @@ try {
           ON CONFLICT (slug) DO UPDATE SET
             title = EXCLUDED.title,
             description = EXCLUDED.description,
-            type = EXCLUDED.type,
-            day_of_week = EXCLUDED.day_of_week,
-            week_number = EXCLUDED.week_number,
-            duration_seconds = EXCLUDED.duration_seconds,
-            storage_key = EXCLUDED.storage_key,
-            poster_key = EXCLUDED.poster_key,
-            status = EXCLUDED.status,
             order_index = EXCLUDED.order_index
         `,
         [
