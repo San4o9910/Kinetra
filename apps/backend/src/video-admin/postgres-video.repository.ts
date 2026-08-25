@@ -155,7 +155,7 @@ const pruneVideoUploadRateEvents = async (
   await client.query(
     `WITH stale AS (
        SELECT id FROM video_upload_rate_events
-       WHERE trainer_user_id=$1 AND occurred_at < $2 - INTERVAL '2 days'
+       WHERE trainer_user_id=$1 AND occurred_at < $2::timestamptz - INTERVAL '2 days'
        ORDER BY occurred_at, id
        LIMIT $3
        FOR UPDATE SKIP LOCKED
@@ -203,7 +203,8 @@ export class PostgresVideoAdminRepository implements VideoAdminRepository {
       `SELECT COUNT(*) = 2
           AND BOOL_AND(
             last_succeeded_at IS NOT NULL
-            AND last_succeeded_at >= $1 - ($2 * INTERVAL '1 second')
+            AND last_succeeded_at >=
+              $1::timestamptz - ($2::double precision * INTERVAL '1 second')
           )
           AND BOOL_AND(last_failed_at IS NULL OR last_succeeded_at > last_failed_at)
           AND BOOL_AND(
@@ -397,8 +398,8 @@ export class PostgresVideoAdminRepository implements VideoAdminRepository {
            (SELECT COUNT(*) FROM trainer_video_uploads
              WHERE uploader_user_id = $1
                AND status IN ('creating','uploading','completing','verification_pending','verifying')) AS active_count,
-           COUNT(*) FILTER (WHERE event_type = 'init' AND occurred_at >= $2 - INTERVAL '1 hour') AS init_count,
-           COALESCE(SUM(reserved_bytes) FILTER (WHERE event_type = 'init' AND occurred_at >= date_trunc('day', $2)), 0) AS reserved_bytes
+           COUNT(*) FILTER (WHERE event_type = 'init' AND occurred_at >= $2::timestamptz - INTERVAL '1 hour') AS init_count,
+           COALESCE(SUM(reserved_bytes) FILTER (WHERE event_type = 'init' AND occurred_at >= date_trunc('day', $2::timestamptz)), 0) AS reserved_bytes
          FROM video_upload_rate_events WHERE trainer_user_id = $1`,
         [input.authority.userId, input.now],
       );
@@ -571,7 +572,7 @@ export class PostgresVideoAdminRepository implements VideoAdminRepository {
       const recent = await client.query<{ readonly count: string }>(
         `SELECT COUNT(*) AS count FROM video_upload_rate_events
          WHERE trainer_user_id=$1 AND event_type='sign'
-           AND occurred_at >= $2 - INTERVAL '1 minute'`,
+           AND occurred_at >= $2::timestamptz - INTERVAL '1 minute'`,
         [trainerUserId, now],
       );
       if (Number(recent.rows[0]?.count ?? 0) >= 30) {
@@ -1346,7 +1347,7 @@ export class PostgresVideoAdminRepository implements VideoAdminRepository {
       `WITH candidates AS (
          SELECT id FROM video_media_deletion_jobs WHERE completed_at IS NULL
            AND not_before <= $1 AND next_attempt_at <= $1
-           AND (locked_at IS NULL OR locked_at <= $1 - INTERVAL '15 minutes')
+           AND (locked_at IS NULL OR locked_at <= $1::timestamptz - INTERVAL '15 minutes')
          ORDER BY next_attempt_at, requested_at, id LIMIT $2 FOR UPDATE SKIP LOCKED
        ) UPDATE video_media_deletion_jobs job SET locked_at=$1, attempt_count=attempt_count+1
          FROM candidates WHERE job.id=candidates.id
@@ -1388,7 +1389,7 @@ export class PostgresVideoAdminRepository implements VideoAdminRepository {
     const result = await this.pool.query<{ readonly healthy: boolean }>(
       `WITH stale_rate_events AS (
          SELECT id FROM video_upload_rate_events
-         WHERE occurred_at < $1 - INTERVAL '2 days'
+         WHERE occurred_at < $1::timestamptz - INTERVAL '2 days'
          ORDER BY occurred_at, id
          LIMIT $3
          FOR UPDATE SKIP LOCKED
