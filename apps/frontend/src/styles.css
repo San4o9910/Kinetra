@@ -5405,3 +5405,367 @@ h1 {
     transition: none;
   }
 }
+
+/* T14 — trainer video administration */
+.trainer-admin-shell {
+  display: grid;
+  min-width: 320px;
+  height: 100vh;
+  height: 100dvh;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  background: var(--background);
+}
+
+.trainer-admin-header {
+  z-index: 20;
+  display: grid;
+  min-height: 68px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: clamp(12px, 3vw, 32px);
+  padding: max(10px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 10px
+    max(16px, env(safe-area-inset-left));
+  border-bottom: 1px solid var(--divider);
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
+  backdrop-filter: blur(16px);
+}
+
+.trainer-admin-brand {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 9px;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.trainer-admin-brand > span {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 10px;
+  color: var(--accent-ink);
+  background: var(--accent-fill);
+  font-weight: 900;
+}
+
+.trainer-admin-header nav {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.trainer-admin-header nav a,
+.trainer-admin-header > button {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.trainer-admin-header nav a[aria-current='page'] {
+  border-color: var(--accent-fill);
+  color: var(--accent-ink);
+  background: var(--accent-fill);
+}
+
+.trainer-admin-header > button {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.trainer-admin-content {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.trainer-admin-content > .trainer-chat-shell,
+.trainer-admin-content > .chat-bootstrap-shell {
+  height: 100%;
+  min-height: 0;
+}
+
+.trainer-video-screen {
+  width: min(1180px, 100%);
+  min-height: 100%;
+  margin: 0 auto;
+  padding: clamp(20px, 4vw, 42px) max(16px, env(safe-area-inset-right))
+    max(32px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+}
+
+.trainer-video-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.trainer-video-heading p,
+.trainer-video-heading h1 {
+  margin: 0;
+}
+
+.trainer-video-heading p {
+  color: var(--accent-text);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.trainer-video-heading h1 {
+  margin-top: 7px;
+  font-size: clamp(30px, 5vw, 46px);
+  letter-spacing: -0.04em;
+}
+
+.trainer-video-summary {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.trainer-video-summary span,
+.trainer-video-offline,
+.trainer-video-alert {
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--muted);
+  background: var(--surface);
+  font-size: 12px;
+}
+
+.trainer-video-alert,
+.trainer-video-offline {
+  margin: 16px 0 0;
+}
+
+.trainer-video-alert {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.trainer-video-alert p {
+  margin: 0;
+}
+
+.trainer-video-alert button {
+  min-height: 36px;
+}
+
+.trainer-week-nav {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(58px, 1fr));
+  gap: 8px;
+  margin-top: 28px;
+  padding: 2px 2px 8px;
+}
+
+.trainer-week-nav button {
+  display: grid;
+  min-width: 58px;
+  min-height: 52px;
+  place-items: center;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.trainer-week-nav button[aria-pressed='true'] {
+  border-color: var(--accent-fill);
+  color: var(--accent-ink);
+  background: var(--accent-fill);
+}
+
+.trainer-week-nav button span {
+  font-size: 10px;
+  opacity: 0.75;
+}
+
+.trainer-video-week {
+  margin-top: 26px;
+}
+
+.trainer-video-week > h2 {
+  margin: 0 0 12px;
+  font-size: 22px;
+}
+
+.trainer-video-week > ol {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.trainer-video-slot {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(120px, 260px) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--surface);
+}
+
+.trainer-video-slot.is-failed {
+  border-color: color-mix(in srgb, var(--danger) 60%, var(--border));
+}
+
+.trainer-video-slot-copy {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.trainer-video-slot-copy span,
+.trainer-video-slot-copy small,
+.trainer-video-slot-copy em {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+}
+
+.trainer-video-slot-copy em {
+  color: var(--danger);
+}
+
+.trainer-video-progress {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--divider);
+}
+
+.trainer-video-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent-fill);
+  transition: width 160ms ease;
+}
+
+.trainer-video-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.trainer-video-actions button {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  color: var(--text);
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.trainer-video-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.trainer-video-preview {
+  width: min(900px, calc(100vw - 28px));
+  max-width: none;
+  padding: 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: 16px;
+  color: var(--text);
+  background: var(--surface);
+}
+
+.trainer-video-preview::backdrop {
+  background: rgba(0, 0, 0, 0.78);
+}
+
+.trainer-video-preview > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.trainer-video-preview h2 {
+  margin: 0;
+}
+
+.trainer-video-preview button {
+  min-height: 44px;
+}
+
+.trainer-video-preview video {
+  display: block;
+  width: 100%;
+  max-height: 72vh;
+  margin-top: 14px;
+  background: #000;
+}
+
+@media (max-width: 767px) {
+  .trainer-admin-brand strong {
+    display: none;
+  }
+
+  .trainer-admin-header {
+    gap: 6px;
+    padding-right: max(8px, env(safe-area-inset-right));
+    padding-left: max(8px, env(safe-area-inset-left));
+  }
+
+  .trainer-admin-header nav a,
+  .trainer-admin-header > button {
+    padding: 0 10px;
+  }
+
+  .trainer-video-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .trainer-video-summary {
+    justify-content: flex-start;
+  }
+
+  .trainer-video-slot {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .trainer-video-actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trainer-video-progress span {
+    transition: none;
+  }
+}

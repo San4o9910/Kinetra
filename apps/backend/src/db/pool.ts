@@ -9,6 +9,7 @@ export const databasePool = new Pool({
   max: 10,
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 5_000,
+  query_timeout: 10_000,
 });
 
 databasePool.on('error', (error) => {

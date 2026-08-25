@@ -67,6 +67,7 @@ const requiredFiles = [
   'docs/T11_PAYMENTS.md',
   'docs/T12_TRAINER_CHAT.md',
   'docs/T13_PUSH_NOTIFICATIONS.md',
+  'docs/T14_VIDEO_UPLOADS.md',
   'apps/frontend/index.html',
   'apps/frontend/src/features/auth/LoginScreen.tsx',
   'apps/frontend/src/features/survey/SurveyWizard.tsx',
@@ -128,6 +129,11 @@ const requiredFiles = [
   'apps/frontend/src/features/trainer-chat/TrainerChatsScreen.tsx',
   'apps/frontend/src/features/trainer-chat/selectedConversation.ts',
   'apps/frontend/src/features/trainer-chat/index.ts',
+  'apps/frontend/src/features/trainer-shell/TrainerAdminShell.tsx',
+  'apps/frontend/src/features/trainer-videos/TrainerVideosScreen.tsx',
+  'apps/frontend/src/features/trainer-videos/model.ts',
+  'apps/frontend/src/features/trainer-videos/program-polling.ts',
+  'apps/frontend/src/features/trainer-videos/upload.ts',
   'apps/frontend/src/routing.ts',
   'apps/frontend/test/api-session.test.ts',
   'apps/frontend/test/survey-routing.test.ts',
@@ -155,6 +161,8 @@ const requiredFiles = [
   'apps/frontend/test/chat-realtime.test.ts',
   'apps/frontend/test/chat-ui.test.ts',
   'apps/frontend/test/trainer-selected-conversation.test.ts',
+  'apps/frontend/test/trainer-videos.test.ts',
+  'apps/frontend/test/trainer-video-upload.test.ts',
   'apps/frontend/public/manifest.webmanifest',
   'apps/frontend/public/service-worker.js',
   'apps/frontend/public/offline.html',
@@ -175,6 +183,7 @@ const requiredFiles = [
   'apps/backend/migrations/009_payments.sql',
   'apps/backend/migrations/010_push_notifications.sql',
   'apps/backend/migrations/011_trainer_chat.sql',
+  'apps/backend/migrations/012_video_uploads.sql',
   'apps/backend/scripts/migrate.mjs',
   'apps/backend/scripts/seed.mjs',
   'apps/backend/scripts/verify-content.mjs',
@@ -253,6 +262,19 @@ const requiredFiles = [
   'apps/backend/src/chat/client-ip.ts',
   'apps/backend/src/chat/run-media-cleanup.ts',
   'apps/backend/src/chat/trainer-cli.ts',
+  'apps/backend/src/video-admin/schema.ts',
+  'apps/backend/src/video-admin/repository.ts',
+  'apps/backend/src/video-admin/postgres-video.repository.ts',
+  'apps/backend/src/video-admin/storage.ts',
+  'apps/backend/src/video-admin/verifier.ts',
+  'apps/backend/src/video-admin/service.ts',
+  'apps/backend/src/video-admin/router.ts',
+  'apps/backend/src/video-admin/runtime.ts',
+  'apps/backend/src/video-admin/worker-service.ts',
+  'apps/backend/src/video-admin/run-upload-worker.ts',
+  'apps/backend/src/video-admin/run-media-cleanup.ts',
+  'apps/backend/src/video-admin/trainer-access-cli.ts',
+  'apps/backend/src/video-admin/upload-recovery-cli.ts',
   'apps/backend/test/auth.e2e.test.ts',
   'apps/backend/test/auth.postgres.test.ts',
   'apps/backend/test/env.test.ts',
@@ -278,6 +300,12 @@ const requiredFiles = [
   'apps/backend/test/chat.socket.test.ts',
   'apps/backend/test/chat-trainer-cli.test.ts',
   'apps/backend/test/chat-photo-security.test.ts',
+  'apps/backend/test/video-admin.e2e.test.ts',
+  'apps/backend/test/video-admin.postgres.test.ts',
+  'apps/backend/test/video-admin.test.ts',
+  'apps/backend/test/video-s3.integration.test.ts',
+  'apps/backend/test/video-verifier.test.ts',
+  'apps/backend/test/video-trainer-cli.test.ts',
   'apps/backend/test/chat-merge-readiness.test.ts',
   'apps/backend/test/chat-multipart-timeout.test.ts',
   'apps/backend/test/chat-realtime-admission.test.ts',
@@ -343,6 +371,10 @@ const immutableMigrationHashes = [
   [
     'apps/backend/migrations/010_push_notifications.sql',
     '582e0bcdfa4c3936839f4a1e3d1bfe3322a05690b2b6e40ead506146602a1b8b',
+  ],
+  [
+    'apps/backend/migrations/011_trainer_chat.sql',
+    'c5ccefee1db3c5f545680448ce86601c90c017c7f10f387e5dc5c5da48f78d09',
   ],
 ];
 
@@ -457,6 +489,20 @@ for (const [script, command] of [
     pass(`T12 backend operator script: ${script}`);
   } else {
     fail(`T12 backend operator script: ${script}`);
+  }
+}
+
+for (const [script, command] of [
+  ['video:trainer:grant', 'node dist/video-admin/trainer-access-cli.js grant'],
+  ['video:trainer:revoke', 'node dist/video-admin/trainer-access-cli.js revoke'],
+  ['video:uploads:process', 'node dist/video-admin/run-upload-worker.js'],
+  ['video:uploads:retry-quarantined', 'node dist/video-admin/upload-recovery-cli.js retry'],
+  ['video:media-cleanup', 'node dist/video-admin/run-media-cleanup.js'],
+]) {
+  if (backendPackage.scripts?.[script] === command) {
+    pass(`T14 backend operator script: ${script}`);
+  } else {
+    fail(`T14 backend operator script: ${script}`);
   }
 }
 
@@ -1861,6 +1907,36 @@ expectIncludes(browserTest, 'KINETRA_T04_BROWSER_E2E=PASS', 'T04 browser accepta
 expectIncludes(browserTest, 'KINETRA_T05_BROWSER_E2E=PASS', 'T05 browser acceptance test exists');
 expectIncludes(browserTest, 'KINETRA_T06_BROWSER_E2E=PASS', 'T06 browser acceptance test exists');
 expectIncludes(browserTest, 'KINETRA_T07_BROWSER_E2E=PASS', 'T07 browser acceptance test exists');
+for (const [contract, description] of [
+  ['T14 two slots expose independent intermediate progress', 'parallel slot progress'],
+  ['T14 cancelling one slot leaves the sibling upload active', 'per-slot cancellation'],
+  ['T14 sibling slot reaches publication', 'sibling upload completion'],
+  ['T14 fatal part failure aborts an active sibling XHR', 'fatal sibling-worker abort'],
+  ['fatalRecord.stats.completes, 0', 'no completion after fatal part failure'],
+  ['T14 resume rejects a same-size different file', 'resume checksum identity'],
+  ['T14 exact-file resume skips the accepted part', 'accepted-part resume'],
+  ['T14 actual browser aborts before the first video XHR send', 'pre-aborted XHR'],
+  [
+    '(await trainer.videoXhrState()).sendCalls, xhrSendCallsBeforeAbort',
+    'pre-aborted XHR send fencing',
+  ],
+  ["await trainer.cdp.send('Page.reload'", 'real reload during verification'],
+  [
+    'T14 reload restores the processing slot and resumes durable status polling',
+    'reload polling recovery',
+  ],
+  ['X-Amz-Algorithm=AWS4-HMAC-SHA256', 'SigV4-shaped preview capability'],
+  [
+    'T14 closing preview removes the signed capability from browser-owned state',
+    'preview capability cleanup',
+  ],
+  [
+    'T14 logout keeps preview capability and access token out of storage',
+    'logout capability cleanup',
+  ],
+]) {
+  expectIncludes(browserTest, contract, `T14 browser acceptance: ${description}`);
+}
 expectIncludes(
   browserTest,
   'KINETRA_T06_PERIODIC_PROGRESS=PASS',
@@ -5053,7 +5129,7 @@ if (frontendLogoutPreparation.includes('requestRefreshSession')) {
 }
 expectIncludes(
   browserTest,
-  "['run', 'build', '-w', '@kinetra/frontend', '--', '--mode', 'browser-test']",
+  "[viteCli, 'build', '--mode', 'browser-test']",
   'T12 browser acceptance uses the explicit loopback-only frontend build mode',
 );
 expectIncludes(
@@ -5802,7 +5878,7 @@ for (const ciEnvironmentContract of [
   );
 }
 for (const correctionCiContract of [
-  'branches: [main, develop, fix/t12-merge-readiness]',
+  'branches: [main, develop, fix/t12-merge-readiness, feature/t14-video-upload-s3]',
   'branches: [main, develop, feature/t12-trainer-chat]',
   'EXPECTED_BASE_SHA: ${{ github.event.pull_request.base.sha }}',
   'EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}',
@@ -6051,6 +6127,288 @@ for (const scenario of [
   'rate-limited',
 ]) {
   expectIncludes(tests, scenario, `test scenario: ${scenario}`);
+}
+
+for (const key of [
+  'TRAINER_VIDEO_UPLOADS_ENABLED',
+  'VIDEO_UPLOAD_MAX_BYTES',
+  'VIDEO_UPLOAD_PART_SIZE_BYTES',
+  'VIDEO_UPLOAD_PART_URL_TTL_SECONDS',
+  'VIDEO_UPLOAD_SESSION_TTL_SECONDS',
+  'VIDEO_UPLOAD_MAX_ACTIVE_PER_TRAINER',
+  'VIDEO_VERIFY_FFPROBE_PATH',
+  'VIDEO_VERIFY_LEASE_SECONDS',
+  'VIDEO_VERIFY_DEADLINE_SECONDS',
+  'VIDEO_VERIFY_MAX_ATTEMPTS',
+  'VIDEO_WORKER_MAX_STALE_SECONDS',
+  'VIDEO_MEDIA_DELETE_GRACE_SECONDS',
+  'VIDEO_S3_SERVER_SIDE_ENCRYPTION',
+  'VIDEO_S3_KMS_KEY_ID',
+]) {
+  expectMatches(envExample, new RegExp(`^${key}=`, 'mu'), `T14 video option: ${key}`);
+}
+expectMatches(
+  envExample,
+  /^TRAINER_VIDEO_UPLOADS_ENABLED=false$/mu,
+  'T14 feature flag defaults off',
+);
+
+const t14Migration = await readText('apps/backend/migrations/012_video_uploads.sql');
+for (const contract of [
+  'can_manage_videos boolean NOT NULL DEFAULT false',
+  'media_revision bigint NOT NULL DEFAULT 0',
+  'CREATE TABLE IF NOT EXISTS trainer_video_uploads',
+  'CREATE TABLE IF NOT EXISTS trainer_video_upload_parts',
+  'CREATE TABLE IF NOT EXISTS video_media_deletion_jobs',
+  'CREATE TABLE IF NOT EXISTS video_worker_heartbeats',
+  'trainer_video_uploads_one_live_per_video_idx',
+  'verification_next_attempt_at',
+  'verification_quarantined',
+  'quarantined_at',
+  'video_upload_rate_events_retention_idx',
+  'ON video_upload_rate_events (occurred_at, id)',
+  "encode(decode(checksum_sha256_base64, 'base64'), 'base64') = checksum_sha256_base64",
+]) {
+  expectIncludes(t14Migration, contract, `T14 migration contract: ${contract}`);
+}
+
+const t14Storage = await readText('apps/backend/src/video-admin/storage.ts');
+for (const contract of [
+  'CreateMultipartUploadCommand',
+  'UploadPartCommand',
+  'ListObjectVersionsCommand',
+  'ChecksumSHA256',
+  'ServerSideEncryption',
+  'videos\\/workouts\\/',
+  'S3 multipart abort could not be confirmed.',
+  'probeAccess(signal?: AbortSignal)',
+  'kmsKeyId: result.SSEKMSKeyId ?? null',
+  'head.encryption === expected.serverSideEncryption',
+  "expected.serverSideEncryption === 'aws:kms'",
+  'videos/workouts/week-01/day-1/${randomUUID()}.mp4',
+]) {
+  expectIncludes(t14Storage, contract, `T14 private S3 contract: ${contract}`);
+}
+const t14Verifier = await readText('apps/backend/src/video-admin/verifier.ts');
+for (const contract of [
+  'shell: false',
+  "prefix.subarray(4, 8).toString('ascii') !== 'ftyp'",
+  "video.codec_name !== 'h264'",
+  'fps <= 0 || fps > 60',
+  'head.uploadId !== upload.id',
+  'head.versionId !== upload.s3VersionId',
+  'streams.length !== videos.length + audios.length',
+  'object_changed_during_verification',
+  'ffprobe_process_failed',
+  'VideoVerificationRuntimeError',
+  'head.etag !== upload.s3Etag',
+  'pipeline(Readable.from(object.body)',
+  "killSignal: 'SIGKILL'",
+  "child.kill('SIGKILL')",
+  'assertVideoVerifierRuntimeAvailable',
+  'VideoVerificationInfrastructureError',
+  'ffprobe_invalid_output',
+  'MP4_MAJOR_BRANDS',
+  'const rawDuration = finiteNumber',
+  'if (rawDuration < 10 || rawDuration > 10_800)',
+  'const duration = Math.round(rawDuration)',
+  'verification_object_metadata_unconfirmed',
+]) {
+  expectIncludes(t14Verifier, contract, `T14 verifier contract: ${contract}`);
+}
+const t14Mp4Brands = /const MP4_MAJOR_BRANDS = new Set\(\[([\s\S]*?)\]\);/u.exec(t14Verifier)?.[1];
+if (
+  t14Mp4Brands !== undefined &&
+  !t14Mp4Brands.includes('3gp') &&
+  !t14Mp4Brands.includes("'qt  '")
+) {
+  pass('T14 verifier MP4 brand allowlist excludes 3GP and QuickTime containers');
+} else {
+  fail('T14 verifier MP4 brand allowlist excludes 3GP and QuickTime containers');
+}
+
+const t14Worker = await readText('apps/backend/src/video-admin/worker-service.ts');
+for (const contract of [
+  'Object version cleanup was not confirmed.',
+  'Exact object version cleanup was not confirmed.',
+  'renewVerificationLease',
+  'verification_transient_failure',
+  'quarantineVerification',
+  'finalizeVerificationRun',
+  'finalizeCleanupRun',
+  'assertVideoVerifierRuntimeAvailable(probeController.signal)',
+  'this.storage.probeAccess(probeController.signal)',
+  'Video verifier recovery probe timed out.',
+  'renewed && !controller.signal.aborted',
+  'verification_infrastructure_exhausted',
+  'awaitWithSignal',
+  'private readonly deadlineSeconds = 300',
+  'this.storage.abortMultipart(job.objectKey, multipartUploadId, controller.signal)',
+  'this.storage.listExactObjectVersions(job.objectKey, controller.signal)',
+  'this.storage.headObject(job.objectKey, null, controller.signal)',
+  'this.storage.deleteObject(job.objectKey, null, controller.signal)',
+]) {
+  expectIncludes(t14Worker, contract, `T14 cleanup reconciliation contract: ${contract}`);
+}
+
+const t14PostgresRepository = await readText(
+  'apps/backend/src/video-admin/postgres-video.repository.ts',
+);
+for (const contract of [
+  "event_type='sign'",
+  '>= 30',
+  'previousVersionId',
+  "upload.status='uploading' OR",
+  "['completing', 'verification_pending', 'verifying', 'published']",
+  "SET status='uploading', lease_token=NULL, lease_expires_at=NULL",
+  "upload.status='verifying' AND upload.lease_token=$2",
+  'locked_at IS NOT NULL',
+  'last_started_at IS NULL OR last_succeeded_at >= last_started_at',
+  'verification_quarantined',
+  'requeueQuarantinedVerification',
+  'last_succeeded_at > last_failed_at',
+  'renewCompletionLease',
+  'clock_timestamp()',
+  'SET LOCAL statement_timeout',
+  'lockVideoTrainerAuthority',
+  'SELECT id FROM users WHERE id=$1 FOR UPDATE',
+  'RATE_EVENT_PRUNE_LIMIT',
+  'LIMIT $3\n         FOR UPDATE SKIP LOCKED',
+  'completionAmbiguityGraceSeconds',
+  "upload.status <> 'completing'",
+  "parts.last_url_expires_at + INTERVAL '60 seconds'",
+  'completed_at=NULL',
+]) {
+  expectIncludes(t14PostgresRepository, contract, `T14 PostgreSQL safety contract: ${contract}`);
+}
+const t14Service = await readText('apps/backend/src/video-admin/service.ts');
+for (const contract of [
+  'completionLeaseGuard(',
+  'renewCompletionLease(',
+  'this.storage.listParts(upload.objectKey, multipartUploadId, lease.signal)',
+  'storedParts,\n          lease.signal',
+  'await lease.fence()',
+  'renewed && !controller.signal.aborted && !stopped',
+  'head.etag !== object.etag',
+  'Published video identity no longer matches the verified object.',
+]) {
+  expectIncludes(t14Service, contract, `T14 completion lease contract: ${contract}`);
+}
+const databasePool = await readText('apps/backend/src/db/pool.ts');
+expectIncludes(databasePool, 'query_timeout: 10_000', 'T14 PostgreSQL queries are bounded');
+if (/100\s*\*\s*365|365\s*\*\s*100/u.test(t14Worker)) {
+  fail('T14 verifier exhaustion has no century-scale retry delay');
+} else {
+  pass('T14 verifier exhaustion has no century-scale retry delay');
+}
+
+const t14BackendE2e = await readText('apps/backend/test/video-admin.e2e.test.ts');
+const t14BackendUnit = await readText('apps/backend/test/video-admin.test.ts');
+const t14Postgres = await readText('apps/backend/test/video-admin.postgres.test.ts');
+const t14S3 = await readText('apps/backend/test/video-s3.integration.test.ts');
+const t14VideoVerification = await readText('apps/backend/test/video-verifier.test.ts');
+const t14TrainerUi = await readText('apps/frontend/test/trainer-videos.test.ts');
+const t14UploadLifecycle = await readText('apps/frontend/test/trainer-video-upload.test.ts');
+const t14ProgramPolling = await readText(
+  'apps/frontend/src/features/trainer-videos/program-polling.ts',
+);
+for (const contract of [
+  "new Set(['completing', 'verification_pending', 'verifying'])",
+  'TRAINER_VIDEO_PROGRAM_POLL_INTERVAL_MS = 2_000',
+  'TRAINER_VIDEO_PROGRAM_POLL_MAX_DURATION_MS = 15 * 60 * 1_000',
+  'requestController?.abort()',
+  'generation === candidateGeneration',
+  'setOnline: (nextOnline)',
+]) {
+  expectIncludes(t14ProgramPolling, contract, `T14 reload polling contract: ${contract}`);
+}
+for (const scenario of [
+  'T14 cancel losing the verifier publish race returns an explicit conflict',
+  'T14 completion requires the configured SSE mode and exact KMS key',
+  'T14 unversioned preview refuses a current object that no longer matches published ETag',
+  'T14 cleanup acknowledges an already absent versioned object without creating a marker',
+  'T14 cleanup deadline bounds every storage operation and durably records failure',
+  'T14 verifier metadata drift is retryable and never enters the deletion path',
+  'T14 stalled verifier body is aborted by the deadline and safely rescheduled',
+]) {
+  expectIncludes(t14BackendUnit, scenario, `T14 backend regression: ${scenario}`);
+}
+for (const scenario of [
+  'T14 PostgreSQL account deletion and upload reservation use users-before-profile lock order',
+  'T14 PostgreSQL expiration fences live completion and reopens cleanup for late materialization',
+]) {
+  expectIncludes(t14Postgres, scenario, `T14 PostgreSQL regression: ${scenario}`);
+}
+for (const scenario of [
+  'T14 mount after reload resumes bounded polling for an upload already verifying',
+  'T14 program polling fences a stale response even when its aborted request resolves late',
+]) {
+  expectIncludes(t14TrainerUi, scenario, `T14 frontend regression: ${scenario}`);
+}
+const t14AllExecutableTests = [
+  t14BackendE2e,
+  t14Postgres,
+  t14S3,
+  t14VideoVerification,
+  t14TrainerUi,
+  t14UploadLifecycle,
+  browserTest,
+].join('\n');
+const t14Markers = [
+  ['KINETRA_T14_BACKEND_E2E=PASS', t14BackendE2e],
+  ['KINETRA_T14_UPLOAD_AUTHORIZATION=PASS', t14Postgres],
+  ['KINETRA_T14_S3_MULTIPART=PASS', t14S3],
+  ['KINETRA_T14_VIDEO_VERIFICATION=PASS', t14VideoVerification],
+  ['KINETRA_T14_POSTGRES_INTEGRATION=PASS', t14Postgres],
+  ['KINETRA_T14_TRAINER_UI=PASS', t14TrainerUi],
+  ['KINETRA_T14_UPLOAD_LIFECYCLE=PASS', t14UploadLifecycle],
+  ['KINETRA_T14_REPLACE_UNPUBLISH=PASS', t14Postgres],
+  ['KINETRA_T14_T07_T12_T13_COEXISTENCE=PASS', browserTest],
+  ['KINETRA_T14_BROWSER_E2E=PASS', browserTest],
+];
+for (const [marker, owner] of t14Markers) {
+  const totalOccurrences = t14AllExecutableTests.split(marker).length - 1;
+  const ownerOccurrences = owner.split(marker).length - 1;
+  if (totalOccurrences === 1 && ownerOccurrences === 1) {
+    pass(`T14 executable marker has one asserted owner: ${marker}`);
+  } else {
+    fail(`T14 executable marker has one asserted owner: ${marker}`);
+  }
+}
+if (t14AllExecutableTests.includes('KINETRA_T14_TEST_SUITE=PASS')) {
+  fail('T14 suite marker is emitted only by CI');
+} else {
+  pass('T14 suite marker is emitted only by CI');
+}
+
+const t14CiMarkerPositions = t14Markers.map(([marker]) => {
+  const grep = `grep -F '${marker}'`;
+  const occurrences = ciWorkflow.split(grep).length - 1;
+  if (occurrences === 1) pass(`CI requires the T14 marker exactly once: ${marker}`);
+  else fail(`CI requires the T14 marker exactly once: ${marker}`);
+  return ciWorkflow.indexOf(grep);
+});
+const t14SuiteEcho = "echo 'KINETRA_T14_TEST_SUITE=PASS'";
+const t14SuitePosition = ciWorkflow.indexOf(t14SuiteEcho);
+if (
+  t14CiMarkerPositions.every((position) => position >= 0) &&
+  t14CiMarkerPositions.every(
+    (position, index) => index === 0 || position > t14CiMarkerPositions[index - 1],
+  ) &&
+  t14SuitePosition > t14CiMarkerPositions.at(-1) &&
+  ciWorkflow.split(t14SuiteEcho).length - 1 === 1
+) {
+  pass('CI greps all ten T14 markers in order before the single suite marker');
+} else {
+  fail('CI greps all ten T14 markers in order before the single suite marker');
+}
+for (const contract of [
+  "KINETRA_REQUIRE_S3_TEST: 'true'",
+  "KINETRA_REQUIRE_POSTGRES_TEST: 'true'",
+  'minio/minio:RELEASE.2025-06-13T11-33-47Z',
+  'sudo apt-get install --yes --no-install-recommends ffmpeg imagemagick',
+]) {
+  expectIncludes(ciWorkflow, contract, `T14 fail-closed CI contract: ${contract}`);
 }
 
 const textExtensions = new Set([

@@ -40,6 +40,23 @@ export interface ChatPhotoUploadTimeoutEnvironment {
   readonly totalTimeoutMs: number;
 }
 
+export interface VideoUploadsEnvironment {
+  readonly enabled: boolean;
+  readonly maxBytes: number;
+  readonly partSizeBytes: number;
+  readonly partUrlTtlSeconds: number;
+  readonly sessionTtlSeconds: number;
+  readonly maxActivePerTrainer: number;
+  readonly ffprobePath: string;
+  readonly verifyLeaseSeconds: number;
+  readonly verifyDeadlineSeconds: number;
+  readonly verifyMaxAttempts: number;
+  readonly workerMaxStaleSeconds: number;
+  readonly deleteGraceSeconds: number;
+  readonly serverSideEncryption: 'AES256' | 'aws:kms';
+  readonly kmsKeyId: string | null;
+}
+
 const DEVELOPMENT_ACCESS_SECRET = 'local-development-only-change-this-kinetra-access-secret-2026';
 
 const parseInteger = (
@@ -164,12 +181,130 @@ const trimmedOrNull = (rawValue: string | undefined): string | null => {
   return value === undefined || value.length === 0 ? null : value;
 };
 
-const parseS3Environment = (nodeEnvironment: NodeEnvironment): Readonly<S3Environment> | null => {
-  const endpoint = trimmedOrNull(process.env.S3_ENDPOINT);
-  const region = trimmedOrNull(process.env.S3_REGION);
-  const bucket = trimmedOrNull(process.env.S3_BUCKET);
-  const accessKeyId = trimmedOrNull(process.env.S3_ACCESS_KEY_ID);
-  const secretAccessKey = trimmedOrNull(process.env.S3_SECRET_ACCESS_KEY);
+export const parseVideoUploadsEnvironment = (
+  values: NodeJS.ProcessEnv,
+): Readonly<VideoUploadsEnvironment> => {
+  const serverSideEncryption = parseEnum<'AES256' | 'aws:kms'>(
+    'VIDEO_S3_SERVER_SIDE_ENCRYPTION',
+    values.VIDEO_S3_SERVER_SIDE_ENCRYPTION,
+    'AES256',
+    ['AES256', 'aws:kms'],
+  );
+  const kmsKeyId = trimmedOrNull(values.VIDEO_S3_KMS_KEY_ID);
+  const ffprobePath = trimmedOrNull(values.VIDEO_VERIFY_FFPROBE_PATH) ?? 'ffprobe';
+
+  if (serverSideEncryption === 'aws:kms' && kmsKeyId === null) {
+    throw new Error(
+      'VIDEO_S3_KMS_KEY_ID is required when VIDEO_S3_SERVER_SIDE_ENCRYPTION=aws:kms.',
+    );
+  }
+  if (serverSideEncryption !== 'aws:kms' && kmsKeyId !== null) {
+    throw new Error(
+      'VIDEO_S3_KMS_KEY_ID is only valid with VIDEO_S3_SERVER_SIDE_ENCRYPTION=aws:kms.',
+    );
+  }
+  if (ffprobePath.length > 1024 || ffprobePath.includes('\0')) {
+    throw new Error('VIDEO_VERIFY_FFPROBE_PATH is invalid.');
+  }
+
+  const partSizeBytes = parseInteger(
+    'VIDEO_UPLOAD_PART_SIZE_BYTES',
+    values.VIDEO_UPLOAD_PART_SIZE_BYTES,
+    16_777_216,
+    5_242_880,
+    67_108_864,
+  );
+  const maxBytes = parseInteger(
+    'VIDEO_UPLOAD_MAX_BYTES',
+    values.VIDEO_UPLOAD_MAX_BYTES,
+    2_147_483_648,
+    1,
+    2_147_483_648,
+  );
+
+  if (Math.ceil(maxBytes / partSizeBytes) > 10_000) {
+    throw new Error('VIDEO_UPLOAD_MAX_BYTES and VIDEO_UPLOAD_PART_SIZE_BYTES exceed 10000 parts.');
+  }
+
+  return Object.freeze({
+    enabled: parseBoolean(
+      'TRAINER_VIDEO_UPLOADS_ENABLED',
+      values.TRAINER_VIDEO_UPLOADS_ENABLED,
+      false,
+    ),
+    maxBytes,
+    partSizeBytes,
+    partUrlTtlSeconds: parseInteger(
+      'VIDEO_UPLOAD_PART_URL_TTL_SECONDS',
+      values.VIDEO_UPLOAD_PART_URL_TTL_SECONDS,
+      900,
+      60,
+      900,
+    ),
+    sessionTtlSeconds: parseInteger(
+      'VIDEO_UPLOAD_SESSION_TTL_SECONDS',
+      values.VIDEO_UPLOAD_SESSION_TTL_SECONDS,
+      21_600,
+      900,
+      86_400,
+    ),
+    maxActivePerTrainer: parseInteger(
+      'VIDEO_UPLOAD_MAX_ACTIVE_PER_TRAINER',
+      values.VIDEO_UPLOAD_MAX_ACTIVE_PER_TRAINER,
+      3,
+      1,
+      10,
+    ),
+    ffprobePath,
+    verifyLeaseSeconds: parseInteger(
+      'VIDEO_VERIFY_LEASE_SECONDS',
+      values.VIDEO_VERIFY_LEASE_SECONDS,
+      300,
+      30,
+      1800,
+    ),
+    verifyDeadlineSeconds: parseInteger(
+      'VIDEO_VERIFY_DEADLINE_SECONDS',
+      values.VIDEO_VERIFY_DEADLINE_SECONDS,
+      900,
+      30,
+      3600,
+    ),
+    verifyMaxAttempts: parseInteger(
+      'VIDEO_VERIFY_MAX_ATTEMPTS',
+      values.VIDEO_VERIFY_MAX_ATTEMPTS,
+      8,
+      1,
+      100,
+    ),
+    workerMaxStaleSeconds: parseInteger(
+      'VIDEO_WORKER_MAX_STALE_SECONDS',
+      values.VIDEO_WORKER_MAX_STALE_SECONDS,
+      300,
+      30,
+      3600,
+    ),
+    deleteGraceSeconds: parseInteger(
+      'VIDEO_MEDIA_DELETE_GRACE_SECONDS',
+      values.VIDEO_MEDIA_DELETE_GRACE_SECONDS,
+      86_400,
+      86_400,
+      604_800,
+    ),
+    serverSideEncryption,
+    kmsKeyId,
+  });
+};
+
+export const parseS3Environment = (
+  nodeEnvironment: NodeEnvironment,
+  values: NodeJS.ProcessEnv = process.env,
+): Readonly<S3Environment> | null => {
+  const endpoint = trimmedOrNull(values.S3_ENDPOINT);
+  const region = trimmedOrNull(values.S3_REGION);
+  const bucket = trimmedOrNull(values.S3_BUCKET);
+  const accessKeyId = trimmedOrNull(values.S3_ACCESS_KEY_ID);
+  const secretAccessKey = trimmedOrNull(values.S3_SECRET_ACCESS_KEY);
   const configuredValues = { region, bucket, accessKeyId, secretAccessKey } as const;
   const hasConfiguration = endpoint !== null || Object.values(configuredValues).some(Boolean);
 
@@ -198,8 +333,9 @@ const parseS3Environment = (nodeEnvironment: NodeEnvironment): Readonly<S3Enviro
       throw new Error('S3_ENDPOINT must be a valid HTTP or HTTPS URL.');
     }
 
-    if (nodeEnvironment === 'production' && parsedEndpoint.protocol !== 'https:') {
-      throw new Error('S3_ENDPOINT must use HTTPS in production.');
+    const loopback = ['localhost', '127.0.0.1', '::1'].includes(parsedEndpoint.hostname);
+    if (parsedEndpoint.protocol !== 'https:' && (nodeEnvironment === 'production' || !loopback)) {
+      throw new Error('S3_ENDPOINT must use HTTPS outside explicit loopback development or tests.');
     }
   }
 
@@ -211,12 +347,12 @@ const parseS3Environment = (nodeEnvironment: NodeEnvironment): Readonly<S3Enviro
     secretAccessKey: secretAccessKey as string,
     forcePathStyle: parseBoolean(
       'S3_FORCE_PATH_STYLE',
-      process.env.S3_FORCE_PATH_STYLE,
+      values.S3_FORCE_PATH_STYLE,
       endpoint !== null,
     ),
     presignedUrlTtlSeconds: parseInteger(
       'S3_PRESIGNED_URL_TTL_SECONDS',
-      process.env.S3_PRESIGNED_URL_TTL_SECONDS,
+      values.S3_PRESIGNED_URL_TTL_SECONDS,
       900,
       60,
       86_400,
@@ -339,6 +475,7 @@ const nodeEnv = parseEnum<NodeEnvironment>('NODE_ENV', process.env.NODE_ENV, 'de
   'production',
 ]);
 const s3 = parseS3Environment(nodeEnv);
+const videoUploads = parseVideoUploadsEnvironment(process.env);
 const chatEnabled = parseBoolean('CHAT_ENABLED', process.env.CHAT_ENABLED, false);
 const chatPhotoUploadsEnabled = parseBoolean(
   'CHAT_PHOTO_UPLOADS_ENABLED',
@@ -356,6 +493,9 @@ if (chatPhotoUploadsEnabled && !chatEnabled) {
 
 if (chatPhotoUploadsEnabled && s3 === null) {
   throw new Error('CHAT_PHOTO_UPLOADS_ENABLED=true requires complete private S3 configuration.');
+}
+if (videoUploads.enabled && s3 === null) {
+  throw new Error('TRAINER_VIDEO_UPLOADS_ENABLED=true requires complete private S3 configuration.');
 }
 const refreshCookieSecure = parseBoolean(
   'AUTH_REFRESH_COOKIE_SECURE',
@@ -420,6 +560,7 @@ export const env = Object.freeze({
   databaseUrl:
     process.env.DATABASE_URL ?? 'postgresql://kinetra:kinetra_local_only@localhost:5432/kinetra',
   s3,
+  videoUploads,
   yookassa: parseYooKassaEnvironment(nodeEnv),
   vapid: parseVapidEnvironment(nodeEnv),
   chat: Object.freeze({

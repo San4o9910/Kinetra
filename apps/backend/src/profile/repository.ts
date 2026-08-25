@@ -54,6 +54,7 @@ export interface UserProfileSnapshot {
   readonly trainerProfile: {
     readonly displayName: string;
     readonly avatarUrl: string | null;
+    readonly canManageVideos: boolean;
   } | null;
   readonly survey: SurveySnapshot | null;
   readonly subscription: SubscriptionSnapshot | null;

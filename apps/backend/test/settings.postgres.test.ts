@@ -36,6 +36,7 @@ test(
     const pool = new Pool({ connectionString: databaseUrl, max: 2 });
     const userId = randomUUID();
     const otherUserId = randomUUID();
+    const videoUploadId = randomUUID();
     const email = `settings-${userId}@example.com`;
     const otherEmail = `settings-other-${otherUserId}@example.com`;
     const passwordHash = '$2b$10$abcdefghijklmnopqrstuv12345678901234567890123456789012';
@@ -145,6 +146,26 @@ test(
             'users_notification_preferences_object',
       );
 
+      await pool.query(
+        `INSERT INTO trainer_video_uploads (
+           id,target_video_id,uploader_user_id,uploader_display_name_snapshot,
+           idempotency_key,request_fingerprint,object_key,declared_mime_type,
+           expected_size_bytes,part_size_bytes,expected_part_count,target_media_revision,
+           status,expires_at
+         )
+         SELECT $1,video.id,$2,'Удаляемый тренер',$3,$4,$5,'video/mp4',
+                1024,5242880,1,video.media_revision,'uploading',NOW() + INTERVAL '6 hours'
+         FROM videos video
+         WHERE video.type='workout' AND video.week_number=11 AND video.day_of_week=7`,
+        [
+          videoUploadId,
+          userId,
+          randomUUID(),
+          'd'.repeat(64),
+          `videos/workouts/week-11/day-7/${videoUploadId}.mp4`,
+        ],
+      );
+
       await service.deleteAccount(userId, { confirm: 'DELETE' });
 
       for (const table of [
@@ -164,8 +185,28 @@ test(
       const authRepository = new PostgresAuthRepository(pool);
       assert.equal(await authRepository.findUserByEmail(email), null);
       assert.notEqual(await authRepository.findUserByEmail(otherEmail), null);
+      const preservedVideoAudit = await pool.query<{
+        readonly uploader_user_id: string | null;
+        readonly uploader_display_name_snapshot: string | null;
+        readonly status: string;
+        readonly cleanup_jobs: number;
+      }>(
+        `SELECT upload.uploader_user_id,upload.uploader_display_name_snapshot,upload.status,
+                (SELECT COUNT(*)::integer FROM video_media_deletion_jobs job
+                 WHERE job.upload_id=upload.id) AS cleanup_jobs
+         FROM trainer_video_uploads upload WHERE upload.id=$1`,
+        [videoUploadId],
+      );
+      assert.deepEqual(preservedVideoAudit.rows[0], {
+        uploader_user_id: null,
+        uploader_display_name_snapshot: null,
+        status: 'cancelled',
+        cleanup_jobs: 1,
+      });
       console.log('KINETRA_T10_POSTGRES_INTEGRATION=PASS');
     } finally {
+      await pool.query('DELETE FROM video_media_deletion_jobs WHERE upload_id=$1', [videoUploadId]);
+      await pool.query('DELETE FROM trainer_video_uploads WHERE id=$1', [videoUploadId]);
       await pool.query('DELETE FROM users WHERE id = ANY($1::uuid[])', [[userId, otherUserId]]);
       await pool.end();
     }

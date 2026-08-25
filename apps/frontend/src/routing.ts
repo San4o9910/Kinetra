@@ -12,6 +12,7 @@ export const appRoutes = Object.freeze({
   editSurvey: '/settings/survey',
   chat: '/chat',
   trainerChats: '/trainer/chats',
+  trainerVideos: '/trainer/videos',
   payment: '/payment',
   paymentSuccess: '/payment/success',
   paymentCancel: '/payment/cancel',
@@ -75,7 +76,9 @@ export const isPaymentRoute = (route: AppRoute): boolean =>
   route === appRoutes.paymentCancel;
 
 export const isTrainerRoute = (route: AppRoute): boolean =>
-  route === appRoutes.trainerChats || trainerConversationIdFromRoute(route) !== null;
+  route === appRoutes.trainerChats ||
+  route === appRoutes.trainerVideos ||
+  trainerConversationIdFromRoute(route) !== null;
 
 export const isChatFabRoute = (route: AppRoute): boolean =>
   route === appRoutes.home ||

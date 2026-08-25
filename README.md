@@ -2,7 +2,7 @@
 
 Kinetra — фитнес-приложение с React/Vite frontend и Express/PostgreSQL backend.
 
-Репозиторий охватывает этапы T01–T13; текущий статус проверки T12 зафиксирован в
+Репозиторий охватывает этапы T01–T14; текущий статус проверки зафиксирован в
 [`VALIDATION.md`](VALIDATION.md):
 
 - **T01:** каркас монорепо, PWA, PostgreSQL в Docker Compose, health endpoint и transport Socket.IO;
@@ -24,6 +24,8 @@ Kinetra — фитнес-приложение с React/Vite frontend и Express/
   role-protected trainer inbox, normalized private photo attachments и media cleanup.
 - **T13:** Web Push subscriptions устройств, VAPID, безопасные Service Worker notifications и
   отдельный идемпотентный scheduler напоминаний о тренировках и еженедельной самооценке.
+- **T14:** защищённое управление 84 workout-видео, прямая multipart-загрузка в private S3,
+  проверка MP4/H.264, атомарная публикация, soft unpublish и durable cleanup.
 
 ## Структура
 
@@ -34,7 +36,7 @@ kinetra/
 │   └── backend/           @kinetra/backend — Express + TypeScript + PostgreSQL
 ├── packages/
 │   └── shared/            @kinetra/shared — общие API-типы
-├── docs/                  Контракты и сценарии T02–T13
+├── docs/                  Контракты и сценарии T02–T14
 ├── scripts/               Структурная проверка проекта
 ├── docker-compose.yml     PostgreSQL 17
 └── .env.example           Шаблон переменных без реальных секретов
