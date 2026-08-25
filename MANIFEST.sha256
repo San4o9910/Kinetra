@@ -169,7 +169,7 @@ c3a3face1438c8989c6a0d5aab2378b4c5452372b239571320a8dcfb8550b113  ./apps/backend
 f21099dd39920a4d2bd12eca6f6ab978feafcf6fe7337c23b5282b94cbdc959e  ./apps/backend/test/support/test-clock.ts
 e5e56cea8c4a1ce2b7f6c3e07c108cbf86ac5b62e65528e0135d55e70fbf4a80  ./apps/backend/test/support/test-delivery.ts
 d54502b77ed88066f68ce11223bc5d4e40ba5af1e1984289923cff711b053654  ./apps/backend/test/video-admin.e2e.test.ts
-eda4dd832236bc1edc416c43f73afa05853d50ac277d81be9c9c069cc526490c  ./apps/backend/test/video-admin.postgres.test.ts
+1b4ca9f0f3ba16b5bfdcf5de184ed8c0730a9b918a23b4e8541616734b4f2e70  ./apps/backend/test/video-admin.postgres.test.ts
 9e6dfd67d28f2754ec8c86de70ac47c58ed2d2b54c0b6d4936a84c972128f32e  ./apps/backend/test/video-admin.test.ts
 ee283b5c654c675a8c14058d822538a2718380c10854038d6682d985d5e0aa69  ./apps/backend/test/video-s3.integration.test.ts
 c160d0290c4f6ffabbf5267221c133d99bdfac3e46a270b45d5725daf7ab42ed  ./apps/backend/test/video-trainer-cli.test.ts

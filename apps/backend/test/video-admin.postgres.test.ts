@@ -155,7 +155,7 @@ test(
           (
             await pool.query<{ readonly count: string }>(
               `SELECT COUNT(*) AS count FROM video_upload_rate_events
-               WHERE trainer_user_id=$1 AND occurred_at < $2 - INTERVAL '2 days'`,
+               WHERE trainer_user_id=$1 AND occurred_at < $2::timestamptz - INTERVAL '2 days'`,
               [otherTrainerUserId, now],
             )
           ).rows[0]?.count ?? 0,
@@ -168,7 +168,7 @@ test(
           (
             await pool.query<{ readonly count: string }>(
               `SELECT COUNT(*) AS count FROM video_upload_rate_events
-               WHERE trainer_user_id=$1 AND occurred_at < $2 - INTERVAL '2 days'`,
+               WHERE trainer_user_id=$1 AND occurred_at < $2::timestamptz - INTERVAL '2 days'`,
               [otherTrainerUserId, now],
             )
           ).rows[0]?.count ?? 0,
@@ -195,7 +195,7 @@ test(
         `INSERT INTO video_upload_rate_events (
            trainer_user_id,event_type,reserved_bytes,occurred_at
          )
-         SELECT $1,'sign',0,$2 - INTERVAL '3 days' -
+         SELECT $1,'sign',0,$2::timestamptz - INTERVAL '3 days' -
            (sequence * INTERVAL '1 microsecond')
          FROM generate_series(1,1005) AS sequence`,
         [trainerUserId, now],
@@ -206,7 +206,7 @@ test(
           (
             await pool.query<{ readonly count: string }>(
               `SELECT COUNT(*) AS count FROM video_upload_rate_events
-               WHERE trainer_user_id=$1 AND occurred_at < $2 - INTERVAL '2 days'`,
+               WHERE trainer_user_id=$1 AND occurred_at < $2::timestamptz - INTERVAL '2 days'`,
               [trainerUserId, now],
             )
           ).rows[0]?.count ?? 0,
@@ -252,7 +252,7 @@ test(
           (
             await pool.query<{ readonly count: string }>(
               `SELECT COUNT(*) AS count FROM video_upload_rate_events
-               WHERE trainer_user_id=$1 AND occurred_at < $2 - INTERVAL '2 days'`,
+               WHERE trainer_user_id=$1 AND occurred_at < $2::timestamptz - INTERVAL '2 days'`,
               [trainerUserId, now],
             )
           ).rows[0]?.count ?? 0,
@@ -305,7 +305,9 @@ test(
         'in_progress',
       );
       await pool.query(
-        `UPDATE trainer_video_uploads SET lease_expires_at=$2 - INTERVAL '1 second' WHERE id=$1`,
+        `UPDATE trainer_video_uploads
+         SET lease_expires_at=$2::timestamptz - INTERVAL '1 second'
+         WHERE id=$1`,
         [firstUploadId, now],
       );
       const recoveredCompletion = await repository.beginCompletion(
@@ -545,7 +547,8 @@ test(
       assert.equal((await repository.reserveUpload(secondInput)).kind, 'created');
       await pool.query(
         `UPDATE trainer_video_uploads
-         SET status='verifying', lease_token=$2, lease_expires_at=$3 + INTERVAL '5 minutes'
+         SET status='verifying', lease_token=$2,
+             lease_expires_at=$3::timestamptz + INTERVAL '5 minutes'
          WHERE id=$1`,
         [secondUploadId, secondLeaseToken, now],
       );
