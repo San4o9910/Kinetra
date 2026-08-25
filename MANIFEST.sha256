@@ -316,6 +316,6 @@ ca34313e3e69827306dc65884bd88ff99e91e35c6bb29db8d9e4c3e49fb3f9a6  ./package-lock
 7309cda4189bc5dff4cd1518504c53bf50d00ddb95505988449ad3907cdb56f2  ./packages/shared/src/index.ts
 c8171db33a1b645b8c36d542cf4bfc5c47073df8842b846f91a6ebf083973c5e  ./packages/shared/tsconfig.json
 4c9d6d3999285a6ab8712d8582d54e69a76f434b4faf933a886c664a65031c54  ./scripts/check-changed-format.mjs
-011d2fea4268121712b0468789b88c691fa37c88e87922988cfe1b4d66acdd01  ./scripts/test-frontend-browser.mjs
+52dca9d8c91b1718123179b686c0152629910a80e4b58cda1987862488e70564  ./scripts/test-frontend-browser.mjs
 bead925d8a3fbb2c8af134e656993507d9854824f954003553a4d5e462ef12d4  ./scripts/verify-project.mjs
 2b67887209f3334ebdc96426f5c2cb87480fb85ff2f75c0d42b0a944dae7922a  ./tsconfig.base.json

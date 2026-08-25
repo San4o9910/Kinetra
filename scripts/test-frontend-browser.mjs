@@ -5735,6 +5735,7 @@ const launchT12BrowserContext = async (profileDirectory, width, height) => {
         pushUnsubscribeCalls: 0,
         lifecycleOrder: [],
         t14XhrSendCalls: 0,
+        t14ActiveXhrAborts: [],
         t14AbortBeforeNextXhr: false,
         t14PreAbortedXhrTriggers: 0,
         t14PreAbortedControllerCount: 0,
@@ -5783,10 +5784,44 @@ const launchT12BrowserContext = async (profileDirectory, width, height) => {
         value: TrackedT14AbortController,
       });
       const NativeXmlHttpRequest = window.XMLHttpRequest;
+      const nativeXhrAbort = NativeXmlHttpRequest.prototype.abort;
+      const nativeXhrOpen = NativeXmlHttpRequest.prototype.open;
       const nativeXhrSend = NativeXmlHttpRequest.prototype.send;
+      const t14XhrDetails = new WeakMap();
+      NativeXmlHttpRequest.prototype.open = function (method, url, ...args) {
+        t14XhrDetails.set(this, {
+          finished: false,
+          method: String(method).toUpperCase(),
+          pathname: new URL(String(url), window.location.href).pathname,
+          sent: false,
+        });
+        return nativeXhrOpen.call(this, method, url, ...args);
+      };
       NativeXmlHttpRequest.prototype.send = function (...args) {
         state.t14XhrSendCalls += 1;
+        const details = t14XhrDetails.get(this);
+        if (details !== undefined) {
+          details.sent = true;
+          this.addEventListener(
+            'loadend',
+            () => {
+              details.finished = true;
+            },
+            { once: true },
+          );
+        }
         return nativeXhrSend.apply(this, args);
+      };
+      NativeXmlHttpRequest.prototype.abort = function (...args) {
+        const details = t14XhrDetails.get(this);
+        if (
+          details !== undefined &&
+          details.method === 'PUT' &&
+          details.sent &&
+          !details.finished
+        )
+          state.t14ActiveXhrAborts.push(details.pathname);
+        return nativeXhrAbort.apply(this, args);
       };
       const nativeFetch = window.fetch.bind(window);
       const abortAfterSignResponseJson = new WeakSet();
@@ -6084,6 +6119,7 @@ const launchT12BrowserContext = async (profileDirectory, width, height) => {
   const videoXhrState = () =>
     cdp.evaluate(`(() => ({
       sendCalls: window.__kinetraT12BrowserTest.state.t14XhrSendCalls,
+      activeAborts: [...window.__kinetraT12BrowserTest.state.t14ActiveXhrAborts],
       triggers: window.__kinetraT12BrowserTest.state.t14PreAbortedXhrTriggers,
       controllerCount: window.__kinetraT12BrowserTest.state.t14PreAbortedControllerCount,
     }))()`);
@@ -6665,13 +6701,17 @@ const runT12BrowserScenario = async () => {
     assert.equal(await trainer.selectVideo('synthetic-workout-fatal.mp4'), syntheticVideo.length);
     await waitFor(
       'T14 fatal part failure aborts an active sibling XHR',
-      () => {
+      async () => {
         const slot = fixture.state.videoSlots.get('1:4');
         const record =
           slot?.liveUploadId === null || slot?.liveUploadId === undefined
             ? null
             : fixture.state.videoUploads.get(slot.liveUploadId);
-        return record !== null && record.partAttempts.get(1) === 3 && record.stats.abortedPuts >= 1;
+        if (record === null || record.partAttempts.get(1) !== 3) return false;
+        const siblingPrefix = `/__browser-test/t14/uploads/${record.id}/parts/`;
+        return (await trainer.videoXhrState()).activeAborts.some(
+          (pathname) => pathname.startsWith(siblingPrefix) && pathname !== `${siblingPrefix}1`,
+        );
       },
       40_000,
     );
@@ -6698,15 +6738,16 @@ const runT12BrowserScenario = async () => {
     );
     assert.notEqual(fatalEvent, undefined);
     assert.equal(fatalRecord.stats.completes, 0);
+    assert.ok(fatalRecord.stats.putStarts >= 2);
+    const fatalSiblingPrefix = `/__browser-test/t14/uploads/${fatalRecord.id}/parts/`;
     assert.equal(
-      fixture.state.videoEvents.some(
-        (event) =>
-          event.upload_id === fatalRecord.id &&
-          event.part_number !== 1 &&
-          event.type === 'put_aborted',
+      (await trainer.videoXhrState()).activeAborts.some(
+        (pathname) =>
+          pathname.startsWith(fatalSiblingPrefix) && pathname !== `${fatalSiblingPrefix}1`,
       ),
       true,
     );
+    fixture.releaseFatalSiblingPuts();
     await sleep(1_000);
     assert.deepEqual(
       fixture.state.videoEvents.filter(
