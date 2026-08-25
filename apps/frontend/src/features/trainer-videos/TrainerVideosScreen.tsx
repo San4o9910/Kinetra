@@ -63,8 +63,8 @@ export const TrainerVideosScreen = ({
         getUpload: (uploadId, signal) => getTrainerVideoUpload(uploadId, signal),
         isUploadActive: (videoId) => uploadControllers.has(videoId),
         now: Date.now,
-        setTimer: window.setTimeout,
-        clearTimer: window.clearTimeout,
+        setTimer: (callback, delay) => window.setTimeout(callback, delay),
+        clearTimer: (timer) => window.clearTimeout(timer),
       },
       {
         onProgram: (next) => {

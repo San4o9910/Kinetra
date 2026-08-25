@@ -15,8 +15,11 @@ const apiPort = 3000;
 const browserApiOrigin = `http://127.0.0.1:${apiPort}`;
 const frontendOrigin = browserApiOrigin;
 const chromeShutdownTimeoutMs = 5_000;
+const chromeOwnsProcessGroup = process.platform !== 'win32';
 const profileCleanupAttempts = 3;
 const profileCleanupDelayMs = 500;
+const profileCleanupStabilityMs = 1_000;
+const profileCleanupPollMs = 100;
 const millisecondsPerDay = 24 * 60 * 60 * 1_000;
 const browserFixtureNow = Date.now();
 const fixtureTimestamp = (daysFromNow) =>
@@ -1472,25 +1475,75 @@ const waitForProcessExit = async (child, timeoutMs) => {
   });
 };
 
-const terminateChrome = async (chrome) => {
-  if (chrome === null || chrome.exitCode !== null || chrome.signalCode !== null) {
-    return;
+const chromeProcessGroupExists = (chrome) => {
+  if (!chromeOwnsProcessGroup || chrome.pid === undefined) return false;
+  try {
+    process.kill(-chrome.pid, 0);
+    return true;
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ESRCH') return false;
+    throw error;
   }
+};
 
-  const gracefulExit = waitForProcessExit(chrome, chromeShutdownTimeoutMs);
-  chrome.kill('SIGTERM');
+const waitForChromeProcessGroupExit = async (chrome, timeoutMs) => {
+  if (!chromeOwnsProcessGroup) return true;
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (!chromeProcessGroupExists(chrome)) return true;
+    await sleep(50);
+  }
+  return !chromeProcessGroupExists(chrome);
+};
+
+const signalChrome = (chrome, signal) => {
+  if (chromeOwnsProcessGroup && chrome.pid !== undefined) {
+    try {
+      process.kill(-chrome.pid, signal);
+      return;
+    } catch (error) {
+      if (!(error instanceof Error && 'code' in error && error.code === 'ESRCH')) throw error;
+    }
+  }
+  if (chrome.exitCode === null && chrome.signalCode === null) chrome.kill(signal);
+};
+
+const waitForChromeExit = async (chrome, timeoutMs) => {
+  const [processExited, processGroupExited] = await Promise.all([
+    waitForProcessExit(chrome, timeoutMs),
+    waitForChromeProcessGroupExit(chrome, timeoutMs),
+  ]);
+  return processExited && processGroupExited;
+};
+
+const terminateChrome = async (chrome) => {
+  if (chrome === null) return;
+  if ((chrome.exitCode !== null || chrome.signalCode !== null) && !chromeProcessGroupExists(chrome))
+    return;
+
+  const gracefulExit = waitForChromeExit(chrome, chromeShutdownTimeoutMs);
+  signalChrome(chrome, 'SIGTERM');
 
   if (await gracefulExit) {
     return;
   }
 
-  console.warn('Chrome did not exit after SIGTERM; sending SIGKILL.');
-  const forcedExit = waitForProcessExit(chrome, chromeShutdownTimeoutMs);
-  chrome.kill('SIGKILL');
+  console.warn('Chrome process group did not exit after SIGTERM; sending SIGKILL.');
+  const forcedExit = waitForChromeExit(chrome, chromeShutdownTimeoutMs);
+  signalChrome(chrome, 'SIGKILL');
 
   if (!(await forcedExit)) {
-    throw new Error('Chrome did not exit after SIGKILL.');
+    throw new Error('Chrome process group did not exit after SIGKILL.');
   }
+};
+
+const profileDirectoryRemainsAbsent = async (profileDirectory) => {
+  const deadline = Date.now() + profileCleanupStabilityMs;
+  while (Date.now() < deadline) {
+    if (existsSync(profileDirectory)) return false;
+    await sleep(profileCleanupPollMs);
+  }
+  return !existsSync(profileDirectory);
 };
 
 const removeProfileDirectory = async (profileDirectory) => {
@@ -1500,9 +1553,9 @@ const removeProfileDirectory = async (profileDirectory) => {
     try {
       await rm(profileDirectory, { recursive: true, force: true });
       assert.equal(
-        existsSync(profileDirectory),
-        false,
-        `Chrome profile directory still exists after cleanup: ${profileDirectory}`,
+        await profileDirectoryRemainsAbsent(profileDirectory),
+        true,
+        `Chrome profile directory was recreated after cleanup: ${profileDirectory}`,
       );
       console.log(`KINETRA_BROWSER_PROFILE_CLEANUP=PASS path=${profileDirectory}`);
       return;
@@ -1571,7 +1624,10 @@ const runBrowserScenario = async () => {
         `--user-data-dir=${profileDirectory}`,
         `${frontendOrigin}/login`,
       ],
-      { stdio: ['ignore', 'ignore', 'pipe', 'pipe', 'pipe'] },
+      {
+        detached: chromeOwnsProcessGroup,
+        stdio: ['ignore', 'ignore', 'pipe', 'pipe', 'pipe'],
+      },
     );
 
     chrome.stderr.on('data', (chunk) => {
@@ -5619,7 +5675,10 @@ const launchT12BrowserContext = async (profileDirectory, width, height) => {
       `--user-data-dir=${profileDirectory}`,
       `${frontendOrigin}/login`,
     ],
-    { stdio: ['ignore', 'ignore', 'pipe', 'pipe', 'pipe'] },
+    {
+      detached: chromeOwnsProcessGroup,
+      stdio: ['ignore', 'ignore', 'pipe', 'pipe', 'pipe'],
+    },
   );
   chrome.stderr.on('data', (chunk) => {
     chromeErrors += chunk.toString();
