@@ -544,8 +544,23 @@ const hasRefreshCookie = (request) =>
 const hasValidAccessToken = (request) =>
   String(request.headers.authorization ?? '').startsWith('Bearer access-refresh-');
 
+const createFixtureServer = (handler) =>
+  createServer((request, response) => {
+    void handler(request, response).catch((caught) => {
+      const code = caught instanceof Error ? caught.code : undefined;
+      if (
+        (request.aborted || request.destroyed || response.destroyed) &&
+        (code === 'ECONNRESET' || code === 'ERR_STREAM_PREMATURE_CLOSE')
+      )
+        return;
+      setImmediate(() => {
+        throw caught;
+      });
+    });
+  });
+
 const createMockApiServer = () =>
-  createServer(async (request, response) => {
+  createFixtureServer(async (request, response) => {
     response.setHeader('Access-Control-Allow-Origin', frontendOrigin);
     response.setHeader('Access-Control-Allow-Credentials', 'true');
     response.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
@@ -4287,6 +4302,7 @@ const createT12BrowserServer = (syntheticVideo) => {
     staleSessionRace: null,
     videoUploadSequence: 0,
     videoProgramGets: 0,
+    videoProgramRefreshedAfterFatal: false,
     videoUploadCreates: 0,
     videoPartSigns: 0,
     videoPartPuts: 0,
@@ -4301,6 +4317,17 @@ const createT12BrowserServer = (syntheticVideo) => {
     videoEventSequence: 0,
     videoUnexpectedXhrSends: 0,
     videoResumeUploadId: null,
+  };
+  const fatalSiblingHolds = new Set();
+  const releaseFatalSiblingPuts = () => {
+    for (const hold of [...fatalSiblingHolds]) {
+      if (!hold.response.destroyed && !hold.response.writableEnded) {
+        hold.response.writeHead(598, { 'Cache-Control': 'no-store' });
+        hold.response.end();
+      }
+      hold.request.resume();
+      hold.release();
+    }
   };
 
   const accountId = (role) => (role === 'client' ? t12ClientId : t12TrainerId);
@@ -4650,7 +4677,7 @@ const createT12BrowserServer = (syntheticVideo) => {
       error: { code: 'AUTHENTICATION_REQUIRED', message: 'Authentication is required.' },
     });
 
-  const server = createServer(async (request, response) => {
+  const server = createFixtureServer(async (request, response) => {
     response.setHeader('Access-Control-Allow-Origin', frontendOrigin);
     response.setHeader('Access-Control-Allow-Credentials', 'true');
     response.setHeader(
@@ -4740,6 +4767,26 @@ const createT12BrowserServer = (syntheticVideo) => {
       response.once('close', () => {
         if (!response.writableEnded) markAborted();
       });
+      if (record.behavior === 'fatal-first-part' && partNumber !== 1) {
+        request.pause();
+        await new Promise((resolve) => {
+          let released = false;
+          const hold = {
+            request,
+            response,
+            release: () => {
+              if (released) return;
+              released = true;
+              fatalSiblingHolds.delete(hold);
+              resolve();
+            },
+          };
+          fatalSiblingHolds.add(hold);
+          request.once('aborted', hold.release);
+          response.once('close', hold.release);
+        });
+        return;
+      }
       let bytes = 0;
       try {
         for await (const chunk of request) {
@@ -4766,22 +4813,6 @@ const createT12BrowserServer = (syntheticVideo) => {
         videoEvent(attempt === 3 ? 'fatal_rejected' : 'fatal_retry_rejected', record, partNumber);
         json(response, 503, {
           error: { code: 'S3_FATAL', message: 'Deterministic fatal part failure.' },
-        });
-        return;
-      }
-      if (record.behavior === 'fatal-first-part' && partNumber !== 1) {
-        await new Promise((resolve) => {
-          const timer = setTimeout(() => {
-            if (!response.destroyed && !response.writableEnded) {
-              response.writeHead(598, { 'Cache-Control': 'no-store' });
-              response.end();
-            }
-            resolve();
-          }, 15_000);
-          response.once('close', () => {
-            clearTimeout(timer);
-            resolve();
-          });
         });
         return;
       }
@@ -5042,6 +5073,8 @@ const createT12BrowserServer = (syntheticVideo) => {
     if (request.method === 'GET' && pathname === '/api/v1/trainer/videos/program') {
       assert.equal(role, 'trainer');
       state.videoProgramGets += 1;
+      if (state.videoEvents.some((event) => event.type === 'fatal_rejected'))
+        state.videoProgramRefreshedAfterFatal = true;
       json(response, 200, videoProgram(), { 'Cache-Control': 'no-store' });
       return;
     }
@@ -5651,7 +5684,7 @@ const createT12BrowserServer = (syntheticVideo) => {
     });
   });
 
-  return { server, socketServer, state, releaseStaleSessionRace };
+  return { server, socketServer, state, releaseFatalSiblingPuts, releaseStaleSessionRace };
 };
 
 const launchT12BrowserContext = async (profileDirectory, width, height) => {
@@ -6632,20 +6665,28 @@ const runT12BrowserScenario = async () => {
     assert.equal(await trainer.selectVideo('synthetic-workout-fatal.mp4'), syntheticVideo.length);
     await waitFor(
       'T14 fatal part failure aborts an active sibling XHR',
-      async () => {
+      () => {
         const slot = fixture.state.videoSlots.get('1:4');
         const record =
           slot?.liveUploadId === null || slot?.liveUploadId === undefined
             ? null
             : fixture.state.videoUploads.get(slot.liveUploadId);
-        return (
-          record !== null &&
-          record.partAttempts.get(1) === 3 &&
-          record.stats.abortedPuts >= 1 &&
-          (await trainer.bodyText()).includes('Part upload failed with 503')
-        );
+        return record !== null && record.partAttempts.get(1) === 3 && record.stats.abortedPuts >= 1;
       },
       40_000,
+    );
+    await waitFor(
+      'T14 fatal part failure remains visible after inventory refresh',
+      async () => {
+        if (
+          !fixture.state.videoProgramRefreshedAfterFatal ||
+          !(await trainer.bodyText()).includes('Part upload failed with 503')
+        )
+          return false;
+        await sleep(250);
+        return (await trainer.bodyText()).includes('Part upload failed with 503');
+      },
+      20_000,
     );
     const fatalSlot = fixture.state.videoSlots.get('1:4');
     assert.notEqual(fatalSlot, undefined);
@@ -7549,6 +7590,7 @@ const runT12BrowserScenario = async () => {
     }
     throw error;
   } finally {
+    fixture.releaseFatalSiblingPuts();
     fixture.releaseStaleSessionRace();
     client?.cdp.close();
     trainer?.cdp.close();

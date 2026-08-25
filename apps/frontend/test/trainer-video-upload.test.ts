@@ -233,6 +233,9 @@ test('T14 an in-progress complete is retried for expired-lease recovery', async 
 
 test('T14 fatal part failure aborts sibling workers before completion', async () => {
   let completeCalls = 0;
+  let firstPartAttempts = 0;
+  let siblingAbortObserved = false;
+  let siblingStarted = false;
   const dependencies = {
     createUpload: async () => ({ upload: upload('uploading') }),
     getUpload: async () => ({ upload: upload('published') }),
@@ -252,11 +255,20 @@ test('T14 fatal part failure aborts sibling workers before completion', async ()
       return { upload: upload('published') };
     },
     putPart: async (url, _blob, _headers, signal) => {
-      if (url === 'part-1') throw new Error('fatal');
+      if (url === 'part-1') {
+        firstPartAttempts += 1;
+        throw new Error('fatal');
+      }
+      siblingStarted = true;
       await new Promise<void>((_resolve, reject) =>
-        signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), {
-          once: true,
-        }),
+        signal.addEventListener(
+          'abort',
+          () => {
+            siblingAbortObserved = true;
+            reject(new DOMException('Aborted', 'AbortError'));
+          },
+          { once: true },
+        ),
       );
     },
     checksumPart: async () => `${'A'.repeat(43)}=`,
@@ -276,6 +288,9 @@ test('T14 fatal part failure aborts sibling workers before completion', async ()
     }),
     /fatal/u,
   );
+  assert.equal(firstPartAttempts, 3);
+  assert.equal(siblingStarted, true);
+  assert.equal(siblingAbortObserved, true);
   assert.equal(completeCalls, 0);
 });
 

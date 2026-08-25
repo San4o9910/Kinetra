@@ -252,7 +252,7 @@ a5d06a6430813200fc666e73d4b58fffc6e6ee62cb567bd7186b9e25a291c5b4  ./apps/fronten
 6dd0d2c7543ac0e87bc6dc9e7ee29fe6c76e1f2a503bb7832e97c8d01e6763c8  ./apps/frontend/src/features/trainer-chat/index.ts
 876ece19605150ecce807fa7473c4403fd68ca56d01ce841f8263cee853f9c13  ./apps/frontend/src/features/trainer-chat/selectedConversation.ts
 bbdc24fa87de51e6fafebc74b1ee33012b6910088b5e586184568490f90dfa6e  ./apps/frontend/src/features/trainer-shell/TrainerAdminShell.tsx
-fd1a770db5ca0387e3e72ac3d9e4376feaca0c9960d57dcd37053e6b93f6800b  ./apps/frontend/src/features/trainer-videos/TrainerVideosScreen.tsx
+e00010b110f96c1bbbdda3c508e9bdb37e1f808eb2695fba84d1ccce490a7276  ./apps/frontend/src/features/trainer-videos/TrainerVideosScreen.tsx
 146868b489b6a3569c1be8ee568b949eac661f0729ca3f21b30c5ae3b54aa20b  ./apps/frontend/src/features/trainer-videos/model.ts
 6b43788ce3fe857f22503011721d3f0811282de608bb6ed17604ef92b0d7802d  ./apps/frontend/src/features/trainer-videos/program-polling.ts
 0fb1a6278d83149e7e742b69f4000b9c6c4359ba6c449d97a74ffb8d819f9262  ./apps/frontend/src/features/trainer-videos/upload.ts
@@ -291,7 +291,7 @@ a87b6e6d3944144b4ab2c58e05d7624e8a0b6d2ccea8812e49981ade36a05b01  ./apps/fronten
 74c8fcfa51af0b650aeac36acf8f8f8852e74618d122f9edccf3bf6604ece695  ./apps/frontend/test/survey-routing.test.ts
 ae9913fd98e0a53bb8e5a51eb206f7dde705b3c3a9623ff65b3d63f4b7ae72d5  ./apps/frontend/test/theme.test.ts
 dea7d86584c54c3f77059e2099e3f00ae5705846eb55350a09b3cf8962d0cbf3  ./apps/frontend/test/trainer-selected-conversation.test.ts
-077415ab6d7efbcfbb9d50e86b3b10cb45dff9b061ef8cb44c221bbdf4d8494b  ./apps/frontend/test/trainer-video-upload.test.ts
+01df61427e97fc523411038987fc7f65bf4548239fd1a77e7f65c82599d49447  ./apps/frontend/test/trainer-video-upload.test.ts
 0ba1768ae8dcd26335f244e7ae9b2cce31a18847c6b3cf180836131732d70bb2  ./apps/frontend/test/trainer-videos.test.ts
 6f8ed6ddb3f7748c5e7cbb99be45ebbfad34a77d5f5ed41f24acd8862273c0b1  ./apps/frontend/tsconfig.json
 010884cefdcaea9510e7a25f9e27fbc9a82a8d22692e9ff5bf196056f50ca256  ./apps/frontend/vite.config.ts
@@ -316,6 +316,6 @@ ca34313e3e69827306dc65884bd88ff99e91e35c6bb29db8d9e4c3e49fb3f9a6  ./package-lock
 7309cda4189bc5dff4cd1518504c53bf50d00ddb95505988449ad3907cdb56f2  ./packages/shared/src/index.ts
 c8171db33a1b645b8c36d542cf4bfc5c47073df8842b846f91a6ebf083973c5e  ./packages/shared/tsconfig.json
 4c9d6d3999285a6ab8712d8582d54e69a76f434b4faf933a886c664a65031c54  ./scripts/check-changed-format.mjs
-5f4c454bcbeeaf5f1681b3a6ec6da7079b06c4c7e050da0a7e7e69b74ec2cfc4  ./scripts/test-frontend-browser.mjs
+011d2fea4268121712b0468789b88c691fa37c88e87922988cfe1b4d66acdd01  ./scripts/test-frontend-browser.mjs
 bead925d8a3fbb2c8af134e656993507d9854824f954003553a4d5e462ef12d4  ./scripts/verify-project.mjs
 2b67887209f3334ebdc96426f5c2cb87480fb85ff2f75c0d42b0a944dae7922a  ./tsconfig.base.json

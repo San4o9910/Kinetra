@@ -21,13 +21,18 @@ export interface TrainerVideosScreenProps {
   readonly onSessionExpired: () => void;
 }
 
+interface TrainerVideoScreenError {
+  readonly message: string;
+  readonly source: 'operation' | 'polling';
+}
+
 export const TrainerVideosScreen = ({
   online,
   onSessionExpired,
 }: TrainerVideosScreenProps): ReactNode => {
   const [program, setProgram] = useState<TrainerVideoProgramResponse | null>(null);
   const [selectedWeek, setSelectedWeek] = useState(1);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<TrainerVideoScreenError | null>(null);
   const [slotOperations, setSlotOperations] = useState(
     new Map<string, 'uploading' | 'cancelling' | 'action'>(),
   );
@@ -47,7 +52,10 @@ export const TrainerVideosScreen = ({
         onSessionExpired();
         return;
       }
-      setError(caught instanceof Error ? caught.message : 'Не удалось выполнить действие.');
+      setError({
+        message: caught instanceof Error ? caught.message : 'Не удалось выполнить действие.',
+        source: 'operation',
+      });
     },
     [onSessionExpired],
   );
@@ -69,15 +77,25 @@ export const TrainerVideosScreen = ({
       {
         onProgram: (next) => {
           setProgram(next);
-          setError(null);
+          setError((current) => (current?.source === 'polling' ? null : current));
         },
         onError: (caught) => {
           if (caught instanceof DOMException && caught.name === 'AbortError') return false;
-          handleError(caught);
-          return !(caught instanceof ApiRequestError && caught.kind === 'auth');
+          if (caught instanceof ApiRequestError && caught.kind === 'auth') {
+            onSessionExpired();
+            return false;
+          }
+          setError({
+            message: caught instanceof Error ? caught.message : 'Не удалось выполнить действие.',
+            source: 'polling',
+          });
+          return true;
         },
         onDeadline: () =>
-          setError('Проверка видео занимает больше времени. Статус сохранён на сервере.'),
+          setError({
+            message: 'Проверка видео занимает больше времени. Статус сохранён на сервере.',
+            source: 'operation',
+          }),
       },
       initialOnlineRef.current,
     );
@@ -90,7 +108,7 @@ export const TrainerVideosScreen = ({
       uploadControllers.forEach((active) => active.abort());
       uploadControllers.clear();
     };
-  }, [handleError]);
+  }, [handleError, onSessionExpired]);
 
   useEffect(() => programPollingRef.current?.setOnline(online), [online]);
 
@@ -207,7 +225,7 @@ export const TrainerVideosScreen = ({
         <p role="status">Загружаем программу видео…</p>
         {error === null ? null : (
           <div role="alert">
-            <p>{error}</p>
+            <p>{error.message}</p>
             <button type="button" onClick={() => load()}>
               Повторить
             </button>
@@ -232,7 +250,7 @@ export const TrainerVideosScreen = ({
       </header>
       {error === null ? null : (
         <div className="trainer-video-alert" role="alert">
-          <p>{error}</p>
+          <p>{error.message}</p>
           <button type="button" onClick={() => setError(null)}>
             Закрыть
           </button>
