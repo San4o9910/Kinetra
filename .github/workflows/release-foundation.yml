@@ -1,0 +1,850 @@
+name: Kinetra release foundation (non-publishing)
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Must remain false; registry publication is out of scope.
+        required: true
+        type: boolean
+        default: false
+      deploy:
+        description: Must remain false; deployment is out of scope.
+        required: true
+        type: boolean
+        default: false
+      migrate:
+        description: Must remain false; database migration is out of scope.
+        required: true
+        type: boolean
+        default: false
+      enable_feature_flag:
+        description: Must remain false; the T14 feature flag stays disabled.
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: release-foundation-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  local-release-evidence:
+    name: Build and inspect local evidence only
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      APP_SOURCE_COMMIT: c5645a3aa84bbc81e688c97731e48d978a2aeb92
+      APP_SOURCE_TREE: 4ee94cb5d334e54e5996d42caed35e0b3c776a23
+      CANONICAL_REPOSITORY: San4o9910/Kinetra
+      RELEASE_ROOT: ${{ github.workspace }}/release-definition
+      SOURCE_ROOT: ${{ github.workspace }}/source
+      LOCAL_IMAGE: kinetra-release-foundation:c5645a3aa84bbc81e688c97731e48d978a2aeb92
+      EXACT_CI_RUN_ID: '32842822401'
+      NPM_CONFIG_UPDATE_NOTIFIER: 'false'
+      SYFT_VERSION: 1.51.0
+      SYFT_ARCHIVE_SIZE: '28743977'
+      SYFT_ARCHIVE_SHA256: 2a2e837a2c8d59ec9af5472ee22d3b04ee463c4e44476ecf993fd1e5ab6ebc7f
+      SYFT_ARCHIVE_URL: https://github.com/anchore/syft/releases/download/v1.51.0/syft_1.51.0_linux_amd64.tar.gz
+
+    steps:
+      - name: Reject publishing or environment mutation requests
+        timeout-minutes: 1
+        env:
+          REQUEST_PUBLISH: ${{ inputs.publish }}
+          REQUEST_DEPLOY: ${{ inputs.deploy }}
+          REQUEST_MIGRATE: ${{ inputs.migrate }}
+          REQUEST_ENABLE_FEATURE_FLAG: ${{ inputs.enable_feature_flag }}
+        run: |
+          set -Eeuo pipefail
+          umask 077
+
+          for request_name in \
+            REQUEST_PUBLISH \
+            REQUEST_DEPLOY \
+            REQUEST_MIGRATE \
+            REQUEST_ENABLE_FEATURE_FLAG; do
+            request_value="${!request_name}"
+            if [[ "$request_value" != 'false' ]]; then
+              echo "Refusing unsafe dispatch input: ${request_name}=${request_value}" >&2
+              exit 1
+            fi
+          done
+
+      - name: Initialize runner-local paths
+        timeout-minutes: 1
+        run: |
+          set -Eeuo pipefail
+          umask 077
+
+          [[ -n "${RUNNER_TEMP:-}" && "$RUNNER_TEMP" == /* ]]
+          [[ -n "${GITHUB_ENV:-}" && "$GITHUB_ENV" == /* ]]
+
+          {
+            printf 'BUILD_CONTEXT=%s\n' "$RUNNER_TEMP/kinetra-exact-source-context"
+            printf 'EVIDENCE_DIR=%s\n' "$RUNNER_TEMP/kinetra-release-evidence"
+            printf 'IMAGE_ARCHIVE=%s\n' "$RUNNER_TEMP/kinetra-backend-runtime.tar"
+            printf 'SYFT_ROOT=%s\n' "$RUNNER_TEMP/syft-v1.51.0"
+          } >> "$GITHUB_ENV"
+
+      - name: Initialize metadata-only evidence directory
+        timeout-minutes: 1
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          RUN_ID: ${{ github.run_id }}
+          RUNNER_IMAGE: ${{ runner.os }}-${{ runner.arch }}
+        run: |
+          set -Eeuo pipefail
+          umask 077
+
+          install -d -m 0700 "$EVIDENCE_DIR"
+          jq -n \
+            --arg dispatchCommit "$GITHUB_SHA" \
+            --arg eventName "$EVENT_NAME" \
+            --arg repository "$REPOSITORY" \
+            --arg runAttempt "$RUN_ATTEMPT" \
+            --arg runId "$RUN_ID" \
+            --arg runnerImage "$RUNNER_IMAGE" \
+            --arg runnerImageOs "${ImageOS:-UNAVAILABLE}" \
+            --arg runnerImageVersion "${ImageVersion:-UNAVAILABLE}" \
+            '{
+              schemaVersion: 1,
+              eventName: $eventName,
+              repository: $repository,
+              dispatchCommit: $dispatchCommit,
+              runId: $runId,
+              runAttempt: $runAttempt,
+              runnerImage: $runnerImage,
+              runnerImageOs: $runnerImageOs,
+              runnerImageVersion: $runnerImageVersion,
+              policy: {
+                publish: false,
+                deploy: false,
+                migrate: false,
+                enableFeatureFlag: false
+              }
+            }' > "$EVIDENCE_DIR/workflow-run.json"
+
+          jq -n \
+            --arg sourceCommit "$APP_SOURCE_COMMIT" \
+            --arg workflow '.github/workflows/ci.yml' \
+            '{
+              schemaVersion: 1,
+              status: "PENDING_EXACT_READ_ONLY_VALIDATION",
+              sourceCommit: $sourceCommit,
+              workflow: $workflow,
+              exactRunId: 32842822401,
+              reason: "The immutable known-good CI run is validated through the read-only Actions API before the local build starts.",
+              scope: "APPLICATION_SOURCE_ONLY",
+              releaseDefinitionRemoteCi: "NOT_AVAILABLE_WITHOUT_SEPARATE_PUSH_AND_PR_PERMISSION",
+              requiredBeforeAnyFuturePublication: [
+                "separately authorized release-definition branch push",
+                "release-definition pull request head CI",
+                "release-definition pull request merge-ref CI"
+              ]
+            }' > "$EVIDENCE_DIR/existing-ci-dependency.json"
+
+      - name: Checkout release definition
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          path: release-definition
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Checkout exact application source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          path: source
+          ref: c5645a3aa84bbc81e688c97731e48d978a2aeb92
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify release and application identities
+        timeout-minutes: 2
+        run: |
+          set -Eeuo pipefail
+          umask 077
+
+          release_commit="$(cd "$RELEASE_ROOT" && git rev-parse HEAD | sed -n '1p')"
+          release_tree="$(cd "$RELEASE_ROOT" && git rev-parse HEAD^{tree})"
+          source_commit="$(cd "$SOURCE_ROOT" && git rev-parse HEAD | sed -n '1p')"
+          source_tree="$(cd "$SOURCE_ROOT" && git rev-parse HEAD^{tree})"
+
+          [[ "$GITHUB_REPOSITORY" == "$CANONICAL_REPOSITORY" ]]
+          [[ "$release_commit" == "$GITHUB_SHA" ]]
+          [[ "$source_commit" == "$APP_SOURCE_COMMIT" ]]
+          [[ "$source_tree" == "$APP_SOURCE_TREE" ]]
+          [[ -f "$RELEASE_ROOT/Containerfile" && ! -L "$RELEASE_ROOT/Containerfile" ]]
+          [[ -f "$RELEASE_ROOT/.dockerignore" && ! -L "$RELEASE_ROOT/.dockerignore" ]]
+          [[ -f "$RELEASE_ROOT/.github/workflows/release-foundation.yml" ]]
+
+          git -C "$RELEASE_ROOT" diff --quiet
+          git -C "$SOURCE_ROOT" diff --quiet
+
+          rm -rf "$BUILD_CONTEXT"
+          install -d -m 0700 "$BUILD_CONTEXT"
+          git -C "$SOURCE_ROOT" archive --format=tar "$APP_SOURCE_COMMIT" \
+            | tar -xf - -C "$BUILD_CONTEXT"
+          install -m 0600 "$RELEASE_ROOT/.dockerignore" "$BUILD_CONTEXT/.dockerignore"
+          chmod -R go-rwx "$BUILD_CONTEXT"
+          if find "$BUILD_CONTEXT" -type l -print -quit | grep -q .; then
+            echo 'Symlinks are forbidden in the sanitized Docker build context.' >&2
+            exit 1
+          fi
+          [[ ! -e "$BUILD_CONTEXT/.git" ]]
+          dockerignore_sha256="$(sha256sum "$BUILD_CONTEXT/.dockerignore" | awk '{print $1}')"
+
+          jq -n \
+            --arg releaseCommit "$release_commit" \
+            --arg releaseTree "$release_tree" \
+            --arg sourceCommit "$source_commit" \
+            --arg sourceTree "$source_tree" \
+            --arg dockerignoreSha256 "$dockerignore_sha256" \
+            '{
+              schemaVersion: 1,
+              releaseDefinition: {commit: $releaseCommit, tree: $releaseTree},
+              applicationSource: {commit: $sourceCommit, tree: $sourceTree},
+              buildContext: {
+                method: "git archive plus release-definition .dockerignore",
+                dockerignoreSha256: $dockerignoreSha256,
+                containsGitMetadata: false
+              }
+            }' > "$EVIDENCE_DIR/source-identity.json"
+
+      - name: Validate exact successful CI run through read-only API
+        timeout-minutes: 3
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -Eeuo pipefail
+          umask 077
+
+          [[ -n "$GH_TOKEN" ]]
+          [[ "$EXACT_CI_RUN_ID" == '32842822401' ]]
+          grep -F "echo 'KINETRA_T14_TEST_SUITE=PASS'" \
+            "$SOURCE_ROOT/.github/workflows/ci.yml" >/dev/null
+          grep -F "grep -F 'KINETRA_T14_POSTGRES_INTEGRATION=PASS'" \
+            "$SOURCE_ROOT/.github/workflows/ci.yml" >/dev/null
+          grep -F "grep -F 'KINETRA_T14_S3_MULTIPART=PASS'" \
+            "$SOURCE_ROOT/.github/workflows/ci.yml" >/dev/null
+          grep -F "grep -F 'KINETRA_T14_BROWSER_E2E=PASS'" \
+            "$SOURCE_ROOT/.github/workflows/ci.yml" >/dev/null
+
+          run_response="$RUNNER_TEMP/kinetra-exact-ci-run.json"
+          jobs_response="$RUNNER_TEMP/kinetra-exact-ci-jobs.json"
+          api_root="https://api.github.com/repos/${REPOSITORY}/actions/runs/${EXACT_CI_RUN_ID}/attempts/1"
+          curl \
+            --proto '=https' \
+            --tlsv1.2 \
+            --fail \
+            --show-error \
+            --silent \
+            --retry 3 \
+            --retry-all-errors \
+            --retry-delay 2 \
+            --connect-timeout 10 \
+            --max-time 60 \
+            --header 'Accept: application/vnd.github+json' \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            --output "$run_response" \
+            "$api_root"
+          curl \
+            --proto '=https' \
+            --tlsv1.2 \
+            --fail \
+            --show-error \
+            --silent \
+            --retry 3 \
+            --retry-all-errors \
+            --retry-delay 2 \
+            --connect-timeout 10 \
+            --max-time 60 \
+            --header 'Accept: application/vnd.github+json' \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            --output "$jobs_response" \
+            "${api_root}/jobs?per_page=100"
+
+          jq -e \
+            --arg sourceCommit "$APP_SOURCE_COMMIT" \
+            --argjson runId "$EXACT_CI_RUN_ID" \
+            '.id == $runId
+             and .run_number == 124
+             and .run_attempt == 1
+             and .event == "push"
+             and .head_branch == "develop"
+             and .head_sha == $sourceCommit
+             and .path == ".github/workflows/ci.yml"
+             and .status == "completed"
+             and .conclusion == "success"' \
+            "$run_response" >/dev/null
+          jq -e '
+            .total_count == 3
+            and (.jobs | length == 3)
+            and (
+              [
+                .jobs[]
+                | select(
+                    .run_attempt == 1
+                    and .status == "completed"
+                    and .conclusion == "success"
+                  )
+                | .name
+              ]
+              | sort
+            ) == ([
+              "Lint, Typecheck & Build",
+              "Structure Verification",
+              "Unit & E2E Tests"
+            ] | sort)
+          ' "$jobs_response" >/dev/null
+
+          jq '{
+            id,
+            run_number,
+            run_attempt,
+            event,
+            head_branch,
+            head_sha,
+            path,
+            status,
+            conclusion,
+            html_url,
+            created_at,
+            updated_at
+          }' "$run_response" > "$EVIDENCE_DIR/exact-ci-run.json"
+          jq '{
+            total_count,
+            jobs: [.jobs[] | {id, name, run_attempt, status, conclusion, started_at, completed_at}]
+          }' "$jobs_response" > "$EVIDENCE_DIR/exact-ci-jobs.json"
+
+          ci_workflow_sha256="$(sha256sum "$SOURCE_ROOT/.github/workflows/ci.yml" | awk '{print $1}')"
+          jq -n \
+            --arg sourceCommit "$APP_SOURCE_COMMIT" \
+            --arg workflow '.github/workflows/ci.yml' \
+            --arg workflowSha256 "$ci_workflow_sha256" \
+            --argjson runId "$EXACT_CI_RUN_ID" \
+            '{
+              schemaVersion: 1,
+              status: "PASS_EXACT_CI_RUN_124",
+              sourceCommit: $sourceCommit,
+              workflow: $workflow,
+              workflowSha256: $workflowSha256,
+              exactRunId: $runId,
+              conclusion: "success",
+              scope: "APPLICATION_SOURCE_ONLY",
+              releaseDefinitionRemoteCi: "NOT_AVAILABLE_WITHOUT_SEPARATE_PUSH_AND_PR_PERMISSION",
+              requiredJobs: [
+                "Lint, Typecheck & Build",
+                "Structure Verification",
+                "Unit & E2E Tests"
+              ],
+              suiteMarkerContract: "KINETRA_T14_TEST_SUITE=PASS",
+              apiAccess: "read-only"
+            }' > "$EVIDENCE_DIR/existing-ci-dependency.json"
+
+      - name: Set up exact Node.js toolchain
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: source/.nvmrc
+
+      - name: Validate release definition
+        timeout-minutes: 10
+        run: |
+          set -Eeuo pipefail
+          umask 077
+
+          npm --prefix "$RELEASE_ROOT" ci --ignore-scripts --no-audit --no-fund
+          npm --prefix "$RELEASE_ROOT" run release:test
+          npm --prefix "$RELEASE_ROOT" run release:validate
+          set +e
+          npm --prefix "$RELEASE_ROOT" run release:environment -- \
+            --output .release-output/environment-status.json
+          environment_exit="$?"
+          set -e
+          [[ "$environment_exit" == '0' || "$environment_exit" == '2' ]]
+          if [[ "$environment_exit" == '0' ]]; then
+            jq -e '.status == "AVAILABLE"' \
+              "$RELEASE_ROOT/.release-output/environment-status.json" >/dev/null
+          else
+            jq -e '.status == "BLOCKED_BY_ENVIRONMENT"' \
+              "$RELEASE_ROOT/.release-output/environment-status.json" >/dev/null
+          fi
+          install -m 0600 \
+            "$RELEASE_ROOT/.release-output/environment-status.json" \
+            "$EVIDENCE_DIR/environment-status.json"
+
+      - name: Run exact-source checks
+        timeout-minutes: 30
+        run: |
+          set -Eeuo pipefail
+          umask 077
+
+          npm --prefix "$SOURCE_ROOT" ci --no-audit --no-fund
+          npm --prefix "$SOURCE_ROOT" run verify:structure
+          npm --prefix "$SOURCE_ROOT" run typecheck
+          npm --prefix "$SOURCE_ROOT" run lint
+          npm --prefix "$SOURCE_ROOT" run test
+          npm --prefix "$SOURCE_ROOT" run build
+
+          git -C "$SOURCE_ROOT" diff --quiet
+          jq -n \
+            --arg sourceCommit "$APP_SOURCE_COMMIT" \
+            '{
+              schemaVersion: 1,
+              status: "PARTIAL_PASS_EXACT_SOURCE_COMMANDS",
+              sourceCommit: $sourceCommit,
+              checks: [
+                "npm ci",
+                "verify:structure",
+                "typecheck",
+                "lint",
+                "test",
+                "build"
+              ],
+              limitation: "The local npm test command may skip PostgreSQL, S3, or browser prerequisites; exact CI run 124 is the authoritative service-backed gate and proves changed-file formatting."
+            }' > "$EVIDENCE_DIR/source-checks.json"
+
+      - name: Set up pinned Buildx action
+        id: buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+        with:
+          version: v0.36.1
+          driver-opts: image=moby/buildkit@sha256:28a898719c18a33f4e8000685287fa36fd0dd9560c6440227d3a732d79bb41d8
+          install: true
+          cleanup: true
+
+      - name: Build local backend image with BuildKit provenance
+        timeout-minutes: 20
+        env:
+          BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}
+          BUILDX_METADATA_PROVENANCE: max
+          BUILDX_METADATA_WARNINGS: 'true'
+          BUILDX_NO_DEFAULT_ATTESTATIONS: '1'
+        run: |
+          set -Eeuo pipefail
+          umask 077
+
+          release_commit="$(jq -er '.releaseDefinition.commit' \
+            "$EVIDENCE_DIR/source-identity.json")"
+          release_tree="$(jq -er '.releaseDefinition.tree' \
+            "$EVIDENCE_DIR/source-identity.json")"
+          docker buildx version | tee "$EVIDENCE_DIR/buildx-version.txt"
+          docker buildx inspect "$BUILDX_BUILDER" --bootstrap \
+            | tee "$EVIDENCE_DIR/buildkit-builder-inspect.txt"
+          docker buildx build \
+            --builder "$BUILDX_BUILDER" \
+            --file "$RELEASE_ROOT/Containerfile" \
+            --build-arg "RELEASE_DEFINITION_COMMIT=$release_commit" \
+            --build-arg "RELEASE_DEFINITION_TREE=$release_tree" \
+            --metadata-file "$EVIDENCE_DIR/buildkit-metadata.json" \
+            --platform linux/amd64 \
+            --target backend-runtime \
+            --tag "$LOCAL_IMAGE" \
+            --load \
+            "$BUILD_CONTEXT"
+
+          jq -e '
+            ."buildx.build.provenance"
+            | type == "object"
+              and length > 0
+              and .buildType == "https://mobyproject.org/buildkit@v1"
+              and (.materials | type == "array" and length > 0)
+              and (.invocation | type == "object")
+              and (.metadata | type == "object")
+          ' \
+            "$EVIDENCE_DIR/buildkit-metadata.json" >/dev/null
+          manifest_digest="$(jq -er '."containerimage.digest"' \
+            "$EVIDENCE_DIR/buildkit-metadata.json")"
+          [[ "$manifest_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          jq \
+            --arg status 'LOCAL_UNSIGNED_BUILD_PROVENANCE' \
+            --arg manifestDigest "$manifest_digest" \
+            --arg sourceCommit "$APP_SOURCE_COMMIT" \
+            --arg sourceTree "$APP_SOURCE_TREE" \
+            '{
+              status: $status,
+              manifestDigest: $manifestDigest,
+              sourceCommit: $sourceCommit,
+              sourceTree: $sourceTree,
+              buildkit: ."buildx.build.provenance"
+            }' "$EVIDENCE_DIR/buildkit-metadata.json" \
+            > "$EVIDENCE_DIR/local-buildkit-provenance.json"
+
+      - name: Inspect local runtime and save runner-local image
+        timeout-minutes: 10
+        run: |
+          set -Eeuo pipefail
+          umask 077
+
+          docker image inspect "$LOCAL_IMAGE" > "$EVIDENCE_DIR/docker-image-inspect.json"
+          release_commit="$(jq -er '.releaseDefinition.commit' \
+            "$EVIDENCE_DIR/source-identity.json")"
+          release_tree="$(jq -er '.releaseDefinition.tree' \
+            "$EVIDENCE_DIR/source-identity.json")"
+          feature_flag_name='TRAINER_VIDEO_UPLOADS_ENABLED'
+          feature_flag_disabled="${feature_flag_name}=false"
+          feature_flag_enabled="${feature_flag_name}=true"
+          jq -e \
+            --arg sourceCommit "$APP_SOURCE_COMMIT" \
+            --arg sourceTree "$APP_SOURCE_TREE" \
+            --arg releaseCommit "$release_commit" \
+            --arg releaseTree "$release_tree" \
+            --arg featureFlagDisabled "$feature_flag_disabled" \
+            --arg featureFlagEnabled "$feature_flag_enabled" \
+            '.[0] as $image
+             | ($image.Os == "linux")
+             and ($image.Architecture == "amd64")
+             and ($image.Config.User != "" and $image.Config.User != "0" and $image.Config.User != "root")
+             and ($image.Config.Entrypoint == ["/usr/bin/tini", "--"])
+             and ($image.Config.Cmd == ["node", "apps/backend/dist/server.js"])
+             and ($image.Config.Labels["org.opencontainers.image.revision"] == $releaseCommit)
+             and ($image.Config.Labels["io.kinetra.release-definition-commit"] == $releaseCommit)
+             and ($image.Config.Labels["io.kinetra.release-definition-tree"] == $releaseTree)
+             and ($image.Config.Labels["io.kinetra.app-source-commit"] == $sourceCommit)
+             and ($image.Config.Labels["io.kinetra.app-source-tree"] == $sourceTree)
+             and (($image.Config.Env | index($featureFlagEnabled)) == null)
+             and (($image.Config.Env | index($featureFlagDisabled)) != null)' \
+            "$EVIDENCE_DIR/docker-image-inspect.json" >/dev/null
+
+          runtime_options=(
+            --rm
+            --pull never
+            --network none
+            --read-only
+            --tmpfs /tmp:rw,noexec,nosuid,nodev,size=64m
+            --cap-drop ALL
+            --security-opt no-new-privileges
+          )
+          docker run "${runtime_options[@]}" --entrypoint node "$LOCAL_IMAGE" --version \
+            | tee "$EVIDENCE_DIR/runtime-node-version.txt"
+          docker run "${runtime_options[@]}" --entrypoint ffmpeg "$LOCAL_IMAGE" -version \
+            > "$EVIDENCE_DIR/runtime-ffmpeg-version.txt"
+          docker run "${runtime_options[@]}" --entrypoint ffprobe "$LOCAL_IMAGE" -version \
+            > "$EVIDENCE_DIR/runtime-ffprobe-version.txt"
+          docker run "${runtime_options[@]}" --entrypoint identify "$LOCAL_IMAGE" -version \
+            > "$EVIDENCE_DIR/runtime-imagemagick-version.txt"
+          sed -n '1p' "$EVIDENCE_DIR/runtime-ffmpeg-version.txt"
+          sed -n '1p' "$EVIDENCE_DIR/runtime-ffprobe-version.txt"
+          sed -n '1p' "$EVIDENCE_DIR/runtime-imagemagick-version.txt"
+          docker run "${runtime_options[@]}" --entrypoint /bin/sh "$LOCAL_IMAGE" -ceu '
+            test -f apps/backend/dist/server.js
+            test -f apps/backend/dist/video-admin/run-upload-worker.js
+            test -f apps/backend/dist/video-admin/run-media-cleanup.js
+          '
+
+          image_id="$(jq -er '.[0].Id' "$EVIDENCE_DIR/docker-image-inspect.json")"
+          buildkit_config_digest="$(jq -er '."containerimage.config.digest"' \
+            "$EVIDENCE_DIR/buildkit-metadata.json")"
+          [[ "$image_id" =~ ^sha256:[0-9a-f]{64}$ ]]
+          [[ "$image_id" == "$buildkit_config_digest" ]]
+          docker save --output "$IMAGE_ARCHIVE" "$LOCAL_IMAGE"
+          archive_sha256="$(sha256sum "$IMAGE_ARCHIVE" | awk '{print $1}')"
+          manifest_digest="$(jq -er '."containerimage.digest"' \
+            "$EVIDENCE_DIR/buildkit-metadata.json")"
+          [[ "$archive_sha256" =~ ^[0-9a-f]{64}$ ]]
+          jq -n \
+            --arg imageId "$image_id" \
+            --arg archiveSha256 "$archive_sha256" \
+            --arg manifestDigest "$manifest_digest" \
+            '{
+              imageId: $imageId,
+              manifestDigest: $manifestDigest,
+              localArchiveSha256: $archiveSha256,
+              uploaded: false
+            }' \
+            > "$EVIDENCE_DIR/local-image-digests.json"
+
+      - name: Run release runtime validator
+        timeout-minutes: 10
+        run: |
+          set -Eeuo pipefail
+          umask 077
+
+          image_id="$(jq -er '.[0].Id' "$EVIDENCE_DIR/docker-image-inspect.json")"
+          release_commit="$(jq -er '.releaseDefinition.commit' \
+            "$EVIDENCE_DIR/source-identity.json")"
+          release_tree="$(jq -er '.releaseDefinition.tree' \
+            "$EVIDENCE_DIR/source-identity.json")"
+          npm --prefix "$RELEASE_ROOT" run release:container -- \
+            --image "$image_id" \
+            --release-commit "$release_commit" \
+            --release-tree "$release_tree" \
+            --output .release-output/container-runtime.json
+          install -m 0600 \
+            "$RELEASE_ROOT/.release-output/container-runtime.json" \
+            "$EVIDENCE_DIR/container-runtime.json"
+
+      - name: Install checksum-pinned Syft and generate SBOM
+        timeout-minutes: 10
+        run: |
+          set -Eeuo pipefail
+          umask 077
+
+          install -d -m 0700 "$SYFT_ROOT"
+          syft_archive="$SYFT_ROOT/syft.tar.gz"
+          curl \
+            --proto '=https' \
+            --tlsv1.2 \
+            --fail \
+            --show-error \
+            --silent \
+            --location \
+            --retry 3 \
+            --retry-all-errors \
+            --retry-delay 2 \
+            --connect-timeout 10 \
+            --max-time 180 \
+            --output "$syft_archive" \
+            "$SYFT_ARCHIVE_URL"
+          printf '%s  %s\n' "$SYFT_ARCHIVE_SHA256" "$syft_archive" \
+            | sha256sum --check --strict
+          [[ "$(stat -c '%s' "$syft_archive")" == "$SYFT_ARCHIVE_SIZE" ]]
+          tar -xzf "$syft_archive" -C "$SYFT_ROOT" syft
+          [[ -f "$SYFT_ROOT/syft" && ! -L "$SYFT_ROOT/syft" ]]
+          chmod 0700 "$SYFT_ROOT/syft"
+          "$SYFT_ROOT/syft" version -o json > "$EVIDENCE_DIR/syft-version.json"
+          jq -e --arg version "$SYFT_VERSION" '.version == $version' \
+            "$EVIDENCE_DIR/syft-version.json" >/dev/null
+
+          "$SYFT_ROOT/syft" scan "docker:$LOCAL_IMAGE" \
+            --output "spdx-json=$EVIDENCE_DIR/sbom.spdx.json"
+          jq -e \
+            '.spdxVersion | startswith("SPDX-")' \
+            "$EVIDENCE_DIR/sbom.spdx.json" >/dev/null
+          jq -e '.packages | type == "array" and length > 0' \
+            "$EVIDENCE_DIR/sbom.spdx.json" >/dev/null
+
+      - name: Generate unsigned local artifact metadata
+        timeout-minutes: 5
+        run: |
+          set -Eeuo pipefail
+          umask 077
+
+          install -d -m 0700 "$RELEASE_ROOT/.release-output"
+          local_artifact="$RELEASE_ROOT/.release-output/backend-runtime.tar"
+          if ! ln "$IMAGE_ARCHIVE" "$local_artifact"; then
+            cp --reflink=auto --sparse=always "$IMAGE_ARCHIVE" "$local_artifact"
+          fi
+          chmod 0600 "$local_artifact"
+          [[ -f "$local_artifact" && ! -L "$local_artifact" ]]
+          install -m 0600 "$EVIDENCE_DIR/buildkit-metadata.json" \
+            "$RELEASE_ROOT/.release-output/buildkit-metadata.json"
+          install -m 0600 "$EVIDENCE_DIR/sbom.spdx.json" \
+            "$RELEASE_ROOT/.release-output/sbom.spdx.json"
+          npm --prefix "$RELEASE_ROOT" run release:metadata -- \
+            --output .release-output/artifact-identity.json \
+            --artifact .release-output/backend-runtime.tar \
+            --manifest .release-output/buildkit-metadata.json \
+            --sbom .release-output/sbom.spdx.json
+          rm -f "$local_artifact"
+          npm --prefix "$RELEASE_ROOT" run release:validate -- \
+            --metadata .release-output/artifact-identity.json
+
+          metadata="$RELEASE_ROOT/.release-output/artifact-identity.json"
+          provenance="$RELEASE_ROOT/.release-output/artifact-identity.provenance.json"
+          archive_sha256="$(jq -er '.localArchiveSha256' \
+            "$EVIDENCE_DIR/local-image-digests.json")"
+          manifest_digest="$(jq -er '."containerimage.digest"' \
+            "$EVIDENCE_DIR/buildkit-metadata.json")"
+          sbom_sha256="$(sha256sum "$EVIDENCE_DIR/sbom.spdx.json" | awk '{print $1}')"
+          release_commit="$(jq -er '.releaseDefinition.commit' \
+            "$EVIDENCE_DIR/source-identity.json")"
+          release_tree="$(jq -er '.releaseDefinition.tree' \
+            "$EVIDENCE_DIR/source-identity.json")"
+          provenance_sha256="$(sha256sum "$provenance" | awk '{print $1}')"
+          expected_builder="github-actions:${GITHUB_REPOSITORY}:run-${GITHUB_RUN_ID}:attempt-${GITHUB_RUN_ATTEMPT}"
+
+          jq -e \
+            --arg artifactDigest "sha256:$archive_sha256" \
+            --arg builder "$expected_builder" \
+            --arg manifestDigest "$manifest_digest" \
+            --arg provenanceReference "LOCAL_UNSIGNED_BUILD_PROVENANCE:sha256:$provenance_sha256" \
+            --arg releaseCommit "$release_commit" \
+            --arg releaseTree "$release_tree" \
+            --arg sbomDigest "sha256:$sbom_sha256" \
+            --arg sourceCommit "$APP_SOURCE_COMMIT" \
+            --arg sourceTree "$APP_SOURCE_TREE" \
+            '.sourceCommit == $sourceCommit
+             and .sourceTree == $sourceTree
+             and .releaseDefinitionCommit == $releaseCommit
+             and .releaseDefinitionTree == $releaseTree
+             and .artifactReference == "UNPUBLISHED"
+             and .artifactDigest == $artifactDigest
+             and .artifactDigestKind == "LOCAL_ARCHIVE_SHA256_NOT_REGISTRY_MANIFEST"
+             and .manifestDigest == $manifestDigest
+             and .sbomDigest == $sbomDigest
+             and .provenanceReference == $provenanceReference
+             and .signatureReference == "NOT_SIGNED_DRY_RUN"
+             and .builder == $builder
+             and .publishStatus == false' \
+            "$metadata" >/dev/null
+          install -m 0600 \
+            "$metadata" "$EVIDENCE_DIR/artifact-identity.json"
+          install -m 0600 \
+            "$provenance" "$EVIDENCE_DIR/artifact-identity.provenance.json"
+
+          jq -n \
+            --arg status 'NOT_SIGNED_DRY_RUN' \
+            '{
+              schemaVersion: 1,
+              status: $status,
+              signatureReference: $status,
+              signed: false,
+              transparencyLogEntry: null,
+              reason: "Signing is intentionally disabled in this non-publishing foundation workflow."
+            }' > "$EVIDENCE_DIR/signature-status.json"
+
+      - name: Finalize metadata-only evidence
+        if: always()
+        timeout-minutes: 2
+        run: |
+          set -Eeuo pipefail
+          umask 077
+
+          install -d -m 0700 "$EVIDENCE_DIR"
+          find "$EVIDENCE_DIR" -maxdepth 1 -type f \
+            \( -name '*.tar' -o -name '*.tar.gz' -o -name '*.tgz' \) \
+            -print -quit | grep -q . && {
+              echo 'Image archives are forbidden in the runner-local evidence directory.' >&2
+              exit 1
+            }
+          find "$EVIDENCE_DIR" -maxdepth 1 -type l -print -quit | grep -q . && {
+            echo 'Symbolic links are forbidden in the runner-local evidence directory.' >&2
+            exit 1
+          }
+
+          evidence_complete='true'
+          required_evidence=(
+            workflow-run.json
+            source-identity.json
+            existing-ci-dependency.json
+            exact-ci-run.json
+            exact-ci-jobs.json
+            environment-status.json
+            source-checks.json
+            buildx-version.txt
+            buildkit-builder-inspect.txt
+            buildkit-metadata.json
+            local-buildkit-provenance.json
+            docker-image-inspect.json
+            runtime-node-version.txt
+            runtime-ffmpeg-version.txt
+            runtime-ffprobe-version.txt
+            runtime-imagemagick-version.txt
+            local-image-digests.json
+            container-runtime.json
+            syft-version.json
+            sbom.spdx.json
+            artifact-identity.json
+            artifact-identity.provenance.json
+            signature-status.json
+          )
+          for evidence_name in "${required_evidence[@]}"; do
+            if [[ ! -f "$EVIDENCE_DIR/$evidence_name" ]]; then
+              echo "Incomplete evidence: missing $evidence_name" >&2
+              evidence_complete='false'
+            fi
+          done
+
+          rm -f "$EVIDENCE_DIR/MANIFEST.sha256"
+          (
+            cd "$EVIDENCE_DIR"
+            find . -maxdepth 1 -type f ! -name MANIFEST.sha256 -print0 \
+              | sort -z \
+              | xargs -0 --no-run-if-empty sha256sum \
+              > MANIFEST.sha256
+          )
+          chmod -R go-rwx "$EVIDENCE_DIR"
+
+          if [[ "$evidence_complete" != 'true' ]]; then
+            application_ci_status='NOT_REACHED'
+            if [[ -f "$EVIDENCE_DIR/existing-ci-dependency.json" ]]; then
+              application_ci_status="$(
+                jq -er '.status | select(type == "string" and test("^[A-Z0-9_]+$"))' \
+                  "$EVIDENCE_DIR/existing-ci-dependency.json" \
+                  2>/dev/null || printf '%s' 'INVALID_EVIDENCE'
+              )"
+            fi
+            {
+              echo '### Kinetra non-publishing release foundation'
+              echo
+              echo '- Status: `INCOMPLETE_OR_FAILED`'
+              echo "- Application-source CI evidence: \`$application_ci_status\`"
+              echo '- No persistent release evidence was published.'
+              echo '- Partial runner-local metadata is deleted by the cleanup step.'
+              echo '- No publication, deployment, migration, or feature-flag mutation was attempted.'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          jq -e '.status == "PASS_EXACT_CI_RUN_124"' \
+            "$EVIDENCE_DIR/existing-ci-dependency.json" >/dev/null
+          jq -e '.status == "PARTIAL_PASS_EXACT_SOURCE_COMMANDS"' \
+            "$EVIDENCE_DIR/source-checks.json" >/dev/null
+          jq -e '.status == "AVAILABLE" or .status == "BLOCKED_BY_ENVIRONMENT"' \
+            "$EVIDENCE_DIR/environment-status.json" >/dev/null
+          jq -e '.status == "PASS"' \
+            "$EVIDENCE_DIR/container-runtime.json" >/dev/null
+          jq -e '
+            .artifactDigest != "GENERATED_AT_RUNTIME"
+            and .manifestDigest != "GENERATED_AT_RUNTIME"
+            and .sbomDigest != "GENERATED_AT_RUNTIME"
+            and (.provenanceReference | startswith("LOCAL_UNSIGNED_BUILD_PROVENANCE:sha256:"))
+            and .signatureReference == "NOT_SIGNED_DRY_RUN"
+            and .publishStatus == false
+          ' "$EVIDENCE_DIR/artifact-identity.json" >/dev/null
+          jq -e '.status == "LOCAL_UNSIGNED_BUILD_PROVENANCE"' \
+            "$EVIDENCE_DIR/local-buildkit-provenance.json" >/dev/null
+          jq -e '.status == "NOT_SIGNED_DRY_RUN" and .signed == false' \
+            "$EVIDENCE_DIR/signature-status.json" >/dev/null
+          environment_status="$(jq -er '.status' "$EVIDENCE_DIR/environment-status.json")"
+          application_ci_status="$(jq -er '.status' \
+            "$EVIDENCE_DIR/existing-ci-dependency.json")"
+
+          {
+            echo '### Kinetra non-publishing release foundation'
+            echo
+            echo '- Status: `COMPLETE_LOCAL_UNSIGNED_EVIDENCE`'
+            echo "- Application source: \`$APP_SOURCE_COMMIT\`"
+            echo "- Application tree: \`$APP_SOURCE_TREE\`"
+            echo '- Publication: disabled and guarded'
+            echo '- Deployment: disabled and guarded'
+            echo '- Migration: disabled and guarded'
+            echo '- Feature flag mutation: disabled and guarded'
+            echo '- Signature: `NOT_SIGNED_DRY_RUN`'
+            echo '- Provenance: `LOCAL_UNSIGNED_BUILD_PROVENANCE`'
+            echo "- Host environment report: \`$environment_status\`"
+            echo "- Existing application-source CI: \`$application_ci_status\` (exact run #124 attempt 1, read-only)"
+            echo '- Release-definition branch/merge-ref CI: unavailable without separate push/PR permission'
+            echo '- Metadata/SBOM remained runner-local and are deleted by the cleanup step'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove all runner-local release material
+        if: always()
+        timeout-minutes: 3
+        run: |
+          set -Eeuo pipefail
+          umask 077
+
+          docker image rm --force "$LOCAL_IMAGE" >/dev/null 2>&1 || true
+          rm -f "$IMAGE_ARCHIVE"
+          rm -f "$RUNNER_TEMP/kinetra-exact-ci-run.json"
+          rm -f "$RUNNER_TEMP/kinetra-exact-ci-jobs.json"
+          rm -rf "$BUILD_CONTEXT"
+          rm -rf "$SYFT_ROOT"
+          rm -rf "$RELEASE_ROOT/.release-output"
+          rm -rf "$EVIDENCE_DIR"

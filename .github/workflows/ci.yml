@@ -2,7 +2,7 @@ name: Kinetra CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, chore/t14-default-branch-recovery]
   pull_request:
     branches: [main, develop]
 
@@ -53,8 +53,8 @@ jobs:
           --health-retries 10
     env:
       DATABASE_URL: postgresql://kinetra:kinetra_test_ci@localhost:5432/kinetra_test
-      JWT_ACCESS_SECRET: ci-test-access-secret-not-real
-      JWT_REFRESH_SECRET: ci-test-refresh-secret-not-real
+      JWT_ACCESS_SECRET: ci-test-access-secret-not-real-32-bytes
+      JWT_REFRESH_SECRET: ci-test-refresh-secret-not-real-32-bytes
       NODE_ENV: test
       PORT: 3000
       HOST: 0.0.0.0
