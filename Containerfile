@@ -60,28 +60,41 @@ ARG DEBIAN_SNAPSHOT=20250611T000000Z
 
 RUN set -eux; \
     test "${DEBIAN_SNAPSHOT}" = "20250611T000000Z"; \
-    test "$(dpkg-query -W -f='${Status}' ca-certificates)" = 'install ok installed'; \
     rm -f /etc/apt/sources.list /etc/apt/sources.list.d/debian.sources; \
     printf '%s\n' \
       'Types: deb' \
-      "URIs: https://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT}/" \
+      "URIs: http://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT}/" \
       'Suites: bookworm bookworm-updates' \
       'Components: main' \
       'Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
       'Check-Valid-Until: no' \
       '' \
       'Types: deb' \
-      "URIs: https://snapshot.debian.org/archive/debian-security/${DEBIAN_SNAPSHOT}/" \
+      "URIs: http://snapshot.debian.org/archive/debian-security/${DEBIAN_SNAPSHOT}/" \
       'Suites: bookworm-security' \
       'Components: main' \
       'Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
       'Check-Valid-Until: no' \
       > /etc/apt/sources.list.d/debian-snapshot.sources; \
     apt-get -o Acquire::Check-Valid-Until=false update; \
+    apt-get install -y --no-install-recommends 'ca-certificates=20230311'; \
+    sed -i 's|^URIs: http://|URIs: https://|' \
+      /etc/apt/sources.list.d/debian-snapshot.sources; \
+    test "$(grep -c '^URIs: https://snapshot.debian.org/' \
+      /etc/apt/sources.list.d/debian-snapshot.sources)" = '2'; \
+    test "$(grep -c '^URIs: http://' \
+      /etc/apt/sources.list.d/debian-snapshot.sources)" = '0'; \
+    rm -rf /var/lib/apt/lists/*; \
+    apt-get -o Acquire::Check-Valid-Until=false update; \
     apt-get install -y --no-install-recommends \
       'ffmpeg=7:5.1.6-0+deb12u1' \
       'imagemagick=8:6.9.11.60+dfsg-1.6+deb12u3' \
       'tini=0.19.0-1'; \
+    test "$(dpkg-query -W -f='${Status}' ca-certificates)" = 'install ok installed'; \
+    test "$(dpkg-query -W -f='${Status}' ffmpeg)" = 'install ok installed'; \
+    test "$(dpkg-query -W -f='${Status}' imagemagick)" = 'install ok installed'; \
+    test "$(dpkg-query -W -f='${Status}' tini)" = 'install ok installed'; \
+    test "$(dpkg-query -W -f='${Version}' ca-certificates)" = '20230311'; \
     test "$(dpkg-query -W -f='${Version}' ffmpeg)" = '7:5.1.6-0+deb12u1'; \
     test "$(dpkg-query -W -f='${Version}' imagemagick)" = '8:6.9.11.60+dfsg-1.6+deb12u3'; \
     test "$(dpkg-query -W -f='${Version}' tini)" = '0.19.0-1'; \
