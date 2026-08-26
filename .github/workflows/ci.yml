@@ -2,7 +2,13 @@ name: Kinetra CI
 
 on:
   push:
-    branches: [main, develop, chore/t14-default-branch-recovery]
+    branches:
+      [
+        main,
+        develop,
+        chore/t14-default-branch-recovery,
+        chore/t14-media-runtime-workflow-correction,
+      ]
   pull_request:
     branches: [main, develop]
 

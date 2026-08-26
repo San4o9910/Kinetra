@@ -1,7 +1,7 @@
 a6b98ea7cb6d61ed8d430dd0dffa46c87012b5cf859d4ce7207898954951fdcd  ./.editorconfig
 2cc5ccdcaefe94c9fbcf5afb411f78214aef11ffda9fd4a8b8aa0840381996c7  ./.env.example
-3003b257bc9423aad23b49cf7c5c02a699a3ea393800fc696eb66e8c8377df46  ./.github/workflows/ci.yml
-da92dcd7beef6a5c1443bc37f2486d01ea2fb170effb6175fd29bcc568a2f2e1  ./.github/workflows/release-foundation.yml
+a02807f84ffdb585b659b2e30d73f0d38507f2a2350e5cfb1fdf494e77cf0577  ./.github/workflows/ci.yml
+bc5b5083077ae72b9e450cd4317b8cec4a370cc8b3167708abed3186267b937a  ./.github/workflows/release-foundation.yml
 cfd42d58b59b1374120ba1643e14ed5039101ec9d3d271c8b1414326d4e14675  ./.gitignore
 177d20030d4dcc37eae9ef92865ec54dadce60e8f19e9a34a5d4f37502195a36  ./.nvmrc
 019a6ff828333978e4ecceae4a881852c6f850fbc6d86755f5e4c9c068727ec8  ./.prettierignore
