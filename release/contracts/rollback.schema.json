@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kinetra.app/release/contracts/rollback.schema.json",
+  "title": "Kinetra platform-neutral rollback template",
+  "description": "A NON_DEPLOYABLE rollback contract. It contains no production target, command or mutable artifact reference.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "properties": {
+    "apiVersion": {
+      "const": "kinetra.release/v1"
+    },
+    "kind": {
+      "const": "RollbackTemplate"
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "sourceCommit", "sourceTree", "templateStatus"],
+      "properties": {
+        "name": {
+          "const": "kinetra-rollback"
+        },
+        "sourceCommit": {
+          "const": "c5645a3aa84bbc81e688c97731e48d978a2aeb92"
+        },
+        "sourceTree": {
+          "const": "4ee94cb5d334e54e5996d42caed35e0b3c776a23"
+        },
+        "templateStatus": {
+          "const": "NON_DEPLOYABLE"
+        }
+      }
+    },
+    "spec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "currentArtifactReference",
+        "previousArtifactReference",
+        "featureFlagTarget",
+        "migrationPolicy",
+        "cleanupWorkerPolicy",
+        "verifierWorkerPolicy",
+        "operation",
+        "propagationVerification",
+        "approvalStatus"
+      ],
+      "properties": {
+        "currentArtifactReference": {
+          "const": "${CURRENT_ARTIFACT_REPOSITORY}@${CURRENT_ARTIFACT_DIGEST}"
+        },
+        "previousArtifactReference": {
+          "const": "${PREVIOUS_ARTIFACT_REPOSITORY}@${PREVIOUS_ARTIFACT_DIGEST}"
+        },
+        "featureFlagTarget": {
+          "const": "false"
+        },
+        "migrationPolicy": {
+          "const": "FORWARD_ONLY_NO_DOWN_MIGRATION"
+        },
+        "cleanupWorkerPolicy": {
+          "const": "CONTINUE"
+        },
+        "verifierWorkerPolicy": {
+          "const": "CONTINUE_PENDING_RECOVERY"
+        },
+        "operation": {
+          "const": "PLATFORM_ADAPTER_REQUIRED"
+        },
+        "propagationVerification": {
+          "const": "PLATFORM_ADAPTER_REQUIRED"
+        },
+        "approvalStatus": {
+          "const": "REQUIRED"
+        }
+      }
+    }
+  }
+}

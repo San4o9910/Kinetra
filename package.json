@@ -33,7 +33,12 @@
     "format:check": "prettier --check .",
     "format:changed": "node scripts/check-changed-format.mjs",
     "verify:structure": "node scripts/verify-project.mjs",
-    "check": "npm run verify:structure && npm run typecheck && npm run lint && npm run format:changed && npm run test && npm run build",
+    "release:test": "node --test scripts/release/release-architecture.test.mjs",
+    "release:validate": "node scripts/release/validate-release-architecture.mjs",
+    "release:environment": "node scripts/release/report-environment.mjs",
+    "release:metadata": "node scripts/release/generate-artifact-metadata.mjs",
+    "release:container": "node scripts/release/validate-container-runtime.mjs",
+    "check": "npm run release:test && npm run release:validate && npm run verify:structure && npm run typecheck && npm run lint && npm run format:changed && npm run test && npm run build",
     "preview:frontend": "npm run preview -w @kinetra/frontend"
   },
   "devDependencies": {
@@ -43,6 +48,7 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
+    "js-yaml": "4.3.1",
     "prettier": "^3.6.2",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.46.4"

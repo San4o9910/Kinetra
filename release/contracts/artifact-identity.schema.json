@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kinetra.app/release/contracts/artifact-identity.schema.json",
+  "title": "Kinetra dry-run artifact identity",
+  "description": "A non-publishing metadata record. It is not deployment evidence and cannot represent a published artifact.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contractVersion",
+    "sourceCommit",
+    "sourceTree",
+    "releaseDefinitionCommit",
+    "releaseDefinitionTree",
+    "artifactReference",
+    "artifactDigest",
+    "artifactDigestKind",
+    "manifestDigest",
+    "sbomDigest",
+    "provenanceReference",
+    "signatureReference",
+    "builder",
+    "createdAt",
+    "publishStatus"
+  ],
+  "properties": {
+    "contractVersion": {
+      "const": "kinetra.release.artifact-identity/v1"
+    },
+    "sourceCommit": {
+      "const": "c5645a3aa84bbc81e688c97731e48d978a2aeb92"
+    },
+    "sourceTree": {
+      "const": "4ee94cb5d334e54e5996d42caed35e0b3c776a23"
+    },
+    "releaseDefinitionCommit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "releaseDefinitionTree": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "artifactReference": {
+      "const": "UNPUBLISHED"
+    },
+    "artifactDigest": {
+      "oneOf": [
+        {
+          "const": "GENERATED_AT_RUNTIME"
+        },
+        {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      ]
+    },
+    "artifactDigestKind": {
+      "enum": [
+        "NOT_GENERATED",
+        "LOCAL_ARCHIVE_SHA256_NOT_REGISTRY_MANIFEST",
+        "LOCAL_OCI_MANIFEST_UNPUBLISHED"
+      ]
+    },
+    "manifestDigest": {
+      "oneOf": [
+        {
+          "const": "GENERATED_AT_RUNTIME"
+        },
+        {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      ]
+    },
+    "sbomDigest": {
+      "oneOf": [
+        {
+          "const": "GENERATED_AT_RUNTIME"
+        },
+        {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      ]
+    },
+    "provenanceReference": {
+      "type": "string",
+      "pattern": "^LOCAL_UNSIGNED_BUILD_PROVENANCE:sha256:[0-9a-f]{64}$"
+    },
+    "signatureReference": {
+      "const": "NOT_SIGNED_DRY_RUN"
+    },
+    "builder": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^[^\\r\\n]+$"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$"
+    },
+    "publishStatus": {
+      "const": false
+    }
+  }
+}
