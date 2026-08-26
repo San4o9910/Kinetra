@@ -8,6 +8,7 @@ cfd42d58b59b1374120ba1643e14ed5039101ec9d3d271c8b1414326d4e14675  ./.gitignore
 8d5d037d37c473731493478d381854fd597aa00d7d2d0eb1cce972975ee26327  ./.prettierrc.json
 776cb0f51144b12269b8820fbebe33248336811954c0ffcd4171b71a5c9efcf9  ./README.md
 480dcfb7d7823f1472b977dee09b0759e8a5b6f8b381a5bdb76a86f9cba5b959  ./VALIDATION.md
+c022367337d3ba815b003d4b737b2c165996a12cda50b12697e8dc947b87af1d  ./Containerfile
 a1dc8f7c0bfd1dbe0f2692349ec1f5fd66e8bfbebc7faf16ddd8bd4b481ac786  ./apps/backend/migrations/001_auth.sql
 c6f27e67ef1deb4e4b759cc4781fbe41866ed149c71a5f4e631c0d3f984fcb84  ./apps/backend/package.json
 7f6ee59410d5c1f9e642e547fb2430db62f4f551f9890982cef5b7d29ec34662  ./apps/backend/scripts/migrate.mjs
