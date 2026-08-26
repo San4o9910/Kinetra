@@ -47,9 +47,6 @@ jobs:
       CANONICAL_REPOSITORY: San4o9910/Kinetra
       RELEASE_ROOT: ${{ github.workspace }}/release-definition
       SOURCE_ROOT: ${{ github.workspace }}/source
-      BUILD_CONTEXT: ${{ runner.temp }}/kinetra-exact-source-context
-      EVIDENCE_DIR: ${{ runner.temp }}/kinetra-release-evidence
-      IMAGE_ARCHIVE: ${{ runner.temp }}/kinetra-backend-runtime.tar
       LOCAL_IMAGE: kinetra-release-foundation:c5645a3aa84bbc81e688c97731e48d978a2aeb92
       EXACT_CI_RUN_ID: '32842822401'
       NPM_CONFIG_UPDATE_NOTIFIER: 'false'
@@ -57,7 +54,6 @@ jobs:
       SYFT_ARCHIVE_SIZE: '28743977'
       SYFT_ARCHIVE_SHA256: 2a2e837a2c8d59ec9af5472ee22d3b04ee463c4e44476ecf993fd1e5ab6ebc7f
       SYFT_ARCHIVE_URL: https://github.com/anchore/syft/releases/download/v1.51.0/syft_1.51.0_linux_amd64.tar.gz
-      SYFT_ROOT: ${{ runner.temp }}/syft-v1.51.0
 
     steps:
       - name: Reject publishing or environment mutation requests
@@ -82,6 +78,22 @@ jobs:
               exit 1
             fi
           done
+
+      - name: Initialize runner-local paths
+        timeout-minutes: 1
+        run: |
+          set -Eeuo pipefail
+          umask 077
+
+          [[ -n "${RUNNER_TEMP:-}" && "$RUNNER_TEMP" == /* ]]
+          [[ -n "${GITHUB_ENV:-}" && "$GITHUB_ENV" == /* ]]
+
+          {
+            printf 'BUILD_CONTEXT=%s\n' "$RUNNER_TEMP/kinetra-exact-source-context"
+            printf 'EVIDENCE_DIR=%s\n' "$RUNNER_TEMP/kinetra-release-evidence"
+            printf 'IMAGE_ARCHIVE=%s\n' "$RUNNER_TEMP/kinetra-backend-runtime.tar"
+            printf 'SYFT_ROOT=%s\n' "$RUNNER_TEMP/syft-v1.51.0"
+          } >> "$GITHUB_ENV"
 
       - name: Initialize metadata-only evidence directory
         timeout-minutes: 1

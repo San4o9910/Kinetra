@@ -2,7 +2,7 @@ b656cbad02667c7725b2a8fcbb85fb2dedbda982796a75fc63427a21bed5135e  ./.dockerignor
 a6b98ea7cb6d61ed8d430dd0dffa46c87012b5cf859d4ce7207898954951fdcd  ./.editorconfig
 2e5772bfc8344d80505455b75d51de6036603cdbfe8133f88222fc21019c414e  ./.env.example
 892ae50f3a4b44857d137f27f9f616b8d6ebeb76776be3e7748a44d4c643810e  ./.github/workflows/ci.yml
-e772e3aac9466cc51f34207dedafdb602b8fa51a685bab41a75115a42edf7ad1  ./.github/workflows/release-foundation.yml
+da92dcd7beef6a5c1443bc37f2486d01ea2fb170effb6175fd29bcc568a2f2e1  ./.github/workflows/release-foundation.yml
 d10321508f1c028605058f814d3eb20c5faef273eceea73feb26ac9f41d0e14d  ./.gitignore
 177d20030d4dcc37eae9ef92865ec54dadce60e8f19e9a34a5d4f37502195a36  ./.nvmrc
 019a6ff828333978e4ecceae4a881852c6f850fbc6d86755f5e4c9c068727ec8  ./.prettierignore
