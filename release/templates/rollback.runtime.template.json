@@ -1,0 +1,21 @@
+{
+  "apiVersion": "kinetra.release/v1",
+  "kind": "RollbackTemplate",
+  "metadata": {
+    "name": "kinetra-rollback",
+    "sourceCommit": "c5645a3aa84bbc81e688c97731e48d978a2aeb92",
+    "sourceTree": "4ee94cb5d334e54e5996d42caed35e0b3c776a23",
+    "templateStatus": "NON_DEPLOYABLE"
+  },
+  "spec": {
+    "currentArtifactReference": "${CURRENT_ARTIFACT_REPOSITORY}@${CURRENT_ARTIFACT_DIGEST}",
+    "previousArtifactReference": "${PREVIOUS_ARTIFACT_REPOSITORY}@${PREVIOUS_ARTIFACT_DIGEST}",
+    "featureFlagTarget": "false",
+    "migrationPolicy": "FORWARD_ONLY_NO_DOWN_MIGRATION",
+    "cleanupWorkerPolicy": "CONTINUE",
+    "verifierWorkerPolicy": "CONTINUE_PENDING_RECOVERY",
+    "operation": "PLATFORM_ADAPTER_REQUIRED",
+    "propagationVerification": "PLATFORM_ADAPTER_REQUIRED",
+    "approvalStatus": "REQUIRED"
+  }
+}

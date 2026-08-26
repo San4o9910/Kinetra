@@ -52,10 +52,28 @@ const expectMatches = (text, pattern, message) => {
 };
 
 const requiredFiles = [
+  '.dockerignore',
   '.env.example',
   '.github/workflows/ci.yml',
+  '.github/workflows/release-foundation.yml',
+  'Containerfile',
   'docker-compose.yml',
   'README.md',
+  'docs/release/ADR-001_PLATFORM_NEUTRAL_OCI_RUNTIME.md',
+  'docs/release/RELEASE_ARCHITECTURE.md',
+  'release/contracts/artifact-identity.schema.json',
+  'release/contracts/rollback.schema.json',
+  'release/contracts/runtime-unit.schema.json',
+  'release/templates/api.runtime.template.json',
+  'release/templates/rollback.runtime.template.json',
+  'release/templates/video-cleanup.runtime.template.json',
+  'release/templates/video-verifier.runtime.template.json',
+  'scripts/release/contracts.mjs',
+  'scripts/release/generate-artifact-metadata.mjs',
+  'scripts/release/release-architecture.test.mjs',
+  'scripts/release/report-environment.mjs',
+  'scripts/release/validate-container-runtime.mjs',
+  'scripts/release/validate-release-architecture.mjs',
   'docs/T02_AUTH_API.md',
   'docs/T04_PROFILE_SURVEY.md',
   'docs/T05_ONBOARDING_CAROUSEL.md',
@@ -5878,7 +5896,14 @@ for (const ciEnvironmentContract of [
   );
 }
 for (const correctionCiContract of [
-  'branches: [main, develop, fix/t12-merge-readiness, feature/t14-video-upload-s3]',
+  `branches:
+      [
+        main,
+        develop,
+        fix/t12-merge-readiness,
+        feature/t14-video-upload-s3,
+        chore/t14-release-architecture,
+      ]`,
   'branches: [main, develop, feature/t12-trainer-chat]',
   'EXPECTED_BASE_SHA: ${{ github.event.pull_request.base.sha }}',
   'EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}',
@@ -6409,6 +6434,161 @@ for (const contract of [
   'sudo apt-get install --yes --no-install-recommends ffmpeg imagemagick',
 ]) {
   expectIncludes(ciWorkflow, contract, `T14 fail-closed CI contract: ${contract}`);
+}
+
+const releaseContainerfile = await readText('Containerfile');
+const releaseWorkflow = await readText('.github/workflows/release-foundation.yml');
+const releaseArtifactSchema = await readText('release/contracts/artifact-identity.schema.json');
+const releaseRuntimeSchema = await readText('release/contracts/runtime-unit.schema.json');
+const releaseRollbackSchema = await readText('release/contracts/rollback.schema.json');
+const releaseArchitecture = await readText('docs/release/RELEASE_ARCHITECTURE.md');
+const releaseAdr = await readText('docs/release/ADR-001_PLATFORM_NEUTRAL_OCI_RUNTIME.md');
+
+for (const scriptName of [
+  'release:test',
+  'release:validate',
+  'release:environment',
+  'release:metadata',
+  'release:container',
+]) {
+  if (typeof rootPackage.scripts?.[scriptName] === 'string') {
+    pass(`release script exists: ${scriptName}`);
+  } else {
+    fail(`release script exists: ${scriptName}`);
+  }
+}
+for (const releaseCheck of ['npm run release:test', 'npm run release:validate']) {
+  expectIncludes(ciWorkflow, releaseCheck, `CI verifies release foundation: ${releaseCheck}`);
+}
+if (rootPackage.devDependencies?.['js-yaml'] === '4.3.1') {
+  pass('release YAML parser is an exact direct development dependency');
+} else {
+  fail('release YAML parser is an exact direct development dependency');
+}
+
+for (const contract of [
+  'node:22.16.0-bookworm-slim@sha256:048ed02c5fd52e86fda6fbd2f6a76cf0d4492fd6c6fee9e2c463ed5108da0e34',
+  '20250611T000000Z',
+  '7:5.1.6-0+deb12u1',
+  '8:6.9.11.60+dfsg-1.6+deb12u3',
+  '0.19.0-1',
+  'TRAINER_VIDEO_UPLOADS_ENABLED=false',
+  'USER node',
+  'ENTRYPOINT ["/usr/bin/tini", "--"]',
+  'CMD ["node", "apps/backend/dist/server.js"]',
+  'io.kinetra.app-source-tree',
+]) {
+  expectIncludes(releaseContainerfile, contract, `release container contract: ${contract}`);
+}
+const unpinnedReleaseBase = releaseContainerfile.split('\n').find((line) => {
+  const match = /^FROM\s+(\S+)/iu.exec(line.trim());
+  return match !== null && match[1] !== 'scratch' && !/@sha256:[a-f0-9]{64}$/u.test(match[1] ?? '');
+});
+if (unpinnedReleaseBase !== undefined) {
+  fail('every non-scratch release base image is digest-pinned');
+} else {
+  pass('every non-scratch release base image is digest-pinned');
+}
+for (const forbidden of [/\blatest\b/iu, /chmod\s+777/iu, /^HEALTHCHECK\b/imu]) {
+  if (forbidden.test(releaseContainerfile)) {
+    fail(`release container excludes unsafe pattern: ${forbidden}`);
+  } else {
+    pass(`release container excludes unsafe pattern: ${forbidden}`);
+  }
+}
+
+for (const inputName of ['publish', 'deploy', 'migrate', 'enable_feature_flag']) {
+  expectMatches(
+    releaseWorkflow,
+    new RegExp(`${inputName}:[\\s\\S]{0,280}?type: boolean[\\s\\S]{0,160}?default: false`, 'u'),
+    `release workflow keeps ${inputName}=false`,
+  );
+}
+for (const contract of [
+  'workflow_dispatch:',
+  'contents: read',
+  'actions: read',
+  'persist-credentials: false',
+  'APP_SOURCE_COMMIT: c5645a3aa84bbc81e688c97731e48d978a2aeb92',
+  'APP_SOURCE_TREE: 4ee94cb5d334e54e5996d42caed35e0b3c776a23',
+  'NOT_SIGNED_DRY_RUN',
+  'LOCAL_UNSIGNED_BUILD_PROVENANCE',
+]) {
+  expectIncludes(
+    releaseWorkflow,
+    contract,
+    `non-publishing release workflow contract: ${contract}`,
+  );
+}
+for (const forbidden of [
+  /pull_request_target/iu,
+  /packages:\s*write/iu,
+  /id-token:\s*write/iu,
+  /docker\s+(?:image\s+)?push/iu,
+  /buildx\s+build[^\n]*--push(?:\s|=)/iu,
+  /\bkubectl\b/iu,
+  /\bhelm\b/iu,
+  /npm\s+run\s+db:migrate/iu,
+  /TRAINER_VIDEO_UPLOADS_ENABLED=true/iu,
+  /\$\{\{\s*secrets\./iu,
+]) {
+  if (forbidden.test(releaseWorkflow)) {
+    fail(`release workflow excludes mutation/secret pattern: ${forbidden}`);
+  } else {
+    pass(`release workflow excludes mutation/secret pattern: ${forbidden}`);
+  }
+}
+
+for (const [relativePath, expectedRole, expectedCommand] of [
+  ['release/templates/api.runtime.template.json', 'api', 'apps/backend/dist/server.js'],
+  [
+    'release/templates/video-verifier.runtime.template.json',
+    'video-verifier',
+    'apps/backend/dist/video-admin/run-upload-worker.js',
+  ],
+  [
+    'release/templates/video-cleanup.runtime.template.json',
+    'video-cleanup',
+    'apps/backend/dist/video-admin/run-media-cleanup.js',
+  ],
+]) {
+  const template = await readJson(relativePath);
+  if (
+    template.metadata?.templateStatus === 'NON_DEPLOYABLE' &&
+    template.spec?.role === expectedRole &&
+    template.spec?.artifactReference === '${ARTIFACT_REPOSITORY}@${ARTIFACT_DIGEST}' &&
+    template.spec?.command?.[1] === expectedCommand &&
+    template.spec?.environment?.literals?.TRAINER_VIDEO_UPLOADS_ENABLED === 'false' &&
+    template.spec?.deploymentAllowed === false &&
+    template.spec?.migrationAllowed === false &&
+    template.spec?.featureFlagActivationAllowed === false
+  ) {
+    pass(`platform-neutral release template is fail-closed: ${expectedRole}`);
+  } else {
+    fail(`platform-neutral release template is fail-closed: ${expectedRole}`);
+  }
+}
+const releaseRollbackTemplate = await readJson('release/templates/rollback.runtime.template.json');
+if (
+  releaseRollbackTemplate.metadata?.templateStatus === 'NON_DEPLOYABLE' &&
+  releaseRollbackTemplate.spec?.featureFlagTarget === 'false' &&
+  releaseRollbackTemplate.spec?.migrationPolicy === 'FORWARD_ONLY_NO_DOWN_MIGRATION' &&
+  releaseRollbackTemplate.spec?.cleanupWorkerPolicy === 'CONTINUE'
+) {
+  pass('release rollback template is non-deployable and forward-only');
+} else {
+  fail('release rollback template is non-deployable and forward-only');
+}
+
+for (const [document, contract] of [
+  [releaseArtifactSchema, '"publishStatus"'],
+  [releaseArtifactSchema, '"UNPUBLISHED"'],
+  [releaseRuntimeSchema, '"NON_DEPLOYABLE"'],
+  [releaseRollbackSchema, '"FORWARD_ONLY_NO_DOWN_MIGRATION"'],
+  [releaseArchitecture, '4ee94cb5d334e54e5996d42caed35e0b3c776a23'],
+  [releaseAdr, 'Platform-neutral OCI runtime foundation'],
+]) {
+  expectIncludes(document, contract, `release architecture contract: ${contract}`);
 }
 
 const textExtensions = new Set([

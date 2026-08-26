@@ -1,0 +1,76 @@
+{
+  "apiVersion": "kinetra.release/v1",
+  "kind": "RuntimeUnitTemplate",
+  "metadata": {
+    "name": "kinetra-api",
+    "sourceCommit": "c5645a3aa84bbc81e688c97731e48d978a2aeb92",
+    "sourceTree": "4ee94cb5d334e54e5996d42caed35e0b3c776a23",
+    "templateStatus": "NON_DEPLOYABLE"
+  },
+  "spec": {
+    "role": "api",
+    "artifactReference": "${ARTIFACT_REPOSITORY}@${ARTIFACT_DIGEST}",
+    "artifactDigest": "${ARTIFACT_DIGEST}",
+    "command": ["node", "apps/backend/dist/server.js"],
+    "requiredExecutables": ["node", "ffprobe", "identify", "convert"],
+    "environment": {
+      "literals": {
+        "NODE_ENV": "production",
+        "TRAINER_VIDEO_UPLOADS_ENABLED": "false"
+      },
+      "secretReferences": [
+        {
+          "environmentVariable": "DATABASE_URL",
+          "reference": "${DATABASE_URL_SECRET_REF}"
+        },
+        {
+          "environmentVariable": "JWT_ACCESS_SECRET",
+          "reference": "${JWT_ACCESS_SECRET_REF}"
+        },
+        {
+          "environmentVariable": "YUKASSA_SECRET_KEY",
+          "reference": "${YUKASSA_SECRET_KEY_SECRET_REF}"
+        },
+        {
+          "environmentVariable": "S3_ACCESS_KEY_ID",
+          "reference": "${S3_ACCESS_KEY_ID_SECRET_REF}"
+        },
+        {
+          "environmentVariable": "S3_SECRET_ACCESS_KEY",
+          "reference": "${S3_SECRET_ACCESS_KEY_SECRET_REF}"
+        },
+        {
+          "environmentVariable": "VAPID_PRIVATE_KEY",
+          "reference": "${VAPID_PRIVATE_KEY_SECRET_REF}"
+        }
+      ]
+    },
+    "security": {
+      "runAsNonRoot": true,
+      "runAsUser": "${RUNTIME_UID}",
+      "readOnlyRootFilesystem": true,
+      "allowPrivilegeEscalation": false,
+      "writablePaths": ["/tmp"]
+    },
+    "health": {
+      "liveness": {
+        "type": "http",
+        "path": "/health",
+        "classification": "PROCESS_LIVENESS_ONLY"
+      },
+      "readiness": {
+        "status": "PLATFORM_ADAPTER_REQUIRED",
+        "classification": "DO_NOT_TREAT_LIVENESS_AS_DEPENDENCY_READINESS"
+      }
+    },
+    "resources": {
+      "status": "PLATFORM_ADAPTER_REQUIRED",
+      "cpuLimit": "${CPU_LIMIT}",
+      "memoryLimit": "${MEMORY_LIMIT}"
+    },
+    "rollbackReference": "${ROLLBACK_ARTIFACT_REPOSITORY}@${ROLLBACK_ARTIFACT_DIGEST}",
+    "deploymentAllowed": false,
+    "migrationAllowed": false,
+    "featureFlagActivationAllowed": false
+  }
+}

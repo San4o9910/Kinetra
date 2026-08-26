@@ -1,5 +1,74 @@
 # Kinetra validation contract
 
+## T14 release foundation — 2026-08-25
+
+**Application source:** `c5645a3aa84bbc81e688c97731e48d978a2aeb92`
+
+**Application tree:** `4ee94cb5d334e54e5996d42caed35e0b3c776a23`
+
+**Release branch:** `chore/t14-release-architecture`
+
+Release-архитектура отделяет неизменный application source от commit/tree определения сборки.
+Контейнер собирается из `git archive` точного application commit, а metadata дополнительно записывает
+фактические `releaseDefinitionCommit` и `releaseDefinitionTree`. Такой контракт не позволяет выдать
+изменённую упаковку за исходное дерево T14.
+
+Workflow `.github/workflows/release-foundation.yml` является только ручным dry-run. Все четыре
+mutation input имеют default `false`, а любое значение `true` завершает safety gate ошибкой. В
+workflow нет registry login/push, deployment, migration, feature-flag activation, production secret
+или environment. OCI image, SBOM и metadata остаются только во временном хранилище runner и
+удаляются; workflow не загружает GitHub Actions artifact. После job сохраняются только обычные CI
+logs и step summary согласно retention policy репозитория.
+
+Проверяемая последовательность для release-файлов:
+
+```bash
+npm run release:test
+npm run release:validate
+npm run release:environment
+node --check scripts/release/*.mjs
+git diff --check
+```
+
+Docker/Buildx, Syft, image runtime inspection и signing tools отсутствуют в текущей локальной среде.
+Поэтому фактическая сборка image, image SBOM и runtime inspection имеют статус
+`BLOCKED_BY_ENVIRONMENT`, а signature — `NOT_SIGNED_DRY_RUN`; эти состояния не являются PASS.
+Post-merge application CI run #124 (Actions run ID `32842822401`) успешно проверил exact source и
+три обязательных job без skip. Публикация ветки и выполнение нового workflow требуют отдельного
+разрешения.
+
+Текущий architecture status — **CONDITIONAL** до выбора registry/platform/frontend hosting,
+утверждения base/media runtime и signing policy, фактической container validation и появления
+предыдущего immutable production digest для rollback.
+
+Локальная проверка release foundation выполнена на Node `v22.16.0` и npm `10.9.2`. Новый `npm ci`
+не завершился из-за ограничений sandbox/npm cache, поэтому использована уже существовавшая полная
+установка exact lockfile; workflow повторяет чистый `npm ci` на runner. Результаты текущей ветки:
+
+| Проверка                              | Статус                  | Фактический результат                                                        |
+| ------------------------------------- | ----------------------- | ---------------------------------------------------------------------------- |
+| Release regression                    | PASS                    | 23/23, 0 fail/skip                                                           |
+| Static release validator              | PASS                    | 3 schemas, 3 runtime templates, rollback, Containerfile и workflow           |
+| Structural verifier T01–T14 + release | PASS                    | 2 946/2 946                                                                  |
+| TypeScript / ESLint                   | PASS                    | shared, backend production/tests, frontend; `apps packages scripts`          |
+| Changed-file Prettier / diff-check    | PASS                    | 66 files; whitespace errors отсутствуют                                      |
+| Production build                      | PASS                    | shared/backend и Vite frontend, 131 modules                                  |
+| Backend tests, serial local runner    | PASS WITH RUNTIME SKIPS | 181 total: 163 pass, 18 PostgreSQL/S3 skips, 0 fail                          |
+| Backend default-parallel equivalent   | CONDITIONAL             | 1 timing-sensitive final-renewal assertion; isolated T14 36/36 и serial PASS |
+| Frontend unit/API                     | PASS                    | 160/160                                                                      |
+| Real MP4/H.264                        | PASS                    | реальный ffmpeg/ffprobe fixture и `KINETRA_T14_VIDEO_VERIFICATION=PASS`      |
+| Chrome browser acceptance             | BLOCKED BY ENVIRONMENT  | production bundle/mock API PASS; Chrome/Chromium отсутствует                 |
+| PostgreSQL 17 / private S3            | BLOCKED BY ENVIRONMENT  | `psql`, Docker/MinIO и service credentials отсутствуют                       |
+| OCI build/runtime/SBOM/signature      | BLOCKED BY ENVIRONMENT  | Docker отсутствует; signature остаётся `NOT_SIGNED_DRY_RUN`                  |
+| External supply-chain scanners        | BLOCKED BY ENVIRONMENT  | Syft/Cosign/Gitleaks/Trivy отсутствуют; встроенные guards PASS               |
+| Полный source manifest                | PASS                    | 339/339 intended tracked files; обновлён последним                           |
+| Release workflow exact head/merge-ref | REMOTE CI REQUIRED      | ветка не публиковалась; push/PR требуют отдельного разрешения                |
+
+Один concurrent backend-прогон под ограниченной локальной нагрузкой истёк до начала финального
+lease renewal. Тот же T14-файл отдельно прошёл 36/36, а полный serial-прогон — 181/181 с 18
+инфраструктурными skips. Это не выдаётся за authoritative parallel PASS: перед публикацией нужен
+новый exact-head и PR merge-ref CI.
+
 ## T14 local implementation state — 2026-08-25
 
 **Base:** `develop@e29def0814bea74afd175f7003eb7d9a1aaeaa7d`

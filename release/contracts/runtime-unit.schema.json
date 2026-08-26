@@ -1,0 +1,246 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kinetra.app/release/contracts/runtime-unit.schema.json",
+  "title": "Kinetra platform-neutral runtime unit template",
+  "description": "A NON_DEPLOYABLE contract. A platform adapter must render and revalidate it before any separately approved deployment.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "properties": {
+    "apiVersion": {
+      "const": "kinetra.release/v1"
+    },
+    "kind": {
+      "const": "RuntimeUnitTemplate"
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "sourceCommit", "sourceTree", "templateStatus"],
+      "properties": {
+        "name": {
+          "enum": ["kinetra-api", "kinetra-video-verifier", "kinetra-video-cleanup"]
+        },
+        "sourceCommit": {
+          "const": "c5645a3aa84bbc81e688c97731e48d978a2aeb92"
+        },
+        "sourceTree": {
+          "const": "4ee94cb5d334e54e5996d42caed35e0b3c776a23"
+        },
+        "templateStatus": {
+          "const": "NON_DEPLOYABLE"
+        }
+      }
+    },
+    "spec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "artifactReference",
+        "artifactDigest",
+        "command",
+        "requiredExecutables",
+        "environment",
+        "security",
+        "health",
+        "resources",
+        "rollbackReference",
+        "deploymentAllowed",
+        "migrationAllowed",
+        "featureFlagActivationAllowed"
+      ],
+      "properties": {
+        "role": {
+          "enum": ["api", "video-verifier", "video-cleanup"]
+        },
+        "artifactReference": {
+          "const": "${ARTIFACT_REPOSITORY}@${ARTIFACT_DIGEST}"
+        },
+        "artifactDigest": {
+          "const": "${ARTIFACT_DIGEST}"
+        },
+        "command": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "requiredExecutables": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": {
+            "enum": ["node", "ffprobe", "identify", "convert"]
+          }
+        },
+        "environment": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["literals", "secretReferences"],
+          "properties": {
+            "literals": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["NODE_ENV", "TRAINER_VIDEO_UPLOADS_ENABLED"],
+              "properties": {
+                "NODE_ENV": {
+                  "const": "production"
+                },
+                "TRAINER_VIDEO_UPLOADS_ENABLED": {
+                  "const": "false"
+                }
+              }
+            },
+            "secretReferences": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["environmentVariable", "reference"],
+                "properties": {
+                  "environmentVariable": {
+                    "type": "string",
+                    "pattern": "^[A-Z][A-Z0-9_]{1,127}$"
+                  },
+                  "reference": {
+                    "type": "string",
+                    "pattern": "^\\$\\{[A-Z][A-Z0-9_]*_SECRET_REF\\}$"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "runAsNonRoot",
+            "runAsUser",
+            "readOnlyRootFilesystem",
+            "allowPrivilegeEscalation",
+            "writablePaths"
+          ],
+          "properties": {
+            "runAsNonRoot": {
+              "const": true
+            },
+            "runAsUser": {
+              "oneOf": [
+                {
+                  "const": "${RUNTIME_UID}"
+                },
+                {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2147483647
+                }
+              ]
+            },
+            "readOnlyRootFilesystem": {
+              "const": true
+            },
+            "allowPrivilegeEscalation": {
+              "const": false
+            },
+            "writablePaths": {
+              "const": ["/tmp"]
+            }
+          }
+        },
+        "health": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["liveness", "readiness"],
+          "properties": {
+            "liveness": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["type", "path", "classification"],
+                  "properties": {
+                    "type": { "const": "http" },
+                    "path": { "const": "/health" },
+                    "classification": { "const": "PROCESS_LIVENESS_ONLY" }
+                  }
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["type", "deadline"],
+                  "properties": {
+                    "type": { "const": "one-shot-exit-status" },
+                    "deadline": {
+                      "enum": ["${VERIFIER_DEADLINE}", "${CLEANUP_DEADLINE}"]
+                    }
+                  }
+                }
+              ]
+            },
+            "readiness": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["status", "classification"],
+                  "properties": {
+                    "status": { "const": "PLATFORM_ADAPTER_REQUIRED" },
+                    "classification": {
+                      "const": "DO_NOT_TREAT_LIVENESS_AS_DEPENDENCY_READINESS"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["type", "workerName", "status"],
+                  "properties": {
+                    "type": { "const": "database-heartbeat" },
+                    "workerName": { "enum": ["upload_verifier", "media_cleanup"] },
+                    "status": { "const": "PLATFORM_ADAPTER_REQUIRED" }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "resources": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "cpuLimit", "memoryLimit"],
+          "properties": {
+            "status": {
+              "const": "PLATFORM_ADAPTER_REQUIRED"
+            },
+            "cpuLimit": {
+              "const": "${CPU_LIMIT}"
+            },
+            "memoryLimit": {
+              "const": "${MEMORY_LIMIT}"
+            }
+          }
+        },
+        "rollbackReference": {
+          "const": "${ROLLBACK_ARTIFACT_REPOSITORY}@${ROLLBACK_ARTIFACT_DIGEST}"
+        },
+        "deploymentAllowed": {
+          "const": false
+        },
+        "migrationAllowed": {
+          "const": false
+        },
+        "featureFlagActivationAllowed": {
+          "const": false
+        }
+      }
+    }
+  }
+}

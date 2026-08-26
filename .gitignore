@@ -1,4 +1,4 @@
-node_modules/
+node_modules
 dist/
 coverage/
 .vite/
@@ -11,3 +11,4 @@ coverage/
 .vscode/
 .idea/
 *.local
+.release-output/

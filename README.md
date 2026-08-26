@@ -37,7 +37,9 @@ kinetra/
 ├── packages/
 │   └── shared/            @kinetra/shared — общие API-типы
 ├── docs/                  Контракты и сценарии T02–T14
+├── release/               Нейтральные контракты runtime и rollback
 ├── scripts/               Структурная проверка проекта
+├── Containerfile          Воспроизводимый backend OCI image
 ├── docker-compose.yml     PostgreSQL 17
 └── .env.example           Шаблон переменных без реальных секретов
 ```
@@ -432,6 +434,22 @@ npm run test
 npm run build
 sha256sum -c MANIFEST.sha256
 ```
+
+Release-архитектура проверяется отдельно и ничего не публикует:
+
+```bash
+npm run release:test
+npm run release:validate
+npm run release:environment
+```
+
+`release-foundation.yml` по умолчанию и принудительно держит `publish`, `deploy`, `migrate` и
+`enable_feature_flag` выключенными. Image, SBOM и metadata создаются только во временном хранилище
+runner и удаляются в конце job; workflow не загружает GitHub Actions artifact. После job сохраняются
+только обычные CI logs и step summary согласно retention policy репозитория. Registry, платформа
+размещения, frontend hosting и production rollback требуют отдельных решений и разрешений.
+Архитектура и открытые вопросы описаны в
+[`docs/release/RELEASE_ARCHITECTURE.md`](docs/release/RELEASE_ARCHITECTURE.md).
 
 Проверки структуры, типов, форматирования изменённых файлов, lint, тестов и build одной командой
 (manifest CI проверяет отдельным шагом):
