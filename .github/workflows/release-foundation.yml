@@ -387,6 +387,41 @@ jobs:
             "$RELEASE_ROOT/.release-output/environment-status.json" \
             "$EVIDENCE_DIR/environment-status.json"
 
+      - name: Install and verify exact media test prerequisites
+        timeout-minutes: 10
+        run: |
+          set -Eeuo pipefail
+          umask 077
+
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends ffmpeg imagemagick
+
+          for executable in ffmpeg ffprobe identify convert; do
+            command -v "$executable" >/dev/null
+          done
+
+          ffmpeg_package="$(dpkg-query -W -f='${Version}' ffmpeg)"
+          imagemagick_package="$(dpkg-query -W -f='${Version}' imagemagick)"
+          ffmpeg_version="$(ffmpeg -version | sed -n '1p')"
+          ffprobe_version="$(ffprobe -version | sed -n '1p')"
+          identify_version="$(identify -version | sed -n '1p')"
+          convert_version="$(convert -version | sed -n '1p')"
+
+          printf '%s\n' \
+            "ffmpeg package: $ffmpeg_package" \
+            "imagemagick package: $imagemagick_package" \
+            "$ffmpeg_version" \
+            "$ffprobe_version" \
+            "$identify_version" \
+            "$convert_version"
+
+          [[ "$ffmpeg_package" == '7:6.1.1-3ubuntu5' ]]
+          [[ "$imagemagick_package" == '8:6.9.12.98+dfsg1-5.2build2' ]]
+          [[ "$ffmpeg_version" == 'ffmpeg version 6.1.1-3ubuntu5 '* ]]
+          [[ "$ffprobe_version" == 'ffprobe version 6.1.1-3ubuntu5 '* ]]
+          [[ "$identify_version" == 'Version: ImageMagick 6.9.12-98 Q16 x86_64 18038 https://legacy.imagemagick.org' ]]
+          [[ "$convert_version" == "$identify_version" ]]
+
       - name: Run exact-source checks
         timeout-minutes: 30
         run: |
