@@ -966,6 +966,302 @@ h1 {
   margin-top: 4px;
 }
 
+.auth-role-picker {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.auth-role-picker legend {
+  margin-bottom: 10px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.auth-role-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.auth-form .auth-role-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  min-height: 96px;
+  gap: 12px;
+  align-items: start;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  background: color-mix(in srgb, var(--background) 72%, transparent);
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    transform 160ms ease;
+}
+
+.auth-form .auth-role-option:hover {
+  border-color: rgba(200, 241, 105, 0.4);
+  background: color-mix(in srgb, var(--accent) 8%, var(--background));
+  transform: translateY(-1px);
+}
+
+.auth-form .auth-role-option.is-selected {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--background));
+  box-shadow: 0 0 0 3px rgba(200, 241, 105, 0.1);
+}
+
+.auth-form .auth-role-option input {
+  width: 18px;
+  min-height: 18px;
+  margin: 2px 0 0;
+  padding: 0;
+  accent-color: var(--accent);
+}
+
+.auth-form .auth-role-option input:focus-visible {
+  outline: 3px solid rgba(200, 241, 105, 0.45);
+  outline-offset: 3px;
+}
+
+.auth-role-option-copy {
+  display: grid;
+  gap: 6px;
+}
+
+.auth-role-option-copy strong {
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.auth-role-option-copy small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.auth-link-button {
+  display: block;
+  width: 100%;
+  margin-top: 16px;
+  padding: 0;
+  border: 0;
+  color: var(--accent-text);
+  background: transparent;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.auth-link-button:hover:not(:disabled) {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.auth-link-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.auth-success {
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid rgba(200, 241, 105, 0.25);
+  border-radius: 10px;
+  color: var(--accent-text);
+  background: color-mix(in srgb, var(--accent) 10%, var(--background));
+  line-height: 1.5;
+}
+
+.verification-shell {
+  display: grid;
+  min-height: 100vh;
+  min-height: 100svh;
+  min-height: 100dvh;
+  place-items: start center;
+  padding: max(32px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right))
+    max(32px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
+  background:
+    radial-gradient(circle at 50% 0%, rgba(200, 241, 105, 0.09), transparent 28rem),
+    var(--background);
+}
+
+.verification-card {
+  width: min(760px, 100%);
+  padding: clamp(22px, 5vw, 42px);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  box-shadow: var(--shadow);
+}
+
+.verification-heading {
+  margin: 34px 0 24px;
+}
+
+.verification-heading h1,
+.verification-card > h1 {
+  margin: 8px 0 12px;
+  font-size: clamp(30px, 7vw, 48px);
+  line-height: 1.02;
+  letter-spacing: -0.04em;
+}
+
+.verification-heading p:last-child,
+.verification-card > p {
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.verification-review-note,
+.verification-alert {
+  margin-bottom: 22px;
+  padding: 14px 16px;
+  border: 1px solid rgba(200, 241, 105, 0.24);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--background));
+}
+
+.verification-review-note p,
+.verification-alert p {
+  margin: 8px 0 0;
+  line-height: 1.55;
+}
+
+.verification-alert button {
+  margin-top: 12px;
+}
+
+.verification-form {
+  display: grid;
+  gap: 22px;
+}
+
+.verification-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.verification-form label {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.verification-form input,
+.verification-form select,
+.verification-form textarea {
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  color: var(--text);
+  background: color-mix(in srgb, var(--background) 72%, transparent);
+}
+
+.verification-form textarea {
+  resize: vertical;
+}
+
+.verification-form input:hover,
+.verification-form select:hover,
+.verification-form textarea:hover {
+  border-color: rgba(200, 241, 105, 0.35);
+}
+
+.verification-materials {
+  display: grid;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.verification-materials legend {
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.verification-materials > p {
+  margin: -8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.verification-material {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--background) 58%, transparent);
+}
+
+.verification-material-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+}
+
+.verification-material-heading button,
+.verification-actions button {
+  border: 0;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.verification-material-heading button:hover,
+.verification-actions button:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.verification-material-dates {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.verification-actions {
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+  margin-top: 22px;
+}
+
+@media (max-width: 560px) {
+  .auth-role-options,
+  .verification-fields,
+  .verification-material-dates {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .verification-shell {
+    padding-right: max(14px, env(safe-area-inset-right));
+    padding-left: max(14px, env(safe-area-inset-left));
+  }
+
+  .verification-card {
+    padding: 22px 18px;
+  }
+}
+
 .settings-actions {
   display: grid;
   gap: 12px;

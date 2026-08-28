@@ -50,6 +50,10 @@ interface RefreshSessionIdentityRow extends QueryResultRow {
   user_id: string;
 }
 
+interface TrainerVerificationRequestIdentityRow extends QueryResultRow {
+  id: string;
+}
+
 const asDate = (value: Date | string): Date =>
   value instanceof Date ? new Date(value.getTime()) : new Date(value);
 
@@ -109,14 +113,43 @@ export class PostgresAuthRepository implements AuthRepository {
   }
 
   public async createUser(input: CreateUserInput): Promise<CreateUserResult> {
+    const client = await this.pool.connect();
+
     try {
-      const result = await this.pool.query<UserRow>(
+      await client.query('BEGIN');
+      const result = await client.query<UserRow>(
         `INSERT INTO users (
-           id, email, phone, password_hash, email_verified, email_verified_at, created_at, updated_at
+           id,
+           email,
+           phone,
+           password_hash,
+           email_verified,
+           email_verified_at,
+           requested_role,
+           created_at,
+           updated_at
          )
-         VALUES ($1, $2, $3, $4, $5, CASE WHEN $5 THEN $6 ELSE NULL END, $6, $6)
+         VALUES (
+           $1::uuid,
+           $2::varchar(320),
+           $3::varchar(32),
+           $4::text,
+           $5::boolean,
+           CASE WHEN $5::boolean THEN $6::timestamptz ELSE NULL::timestamptz END,
+           $7::varchar(16),
+           $6::timestamptz,
+           $6::timestamptz
+         )
          RETURNING id, email, phone, password_hash, email_verified, created_at, updated_at`,
-        [input.id, input.email, input.phone, input.passwordHash, input.emailVerified, input.now],
+        [
+          input.id,
+          input.email,
+          input.phone,
+          input.passwordHash,
+          input.emailVerified,
+          input.now,
+          input.requestedRole,
+        ],
       );
       const row = result.rows[0];
 
@@ -124,9 +157,44 @@ export class PostgresAuthRepository implements AuthRepository {
         throw new Error('PostgreSQL did not return the created user.');
       }
 
+      if (input.requestedRole === 'trainer') {
+        const requestResult = await client.query<TrainerVerificationRequestIdentityRow>(
+          `INSERT INTO trainer_verification_requests (
+             user_id, status, submitted_at, created_at, updated_at
+           )
+           VALUES ($1::uuid, 'pending', NULL, $2::timestamptz, $2::timestamptz)
+           RETURNING id`,
+          [input.id, input.now],
+        );
+        const verificationRequest = requestResult.rows[0];
+
+        if (verificationRequest === undefined) {
+          throw new Error('PostgreSQL did not return the trainer-verification request.');
+        }
+
+        await client.query(
+          `INSERT INTO trainer_verification_events (
+             request_id,
+             actor_user_id,
+             from_status,
+             to_status,
+             reason,
+             created_at
+           )
+           VALUES ($1::uuid, $2::uuid, NULL, 'pending', 'trainer_role_selected', $3::timestamptz)`,
+          [verificationRequest.id, input.id, input.now],
+        );
+      }
+
+      await client.query('COMMIT');
       return { status: 'created', user: mapUser(row) };
     } catch (error) {
-      if (!isUniqueViolation(error)) {
+      await this.rollbackQuietly(client);
+
+      if (
+        !isUniqueViolation(error) ||
+        (!error.constraint?.includes('email') && !error.constraint?.includes('phone'))
+      ) {
         throw error;
       }
 
@@ -135,6 +203,8 @@ export class PostgresAuthRepository implements AuthRepository {
         status: 'conflict',
         field: constraint.includes('phone') ? 'phone' : 'email',
       };
+    } finally {
+      client.release();
     }
   }
 

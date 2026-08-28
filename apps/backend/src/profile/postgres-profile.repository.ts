@@ -1,4 +1,9 @@
-import type { OnboardingStatus, SubscriptionStatus } from '@kinetra/shared';
+import type {
+  OnboardingStatus,
+  RequestedRole,
+  SubscriptionStatus,
+  TrainerVerificationState,
+} from '@kinetra/shared';
 import type { Pool, PoolClient, QueryResultRow } from 'pg';
 
 import type {
@@ -24,6 +29,8 @@ interface UserRow extends QueryResultRow {
   readonly created_at: Date;
   readonly updated_at: Date;
   readonly account_role: 'client' | 'trainer';
+  readonly requested_role: RequestedRole;
+  readonly trainer_verification_state: TrainerVerificationState;
   readonly trainer_display_name: string | null;
   readonly trainer_can_manage_videos: boolean | null;
 }
@@ -262,12 +269,33 @@ export class PostgresProfileRepository implements ProfileRepository {
           user_record.created_at,
           user_record.updated_at,
           CASE WHEN trainer.user_id IS NULL THEN 'client' ELSE 'trainer' END AS account_role,
+          user_record.requested_role,
+          CASE
+            WHEN user_record.requested_role <> 'trainer' THEN 'not_started'
+            WHEN trainer.user_id IS NOT NULL THEN 'approved'
+            WHEN verification_request.id IS NULL THEN 'not_started'
+            WHEN verification_request.status = 'pending'
+              AND verification_request.submitted_at IS NULL
+            THEN 'not_started'
+            ELSE verification_request.status
+          END AS trainer_verification_state,
           trainer.display_name AS trainer_display_name,
           trainer.can_manage_videos AS trainer_can_manage_videos
         FROM users AS user_record
         LEFT JOIN trainer_profiles AS trainer
-          ON trainer.user_id = user_record.id
+         ON trainer.user_id = user_record.id
          AND trainer.is_active = true
+        LEFT JOIN LATERAL (
+          SELECT request.id, request.status, request.submitted_at
+          FROM trainer_verification_requests AS request
+          WHERE request.user_id = user_record.id
+          ORDER BY
+            (request.status IN ('pending', 'needs_more_info', 'approved')) DESC,
+            request.created_at DESC,
+            request.updated_at DESC,
+            request.id DESC
+          LIMIT 1
+        ) AS verification_request ON true
         WHERE user_record.id = $1
       `,
       [userId],
@@ -352,6 +380,8 @@ export class PostgresProfileRepository implements ProfileRepository {
       createdAt: asDate(user.created_at),
       updatedAt: asDate(user.updated_at),
       accountRole: user.account_role,
+      requestedRole: user.requested_role,
+      trainerVerificationState: user.trainer_verification_state,
       trainerProfile:
         user.account_role === 'trainer' && user.trainer_display_name !== null
           ? {

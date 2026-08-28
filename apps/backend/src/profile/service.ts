@@ -1,4 +1,4 @@
-import type { MeResponse } from '@kinetra/shared';
+import type { RegistrationAwareMeResponse } from '@kinetra/shared';
 
 import { HttpError } from '../auth/errors.js';
 import type { ProfileRepository, UserProfileSnapshot } from './repository.js';
@@ -10,8 +10,13 @@ const profileNotFound = (): HttpError =>
 const toIsoString = (value: Date | null): string | null =>
   value === null ? null : value.toISOString();
 
-const toResponse = (profile: UserProfileSnapshot): MeResponse => ({
+const toResponse = (profile: UserProfileSnapshot): RegistrationAwareMeResponse => ({
   account_role: profile.accountRole,
+  requested_role:
+    profile.requestedRole ?? (profile.accountRole === 'trainer' ? 'trainer' : 'trainee'),
+  trainer_verification_state:
+    profile.trainerVerificationState ??
+    (profile.accountRole === 'trainer' ? 'approved' : 'not_started'),
   trainer_profile:
     profile.trainerProfile === null
       ? null
@@ -75,7 +80,7 @@ const toResponse = (profile: UserProfileSnapshot): MeResponse => ({
 export class ProfileService {
   public constructor(private readonly repository: ProfileRepository) {}
 
-  public async getProfile(userId: string): Promise<MeResponse> {
+  public async getProfile(userId: string): Promise<RegistrationAwareMeResponse> {
     const profile = await this.repository.findByUserId(userId);
 
     if (profile === null) {
@@ -85,7 +90,7 @@ export class ProfileService {
     return toResponse(profile);
   }
 
-  public async completeOnboarding(userId: string): Promise<MeResponse> {
+  public async completeOnboarding(userId: string): Promise<RegistrationAwareMeResponse> {
     const profile = await this.repository.completeOnboarding(userId);
 
     if (profile === null) {
@@ -95,7 +100,7 @@ export class ProfileService {
     return toResponse(profile);
   }
 
-  public async saveSurvey(userId: string, body: unknown): Promise<MeResponse> {
+  public async saveSurvey(userId: string, body: unknown): Promise<RegistrationAwareMeResponse> {
     const parsed = surveySubmissionSchema.safeParse(body);
 
     if (!parsed.success) {

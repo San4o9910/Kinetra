@@ -2,7 +2,14 @@ name: Kinetra CI
 
 on:
   push:
-    branches: [main, develop, fix/t12-merge-readiness, feature/t14-video-upload-s3]
+    branches:
+      [
+        main,
+        develop,
+        fix/t12-merge-readiness,
+        feature/t14-video-upload-s3,
+        feature/registration-roles-verification,
+      ]
   pull_request:
     branches: [main, develop, feature/t12-trainer-chat]
 
@@ -279,6 +286,15 @@ jobs:
           grep -F 'KINETRA_T14_REPLACE_UNPUBLISH=PASS' /tmp/kinetra-test.log
           grep -F 'KINETRA_T14_T07_T12_T13_COEXISTENCE=PASS' /tmp/kinetra-test.log
           grep -F 'KINETRA_T14_BROWSER_E2E=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_TRAINER_VERIFICATION_MIGRATION_POSTGRES17=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_REGISTRATION_ROLES_POSTGRES17=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_SQLSTATE_42804_REGRESSION_POSTGRES17=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_REGISTRATION_PROFILE_POSTGRES17=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_TRAINER_VERIFICATION_REVIEWER_CLI_POSTGRES17=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_TRAINER_VERIFICATION_LIFECYCLE_POSTGRES17=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_TRAINER_VERIFICATION_APPROVAL_GUARDS_POSTGRES17=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_TRAINER_VERIFICATION_AUDIT_CASCADE_POSTGRES17=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_TRAINER_VERIFICATION_LATEST_REQUEST_POSTGRES17=PASS' /tmp/kinetra-test.log
           echo 'KINETRA_T04_TEST_SUITE=PASS'
           echo 'KINETRA_T05_TEST_SUITE=PASS'
           echo 'KINETRA_T06_TEST_SUITE=PASS'

@@ -77,6 +77,164 @@ if (postgresTestRequired && databaseUrl === undefined) {
 }
 
 test(
+  'PostgreSQL 17 registration persists requested roles and atomically bridges trainer verification',
+  { skip: databaseUrl === undefined ? 'DATABASE_URL is not configured.' : false },
+  async () => {
+    if (databaseUrl === undefined) {
+      throw new Error('DATABASE_URL is required for the PostgreSQL registration integration test.');
+    }
+
+    const pool = new Pool({ connectionString: databaseUrl, max: 4 });
+    const repository = new PostgresAuthRepository(pool);
+    const traineeId = randomUUID();
+    const trainerId = randomUUID();
+    const conflictId = randomUUID();
+    const concurrentIds = [randomUUID(), randomUUID()] as const;
+    const traineeEmail = `registration-trainee-${traineeId}@example.com`;
+    const trainerEmail = `registration-trainer-${trainerId}@example.com`;
+    const concurrentEmail = `registration-concurrent-${randomUUID()}@example.com`;
+    const passwordHash = '$2b$10$abcdefghijklmnopqrstuv12345678901234567890123456789012';
+    const now = new Date('2026-08-28T09:00:00.000Z');
+
+    const create = (id: string, email: string, requestedRole: 'trainer' | 'trainee') =>
+      repository.createUser({
+        id,
+        email,
+        phone: null,
+        passwordHash,
+        emailVerified: true,
+        requestedRole,
+        now,
+      });
+
+    try {
+      const version = await pool.query<{ readonly server_version_num: string }>(
+        "SELECT current_setting('server_version_num') AS server_version_num",
+      );
+      const serverVersion = Number(version.rows[0]?.server_version_num ?? '0');
+      assert.equal(
+        serverVersion >= 170_000 && serverVersion < 180_000,
+        true,
+        `mandatory registration integration gate requires PostgreSQL 17, got ${serverVersion}`,
+      );
+
+      assert.equal((await create(traineeId, traineeEmail, 'trainee')).status, 'created');
+      assert.equal((await create(trainerId, trainerEmail, 'trainer')).status, 'created');
+
+      const users = await pool.query<{
+        readonly id: string;
+        readonly requested_role: string;
+      }>(
+        `SELECT id, requested_role
+         FROM users
+         WHERE id = ANY($1::uuid[])
+         ORDER BY id`,
+        [[traineeId, trainerId]],
+      );
+      assert.deepEqual(
+        new Map(users.rows.map((row) => [row.id, row.requested_role] as const)),
+        new Map([
+          [traineeId, 'trainee'],
+          [trainerId, 'trainer'],
+        ]),
+      );
+
+      const bridge = await pool.query<{
+        readonly id: string;
+        readonly user_id: string;
+        readonly status: string;
+        readonly submitted_at: Date | null;
+      }>(
+        `SELECT id, user_id, status, submitted_at
+         FROM trainer_verification_requests
+         WHERE user_id = ANY($1::uuid[])
+         ORDER BY user_id`,
+        [[traineeId, trainerId]],
+      );
+      assert.equal(bridge.rowCount, 1);
+      assert.equal(bridge.rows[0]?.user_id, trainerId);
+      assert.equal(bridge.rows[0]?.status, 'pending');
+      assert.equal(bridge.rows[0]?.submitted_at, null);
+
+      const event = await pool.query<{
+        readonly actor_user_id: string | null;
+        readonly from_status: string | null;
+        readonly to_status: string;
+        readonly reason: string | null;
+      }>(
+        `SELECT actor_user_id, from_status, to_status, reason
+         FROM trainer_verification_events
+         WHERE request_id = $1`,
+        [bridge.rows[0]?.id],
+      );
+      assert.deepEqual(event.rows, [
+        {
+          actor_user_id: trainerId,
+          from_status: null,
+          to_status: 'pending',
+          reason: 'trainer_role_selected',
+        },
+      ]);
+
+      const authority = await pool.query('SELECT 1 FROM trainer_profiles WHERE user_id = $1', [
+        trainerId,
+      ]);
+      assert.equal(
+        authority.rowCount,
+        0,
+        'requested trainer role must not grant trainer authority',
+      );
+
+      const conflict = await create(conflictId, trainerEmail, 'trainer');
+      assert.deepEqual(conflict, { status: 'conflict', field: 'email' });
+      assert.equal(
+        (await pool.query('SELECT 1 FROM users WHERE id = $1', [conflictId])).rowCount,
+        0,
+      );
+      assert.equal(
+        (
+          await pool.query('SELECT 1 FROM trainer_verification_requests WHERE user_id = $1', [
+            conflictId,
+          ])
+        ).rowCount,
+        0,
+        'identifier conflict must leave no partial trainer request',
+      );
+
+      const concurrent = await Promise.all(
+        concurrentIds.map((id) => create(id, concurrentEmail, 'trainer')),
+      );
+      assert.deepEqual(concurrent.map((result) => result.status).sort(), ['conflict', 'created']);
+      const concurrentRows = await pool.query<{ readonly id: string }>(
+        'SELECT id FROM users WHERE email = $1',
+        [concurrentEmail],
+      );
+      assert.equal(concurrentRows.rowCount, 1);
+      const winnerId = concurrentRows.rows[0]?.id;
+      assert.equal(
+        (
+          await pool.query('SELECT 1 FROM trainer_verification_requests WHERE user_id = $1', [
+            winnerId,
+          ])
+        ).rowCount,
+        1,
+      );
+
+      console.log('KINETRA_REGISTRATION_ROLES_POSTGRES17=PASS');
+      console.log('KINETRA_SQLSTATE_42804_REGRESSION_POSTGRES17=PASS');
+    } finally {
+      await pool.query(
+        `DELETE FROM users
+         WHERE id = ANY($1::uuid[])
+            OR email = $2`,
+        [[traineeId, trainerId, conflictId, ...concurrentIds], concurrentEmail],
+      );
+      await pool.end();
+    }
+  },
+);
+
+test(
   'PostgreSQL logout revokes only the current session in the signed refresh rotation family',
   { skip: databaseUrl === undefined ? 'DATABASE_URL is not configured.' : false },
   async () => {

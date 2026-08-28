@@ -68,8 +68,11 @@ const requiredFiles = [
   'docs/T12_TRAINER_CHAT.md',
   'docs/T13_PUSH_NOTIFICATIONS.md',
   'docs/T14_VIDEO_UPLOADS.md',
+  'docs/TRAINER_VERIFICATION.md',
   'apps/frontend/index.html',
   'apps/frontend/src/features/auth/LoginScreen.tsx',
+  'apps/frontend/src/features/auth/RegisterScreen.tsx',
+  'apps/frontend/src/features/trainer-verification/TrainerVerificationScreen.tsx',
   'apps/frontend/src/features/survey/SurveyWizard.tsx',
   'apps/frontend/src/features/survey/model.ts',
   'apps/frontend/src/features/onboarding/OnboardingCarousel.tsx',
@@ -136,6 +139,7 @@ const requiredFiles = [
   'apps/frontend/src/features/trainer-videos/upload.ts',
   'apps/frontend/src/routing.ts',
   'apps/frontend/test/api-session.test.ts',
+  'apps/frontend/test/registration-roles.test.ts',
   'apps/frontend/test/survey-routing.test.ts',
   'apps/frontend/test/onboarding.test.ts',
   'apps/frontend/test/base-lessons-api.test.ts',
@@ -184,6 +188,7 @@ const requiredFiles = [
   'apps/backend/migrations/010_push_notifications.sql',
   'apps/backend/migrations/011_trainer_chat.sql',
   'apps/backend/migrations/012_video_uploads.sql',
+  'apps/backend/migrations/013_trainer_verification.sql',
   'apps/backend/scripts/migrate.mjs',
   'apps/backend/scripts/seed.mjs',
   'apps/backend/scripts/verify-content.mjs',
@@ -202,6 +207,13 @@ const requiredFiles = [
   'apps/backend/src/profile/router.ts',
   'apps/backend/src/profile/schema.ts',
   'apps/backend/src/profile/service.ts',
+  'apps/backend/src/trainer-verification/schema.ts',
+  'apps/backend/src/trainer-verification/repository.ts',
+  'apps/backend/src/trainer-verification/postgres-trainer-verification.repository.ts',
+  'apps/backend/src/trainer-verification/service.ts',
+  'apps/backend/src/trainer-verification/router.ts',
+  'apps/backend/src/trainer-verification/runtime.ts',
+  'apps/backend/src/trainer-verification/reviewer-cli.ts',
   'apps/backend/src/base-lessons/router.ts',
   'apps/backend/src/base-lessons/schema.ts',
   'apps/backend/src/base-lessons/service.ts',
@@ -280,6 +292,9 @@ const requiredFiles = [
   'apps/backend/test/env.test.ts',
   'apps/backend/test/profile.e2e.test.ts',
   'apps/backend/test/profile.postgres.test.ts',
+  'apps/backend/test/trainer-verification.e2e.test.ts',
+  'apps/backend/test/trainer-verification.postgres.test.ts',
+  'apps/backend/test/trainer-verification-reviewer-cli.test.ts',
   'apps/backend/test/base-lessons.e2e.test.ts',
   'apps/backend/test/base-lessons.postgres.test.ts',
   'apps/backend/test/program.e2e.test.ts',
@@ -375,6 +390,10 @@ const immutableMigrationHashes = [
   [
     'apps/backend/migrations/011_trainer_chat.sql',
     'c5ccefee1db3c5f545680448ce86601c90c017c7f10f387e5dc5c5da48f78d09',
+  ],
+  [
+    'apps/backend/migrations/012_video_uploads.sql',
+    'c05550d0bd3dca13b6cf4a4254c677c4348999bcef3b6f9eb8d8ad76df9de7f4',
   ],
 ];
 
@@ -506,6 +525,17 @@ for (const [script, command] of [
   }
 }
 
+for (const [script, command] of [
+  ['trainer-verification:reviewer:grant', 'node dist/trainer-verification/reviewer-cli.js grant'],
+  ['trainer-verification:reviewer:revoke', 'node dist/trainer-verification/reviewer-cli.js revoke'],
+]) {
+  if (backendPackage.scripts?.[script] === command) {
+    pass(`trainer verification reviewer operator script: ${script}`);
+  } else {
+    fail(`trainer verification reviewer operator script: ${script}`);
+  }
+}
+
 const manifest = await readJson('apps/frontend/public/manifest.webmanifest');
 for (const field of ['name', 'short_name', 'start_url', 'scope', 'display', 'theme_color']) {
   if (manifest[field]) {
@@ -588,6 +618,16 @@ const backendApp = await readText('apps/backend/src/app.ts');
 expectIncludes(backendApp, "app.get('/health'", 'health endpoint present');
 expectIncludes(backendApp, "'/api/v1/auth'", 'auth router mounted under /api/v1/auth');
 expectIncludes(backendApp, "app.disable('x-powered-by')", 'Express signature header disabled');
+expectIncludes(
+  backendApp,
+  "'/api/v1/trainer-verification'",
+  'trainer verification user router is mounted',
+);
+expectIncludes(
+  backendApp,
+  "'/api/v1/admin/trainer-verification'",
+  'trainer verification reviewer router is mounted',
+);
 
 const router = await readText('apps/backend/src/auth/router.ts');
 for (const endpoint of [
@@ -603,6 +643,13 @@ for (const endpoint of [
 }
 expectIncludes(router, 'assertNoUserIdOverride', 'request body cannot override user identity');
 expectIncludes(router, 'emailVerificationEnabled', 'verify-email route is configuration-gated');
+expectIncludes(router, "'requested_role'", 'registration requires a requested role');
+expectIncludes(
+  router,
+  "'AUTHORITY_FIELD_NOT_ALLOWED'",
+  'registration rejects client-supplied authority fields',
+);
+expectIncludes(router, "'UNKNOWN_REGISTRATION_FIELD'", 'registration rejects unknown fields');
 expectIncludes(
   router,
   "response.setHeader('Cache-Control', 'no-store')",
@@ -695,11 +742,26 @@ expectIncludes(service, 'PASSWORD_RESET_REQUEST_MESSAGE', 'password reset uses a
 expectIncludes(service, 'rotateRefreshSession', 'refresh token rotation implemented');
 expectIncludes(service, 'replacePasswordUsingResetToken', 'one-time password reset implemented');
 expectIncludes(service, 'emailVerificationRequired', 'optional email verification implemented');
+expectIncludes(
+  service,
+  "'TRAINER_EMAIL_REQUIRED'",
+  'trainer registration requires an email that can be verified',
+);
 
 const repository = await readText('apps/backend/src/auth/postgres-auth.repository.ts');
 expectIncludes(repository, "await client.query('BEGIN')", 'PostgreSQL transactions implemented');
 expectIncludes(repository, 'FOR UPDATE', 'one-time and refresh tokens are row-locked');
 expectIncludes(repository, 'replaced_by_token_id', 'refresh replacement chain stored');
+expectIncludes(
+  repository,
+  'trainer_verification_requests',
+  'trainer registration creates its verification bridge in the user transaction',
+);
+expectIncludes(
+  repository,
+  'trainer_role_selected',
+  'trainer registration appends its initial audit event',
+);
 expectMatches(
   repository,
   /WHERE user_id = \$1 AND revoked_at IS NULL/u,
@@ -5878,7 +5940,9 @@ for (const ciEnvironmentContract of [
   );
 }
 for (const correctionCiContract of [
-  'branches: [main, develop, fix/t12-merge-readiness, feature/t14-video-upload-s3]',
+  'fix/t12-merge-readiness',
+  'feature/t14-video-upload-s3',
+  'feature/registration-roles-verification',
   'branches: [main, develop, feature/t12-trainer-chat]',
   'EXPECTED_BASE_SHA: ${{ github.event.pull_request.base.sha }}',
   'EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}',
@@ -6410,6 +6474,201 @@ for (const contract of [
 ]) {
   expectIncludes(ciWorkflow, contract, `T14 fail-closed CI contract: ${contract}`);
 }
+
+const registrationMigration = await readText(
+  'apps/backend/migrations/013_trainer_verification.sql',
+);
+for (const contract of [
+  'ADD COLUMN IF NOT EXISTS requested_role',
+  "CHECK (requested_role IN ('trainer', 'trainee'))",
+  'CREATE TABLE IF NOT EXISTS trainer_verification_requests',
+  'CREATE TABLE IF NOT EXISTS trainer_verification_documents',
+  'CREATE TABLE IF NOT EXISTS trainer_verification_events',
+  'CREATE TABLE IF NOT EXISTS trainer_verification_reviewers',
+  'trainer_verification_requests_one_live_per_user_idx',
+  'prevent_direct_trainer_verification_request_delete',
+  'trainer_verification_requests_delete_guard',
+  'prevent_trainer_verification_event_mutation',
+  "USING ERRCODE = '55000'",
+  'trainer_profiles_align_requested_role',
+]) {
+  expectIncludes(
+    registrationMigration,
+    contract,
+    `trainer verification additive migration contract: ${contract}`,
+  );
+}
+
+const trainerVerificationRepository = await readText(
+  'apps/backend/src/trainer-verification/postgres-trainer-verification.repository.ts',
+);
+for (const contract of [
+  'kinetra:chat:trainer-administration:v1',
+  'email_verified',
+  "return { status: 'email_not_verified' }",
+  "return { status: 'self_review' }",
+  "return { status: 'client_chat_history' }",
+  "action === 'approve' && request.status === 'approved'",
+  'FOR UPDATE',
+]) {
+  expectIncludes(
+    trainerVerificationRepository,
+    contract,
+    `trainer verification PostgreSQL safety contract: ${contract}`,
+  );
+}
+for (const contract of [
+  "(status IN ('pending', 'needs_more_info', 'approved')) DESC",
+  'created_at DESC,\n         updated_at DESC,\n         id DESC',
+]) {
+  expectIncludes(
+    trainerVerificationRepository,
+    contract,
+    `trainer verification latest request prioritizes live state: ${contract}`,
+  );
+}
+
+const profilePostgresRepository = await readText(
+  'apps/backend/src/profile/postgres-profile.repository.ts',
+);
+for (const contract of [
+  "(request.status IN ('pending', 'needs_more_info', 'approved')) DESC",
+  'request.created_at DESC,\n            request.updated_at DESC,\n            request.id DESC',
+]) {
+  expectIncludes(
+    profilePostgresRepository,
+    contract,
+    `profile latest verification state prioritizes live request: ${contract}`,
+  );
+}
+
+const trainerProfileApprovalSection = trainerVerificationRepository.slice(
+  trainerVerificationRepository.indexOf('private async ensureTrainerProfile'),
+  trainerVerificationRepository.indexOf('private async loadUserSnapshot'),
+);
+const trainerProfileConflictClause = trainerProfileApprovalSection.slice(
+  trainerProfileApprovalSection.indexOf('ON CONFLICT (user_id) DO UPDATE'),
+);
+if (
+  trainerProfileConflictClause.includes('is_default =') ||
+  trainerProfileConflictClause.includes('can_manage_videos =')
+) {
+  fail('trainer verification approval preserves existing trainer authority flags');
+} else {
+  pass('trainer verification approval preserves existing trainer authority flags');
+}
+
+const trainerVerificationRouter = await readText('apps/backend/src/trainer-verification/router.ts');
+for (const endpoint of [
+  "'/me'",
+  "'/me/withdraw'",
+  "'/:id/approve'",
+  "'/:id/request-info'",
+  "'/:id/reject'",
+]) {
+  expectIncludes(
+    trainerVerificationRouter,
+    endpoint,
+    `trainer verification endpoint is present: ${endpoint}`,
+  );
+}
+
+const trainerVerificationSchema = await readText('apps/backend/src/trainer-verification/schema.ts');
+expectIncludes(
+  trainerVerificationSchema,
+  "url.protocol !== 'https:'",
+  'trainer verification accepts only HTTPS material links',
+);
+expectIncludes(
+  trainerVerificationSchema,
+  '.strict()',
+  'trainer verification request objects reject unknown fields',
+);
+
+const trainerVerificationPostgresTests = await readText(
+  'apps/backend/test/trainer-verification.postgres.test.ts',
+);
+const trainerVerificationReviewerCliTests = await readText(
+  'apps/backend/test/trainer-verification-reviewer-cli.test.ts',
+);
+for (const contract of [
+  'postgresTestRequired && databaseUrl === undefined',
+  'serverVersion >= 170_000 && serverVersion < 180_000',
+  'migration 013 backfills roles, applies defaults and is rerunnable',
+  'KINETRA_TRAINER_VERIFICATION_MIGRATION_POSTGRES17=PASS',
+  "'email_not_verified'",
+  "'client_chat_history'",
+  "'self_review'",
+  "'55000'",
+  'DELETE FROM trainer_verification_requests WHERE id = $1',
+  'latest request favors a live reapplication when timestamps are identical',
+  'concurrent approval must be idempotent',
+]) {
+  expectIncludes(
+    trainerVerificationPostgresTests,
+    contract,
+    `trainer verification PostgreSQL executable gate: ${contract}`,
+  );
+}
+const registrationPostgresMarkers = [
+  ['KINETRA_TRAINER_VERIFICATION_MIGRATION_POSTGRES17=PASS', trainerVerificationPostgresTests],
+  ['KINETRA_REGISTRATION_ROLES_POSTGRES17=PASS', authPostgresTests],
+  ['KINETRA_SQLSTATE_42804_REGRESSION_POSTGRES17=PASS', authPostgresTests],
+  ['KINETRA_REGISTRATION_PROFILE_POSTGRES17=PASS', profilePostgresTests],
+  [
+    'KINETRA_TRAINER_VERIFICATION_REVIEWER_CLI_POSTGRES17=PASS',
+    trainerVerificationReviewerCliTests,
+  ],
+  ['KINETRA_TRAINER_VERIFICATION_LIFECYCLE_POSTGRES17=PASS', trainerVerificationPostgresTests],
+  [
+    'KINETRA_TRAINER_VERIFICATION_APPROVAL_GUARDS_POSTGRES17=PASS',
+    trainerVerificationPostgresTests,
+  ],
+  ['KINETRA_TRAINER_VERIFICATION_AUDIT_CASCADE_POSTGRES17=PASS', trainerVerificationPostgresTests],
+  ['KINETRA_TRAINER_VERIFICATION_LATEST_REQUEST_POSTGRES17=PASS', trainerVerificationPostgresTests],
+];
+const allRegistrationPostgresTests = [
+  authPostgresTests,
+  profilePostgresTests,
+  trainerVerificationPostgresTests,
+  trainerVerificationReviewerCliTests,
+].join('\n');
+for (const [marker, owner] of registrationPostgresMarkers) {
+  const totalOccurrences = allRegistrationPostgresTests.split(marker).length - 1;
+  const ownerOccurrences = owner.split(marker).length - 1;
+  if (totalOccurrences === 1 && ownerOccurrences === 1) {
+    pass(`registration PostgreSQL marker has one asserted owner: ${marker}`);
+  } else {
+    fail(`registration PostgreSQL marker has one asserted owner: ${marker}`);
+  }
+}
+const registrationCiMarkerPositions = registrationPostgresMarkers.map(([marker]) => {
+  const grep = `grep -F '${marker}'`;
+  const occurrences = ciWorkflow.split(grep).length - 1;
+  if (occurrences === 1) pass(`CI requires the registration marker exactly once: ${marker}`);
+  else fail(`CI requires the registration marker exactly once: ${marker}`);
+  return ciWorkflow.indexOf(grep);
+});
+if (
+  registrationCiMarkerPositions.every((position) => position >= 0) &&
+  registrationCiMarkerPositions.every(
+    (position, index) => index === 0 || position > registrationCiMarkerPositions[index - 1],
+  )
+) {
+  pass('CI greps all nine registration PostgreSQL markers in fail-closed order');
+} else {
+  fail('CI greps all nine registration PostgreSQL markers in fail-closed order');
+}
+expectIncludes(
+  ciWorkflow,
+  'image: postgres:17-alpine',
+  'CI provides PostgreSQL 17 for the mandatory integration gate',
+);
+expectIncludes(
+  ciWorkflow,
+  "KINETRA_REQUIRE_POSTGRES_TEST: 'true'",
+  'CI fails closed when PostgreSQL integration tests cannot run',
+);
 
 const textExtensions = new Set([
   '.css',

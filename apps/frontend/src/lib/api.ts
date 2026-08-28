@@ -26,9 +26,13 @@ import type {
   PushSubscriptionRequest,
   PushSubscriptionResponse,
   PushUnsubscribeRequest,
+  RegisterRequest,
+  RegisterResponse,
   ScheduleResponse,
   SettingsProfileResponse,
   SubscriptionResponse,
+  TrainerVerificationApplicationInput,
+  TrainerVerificationMeResponse,
   TrainerVideoPartRequest,
   TrainerVideoAcceptedPartDto,
   TrainerVideoPartUrlDto,
@@ -225,6 +229,36 @@ export class ApiClient {
     this.invalidateInMemorySession();
   }
 
+  public async register(input: RegisterRequest): Promise<RegisterResponse> {
+    this.terminalSubjectMismatch = false;
+    const epoch = this.invalidateInMemorySession();
+
+    return this.enqueueAuthMutation(async () => {
+      const response = await this.safeFetch('/api/v1/auth/register', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(input),
+      });
+      const registration = await this.readJsonOrThrow<RegisterResponse>(response);
+
+      if (this.authEpoch !== epoch) {
+        throw this.authSessionChangedError();
+      }
+
+      if ('accessToken' in registration) {
+        this.authSubjectId = registration.user.id;
+        this.accessToken = registration.accessToken;
+        this.logoutAccessToken = registration.accessToken;
+      }
+
+      return registration;
+    });
+  }
+
   public async login(identifier: string, password: string): Promise<AuthSessionResponse> {
     this.terminalSubjectMismatch = false;
     const epoch = this.invalidateInMemorySession();
@@ -352,6 +386,52 @@ export class ApiClient {
       method: 'GET',
       ...(signal === undefined ? {} : { signal }),
     });
+  }
+
+  public async getTrainerVerification(
+    signal?: AbortSignal,
+  ): Promise<TrainerVerificationMeResponse> {
+    return this.authenticatedJsonRequest<TrainerVerificationMeResponse>(
+      '/api/v1/trainer-verification/me',
+      {
+        method: 'GET',
+        ...(signal === undefined ? {} : { signal }),
+      },
+    );
+  }
+
+  public async createTrainerVerification(
+    input: TrainerVerificationApplicationInput,
+  ): Promise<TrainerVerificationMeResponse> {
+    return this.authenticatedJsonRequest<TrainerVerificationMeResponse>(
+      '/api/v1/trainer-verification',
+      {
+        method: 'POST',
+        body: JSON.stringify(input),
+      },
+    );
+  }
+
+  public async updateTrainerVerification(
+    input: TrainerVerificationApplicationInput,
+  ): Promise<TrainerVerificationMeResponse> {
+    return this.authenticatedJsonRequest<TrainerVerificationMeResponse>(
+      '/api/v1/trainer-verification/me',
+      {
+        method: 'PATCH',
+        body: JSON.stringify(input),
+      },
+    );
+  }
+
+  public async withdrawTrainerVerification(): Promise<TrainerVerificationMeResponse> {
+    return this.authenticatedJsonRequest<TrainerVerificationMeResponse>(
+      '/api/v1/trainer-verification/me/withdraw',
+      {
+        method: 'POST',
+        body: '{}',
+      },
+    );
   }
 
   public async saveSurvey(survey: SurveySubmission): Promise<MeResponse> {
@@ -1276,12 +1356,25 @@ export class ApiClient {
 
 const apiClient = new ApiClient({ baseUrl: apiBaseUrl });
 
+export const register = (input: RegisterRequest): Promise<RegisterResponse> =>
+  apiClient.register(input);
 export const login = (identifier: string, password: string): Promise<AuthSessionResponse> =>
   apiClient.login(identifier, password);
 export const bootstrapSession = (): Promise<boolean> => apiClient.bootstrapSession();
 export const prepareLogout = (): PreparedLogoutAttempt => apiClient.prepareLogout();
 export const logout = (): Promise<void> => apiClient.logout();
 export const fetchMe = (signal?: AbortSignal): Promise<MeResponse> => apiClient.fetchMe(signal);
+export const getTrainerVerification = (
+  signal?: AbortSignal,
+): Promise<TrainerVerificationMeResponse> => apiClient.getTrainerVerification(signal);
+export const createTrainerVerification = (
+  input: TrainerVerificationApplicationInput,
+): Promise<TrainerVerificationMeResponse> => apiClient.createTrainerVerification(input);
+export const updateTrainerVerification = (
+  input: TrainerVerificationApplicationInput,
+): Promise<TrainerVerificationMeResponse> => apiClient.updateTrainerVerification(input);
+export const withdrawTrainerVerification = (): Promise<TrainerVerificationMeResponse> =>
+  apiClient.withdrawTrainerVerification();
 export const saveSurvey = (survey: SurveySubmission): Promise<MeResponse> =>
   apiClient.saveSurvey(survey);
 export const completeOnboarding = (): Promise<MeResponse> => apiClient.completeOnboarding();

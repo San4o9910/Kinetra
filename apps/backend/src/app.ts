@@ -26,6 +26,14 @@ import { createPushRouter } from './push/router.js';
 import { createProductionPushRuntime, type PushRuntime } from './push/runtime.js';
 import { createSettingsRouter } from './settings/router.js';
 import { createProductionSettingsRuntime, type SettingsRuntime } from './settings/runtime.js';
+import {
+  createTrainerVerificationAdminRouter,
+  createTrainerVerificationRouter,
+} from './trainer-verification/router.js';
+import {
+  createProductionTrainerVerificationRuntime,
+  type TrainerVerificationRuntime,
+} from './trainer-verification/runtime.js';
 import { createVideoAdminRouter } from './video-admin/router.js';
 import {
   createProductionVideoAdminRuntime,
@@ -43,6 +51,7 @@ export interface CreateAppOptions {
   readonly settingsRuntime?: SettingsRuntime;
   readonly paymentsRuntime?: PaymentsRuntime;
   readonly videoAdminRuntime?: VideoAdminRuntime;
+  readonly trainerVerificationRuntime?: TrainerVerificationRuntime;
 }
 
 const requestIdFrom = (response: Response): string =>
@@ -77,6 +86,8 @@ export const createApp = (options: CreateAppOptions = {}) => {
   const settingsRuntime = options.settingsRuntime ?? createProductionSettingsRuntime();
   const paymentsRuntime = options.paymentsRuntime ?? createProductionPaymentsRuntime();
   const videoAdminRuntime = options.videoAdminRuntime ?? createProductionVideoAdminRuntime();
+  const trainerVerificationRuntime =
+    options.trainerVerificationRuntime ?? createProductionTrainerVerificationRuntime();
 
   app.disable('x-powered-by');
 
@@ -134,6 +145,14 @@ export const createApp = (options: CreateAppOptions = {}) => {
   );
   app.use('/api/v1/payments', createPaymentsRouter(paymentsRuntime));
   app.use('/api/v1/trainer/videos', createVideoAdminRouter(videoAdminRuntime));
+  app.use(
+    '/api/v1/trainer-verification',
+    createTrainerVerificationRouter(trainerVerificationRuntime),
+  );
+  app.use(
+    '/api/v1/admin/trainer-verification',
+    createTrainerVerificationAdminRouter(trainerVerificationRuntime),
+  );
 
   app.use((request: Request, response: Response<ApiErrorResponse>) => {
     response.status(404).json({
