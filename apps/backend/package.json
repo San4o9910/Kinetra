@@ -20,6 +20,8 @@
     "video:uploads:process": "node dist/video-admin/run-upload-worker.js",
     "video:uploads:retry-quarantined": "node dist/video-admin/upload-recovery-cli.js retry",
     "video:media-cleanup": "node dist/video-admin/run-media-cleanup.js",
+    "trainer-verification:reviewer:grant": "node dist/trainer-verification/reviewer-cli.js grant",
+    "trainer-verification:reviewer:revoke": "node dist/trainer-verification/reviewer-cli.js revoke",
     "notifications:send": "node dist/push/run-notifications.js",
     "payments:renew": "node dist/payments/run-renewals.js",
     "build": "tsc -p tsconfig.build.json",

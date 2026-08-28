@@ -39,6 +39,7 @@ export interface RegisterRequest {
   readonly email?: string;
   readonly phone?: string;
   readonly password: string;
+  readonly requested_role: RequestedRole;
 }
 
 export interface LoginRequest {
@@ -69,6 +70,70 @@ export interface MessageResponse {
 
 export type OnboardingStatus = 'survey_pending' | 'onboarding_pending' | 'base_lessons' | 'active';
 export type AccountRole = 'client' | 'trainer';
+export type RequestedRole = 'trainer' | 'trainee';
+export type TrainerVerificationStatus =
+  'pending' | 'needs_more_info' | 'approved' | 'rejected' | 'withdrawn';
+export type TrainerVerificationState = 'not_started' | TrainerVerificationStatus;
+export type TrainerVerificationMaterialKind =
+  'professional_profile' | 'certificate' | 'diploma' | 'portfolio' | 'other';
+
+export interface TrainerVerificationApplicationInput {
+  readonly display_name: string;
+  readonly specialization: string;
+  readonly experience_years: number;
+  readonly bio: string;
+  readonly city: string;
+  readonly timezone: string;
+  readonly materials: readonly {
+    readonly kind: TrainerVerificationMaterialKind;
+    readonly url: string;
+    readonly title: string;
+    readonly issued_at?: string;
+    readonly expires_at?: string;
+  }[];
+}
+
+export interface TrainerVerificationMaterialDto {
+  readonly id: string;
+  readonly kind: TrainerVerificationMaterialKind;
+  readonly url: string;
+  readonly title: string;
+  readonly issued_at: string | null;
+  readonly expires_at: string | null;
+  readonly created_at: string;
+}
+
+export interface TrainerVerificationRequestDto {
+  readonly id: string;
+  readonly user_id: string;
+  readonly status: TrainerVerificationState;
+  readonly display_name: string | null;
+  readonly specialization: string | null;
+  readonly experience_years: number | null;
+  readonly bio: string | null;
+  readonly city: string | null;
+  readonly timezone: string | null;
+  readonly submitted_at: string | null;
+  readonly reviewed_at: string | null;
+  readonly review_reason: string | null;
+  readonly created_at: string;
+  readonly updated_at: string;
+  readonly materials: readonly TrainerVerificationMaterialDto[];
+}
+
+export interface TrainerVerificationMeResponse {
+  readonly requested_role: RequestedRole;
+  readonly trainer_verification_state: TrainerVerificationState;
+  readonly request: TrainerVerificationRequestDto | null;
+}
+
+export interface TrainerVerificationListResponse {
+  readonly requests: readonly TrainerVerificationRequestDto[];
+}
+
+export interface TrainerVerificationReviewRequest {
+  readonly reason?: string;
+}
 
 export interface TrainerProfile {
   readonly display_name: string;
@@ -137,9 +202,16 @@ export interface ProfileSubscription {
 export interface MeResponse {
   readonly account_role: AccountRole;
   readonly trainer_profile: TrainerProfile | null;
+  readonly requested_role?: RequestedRole;
+  readonly trainer_verification_state?: TrainerVerificationState;
   readonly user: ProfileUser;
   readonly survey: SurveyAnswer | null;
   readonly subscription: ProfileSubscription;
+}
+
+export interface RegistrationAwareMeResponse extends MeResponse {
+  readonly requested_role: RequestedRole;
+  readonly trainer_verification_state: TrainerVerificationState;
 }
 
 export type TrainerVideoUploadStatus =

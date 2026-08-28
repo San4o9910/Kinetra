@@ -226,6 +226,17 @@ test('T12 browser auth mutations fail closed when Web Locks are unavailable', as
         error.code === 'AUTH_COORDINATION_UNAVAILABLE' &&
         error.kind === 'auth',
     );
+    await assert.rejects(
+      client.register({
+        email: 'trainer@example.test',
+        password: 'long-enough-password',
+        requested_role: 'trainer',
+      }),
+      (error: unknown) =>
+        error instanceof ApiRequestError &&
+        error.code === 'AUTH_COORDINATION_UNAVAILABLE' &&
+        error.kind === 'auth',
+    );
     assert.equal(fetchCalls, 0, 'an unsupported browser must not mutate the shared auth cookie');
   } finally {
     if (windowDescriptor === undefined) {
@@ -239,6 +250,89 @@ test('T12 browser auth mutations fail closed when Web Locks are unavailable', as
       Object.defineProperty(globalThis, 'navigator', navigatorDescriptor);
     }
   }
+});
+
+test('registration uses the auth mutation gate and persists only an authenticated session', async () => {
+  const calls: unknown[] = [];
+  const client = new ApiClient({
+    baseUrl: 'http://api.test',
+    fetchImpl: async (input, init) => {
+      const url = new URL(String(input));
+      assert.equal(url.pathname, '/api/v1/auth/register');
+      calls.push(JSON.parse(String(init?.body)));
+      return Response.json(session('registration-token'));
+    },
+  });
+
+  const result = await client.register({
+    email: 'trainer@example.test',
+    password: 'long-enough-password',
+    requested_role: 'trainer',
+  });
+
+  assert.ok('accessToken' in result);
+  assert.equal(client.getInMemoryAccessToken(), 'registration-token');
+  assert.equal(client.getInMemoryAuthSubjectId(), defaultSubjectId);
+  assert.deepEqual(calls, [
+    {
+      email: 'trainer@example.test',
+      password: 'long-enough-password',
+      requested_role: 'trainer',
+    },
+  ]);
+});
+
+test('email-verification registration response does not create an in-memory session', async () => {
+  const client = new ApiClient({
+    baseUrl: 'http://api.test',
+    fetchImpl: async () =>
+      Response.json({
+        user: session('unused').user,
+        emailVerificationRequired: true,
+      }),
+  });
+
+  const result = await client.register({
+    email: 'trainee@example.test',
+    password: 'long-enough-password',
+    requested_role: 'trainee',
+  });
+
+  assert.ok('emailVerificationRequired' in result);
+  assert.equal(client.getInMemoryAccessToken(), null);
+  assert.equal(client.getInMemoryAuthSubjectId(), null);
+});
+
+test('a registration response cannot revive a locally invalidated auth epoch', async () => {
+  let releaseRegistration!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    releaseRegistration = resolve;
+  });
+  const client = new ApiClient({
+    baseUrl: 'http://api.test',
+    fetchImpl: async () => {
+      await gate;
+      return Response.json(session('stale-registration-token'));
+    },
+  });
+
+  const registration = client.register({
+    email: 'trainer@example.test',
+    password: 'long-enough-password',
+    requested_role: 'trainer',
+  });
+  client.clearSession();
+  releaseRegistration();
+
+  await assert.rejects(
+    registration,
+    (error: unknown) =>
+      error instanceof ApiRequestError &&
+      error.code === 'AUTH_SESSION_CHANGED' &&
+      error.kind === 'request',
+  );
+  assert.equal(client.getInMemoryAccessToken(), null);
+  assert.equal(client.getInMemoryAuthSubjectId(), null);
 });
 
 test('T12 origin-wide Web Lock serializes two clients before a competing login', async () => {

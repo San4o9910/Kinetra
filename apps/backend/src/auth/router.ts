@@ -5,6 +5,7 @@ import type {
   PasswordResetRequest,
   RegisterRequest,
   RegisterResponse,
+  RequestedRole,
   VerifyEmailRequest,
 } from '@kinetra/shared';
 import {
@@ -59,6 +60,41 @@ const assertNoUserIdOverride = (body: JsonObject): void => {
   }
 };
 
+const registrationFields = new Set(['email', 'phone', 'password', 'requested_role']);
+const registrationAuthorityFields = new Set([
+  'account_role',
+  'is_admin',
+  'can_manage_videos',
+  'is_verified',
+  'trainer_profile',
+  'userId',
+  'user_id',
+]);
+
+const assertRegistrationFields = (body: JsonObject): void => {
+  const authorityOverride = Object.keys(body).find((field) =>
+    registrationAuthorityFields.has(field),
+  );
+
+  if (authorityOverride !== undefined) {
+    throw new HttpError(
+      400,
+      'AUTHORITY_FIELD_NOT_ALLOWED',
+      'Account authority is assigned by the server and cannot be supplied during registration.',
+    );
+  }
+
+  const unknownField = Object.keys(body).find((field) => !registrationFields.has(field));
+
+  if (unknownField !== undefined) {
+    throw new HttpError(
+      400,
+      'UNKNOWN_REGISTRATION_FIELD',
+      `Unknown registration field: ${unknownField}.`,
+    );
+  }
+};
+
 const readRequiredString = (body: JsonObject, field: string): string => {
   const value = body[field];
 
@@ -78,6 +114,20 @@ const readOptionalString = (body: JsonObject, field: string): string | undefined
 
   if (typeof value !== 'string' || value.length === 0) {
     throw new HttpError(400, 'VALIDATION_ERROR', `${field} must be a non-empty string.`);
+  }
+
+  return value;
+};
+
+const readRequestedRole = (body: JsonObject): RequestedRole => {
+  const value = readRequiredString(body, 'requested_role');
+
+  if (value !== 'trainer' && value !== 'trainee') {
+    throw new HttpError(
+      400,
+      'INVALID_REQUESTED_ROLE',
+      'requested_role must be either trainer or trainee.',
+    );
   }
 
   return value;
@@ -139,17 +189,24 @@ export const createAuthRouter = (options: AuthRouterOptions): Router => {
 
   router.post('/register', async (request, response) => {
     const body = asJsonObject(request.body);
-    assertNoUserIdOverride(body);
+    assertRegistrationFields(body);
     const email = readOptionalString(body, 'email');
     const phone = readOptionalString(body, 'phone');
     const registerRequest: RegisterRequest = {
       ...(email === undefined ? {} : { email }),
       ...(phone === undefined ? {} : { phone }),
       password: readRequiredString(body, 'password'),
+      requested_role: readRequestedRole(body),
     };
-    const result = await options.service.register(registerRequest);
+    const result = await options.service.register({
+      ...(registerRequest.email === undefined ? {} : { email: registerRequest.email }),
+      ...(registerRequest.phone === undefined ? {} : { phone: registerRequest.phone }),
+      password: registerRequest.password,
+      requestedRole: registerRequest.requested_role,
+    });
 
     if (result.kind === 'verification-required') {
+      clearRefreshTokenCookie(response, options.refreshCookie);
       response.status(201).json(result.response satisfies RegisterResponse);
       return;
     }

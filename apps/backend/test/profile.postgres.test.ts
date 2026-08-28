@@ -157,6 +157,9 @@ test(
       const restored = await repository.findByUserId(userId);
       assert.equal(restored?.survey?.version, 2);
       assert.equal(restored?.onboardingStatus, 'onboarding_pending');
+      assert.equal(restored?.accountRole, 'client');
+      assert.equal(restored?.requestedRole, 'trainee');
+      assert.equal(restored?.trainerVerificationState, 'not_started');
 
       const completed = await repository.completeOnboarding(userId);
       assert.equal(completed?.onboardingStatus, 'base_lessons');
@@ -171,6 +174,80 @@ test(
       assert.equal(statusResult.rows[0]?.onboarding_status, 'base_lessons');
       console.log('KINETRA_T04_POSTGRES_INTEGRATION=PASS');
       console.log('KINETRA_T05_POSTGRES_INTEGRATION=PASS');
+    } finally {
+      await pool.query('DELETE FROM users WHERE id = $1', [userId]);
+      await pool.end();
+    }
+  },
+);
+
+test(
+  'PostgreSQL profile distinguishes requested trainer state from granted trainer authority',
+  { skip: databaseUrl === undefined ? 'DATABASE_URL is not configured.' : false },
+  async () => {
+    if (databaseUrl === undefined) {
+      throw new Error('DATABASE_URL is required for the PostgreSQL profile integration test.');
+    }
+
+    const pool = new Pool({ connectionString: databaseUrl, max: 2 });
+    const repository = new PostgresProfileRepository(pool);
+    const userId = randomUUID();
+    const email = `profile-role-${userId}@example.com`;
+    const passwordHash = '$2b$10$abcdefghijklmnopqrstuv12345678901234567890123456789012';
+
+    try {
+      await pool.query(
+        `INSERT INTO users (
+           id, email, password_hash, email_verified, requested_role, onboarding_status
+         ) VALUES ($1, $2, $3, true, 'trainer', 'survey_pending')`,
+        [userId, email, passwordHash],
+      );
+      const request = await pool.query<{ readonly id: string }>(
+        `INSERT INTO trainer_verification_requests (user_id, status)
+         VALUES ($1, 'pending')
+         RETURNING id`,
+        [userId],
+      );
+
+      const beforeSubmission = await repository.findByUserId(userId);
+      assert.equal(beforeSubmission?.requestedRole, 'trainer');
+      assert.equal(beforeSubmission?.trainerVerificationState, 'not_started');
+      assert.equal(beforeSubmission?.accountRole, 'client');
+      assert.equal(beforeSubmission?.trainerProfile, null);
+
+      await pool.query(
+        `UPDATE trainer_verification_requests
+         SET display_name = 'Profile Role Trainer',
+             specialization = 'Mobility',
+             experience_years = 5,
+             bio = 'Long enough profile verification biography.',
+             city = 'Moscow',
+             timezone = 'Europe/Moscow',
+             submitted_at = NOW()
+         WHERE id = $1`,
+        [request.rows[0]?.id],
+      );
+
+      const pending = await repository.findByUserId(userId);
+      assert.equal(pending?.requestedRole, 'trainer');
+      assert.equal(pending?.trainerVerificationState, 'pending');
+      assert.equal(pending?.accountRole, 'client');
+      assert.equal(pending?.trainerProfile, null);
+
+      await pool.query(
+        `INSERT INTO trainer_profiles (
+           user_id, display_name, is_active, is_default, can_manage_videos
+         ) VALUES ($1, 'Profile Role Trainer', true, false, false)`,
+        [userId],
+      );
+
+      const approvedAuthority = await repository.findByUserId(userId);
+      assert.equal(approvedAuthority?.requestedRole, 'trainer');
+      assert.equal(approvedAuthority?.trainerVerificationState, 'approved');
+      assert.equal(approvedAuthority?.accountRole, 'trainer');
+      assert.equal(approvedAuthority?.trainerProfile?.displayName, 'Profile Role Trainer');
+      assert.equal(approvedAuthority?.trainerProfile?.canManageVideos, false);
+      console.log('KINETRA_REGISTRATION_PROFILE_POSTGRES17=PASS');
     } finally {
       await pool.query('DELETE FROM users WHERE id = $1', [userId]);
       await pool.end();

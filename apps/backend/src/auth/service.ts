@@ -2,6 +2,7 @@ import type {
   AuthSessionResponse,
   PublicUser,
   RegistrationPendingVerificationResponse,
+  RequestedRole,
 } from '@kinetra/shared';
 import { randomUUID } from 'node:crypto';
 
@@ -62,6 +63,7 @@ export interface RegisterInput {
   readonly email?: string;
   readonly phone?: string;
   readonly password: string;
+  readonly requestedRole: RequestedRole;
 }
 
 export interface LoginInput {
@@ -121,11 +123,20 @@ export class AuthService {
   }
 
   public async register(input: RegisterInput): Promise<RegisterResult> {
+    this.assertRequestedRoleIsValid(input.requestedRole);
     const email = this.normalizeRegistrationEmail(input.email);
     const phone = this.normalizeRegistrationPhone(input.phone);
 
     if (email === null && phone === null) {
       throw new HttpError(400, 'IDENTIFIER_REQUIRED', 'Email or phone is required.');
+    }
+
+    if (input.requestedRole === 'trainer' && email === null) {
+      throw new HttpError(
+        400,
+        'TRAINER_EMAIL_REQUIRED',
+        'Email is required for trainer verification.',
+      );
     }
 
     if (email === null && !this.config.phoneOnlyRegistrationEnabled) {
@@ -145,6 +156,7 @@ export class AuthService {
       phone,
       passwordHash,
       emailVerified: email !== null && !this.config.emailVerificationRequired,
+      requestedRole: input.requestedRole,
       now,
     });
 
@@ -384,6 +396,16 @@ export class AuthService {
 
     if (issue !== null) {
       throw new HttpError(400, 'WEAK_PASSWORD', issue);
+    }
+  }
+
+  private assertRequestedRoleIsValid(role: unknown): asserts role is RequestedRole {
+    if (role !== 'trainer' && role !== 'trainee') {
+      throw new HttpError(
+        400,
+        'INVALID_REQUESTED_ROLE',
+        'requested_role must be either trainer or trainee.',
+      );
     }
   }
 

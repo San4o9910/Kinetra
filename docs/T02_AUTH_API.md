@@ -28,12 +28,23 @@ Email — основной идентификатор. Телефон можно
 {
   "email": "user@example.com",
   "phone": "+79991234567",
-  "password": "StrongPass123"
+  "password": "StrongPass123",
+  "requested_role": "trainee"
 }
 ```
 
 `phone` необязателен. `email` можно не передавать только при
-`AUTH_PHONE_ONLY_REGISTRATION_ENABLED=true`.
+`AUTH_PHONE_ONLY_REGISTRATION_ENABLED=true` и только для
+`requested_role="trainee"`. Для роли `trainer` email обязателен, потому что
+выдача trainer-доступа требует подтверждённого email, а отдельный add-email flow
+в этот MVP не входит (`400 TRAINER_EMAIL_REQUIRED`).
+
+`requested_role` обязателен и принимает ровно `trainer` или `trainee`. Это
+намерение пользователя, а не полномочие аккаунта: новый пользователь с
+`requested_role="trainer"` остаётся `account_role="client"` до отдельного
+approval через trainer verification. Поля полномочий (`account_role`,
+`is_admin`, `is_verified`, `can_manage_videos`, `trainer_profile`, `userId`,
+`user_id`) при регистрации запрещены; неизвестные поля также отклоняются.
 
 Успех без обязательной верификации — `201`:
 
@@ -67,7 +78,13 @@ Email — основной идентификатор. Телефон можно
 }
 ```
 
+В этом ответе сервер очищает прежнюю refresh cookie. Это не выдаёт сессию
+новому аккаунту и не позволяет старой cookie смешаться с ожидающей email
+verification регистрацией.
+
 Основные ошибки: `INVALID_EMAIL`, `INVALID_PHONE`, `EMAIL_REQUIRED`, `WEAK_PASSWORD`,
+`TRAINER_EMAIL_REQUIRED`, `VALIDATION_ERROR`, `INVALID_REQUESTED_ROLE`,
+`AUTHORITY_FIELD_NOT_ALLOWED`, `UNKNOWN_REGISTRATION_FIELD`,
 `IDENTIFIER_ALREADY_REGISTERED`.
 
 ## POST /login

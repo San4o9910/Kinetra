@@ -212,6 +212,7 @@ const registerEmailUser = async (harness: TestHarness): Promise<ApiResult> =>
   postJson(harness, '/api/v1/auth/register', {
     email: 'athlete@example.com',
     password: 'StrongPass123',
+    requested_role: 'trainee',
   });
 
 test('email registration and login use bcrypt and reject a wrong password', async () => {
@@ -221,6 +222,7 @@ test('email registration and login use bcrypt and reject a wrong password', asyn
     const registration = await postJson(harness, '/api/v1/auth/register', {
       email: ' Athlete@Example.COM ',
       password: 'StrongPass123',
+      requested_role: 'trainee',
     });
     assert.equal(registration.status, 201);
     assert.notEqual(registration.cookie, null);
@@ -257,11 +259,88 @@ test('email registration and login use bcrypt and reject a wrong password', asyn
   }
 });
 
-test('unexpected database errors are logged without PostgreSQL details or row values', async () => {
+test('registration requires an explicit public role and rejects authority escalation', async () => {
+  const harness = await startHarness();
+  const originalCreateUser = harness.repository.createUser.bind(harness.repository);
+  const persistedRoles: string[] = [];
+
+  harness.repository.createUser = async (input) => {
+    persistedRoles.push(input.requestedRole);
+    return originalCreateUser(input);
+  };
+
+  try {
+    for (const requestedRole of ['trainee', 'trainer'] as const) {
+      const accepted = await postJson(harness, '/api/v1/auth/register', {
+        email: `${requestedRole}@example.com`,
+        password: 'StrongPass123',
+        requested_role: requestedRole,
+      });
+      assert.equal(accepted.status, 201);
+    }
+    assert.deepEqual(persistedRoles, ['trainee', 'trainer']);
+
+    const missing = await postJson(harness, '/api/v1/auth/register', {
+      email: 'missing-role@example.com',
+      password: 'StrongPass123',
+    });
+    assert.equal(missing.status, 400);
+    assert.equal(errorCode(missing.body), 'VALIDATION_ERROR');
+
+    const invalid = await postJson(harness, '/api/v1/auth/register', {
+      email: 'invalid-role@example.com',
+      password: 'StrongPass123',
+      requested_role: 'client',
+    });
+    assert.equal(invalid.status, 400);
+    assert.equal(errorCode(invalid.body), 'INVALID_REQUESTED_ROLE');
+
+    for (const [field, value] of [
+      ['account_role', 'trainer'],
+      ['is_admin', true],
+      ['can_manage_videos', true],
+      ['is_verified', true],
+      ['trainer_profile', { is_active: true }],
+      ['userId', randomUUID()],
+      ['user_id', randomUUID()],
+    ] as const) {
+      const escalated = await postJson(harness, '/api/v1/auth/register', {
+        email: `blocked-${field.replace('_', '-')}@example.com`,
+        password: 'StrongPass123',
+        requested_role: 'trainer',
+        [field]: value,
+      });
+      assert.equal(escalated.status, 400, field);
+      assert.equal(errorCode(escalated.body), 'AUTHORITY_FIELD_NOT_ALLOWED', field);
+    }
+
+    const unknown = await postJson(harness, '/api/v1/auth/register', {
+      email: 'unknown-field@example.com',
+      password: 'StrongPass123',
+      requested_role: 'trainee',
+      marketing_opt_in: true,
+    });
+    assert.equal(unknown.status, 400);
+    assert.equal(errorCode(unknown.body), 'UNKNOWN_REGISTRATION_FIELD');
+
+    const conflict = await postJson(harness, '/api/v1/auth/register', {
+      email: 'trainee@example.com',
+      password: 'StrongPass123',
+      requested_role: 'trainer',
+    });
+    assert.equal(conflict.status, 409);
+    assert.equal(errorCode(conflict.body), 'IDENTIFIER_ALREADY_REGISTERED');
+  } finally {
+    harness.repository.createUser = originalCreateUser;
+    await harness.close();
+  }
+});
+
+test('SQLSTATE 42804 is logged without PostgreSQL details or row values', async () => {
   const harness = await startHarness();
   const sensitiveDetail = 'Failing row contains private trainer chat message text.';
-  const databaseError = Object.assign(new Error('violates check constraint'), {
-    code: '23514',
+  const databaseError = Object.assign(new Error('column has incompatible PostgreSQL type'), {
+    code: '42804',
     detail: sensitiveDetail,
     query: 'INSERT INTO chat_messages (body) VALUES (private trainer chat message text)',
   });
@@ -286,6 +365,7 @@ test('unexpected database errors are logged without PostgreSQL details or row va
       body: JSON.stringify({
         email: 'logger-regression@example.com',
         password: 'StrongPass123',
+        requested_role: 'trainee',
       }),
     });
 
@@ -294,10 +374,10 @@ test('unexpected database errors are logged without PostgreSQL details or row va
     assert.equal(errorCode(responseBody), 'INTERNAL_ERROR');
     const serializedLogs = JSON.stringify(capturedLogs);
     assert.equal(serializedLogs.includes('redacted-error-regression'), true);
-    assert.equal(serializedLogs.includes('23514'), true);
+    assert.equal(serializedLogs.includes('42804'), true);
     assert.equal(serializedLogs.includes(sensitiveDetail), false);
     assert.equal(serializedLogs.includes('private trainer chat message text'), false);
-    assert.equal(serializedLogs.includes('violates check constraint'), false);
+    assert.equal(serializedLogs.includes('incompatible PostgreSQL type'), false);
   } finally {
     harness.repository.createUser = originalCreateUser;
     console.error = originalConsoleError;
@@ -312,6 +392,7 @@ test('phone-only registration is configuration-gated and phone can be an alterna
     const rejected = await postJson(defaultHarness, '/api/v1/auth/register', {
       phone: '+7 (999) 123-45-67',
       password: 'StrongPass123',
+      requested_role: 'trainee',
     });
     assert.equal(rejected.status, 400);
     assert.equal(errorCode(rejected.body), 'EMAIL_REQUIRED');
@@ -320,6 +401,7 @@ test('phone-only registration is configuration-gated and phone can be an alterna
       email: 'phone-alt@example.com',
       phone: '+7 (999) 111-22-33',
       password: 'StrongPass123',
+      requested_role: 'trainee',
     });
     assert.equal(alternative.status, 201);
     const alternativeLogin = await postJson(defaultHarness, '/api/v1/auth/login', {
@@ -336,9 +418,18 @@ test('phone-only registration is configuration-gated and phone can be an alterna
   });
 
   try {
+    const trainerWithoutEmail = await postJson(phoneOnlyHarness, '/api/v1/auth/register', {
+      phone: '+7 (999) 000-11-22',
+      password: 'StrongPass123',
+      requested_role: 'trainer',
+    });
+    assert.equal(trainerWithoutEmail.status, 400);
+    assert.equal(errorCode(trainerWithoutEmail.body), 'TRAINER_EMAIL_REQUIRED');
+
     const registration = await postJson(phoneOnlyHarness, '/api/v1/auth/register', {
       phone: '+7 (999) 123-45-67',
       password: 'StrongPass123',
+      requested_role: 'trainee',
     });
     assert.equal(registration.status, 201);
     assert.equal(asObject(asObject(registration.body).user).phone, '+79991234567');
@@ -435,6 +526,7 @@ test('day-zero logout proof revokes only its day-31 sliding refresh family', asy
     const otherAccount = await postJson(harness, '/api/v1/auth/register', {
       email: 'logout-family-other@example.com',
       password: 'StrongPass123',
+      requested_role: 'trainee',
     });
     assert.equal(otherAccount.status, 201);
     assert.notEqual(otherAccount.cookie, null);
@@ -600,10 +692,12 @@ test('subject-bound logout never revokes or clears another tab account refresh c
     const accountA = await postJson(harness, '/api/v1/auth/register', {
       email: 'account-a@example.test',
       password: 'StrongPass123',
+      requested_role: 'trainee',
     });
     const accountB = await postJson(harness, '/api/v1/auth/register', {
       email: 'account-b@example.test',
       password: 'StrongPass123',
+      requested_role: 'trainer',
     });
     assert.equal(accountA.status, 201);
     assert.equal(accountB.status, 201);
@@ -666,10 +760,12 @@ test('bearerless late logout is a no-op and never emits Set-Cookie', async () =>
     await postJson(harness, '/api/v1/auth/register', {
       email: 'legacy-account-a@example.test',
       password: 'StrongPass123',
+      requested_role: 'trainee',
     });
     const newerAccount = await postJson(harness, '/api/v1/auth/register', {
       email: 'legacy-account-b@example.test',
       password: 'StrongPass123',
+      requested_role: 'trainee',
     });
     assert.equal(newerAccount.status, 201);
     assert.notEqual(newerAccount.cookie, null);
@@ -786,7 +882,7 @@ test('optional email verification blocks login until the one-time token is consu
   try {
     const registration = await registerEmailUser(harness);
     assert.equal(registration.status, 201);
-    assert.equal(registration.cookie, null);
+    assert.equal(registration.cookie?.startsWith('kinetra_refresh_test='), true);
     assert.equal(asObject(registration.body).emailVerificationRequired, true);
     assert.equal(harness.delivery.emailVerifications.length, 1);
 
@@ -815,6 +911,39 @@ test('optional email verification blocks login until the one-time token is consu
       password: 'StrongPass123',
     });
     assert.equal(login.status, 200);
+  } finally {
+    await harness.close();
+  }
+});
+
+test('verification-required registration clears a prior refresh cookie without issuing a session', async () => {
+  const harness = await startHarness({
+    auth: { emailVerificationRequired: true },
+  });
+
+  try {
+    const response = await fetch(`${harness.baseUrl}/api/v1/auth/register`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        cookie: 'kinetra_refresh_test=prior-account-refresh-token',
+      },
+      body: JSON.stringify({
+        email: 'verification-cookie@example.com',
+        password: 'StrongPass123',
+        requested_role: 'trainer',
+      }),
+    });
+    assert.equal(response.status, 201);
+    const body = asObject(await response.json());
+    assert.equal(body.emailVerificationRequired, true);
+    assert.equal(Object.hasOwn(body, 'accessToken'), false);
+    const setCookie = response.headers.get('set-cookie');
+    assert.notEqual(setCookie, null);
+    assert.match(setCookie ?? '', /^kinetra_refresh_test=;/u);
+    assert.match(setCookie ?? '', /Expires=Thu, 01 Jan 1970 00:00:00 GMT/iu);
+    assert.match(setCookie ?? '', /HttpOnly/iu);
+    assert.match(setCookie ?? '', /Path=\/api\/v1\/auth/iu);
   } finally {
     await harness.close();
   }
@@ -853,9 +982,10 @@ test('password-reset request is rate-limited and request bodies cannot override 
       userId: 'attacker-controlled-id',
       email: 'attacker@example.com',
       password: 'StrongPass123',
+      requested_role: 'trainee',
     });
     assert.equal(injectedUserId.status, 400);
-    assert.equal(errorCode(injectedUserId.body), 'USER_ID_NOT_ALLOWED');
+    assert.equal(errorCode(injectedUserId.body), 'AUTHORITY_FIELD_NOT_ALLOWED');
 
     const first = await postJson(harness, '/api/v1/auth/password-reset/request', {
       email: 'missing@example.com',

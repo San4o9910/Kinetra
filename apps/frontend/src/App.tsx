@@ -10,6 +10,7 @@ import React, {
 import type { MeResponse, SubscriptionResponse } from '@kinetra/shared';
 
 import { LoginScreen } from './features/auth/LoginScreen';
+import { RegisterScreen } from './features/auth/RegisterScreen';
 import { BaseLessonsScreen } from './features/base-lessons/BaseLessonsScreen';
 import { TabBar } from './features/navigation/TabBar';
 import { OnboardingCarousel } from './features/onboarding/OnboardingCarousel';
@@ -29,6 +30,7 @@ import { SurveyWizard } from './features/survey/SurveyWizard';
 import { ChatFloatingButton, ClientChatScreen, useChatRuntime } from './features/chat';
 import { TrainerChatsScreen } from './features/trainer-chat';
 import { TrainerAdminShell } from './features/trainer-shell/TrainerAdminShell';
+import { TrainerVerificationScreen } from './features/trainer-verification/TrainerVerificationScreen';
 import { TrainerVideosScreen } from './features/trainer-videos/TrainerVideosScreen';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import {
@@ -221,6 +223,8 @@ type SessionState =
   | { readonly kind: 'server'; readonly message: string }
   | { readonly kind: 'authenticated'; readonly profile: MeResponse };
 
+type AuthView = 'login' | 'register';
+
 type SubscriptionLoadState =
   | { readonly kind: 'idle' }
   | { readonly kind: 'loading' }
@@ -262,6 +266,7 @@ const useBrowserRoute = (): readonly [AppRoute, (route: AppRoute, replace?: bool
 
 export const App = (): ReactNode => {
   const [session, setSession] = useState<SessionState>({ kind: 'booting' });
+  const [authView, setAuthView] = useState<AuthView>('login');
   const [route, navigate] = useBrowserRoute();
   const [workoutCompletionBusy, setWorkoutCompletionBusy] = useState(false);
   const [blockingDialogOpen, setBlockingDialogOpen] = useState(false);
@@ -312,9 +317,20 @@ export const App = (): ReactNode => {
     subscriptionControllerRef.current?.abort();
     subscriptionRequestVersionRef.current += 1;
     setSubscriptionState({ kind: 'idle' });
+    setAuthView('login');
     setSession({ kind: 'unauthenticated' });
     navigate(appRoutes.login, true);
   }, [navigate]);
+
+  const handleTrainerVerificationProfileUpdated = useCallback(
+    (updated: MeResponse): void => {
+      setSession({ kind: 'authenticated', profile: updated });
+      if (updated.account_role === 'trainer') {
+        navigate(appRoutes.trainerChats, true);
+      }
+    },
+    [navigate],
+  );
 
   const loadSubscription = useCallback(
     (announceLoading = true): void => {
@@ -373,6 +389,7 @@ export const App = (): ReactNode => {
       const restored = await bootstrapSession();
 
       if (!restored) {
+        setAuthView('login');
         setSession({ kind: 'unauthenticated' });
         return;
       }
@@ -386,6 +403,7 @@ export const App = (): ReactNode => {
 
       if (error instanceof ApiRequestError) {
         if (error.kind === 'auth') {
+          setAuthView('login');
           setSession({ kind: 'unauthenticated' });
           return;
         }
@@ -424,10 +442,14 @@ export const App = (): ReactNode => {
 
   const authenticatedUserId = session.kind === 'authenticated' ? session.profile.user.id : null;
   const authenticatedRole = session.kind === 'authenticated' ? session.profile.account_role : null;
+  const trainerVerificationRequired =
+    session.kind === 'authenticated' &&
+    session.profile.account_role === 'client' &&
+    session.profile.requested_role === 'trainer';
   const chatEnabled =
     session.kind === 'authenticated' &&
     (session.profile.account_role === 'trainer' ||
-      session.profile.user.onboardingStatus === 'active');
+      (session.profile.user.onboardingStatus === 'active' && !trainerVerificationRequired));
   const chatRuntime = useChatRuntime({
     accountId: authenticatedUserId,
     role: authenticatedRole,
@@ -445,6 +467,7 @@ export const App = (): ReactNode => {
     subscriptionRequestVersionRef.current += 1;
     setSubscriptionState({ kind: 'idle' });
     setBlockingDialogOpen(false);
+    setAuthView('login');
     setSession({ kind: 'unauthenticated' });
     navigate(appRoutes.login, true);
   }, [navigate]);
@@ -521,7 +544,11 @@ export const App = (): ReactNode => {
   }, [authenticatedUserId]);
 
   useEffect(() => {
-    if (authenticatedUserId === null || authenticatedRole !== 'client') {
+    if (
+      authenticatedUserId === null ||
+      authenticatedRole !== 'client' ||
+      trainerVerificationRequired
+    ) {
       subscriptionControllerRef.current?.abort();
       subscriptionRequestVersionRef.current += 1;
       setSubscriptionState({ kind: 'idle' });
@@ -533,10 +560,14 @@ export const App = (): ReactNode => {
       subscriptionControllerRef.current?.abort();
       subscriptionRequestVersionRef.current += 1;
     };
-  }, [authenticatedRole, authenticatedUserId, loadSubscription]);
+  }, [authenticatedRole, authenticatedUserId, loadSubscription, trainerVerificationRequired]);
 
   useEffect(() => {
-    if (authenticatedUserId === null || authenticatedRole !== 'client') {
+    if (
+      authenticatedUserId === null ||
+      authenticatedRole !== 'client' ||
+      trainerVerificationRequired
+    ) {
       return;
     }
 
@@ -548,7 +579,7 @@ export const App = (): ReactNode => {
 
     document.addEventListener('visibilitychange', refreshWhenVisible);
     return () => document.removeEventListener('visibilitychange', refreshWhenVisible);
-  }, [authenticatedRole, authenticatedUserId, loadSubscription]);
+  }, [authenticatedRole, authenticatedUserId, loadSubscription, trainerVerificationRequired]);
 
   useLayoutEffect(() => {
     if (
@@ -645,17 +676,27 @@ export const App = (): ReactNode => {
   }
 
   if (session.kind === 'unauthenticated') {
+    const handleAuthenticated = (profile: MeResponse): void => {
+      setAuthView('login');
+      setSession({ kind: 'authenticated', profile });
+      navigate(
+        profile.account_role === 'trainer'
+          ? appRoutes.trainerChats
+          : routeForOnboardingStatus(profile.user.onboardingStatus),
+        true,
+      );
+    };
+
+    if (authView === 'register') {
+      return (
+        <RegisterScreen onAuthenticated={handleAuthenticated} onBack={() => setAuthView('login')} />
+      );
+    }
+
     return (
       <LoginScreen
-        onAuthenticated={(profile) => {
-          setSession({ kind: 'authenticated', profile });
-          navigate(
-            profile.account_role === 'trainer'
-              ? appRoutes.trainerChats
-              : routeForOnboardingStatus(profile.user.onboardingStatus),
-            true,
-          );
-        }}
+        onAuthenticated={handleAuthenticated}
+        onRegister={() => setAuthView('register')}
       />
     );
   }
@@ -672,11 +713,11 @@ export const App = (): ReactNode => {
 
   const profile = session.profile;
 
-  if (profile.account_role === 'trainer') {
-    if (trainerSignOutState !== 'idle') {
-      return <TrainerSignOutState state={trainerSignOutState} onRetry={handleTrainerSignOut} />;
-    }
+  if (trainerSignOutState !== 'idle') {
+    return <TrainerSignOutState state={trainerSignOutState} onRetry={handleTrainerSignOut} />;
+  }
 
+  if (profile.account_role === 'trainer') {
     if (!isTrainerRoute(route)) {
       return (
         <ChatRouteState
@@ -760,6 +801,16 @@ export const App = (): ReactNode => {
         onSessionExpired={handleActiveSessionExpired}
         registerObjectUrl={chatRuntime.registerObjectUrl}
       />,
+    );
+  }
+
+  if (profile.requested_role === 'trainer') {
+    return (
+      <TrainerVerificationScreen
+        onProfileUpdated={handleTrainerVerificationProfileUpdated}
+        onSessionExpired={handleActiveSessionExpired}
+        onSignOut={handleTrainerSignOut}
+      />
     );
   }
 

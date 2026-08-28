@@ -1,3 +1,5 @@
+import type { RequestedRole } from '@kinetra/shared';
+
 export interface UserRecord {
   readonly id: string;
   readonly email: string | null;
@@ -14,6 +16,7 @@ export interface CreateUserInput {
   readonly phone: string | null;
   readonly passwordHash: string;
   readonly emailVerified: boolean;
+  readonly requestedRole: RequestedRole;
   readonly now: Date;
 }
 

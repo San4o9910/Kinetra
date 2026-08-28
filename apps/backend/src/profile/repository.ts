@@ -1,6 +1,7 @@
 import type {
   AccountRole,
   OnboardingStatus,
+  RequestedRole,
   SubscriptionProvider,
   SubscriptionStatus,
   SurveyAgeRange,
@@ -8,6 +9,7 @@ import type {
   SurveyGender,
   SurveyGoal,
   SurveyInjury,
+  TrainerVerificationState,
 } from '@kinetra/shared';
 
 export interface SurveyInput {
@@ -51,6 +53,8 @@ export interface UserProfileSnapshot {
   readonly createdAt: Date;
   readonly updatedAt: Date;
   readonly accountRole: AccountRole;
+  readonly requestedRole?: RequestedRole;
+  readonly trainerVerificationState?: TrainerVerificationState;
   readonly trainerProfile: {
     readonly displayName: string;
     readonly avatarUrl: string | null;

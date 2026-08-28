@@ -134,6 +134,9 @@ test('GET /api/v1/me requires a valid access JWT and restores server progress', 
 
     const initial = await requestJson(harness, '/api/v1/me');
     assert.equal(initial.status, 200);
+    assert.equal(asObject(initial.body).account_role, 'client');
+    assert.equal(asObject(initial.body).requested_role, 'trainee');
+    assert.equal(asObject(initial.body).trainer_verification_state, 'not_started');
     assert.equal(asObject(asObject(initial.body).user).onboardingStatus, 'survey_pending');
     assert.equal(asObject(initial.body).survey, null);
 
@@ -148,6 +151,35 @@ test('GET /api/v1/me requires a valid access JWT and restores server progress', 
     assert.equal(asObject(asObject(restored.body).user).onboardingStatus, 'onboarding_pending');
     assert.equal(asObject(asObject(restored.body).survey).version, 1);
   } finally {
+    await harness.close();
+  }
+});
+
+test('GET /api/v1/me exposes requested trainer role without granting trainer authority', async () => {
+  const harness = await startHarness();
+  const originalFindByUserId = harness.repository.findByUserId.bind(harness.repository);
+
+  harness.repository.findByUserId = async (userId) => {
+    const profile = await originalFindByUserId(userId);
+    return profile === null
+      ? null
+      : {
+          ...profile,
+          requestedRole: 'trainer',
+          trainerVerificationState: 'pending',
+        };
+  };
+
+  try {
+    const response = await requestJson(harness, '/api/v1/me');
+    assert.equal(response.status, 200);
+    const body = asObject(response.body);
+    assert.equal(body.account_role, 'client');
+    assert.equal(body.requested_role, 'trainer');
+    assert.equal(body.trainer_verification_state, 'pending');
+    assert.equal(body.trainer_profile, null);
+  } finally {
+    harness.repository.findByUserId = originalFindByUserId;
     await harness.close();
   }
 });
