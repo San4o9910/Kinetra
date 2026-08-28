@@ -113,6 +113,8 @@ test('inactive subscription renders a locked T07 surface without rendering a pla
     createElement(ProgramScreen, {
       timezone: 'Europe/Moscow',
       subscription: expiredSubscription,
+      trainingLocked: true,
+      onOpenBaseLessons: () => undefined,
       onOpenPayment: () => undefined,
       onSubscriptionRequired: () => undefined,
       onWorkoutCompletionBusyChange: () => undefined,

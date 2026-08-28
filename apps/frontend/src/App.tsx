@@ -53,6 +53,7 @@ import {
   appRoutes,
   isActiveAppRoute,
   isChatFabRoute,
+  isExplorationAppRoute,
   isPaymentRoute,
   isSettingsRoute,
   isTrainerRoute,
@@ -650,6 +651,18 @@ export const App = (): ReactNode => {
       return;
     }
 
+    if (session.profile.user.onboardingStatus === 'base_lessons') {
+      if (route === appRoutes.editSurvey && session.profile.survey === null) {
+        navigate(appRoutes.settings, true);
+        return;
+      }
+
+      if (!isExplorationAppRoute(route)) {
+        navigate(appRoutes.home, true);
+      }
+      return;
+    }
+
     if (isSettingsRoute(route)) {
       if (route === appRoutes.editSurvey && session.profile.survey === null) {
         navigate(appRoutes.settings, true);
@@ -867,7 +880,8 @@ export const App = (): ReactNode => {
     blockingDialogOpen || !isChatFabRoute(route) || chatControlledUnavailable || !chatEnabled;
 
   const withActiveNavigation = (content: ReactNode): ReactNode =>
-    profile.user.onboardingStatus === 'active' ? (
+    profile.user.onboardingStatus === 'active' ||
+    profile.user.onboardingStatus === 'base_lessons' ? (
       <ActiveAppShell
         route={route}
         navigationDisabled={workoutCompletionBusy}
@@ -945,7 +959,7 @@ export const App = (): ReactNode => {
     );
   }
 
-  if (profile.user.onboardingStatus === 'base_lessons') {
+  if (profile.user.onboardingStatus === 'base_lessons' && route === appRoutes.baseLessons) {
     return (
       <BaseLessonsScreen
         key={profile.user.id}
@@ -953,6 +967,7 @@ export const App = (): ReactNode => {
           setSession({ kind: 'authenticated', profile: updated });
           navigate(routeForOnboardingStatus(updated.user.onboardingStatus), true);
         }}
+        onBackToApp={() => navigate(appRoutes.home)}
         onOpenSettings={() => navigate(appRoutes.settings)}
         onSessionExpired={() => {
           setSession({ kind: 'unauthenticated' });
@@ -1066,6 +1081,8 @@ export const App = (): ReactNode => {
         <ProgramScreen
           timezone={profile.user.timezone}
           subscription={subscriptionState.subscription}
+          trainingLocked={profile.user.onboardingStatus === 'base_lessons'}
+          onOpenBaseLessons={() => navigate(appRoutes.baseLessons)}
           onOpenPayment={() => navigate(appRoutes.payment)}
           onSubscriptionRequired={loadSubscription}
           onWorkoutCompletionBusyChange={setWorkoutCompletionBusy}

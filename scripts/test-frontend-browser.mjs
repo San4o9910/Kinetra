@@ -116,6 +116,7 @@ const counters = {
   weeklyMetricsPut: 0,
   goalPut: 0,
   settingsProfileGet: 0,
+  chatSessionGet: 0,
   subscriptionGet: 0,
   paymentCreate: 0,
   subscriptionCancel: 0,
@@ -283,7 +284,7 @@ let releaseWorkoutCompletionResponse = null;
 const workoutVideoId = (weekNumber, dayOfWeek) =>
   `20000000-0000-4000-8${String(weekNumber).padStart(3, '0')}-${String(dayOfWeek).padStart(12, '0')}`;
 
-const programWeekPayload = (weekNumber) => {
+const programWeekPayload = (weekNumber, includeWorkoutMedia = true) => {
   const days = workoutSchedule.map((workout, index) => {
     const dayOfWeek = index + 1;
     const videoId = workoutVideoId(weekNumber, dayOfWeek);
@@ -296,7 +297,7 @@ const programWeekPayload = (weekNumber) => {
       video: {
         id: videoId,
         video_url:
-          weekNumber === 1 && dayOfWeek === 1
+          includeWorkoutMedia && weekNumber === 1 && dayOfWeek === 1
             ? `${frontendOrigin}/browser-test-video.mp4?workout=${dayOfWeek}`
             : null,
         poster_url: null,
@@ -602,6 +603,23 @@ const createMockApiServer = () =>
       return;
     }
 
+    if (request.method === 'POST' && request.url === '/__browser-test/subscription/activate') {
+      subscriptionPayload = {
+        status: 'active',
+        provider: 'yukassa',
+        starts_at: initialSubscriptionStartsAt,
+        expires_at: initialSubscriptionExpiresAt,
+        amount: 799,
+        currency: 'RUB',
+        auto_renew: true,
+        days_remaining: 30,
+      };
+      pendingSubscriptionPollsRemaining = 0;
+      response.writeHead(204, { 'Cache-Control': 'no-store' });
+      response.end();
+      return;
+    }
+
     if (request.method === 'GET' && (request.url ?? '').startsWith('/browser-test-video.mp4')) {
       response.writeHead(204, {
         'Content-Type': 'video/mp4',
@@ -709,6 +727,7 @@ const createMockApiServer = () =>
         return;
       }
 
+      counters.chatSessionGet += 1;
       json(response, 200, {
         role: 'client',
         enabled: false,
@@ -1117,7 +1136,7 @@ const createMockApiServer = () =>
       }
 
       counters.currentWeekGet += 1;
-      json(response, 200, programWeekPayload(1));
+      json(response, 200, programWeekPayload(1, profile.user.onboardingStatus === 'active'));
       return;
     }
 
@@ -1237,7 +1256,11 @@ const createMockApiServer = () =>
         return;
       }
 
-      json(response, 200, programWeekPayload(weekNumber));
+      json(
+        response,
+        200,
+        programWeekPayload(weekNumber, profile.user.onboardingStatus === 'active'),
+      );
       return;
     }
 
@@ -1245,6 +1268,16 @@ const createMockApiServer = () =>
       if (!hasValidAccessToken(request)) {
         json(response, 401, {
           error: { code: 'AUTHENTICATION_REQUIRED', message: 'A valid access token is required.' },
+        });
+        return;
+      }
+
+      if (profile.user.onboardingStatus !== 'active') {
+        json(response, 403, {
+          error: {
+            code: 'BASE_LESSONS_REQUIRED',
+            message: 'Complete at least four base lessons before starting a workout.',
+          },
         });
         return;
       }
@@ -2589,7 +2622,7 @@ const runBrowserScenario = async () => {
     await waitOnboardingSlide(5);
     await click('onboarding-next');
     await waitOnboardingSlide(6);
-    assert.equal(await text('onboarding-complete'), 'К базовым урокам');
+    assert.equal(await text('onboarding-complete'), 'Открыть Kinetra');
 
     await doubleClick('onboarding-complete');
     await waitFor('login after expired onboarding session', () => exists('login-screen'));
@@ -2613,12 +2646,125 @@ const runBrowserScenario = async () => {
     assert.equal(await cdp.evaluate("sessionStorage.getItem('kinetra.onboarding.slide')"), '5');
 
     await click('onboarding-complete');
-    await waitFor('base lessons route after onboarding completion', () =>
+    await waitFor(
+      'exploration home after onboarding completion',
+      async () =>
+        (await pathname()) === '/' &&
+        (await exists('main-screen')) &&
+        (await exists('training-preparation-card')),
+    );
+    assert.equal(await cdp.evaluate("sessionStorage.getItem('kinetra.onboarding.slide')"), null);
+    assert.equal(await cdp.evaluate("sessionStorage.getItem('kinetra.onboarding.user')"), null);
+
+    await waitFor(
+      'exploration preparation progress and seven protected workout cards',
+      async () =>
+        (await text('training-preparation-progress')) === 'Пройдено 0 из 4 необходимых' &&
+        (await cdp.evaluate(
+          `document.querySelectorAll(${JSON.stringify('[data-training-access="base-lessons-required"]')}).length`,
+        )) === 7,
+    );
+    const workoutCompletionsBeforeExploration = counters.workoutComplete;
+    await click('workout-card-1');
+    await waitFor('base lessons explanation instead of workout player', () =>
+      dialogIsOpen('base-lessons-required-dialog'),
+    );
+    assert.equal(await exists('workout-player'), false);
+    assert.equal(counters.workoutComplete, workoutCompletionsBeforeExploration);
+    assert.ok((await text('base-lessons-required-dialog'))?.includes('свободно изучать'));
+    await click('continue-exploring-app');
+    await waitFor(
+      'exploration dialog closed',
+      async () => !(await dialogIsOpen('base-lessons-required-dialog')),
+    );
+
+    assert.equal(await exists('chat-fab'), false);
+    const chatSessionRequestsBeforeExplorationProbe = counters.chatSessionGet;
+    await cdp.evaluate(`
+      window.history.pushState(null, '', '/chat');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    `);
+    await waitFor(
+      'chat route is rejected during exploration',
+      async () =>
+        (await pathname()) === '/' &&
+        (await exists('training-preparation-card')) &&
+        !(await exists('chat-fab')),
+    );
+    assert.equal(counters.chatSessionGet, chatSessionRequestsBeforeExplorationProbe);
+    console.log('KINETRA_EXPLORATION_CHAT_LOCK=PASS');
+
+    await click('tab-schedule');
+    await waitFor(
+      'schedule is available during exploration',
+      async () => (await pathname()) === '/schedule' && (await exists('schedule-panel-current')),
+    );
+    await click('tab-progress');
+    await waitFor(
+      'progress is available during exploration',
+      async () => (await pathname()) === '/progress' && (await exists('progress-goal-section')),
+    );
+    await click('tab-settings');
+    await waitFor(
+      'settings are available during exploration',
+      async () => (await pathname()) === '/settings' && (await exists('settings-screen')),
+    );
+    await click('tab-home');
+    await waitFor(
+      'exploration home restored from tab bar',
+      async () => (await pathname()) === '/' && (await exists('training-preparation-card')),
+    );
+    console.log('KINETRA_ONBOARDING_EXPLORATION_NAVIGATION=PASS');
+
+    const currentWeekRequestsBeforeExplorationPaywall = counters.currentWeekGet;
+    const explorationExpireStatus = await cdp.evaluate(`fetch(
+      ${JSON.stringify(`${frontendOrigin}/__browser-test/subscription/expire`)},
+      { method: 'POST' }
+    ).then((response) => response.status)`);
+    assert.equal(explorationExpireStatus, 204);
+    await cdp.send('Page.reload', { ignoreCache: true });
+    await waitFor(
+      'subscription gate precedes base-lessons workout gate',
+      async () =>
+        (await pathname()) === '/' &&
+        (await exists('program-subscription-locked')) &&
+        (await dialogIsOpen('subscription-paywall-dialog')) &&
+        !(await dialogIsOpen('base-lessons-required-dialog')),
+    );
+    assert.equal(counters.currentWeekGet, currentWeekRequestsBeforeExplorationPaywall);
+    console.log('KINETRA_EXPLORATION_PAYWALL_PRECEDENCE=PASS');
+
+    const explorationActivateStatus = await cdp.evaluate(`fetch(
+      ${JSON.stringify(`${frontendOrigin}/__browser-test/subscription/activate`)},
+      { method: 'POST' }
+    ).then((response) => response.status)`);
+    assert.equal(explorationActivateStatus, 204);
+    await cdp.send('Page.reload', { ignoreCache: true });
+    await waitFor(
+      'exploration home restored after subscription activation',
+      async () => (await pathname()) === '/' && (await exists('training-preparation-card')),
+    );
+
+    await click('preparation-open-base-lessons');
+    await waitFor('explicit base lessons route from exploration home', () =>
       exists('base-lessons-screen'),
     );
     assert.equal(await pathname(), '/base-lessons');
-    assert.equal(await cdp.evaluate("sessionStorage.getItem('kinetra.onboarding.slide')"), null);
-    assert.equal(await cdp.evaluate("sessionStorage.getItem('kinetra.onboarding.user')"), null);
+    assert.equal(await exists('tab-bar'), false);
+    assert.equal(await exists('chat-fab'), false);
+    console.log('KINETRA_BASE_LESSONS_STANDALONE=PASS');
+
+    await click('base-lessons-back-to-app');
+    await waitFor(
+      'base lessons can return to exploration home',
+      async () => (await pathname()) === '/' && (await exists('training-preparation-card')),
+    );
+    await click('preparation-open-base-lessons');
+    await waitFor('base lessons reopened after voluntary return', () =>
+      exists('base-lessons-screen'),
+    );
+    assert.equal(await pathname(), '/base-lessons');
+    console.log('KINETRA_BASE_LESSONS_OPTIONAL_ROUTE=PASS');
 
     await waitFor(
       'seven base lessons with initial progress',

@@ -24,20 +24,29 @@ test(
 
     const pool = new Pool({ connectionString: databaseUrl, max: 3 });
     const userId = randomUUID();
+    const gatedUserId = randomUUID();
     const repository = new PostgresProgramRepository(pool);
 
     try {
       await pool.query(
         `
           INSERT INTO users (id, email, password_hash, onboarding_status)
-          VALUES ($1, $2, $3, 'active')
+          VALUES
+            ($1, $2, $3, 'active'),
+            ($4, $5, $3, 'base_lessons')
         `,
         [
           userId,
           `program-${userId}@example.com`,
           '$2b$10$abcdefghijklmnopqrstuv12345678901234567890123456789012',
+          gatedUserId,
+          `program-gated-${gatedUserId}@example.com`,
         ],
       );
+
+      assert.equal(await repository.getOnboardingStatus(userId), 'active');
+      assert.equal(await repository.getOnboardingStatus(gatedUserId), 'base_lessons');
+      assert.equal(await repository.getOnboardingStatus(randomUUID()), null);
 
       const initial = await repository.getProgress(userId);
       assert.deepEqual(initial, {
@@ -61,6 +70,20 @@ test(
 
       const firstVideoId = week?.days[0]?.videoId;
       assert.equal(typeof firstVideoId, 'string');
+
+      const gatedCompletion = await repository.completeWorkout(
+        gatedUserId,
+        firstVideoId as string,
+        1,
+      );
+      assert.deepEqual(gatedCompletion, { kind: 'onboarding_required' });
+      const gatedCompletionCount = await pool.query<{ readonly total: number }>(
+        `SELECT COUNT(*)::integer AS total
+         FROM workout_completions
+         WHERE user_id = $1`,
+        [gatedUserId],
+      );
+      assert.equal(gatedCompletionCount.rows[0]?.total, 0);
 
       const mismatch = await repository.completeWorkout(userId, firstVideoId as string, 2);
       assert.deepEqual(mismatch, { kind: 'workout_not_found' });
@@ -106,7 +129,7 @@ test(
       assert.deepEqual(persisted.rows[0], { total: 7, player_total: 7 });
       console.log('KINETRA_T07_POSTGRES_INTEGRATION=PASS');
     } finally {
-      await pool.query('DELETE FROM users WHERE id = $1', [userId]);
+      await pool.query('DELETE FROM users WHERE id = ANY($1::uuid[])', [[userId, gatedUserId]]);
       await pool.end();
     }
   },

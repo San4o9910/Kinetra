@@ -241,6 +241,74 @@ test('program endpoints require a currently active subscription', async () => {
   }
 });
 
+test('base-lessons users can explore metadata but cannot start or complete workouts', async () => {
+  const harness = await startHarness();
+  const videoId = harness.repository.videoIdsForWeek(1)[0] as string;
+
+  try {
+    harness.repository.markMediaAvailable(1, videoId);
+    harness.repository.setOnboardingStatus('base_lessons');
+
+    const schedule = await requestJson(harness, '/api/v1/program/schedule');
+    assert.equal(schedule.status, 200);
+    assert.equal(asObject(asObject(schedule.body).current_week).week_number, 1);
+
+    for (const path of ['/api/v1/program/current-week', '/api/v1/program/weeks/1']) {
+      const response = await requestJson(harness, path);
+      assert.equal(response.status, 200);
+      const week = asObject(asObject(response.body).week);
+      assert.equal(week.week_number, 1);
+      const days = week.days as Record<string, unknown>[];
+      assert.equal(days.length, 7);
+      assert.equal(
+        days.every((day) => {
+          const video = asObject(day.video);
+          return video.video_url === null && video.poster_url === null;
+        }),
+        true,
+      );
+    }
+
+    const completion = await requestJson(harness, '/api/v1/program/complete-workout', {
+      method: 'PUT',
+      body: { video_id: videoId, program_week: 1 },
+    });
+    assert.equal(completion.status, 403);
+    assert.equal(errorCode(completion.body), 'BASE_LESSONS_REQUIRED');
+
+    assert.equal(harness.signer.requestedKeys.length, 0);
+    const progress = await requestJson(harness, '/api/v1/program/current-week');
+    assert.deepEqual(asObject(progress.body).overall_progress, {
+      weeks_completed: 0,
+      total_workouts_done: 0,
+    });
+  } finally {
+    await harness.close();
+  }
+});
+
+test('program preview remains closed until onboarding reaches base lessons', async () => {
+  const harness = await startHarness();
+
+  try {
+    for (const onboardingStatus of ['onboarding_pending', 'survey_pending'] as const) {
+      harness.repository.setOnboardingStatus(onboardingStatus);
+
+      for (const path of [
+        '/api/v1/program/schedule',
+        '/api/v1/program/current-week',
+        '/api/v1/program/weeks/1',
+      ]) {
+        const response = await requestJson(harness, path);
+        assert.equal(response.status, 403);
+        assert.equal(errorCode(response.body), 'ONBOARDING_REQUIRED');
+      }
+    }
+  } finally {
+    await harness.close();
+  }
+});
+
 test('schedule exposes canonical current and next weeks with completion state', async () => {
   const harness = await startHarness();
   const firstVideoId = harness.repository.videoIdsForWeek(1)[0] as string;

@@ -9,6 +9,7 @@ import type {
   WeekResponse,
 } from '@kinetra/shared';
 
+import { BaseLessonsRequiredDialog } from '../src/features/base-lessons/BaseLessonsRequiredDialog.js';
 import { TabBar } from '../src/features/navigation/TabBar.js';
 import { ProgramWeekView } from '../src/features/program/ProgramWeekView.js';
 import { WorkoutPlayer } from '../src/features/program/WorkoutPlayer.js';
@@ -75,6 +76,7 @@ const renderWeek = (
   response: WeekResponse,
   currentWeekNumber: number,
   todayDayOfWeek = 3,
+  trainingLocked = false,
 ): string =>
   renderToStaticMarkup(
     createElement(ProgramWeekView, {
@@ -83,6 +85,10 @@ const renderWeek = (
       todayDayOfWeek,
       isNavigating: false,
       navigationError: null,
+      trainingLocked,
+      completedBaseLessons: trainingLocked ? 1 : null,
+      baseLessonUnlockThreshold: trainingLocked ? 4 : null,
+      onOpenBaseLessons: () => undefined,
       onPreviousWeek: () => undefined,
       onNextWeek: () => undefined,
       onSelectWorkout: () => undefined,
@@ -150,6 +156,40 @@ test('today is highlighted only in the actual current week', () => {
   const futurePreview = renderWeek(weekResponse(2, 'locked'), 1, 3);
   assert.equal(futurePreview.includes('data-today="true"'), false);
   assert.equal(futurePreview.includes('data-testid="today-workout"'), false);
+});
+
+test('training preparation keeps the program explorable without opening current workouts', () => {
+  const markup = renderWeek(weekResponse(), 1, 3, true);
+
+  assert.ok(markup.includes('data-testid="training-preparation-card"'));
+  assert.ok(markup.includes('Пройдено 1 из 4 необходимых'));
+  assert.ok(markup.includes('data-testid="preparation-open-base-lessons"'));
+  assert.equal((markup.match(/data-training-access="base-lessons-required"/gu) ?? []).length, 7);
+  assert.equal((markup.match(/data-state="preparation-required"/gu) ?? []).length, 7);
+  assert.equal(buttonTag(markup, 'workout-card-1').includes('disabled'), false);
+
+  const future = renderWeek(weekResponse(2, 'locked'), 1, 3, true);
+  assert.equal(future.includes('data-training-access="base-lessons-required"'), false);
+  assert.ok(buttonTag(future, 'workout-card-1').includes('disabled'));
+});
+
+test('base-lessons gate offers preparation and a return to app exploration', () => {
+  const markup = renderToStaticMarkup(
+    createElement(BaseLessonsRequiredDialog, {
+      open: true,
+      completedLessons: 1,
+      unlockThreshold: 4,
+      onClose: () => undefined,
+      onOpenBaseLessons: () => undefined,
+    }),
+  );
+
+  assert.ok(markup.includes('data-testid="base-lessons-required-dialog"'));
+  assert.ok(markup.includes('Сначала подготовимся к тренировке'));
+  assert.ok(markup.includes('data-testid="open-base-lessons"'));
+  assert.ok(markup.includes('Пройти базовые уроки'));
+  assert.ok(markup.includes('data-testid="continue-exploring-app"'));
+  assert.ok(markup.includes('Вернуться к изучению приложения'));
 });
 
 test('tab bar renders four routes and highlights only the active tab', () => {

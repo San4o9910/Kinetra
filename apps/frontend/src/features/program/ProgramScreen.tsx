@@ -1,7 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { ProgramDay, SubscriptionResponse, WeekResponse } from '@kinetra/shared';
+import type {
+  BaseLessonsResponse,
+  ProgramDay,
+  SubscriptionResponse,
+  WeekResponse,
+} from '@kinetra/shared';
 
-import { ApiRequestError, getCurrentWeek, getWeek } from '../../lib/api';
+import { ApiRequestError, getBaseLessons, getCurrentWeek, getWeek } from '../../lib/api';
+import { BaseLessonsRequiredDialog } from '../base-lessons/BaseLessonsRequiredDialog';
 import { isSubscriptionActive } from '../payments/model';
 import { SubscriptionPaywallDialog } from '../payments/SubscriptionPaywallDialog';
 import { SubscriptionLockedScreen } from '../payments/SubscriptionLockedScreen';
@@ -21,9 +27,17 @@ type ProgramLoadState =
       readonly currentWeekNumber: number;
     };
 
+type PreparationLoadState =
+  | { readonly kind: 'idle' }
+  | { readonly kind: 'loading' }
+  | { readonly kind: 'ready'; readonly response: BaseLessonsResponse }
+  | { readonly kind: 'failed'; readonly message: string };
+
 export interface ProgramScreenProps {
   readonly timezone: string;
   readonly subscription: SubscriptionResponse;
+  readonly trainingLocked: boolean;
+  readonly onOpenBaseLessons: () => void;
   readonly onOpenPayment: () => void;
   readonly onSubscriptionRequired: () => void;
   readonly onWorkoutCompletionBusyChange: (busy: boolean) => void;
@@ -60,12 +74,17 @@ const workoutSelectionFromHistory = (): WorkoutHistorySelection => {
 export const ProgramScreen = ({
   timezone,
   subscription,
+  trainingLocked,
+  onOpenBaseLessons,
   onOpenPayment,
   onSubscriptionRequired,
   onWorkoutCompletionBusyChange,
   onSessionExpired,
 }: ProgramScreenProps): ReactNode => {
-  const initialWorkoutSelection = React.useMemo(workoutSelectionFromHistory, []);
+  const historyWorkoutSelection = React.useMemo(workoutSelectionFromHistory, []);
+  const initialWorkoutSelection = trainingLocked
+    ? { videoId: null, programWeek: null }
+    : historyWorkoutSelection;
   const initiallyActive = isSubscriptionActive(subscription);
   const [loadState, setLoadState] = useState<ProgramLoadState>(
     initiallyActive ? { kind: 'loading' } : { kind: 'blocked' },
@@ -76,9 +95,14 @@ export const ProgramScreen = ({
   const [isNavigating, setIsNavigating] = useState(false);
   const [isCompletingWorkout, setIsCompletingWorkout] = useState(false);
   const [paywallOpen, setPaywallOpen] = useState(!initiallyActive);
+  const [baseLessonsDialogOpen, setBaseLessonsDialogOpen] = useState(false);
+  const [preparationState, setPreparationState] = useState<PreparationLoadState>(
+    trainingLocked ? { kind: 'loading' } : { kind: 'idle' },
+  );
   const [navigationError, setNavigationError] = useState<string | null>(null);
   const requestVersion = useRef(0);
   const requestController = useRef<AbortController | null>(null);
+  const preparationController = useRef<AbortController | null>(null);
   const focusReturnDay = useRef<number | null>(null);
   const selectedVideoIdRef = useRef<string | null>(selectedVideoId);
   const selectedProgramWeekRef = useRef<number | null>(initialWorkoutSelection.programWeek);
@@ -111,6 +135,41 @@ export const ProgramScreen = ({
     },
     [onSessionExpired, onSubscriptionRequired],
   );
+
+  const loadPreparation = useCallback(async (): Promise<void> => {
+    preparationController.current?.abort();
+    const controller = new AbortController();
+    preparationController.current = controller;
+    setPreparationState({ kind: 'loading' });
+
+    try {
+      const response = await getBaseLessons(controller.signal);
+
+      if (!controller.signal.aborted && preparationController.current === controller) {
+        setPreparationState({ kind: 'ready', response });
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        return;
+      }
+
+      if (error instanceof ApiRequestError && error.kind === 'auth') {
+        onSessionExpired();
+        return;
+      }
+
+      if (preparationController.current === controller) {
+        setPreparationState({
+          kind: 'failed',
+          message: 'Не удалось обновить прогресс уроков.',
+        });
+      }
+    } finally {
+      if (preparationController.current === controller) {
+        preparationController.current = null;
+      }
+    }
+  }, [onSessionExpired]);
 
   const restoreCurrentWeek = useCallback(async (): Promise<void> => {
     requestController.current?.abort();
@@ -216,6 +275,27 @@ export const ProgramScreen = ({
   );
 
   useEffect(() => {
+    if (!trainingLocked) {
+      preparationController.current?.abort();
+      preparationController.current = null;
+      setPreparationState({ kind: 'idle' });
+      setBaseLessonsDialogOpen(false);
+      return;
+    }
+
+    clearWorkoutHistorySentinel();
+    selectedVideoIdRef.current = null;
+    selectedProgramWeekRef.current = null;
+    setSelectedVideoId(null);
+    void loadPreparation();
+
+    return () => {
+      preparationController.current?.abort();
+      preparationController.current = null;
+    };
+  }, [loadPreparation, trainingLocked]);
+
+  useEffect(() => {
     if (!subscriptionActive) {
       requestVersion.current += 1;
       requestController.current?.abort();
@@ -244,6 +324,15 @@ export const ProgramScreen = ({
       const programWeek = event.state?.kinetraProgramWeek;
       const restoredVideoId = typeof videoId === 'string' ? videoId : null;
       const restoredProgramWeek = programWeekFromHistory(programWeek);
+
+      if (trainingLocked && restoredVideoId !== null) {
+        clearWorkoutHistorySentinel();
+        selectedVideoIdRef.current = null;
+        selectedProgramWeekRef.current = null;
+        setSelectedVideoId(null);
+        setBaseLessonsDialogOpen(true);
+        return;
+      }
 
       if (restoredVideoId !== null && !isSubscriptionActive(subscription)) {
         clearWorkoutHistorySentinel();
@@ -295,7 +384,7 @@ export const ProgramScreen = ({
 
     window.addEventListener('popstate', restoreWorkoutFromHistory);
     return () => window.removeEventListener('popstate', restoreWorkoutFromHistory);
-  }, [restoreHistoryWorkout, subscription]);
+  }, [restoreHistoryWorkout, subscription, trainingLocked]);
 
   useEffect(() => {
     if (subscriptionActive || selectedVideoId === null) {
@@ -498,7 +587,7 @@ export const ProgramScreen = ({
       ? undefined
       : loadState.response.week.days.find(({ video }) => video.id === selectedVideoId);
 
-  if (selectedDay !== undefined && subscriptionActive) {
+  if (selectedDay !== undefined && subscriptionActive && !trainingLocked) {
     return (
       <WorkoutPlayer
         day={selectedDay}
@@ -536,6 +625,11 @@ export const ProgramScreen = ({
       return;
     }
 
+    if (trainingLocked) {
+      setBaseLessonsDialogOpen(true);
+      return;
+    }
+
     focusReturnDay.current = day.day_of_week;
     setNavigationError(null);
     window.history.pushState(
@@ -559,9 +653,34 @@ export const ProgramScreen = ({
         todayDayOfWeek={todayDayOfWeek}
         isNavigating={isNavigating || isCompletingWorkout}
         navigationError={navigationError}
+        trainingLocked={trainingLocked}
+        completedBaseLessons={
+          preparationState.kind === 'ready' ? preparationState.response.total_completed : null
+        }
+        baseLessonUnlockThreshold={
+          preparationState.kind === 'ready' ? preparationState.response.unlock_threshold : null
+        }
+        preparationLoading={preparationState.kind === 'loading'}
+        preparationError={preparationState.kind === 'failed' ? preparationState.message : null}
+        onOpenBaseLessons={onOpenBaseLessons}
+        onRetryPreparation={() => void loadPreparation()}
         onPreviousWeek={() => void navigateToWeek(loadState.response.week.week_number - 1)}
         onNextWeek={() => void navigateToWeek(loadState.response.week.week_number + 1)}
         onSelectWorkout={selectWorkout}
+      />
+      <BaseLessonsRequiredDialog
+        open={baseLessonsDialogOpen}
+        completedLessons={
+          preparationState.kind === 'ready' ? preparationState.response.total_completed : null
+        }
+        unlockThreshold={
+          preparationState.kind === 'ready' ? preparationState.response.unlock_threshold : null
+        }
+        onClose={() => setBaseLessonsDialogOpen(false)}
+        onOpenBaseLessons={() => {
+          setBaseLessonsDialogOpen(false);
+          onOpenBaseLessons();
+        }}
       />
       <SubscriptionPaywallDialog
         open={paywallOpen || (selectedDay !== undefined && !subscriptionActive)}

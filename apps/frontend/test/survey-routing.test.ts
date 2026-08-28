@@ -11,6 +11,7 @@ import {
 import {
   appRoutes,
   isActiveAppRoute,
+  isExplorationAppRoute,
   isPaymentRoute,
   isTrainerRoute,
   normalizeAppRoute,
@@ -29,7 +30,7 @@ const completeDraft = (): SurveyDraft => ({
 test('server onboarding statuses map to canonical browser routes', () => {
   assert.equal(routeForOnboardingStatus('survey_pending'), appRoutes.survey);
   assert.equal(routeForOnboardingStatus('onboarding_pending'), appRoutes.onboarding);
-  assert.equal(routeForOnboardingStatus('base_lessons'), appRoutes.baseLessons);
+  assert.equal(routeForOnboardingStatus('base_lessons'), appRoutes.home);
   assert.equal(routeForOnboardingStatus('active'), appRoutes.home);
   assert.equal(normalizeAppRoute('/settings/'), appRoutes.settings);
   assert.equal(normalizeAppRoute('/schedule/'), appRoutes.schedule);
@@ -50,6 +51,13 @@ test('server onboarding statuses map to canonical browser routes', () => {
   assert.equal(isActiveAppRoute(appRoutes.progress), true);
   assert.equal(isActiveAppRoute(appRoutes.settings), true);
   assert.equal(isActiveAppRoute(appRoutes.baseLessons), false);
+  assert.equal(isExplorationAppRoute(appRoutes.home), true);
+  assert.equal(isExplorationAppRoute(appRoutes.schedule), true);
+  assert.equal(isExplorationAppRoute(appRoutes.progress), true);
+  assert.equal(isExplorationAppRoute(appRoutes.settings), true);
+  assert.equal(isExplorationAppRoute(appRoutes.editSurvey), true);
+  assert.equal(isExplorationAppRoute(appRoutes.baseLessons), true);
+  assert.equal(isExplorationAppRoute(appRoutes.chat), false);
   assert.equal(normalizeAppRoute('/unknown'), appRoutes.login);
 });
 

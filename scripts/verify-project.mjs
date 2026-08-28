@@ -79,6 +79,7 @@ const requiredFiles = [
   'apps/frontend/src/features/onboarding/model.ts',
   'apps/frontend/src/features/base-lessons/BaseLessonsScreen.tsx',
   'apps/frontend/src/features/base-lessons/BaseLessonsView.tsx',
+  'apps/frontend/src/features/base-lessons/BaseLessonsRequiredDialog.tsx',
   'apps/frontend/src/features/base-lessons/LessonPlayer.tsx',
   'apps/frontend/src/features/base-lessons/model.ts',
   'apps/frontend/src/features/navigation/TabBar.tsx',
@@ -1432,6 +1433,11 @@ expectIncludes(
   'ON CONFLICT (user_id, video_id, program_week) DO NOTHING',
   'T07 workout completion is idempotent',
 );
+expectIncludes(
+  programRepository,
+  "authenticated_user.onboarding_status = 'active'",
+  'exploration mode keeps the workout completion mutation gated by active onboarding',
+);
 
 const programService = await readText('apps/backend/src/program/service.ts');
 expectIncludes(
@@ -1461,14 +1467,24 @@ expectIncludes(programService, "'PROGRAM_WEEK_LOCKED'", 'T07 rejects locked week
 expectIncludes(programService, "'WORKOUT_NOT_FOUND'", 'T07 rejects mismatched workout IDs');
 expectIncludes(
   programService,
+  "'BASE_LESSONS_REQUIRED'",
+  'exploration mode rejects workout completion before base lessons are complete',
+);
+expectIncludes(
+  programService,
+  "'ONBOARDING_REQUIRED'",
+  'program preview stays closed before onboarding reaches base lessons',
+);
+expectIncludes(
+  programService,
   'snapshot.days.length !== PROGRAM_DAYS_PER_WEEK',
   'T07 fails closed if a program week is not seven days',
 );
 expectIncludes(programService, "return 'locked'", 'T07 marks the preview week as locked');
 expectIncludes(
   programService,
-  "status !== 'locked' && day.mediaAvailable",
-  'T07 signs media only after upload confirmation and never for a locked week',
+  "workoutMediaUnlocked && status !== 'locked' && day.mediaAvailable",
+  'T07 signs media only for active onboarding after upload confirmation and never for a locked week',
 );
 
 const programDocumentation = await readText('docs/T07_MAIN_SCREEN.md');
@@ -1623,6 +1639,11 @@ expectIncludes(
   'program_unlocked',
   'T06 screen respects the server unlock decision',
 );
+expectIncludes(
+  baseLessonsScreen,
+  'base-lessons-loading-back-to-app',
+  'T06 loading state keeps an explicit exit to app exploration',
+);
 
 const baseLessonsView = await readText(
   'apps/frontend/src/features/base-lessons/BaseLessonsView.tsx',
@@ -1632,6 +1653,7 @@ for (const testId of [
   'base-lessons-progress',
   'base-lesson-card-',
   'base-lessons-complete',
+  'base-lessons-back-to-app',
 ]) {
   expectIncludes(baseLessonsView, testId, `T06 lesson list test hook: ${testId}`);
 }
@@ -1800,6 +1822,31 @@ expectIncludes(
   'requestVersion.current',
   'T07 prevents stale week responses from replacing newer navigation',
 );
+expectIncludes(
+  programScreen,
+  '<BaseLessonsRequiredDialog',
+  'exploration mode explains the preparation gate instead of opening a workout player',
+);
+expectIncludes(
+  programScreen,
+  'trainingLocked',
+  'exploration mode keeps the workout player locked until onboarding becomes active',
+);
+
+const baseLessonsRequiredDialog = await readText(
+  'apps/frontend/src/features/base-lessons/BaseLessonsRequiredDialog.tsx',
+);
+for (const contract of [
+  'base-lessons-required-dialog',
+  'Пройти базовые уроки',
+  'Вернуться к изучению приложения',
+]) {
+  expectIncludes(
+    baseLessonsRequiredDialog,
+    contract,
+    `exploration preparation dialog contract: ${contract}`,
+  );
+}
 
 const onboardingModel = await readText('apps/frontend/src/features/onboarding/model.ts');
 expectIncludes(
@@ -1821,7 +1868,7 @@ expectIncludes(onboardingModel, "title: 'Готовы начать?'", 'T05 has 
 expectIncludes(onboardingModel, "label: 'Нейрогимнастика'", 'T05 lists all weekly rhythms');
 expectIncludes(
   onboardingModel,
-  "ONBOARDING_COMPLETE_LABEL = 'К базовым урокам'",
+  "ONBOARDING_COMPLETE_LABEL = 'Открыть Kinetra'",
   'T05 defines the final completion action',
 );
 
@@ -1860,7 +1907,7 @@ const routes = await readText('apps/frontend/src/routing.ts');
 for (const [status, route] of [
   ['survey_pending', 'survey'],
   ['onboarding_pending', 'onboarding'],
-  ['base_lessons', 'baseLessons'],
+  ['base_lessons', 'home'],
   ['active', 'home'],
 ]) {
   expectIncludes(routes, `case '${status}'`, `T04 route status: ${status}`);
@@ -1872,6 +1919,11 @@ expectIncludes(
   routes,
   'isActiveAppRoute',
   'T07 active-profile route guard includes all tab routes',
+);
+expectIncludes(
+  routes,
+  'isExplorationAppRoute',
+  'exploration route guard includes the app tabs and explicit base-lessons page',
 );
 
 const frontendStyles = await readText('apps/frontend/src/styles.css');
@@ -1917,6 +1969,8 @@ for (const selectorFragment of [
   '.workout-card.is-completed',
   '.workout-card.is-today',
   '.workout-card.is-locked',
+  '.training-preparation-card',
+  '.base-lessons-required-dialog',
   '.tab-bar',
   '.tab-bar-link',
   '.workout-video-placeholder',
@@ -2032,7 +2086,31 @@ expectIncludes(
   'server progress restored after reload',
   'browser test checks session restore',
 );
-expectIncludes(browserTest, 'base lessons route', 'browser test checks base-lessons routing');
+expectIncludes(
+  browserTest,
+  'KINETRA_ONBOARDING_EXPLORATION_NAVIGATION=PASS',
+  'browser test checks free tab navigation before base lessons are complete',
+);
+expectIncludes(
+  browserTest,
+  'KINETRA_BASE_LESSONS_OPTIONAL_ROUTE=PASS',
+  'browser test checks voluntary entry to and return from base lessons',
+);
+expectIncludes(
+  browserTest,
+  'KINETRA_EXPLORATION_CHAT_LOCK=PASS',
+  'browser test proves chat remains inaccessible during exploration',
+);
+expectIncludes(
+  browserTest,
+  'KINETRA_EXPLORATION_PAYWALL_PRECEDENCE=PASS',
+  'browser test proves subscription gating precedes the lesson gate',
+);
+expectIncludes(
+  browserTest,
+  'KINETRA_BASE_LESSONS_STANDALONE=PASS',
+  'browser test proves the explicit base-lessons route has no app shell',
+);
 expectIncludes(
   browserTest,
   'T07 main screen after base lesson completion',
@@ -2351,6 +2429,8 @@ expectIncludes(
 const programBackendTests = await readText('apps/backend/test/program.e2e.test.ts');
 for (const scenario of [
   'program endpoints require an access token',
+  'base-lessons users can explore metadata but cannot start or complete workouts',
+  'program preview remains closed until onboarding reaches base lessons',
   'current week defaults to week one and exposes seven ordered workout days',
   'specific week access allows only the current week and the next locked week',
   'workout media URLs require both availability and an unlocked week',
@@ -2390,6 +2470,11 @@ expectIncludes(
   programPostgresTests,
   "{ kind: 'completed', inserted: false }",
   'T07 PostgreSQL test proves idempotent completion',
+);
+expectIncludes(
+  programPostgresTests,
+  "{ kind: 'onboarding_required' }",
+  'PostgreSQL test proves the workout mutation is gated before active onboarding',
 );
 expectIncludes(
   programPostgresTests,
@@ -5943,7 +6028,8 @@ for (const correctionCiContract of [
   'fix/t12-merge-readiness',
   'feature/t14-video-upload-s3',
   'feature/registration-roles-verification',
-  'branches: [main, develop, feature/t12-trainer-chat]',
+  'feature/onboarding-exploration-mode',
+  '[main, develop, feature/t12-trainer-chat, feature/registration-roles-verification]',
   'EXPECTED_BASE_SHA: ${{ github.event.pull_request.base.sha }}',
   'EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}',
   'test "$(git rev-parse HEAD^1)" = "$EXPECTED_BASE_SHA"',

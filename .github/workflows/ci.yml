@@ -9,9 +9,10 @@ on:
         fix/t12-merge-readiness,
         feature/t14-video-upload-s3,
         feature/registration-roles-verification,
+        feature/onboarding-exploration-mode,
       ]
   pull_request:
-    branches: [main, develop, feature/t12-trainer-chat]
+    branches: [main, develop, feature/t12-trainer-chat, feature/registration-roles-verification]
 
 env:
   NODE_VERSION: '22'

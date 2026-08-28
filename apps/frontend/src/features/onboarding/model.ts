@@ -3,7 +3,7 @@ export const ONBOARDING_SLIDE_OWNER_STORAGE_KEY = 'kinetra.onboarding.user';
 export const ONBOARDING_SWIPE_THRESHOLD = 48;
 export const ONBOARDING_AXIS_LOCK_THRESHOLD = 8;
 export const ONBOARDING_NEXT_LABEL = 'Далее';
-export const ONBOARDING_COMPLETE_LABEL = 'К базовым урокам';
+export const ONBOARDING_COMPLETE_LABEL = 'Открыть Kinetra';
 
 export interface OnboardingSlideCopy {
   readonly title: string;
