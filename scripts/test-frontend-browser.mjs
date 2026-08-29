@@ -1834,6 +1834,8 @@ const runBrowserScenario = async () => {
 
     const exists = (testId) =>
       cdp.evaluate(`document.querySelector(${JSON.stringify(selector(testId))}) !== null`);
+    const dialogIsOpen = (testId) =>
+      cdp.evaluate(`document.querySelector(${JSON.stringify(selector(testId))})?.open === true`);
     const pathname = () => cdp.evaluate('window.location.pathname');
     const text = (testId) =>
       cdp.evaluate(
@@ -3978,8 +3980,6 @@ const runBrowserScenario = async () => {
     });
     console.log('KINETRA_T10_THEME_MODES=PASS');
 
-    const dialogIsOpen = (testId) =>
-      cdp.evaluate(`document.querySelector(${JSON.stringify(selector(testId))})?.open === true`);
     const closeDialogFromBackdrop = async (testId) => {
       await click(testId);
       await waitFor(`${testId} closed from backdrop`, async () => !(await dialogIsOpen(testId)));
