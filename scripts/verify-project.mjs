@@ -1724,11 +1724,29 @@ expectIncludes(
 );
 
 const tabBar = await readText('apps/frontend/src/features/navigation/TabBar.tsx');
-for (const testId of ['tab-bar', 'tab-home', 'tab-schedule', 'tab-progress', 'tab-settings']) {
+for (const testId of [
+  'tab-bar',
+  'tab-home',
+  'tab-schedule',
+  'tab-progress',
+  'tab-chat',
+  'tab-settings',
+]) {
   expectIncludes(tabBar, testId, `T07 tab bar test hook: ${testId}`);
 }
-for (const label of ['Главная', 'Расписание', 'Прогресс', 'Настройки']) {
+for (const label of ['Сегодня', 'Расписание', 'Прогресс', 'Чат', 'Настройки']) {
   expectIncludes(tabBar, label, `T07 tab bar label: ${label}`);
+}
+for (const chatTabContract of [
+  "{ route: appRoutes.chat, label: 'Чат', testId: 'tab-chat', icon: 'chat' }",
+  'readonly showChat: boolean',
+  'readonly chatUnreadCount: number',
+  'tabItems.filter((item) => item.route !== appRoutes.chat)',
+  'chatUnreadBadge(chatUnreadCount)',
+  'chatFabAccessibleName(chatUnreadCount)',
+  'data-testid="tab-chat-badge"',
+]) {
+  expectIncludes(tabBar, chatTabContract, `T12 client chat tab contract: ${chatTabContract}`);
 }
 expectIncludes(
   tabBar,
@@ -1744,15 +1762,40 @@ expectIncludes(
 const programWeekView = await readText('apps/frontend/src/features/program/ProgramWeekView.tsx');
 for (const testId of [
   'main-screen',
-  'week-heading',
+  'today-heading',
   'week-progress',
-  'week-previous',
-  'week-next',
+  'week-progress-copy',
   'workout-card-',
   'workout-status-',
   'today-workout',
+  'today-rest-day',
+  'next-workout',
+  'today-open-schedule',
 ]) {
   expectIncludes(programWeekView, testId, `T07 main-screen test hook: ${testId}`);
+}
+for (const todayContract of [
+  'aria-labelledby="program-today-heading"',
+  'const TodayHeading = (): ReactNode =>',
+  "{ id: 'program-today-heading', 'data-testid': 'today-heading' }",
+  'Тренировка на сегодня',
+  'Следующая тренировка',
+  'Прогресс недели',
+  'Сегодня по плану отдых',
+  'Открыть полное расписание',
+  'week.week_number === currentWeekNumber',
+  'week.days.find(({ day_of_week: dayOfWeek }) => dayOfWeek === todayDayOfWeek)',
+  'onClick={onOpenSchedule}',
+]) {
+  expectIncludes(programWeekView, todayContract, `T07 Today dashboard contract: ${todayContract}`);
+}
+if (
+  programWeekView.includes('data-testid="week-previous"') ||
+  programWeekView.includes('data-testid="week-next"')
+) {
+  fail('T07 Today dashboard does not duplicate week navigation from Schedule');
+} else {
+  pass('T07 Today dashboard does not duplicate week navigation from Schedule');
 }
 expectIncludes(programWeekView, 'role="progressbar"', 'T07 exposes week progress semantics');
 expectIncludes(
@@ -1804,9 +1847,18 @@ expectIncludes(
 
 const programScreen = await readText('apps/frontend/src/features/program/ProgramScreen.tsx');
 expectIncludes(programScreen, 'getCurrentWeek(controller.signal)', 'T07 restores the current week');
-expectIncludes(programScreen, 'getWeek(weekNumber, controller.signal)', 'T07 navigates by week');
-expectIncludes(programScreen, '<ProgramWeekView', 'T07 renders the seven-day week view');
+expectIncludes(
+  programScreen,
+  'getWeek(programWeek, controller.signal)',
+  'T07 resolves a workout selected from another program week',
+);
+expectIncludes(programScreen, '<ProgramWeekView', 'T07 renders the Today dashboard');
 expectIncludes(programScreen, '<WorkoutPlayer', 'T07 opens the workout player');
+expectIncludes(
+  programScreen,
+  'onOpenSchedule={onOpenSchedule}',
+  'T07 Today dashboard opens the full schedule',
+);
 expectIncludes(
   programScreen,
   'dayOfWeekInTimeZone(new Date(), timezone)',
@@ -2158,8 +2210,8 @@ expectIncludes(
 );
 expectIncludes(
   browserTest,
-  'KINETRA_T07_WEEK_NAVIGATION=PASS',
-  'T07 browser scenario proves week arrow navigation',
+  'KINETRA_T07_TODAY_DASHBOARD=PASS',
+  'T07 browser scenario proves the focused Today dashboard',
 );
 expectIncludes(
   browserTest,
@@ -2483,7 +2535,13 @@ expectIncludes(
 );
 
 const mainScreenFrontendTests = await readText('apps/frontend/test/main-screen.test.ts');
-for (const scenario of ['seven', 'progress', 'arrow', 'tab', 'today']) {
+for (const scenario of [
+  'today dashboard renders only the current and next workout',
+  'week progress exposes',
+  'today dashboard delegates full week browsing to schedule',
+  'today is highlighted only in the actual current week',
+  'tab bar renders today and a fifth active chat tab with its unread badge',
+]) {
   expectIncludes(
     mainScreenFrontendTests.toLowerCase(),
     scenario,
@@ -2579,6 +2637,8 @@ for (const contract of [
   "error.kind === 'auth'",
   'requestControllerRef.current?.abort()',
   'schedule-retry',
+  'readonly onOpenWorkout: (programWeek: number, dayOfWeek: number) => void',
+  'onOpenWorkout={onOpenWorkout}',
 ]) {
   expectIncludes(scheduleScreen, contract, `T08 schedule loader contract: ${contract}`);
 }
@@ -2606,8 +2666,49 @@ for (const contract of [
   'ArrowLeft',
   'ArrowRight',
   '✅',
+  'readonly onOpenWorkout: (programWeek: number, dayOfWeek: number) => void',
+  'onOpenWorkout(week.week_number, selectedDay.day_of_week)',
+  'type="button"',
+  'Открыть тренировку',
+  'onClick={() => onOpen(day)}',
 ]) {
   expectIncludes(scheduleView, contract, `T08 schedule view contract: ${contract}`);
+}
+for (const appScheduleContract of [
+  'const openScheduledWorkout = useCallback(',
+  'kinetraWorkoutDayOfWeek: dayOfWeek',
+  'kinetraProgramWeek: programWeek',
+  'onOpenWorkout={openScheduledWorkout}',
+]) {
+  expectIncludes(
+    frontendApp,
+    appScheduleContract,
+    `T08 selected workout routing contract: ${appScheduleContract}`,
+  );
+}
+const scheduledWorkoutHandlerStart = frontendApp.indexOf(
+  'const openScheduledWorkout = useCallback(',
+);
+const scheduledWorkoutHandler = frontendApp.slice(
+  scheduledWorkoutHandlerStart,
+  frontendApp.indexOf(
+    'const handleTrainerVerificationProfileUpdated',
+    scheduledWorkoutHandlerStart,
+  ),
+);
+for (const failClosedInputContract of [
+  '!Number.isInteger(programWeek)',
+  'programWeek < 1',
+  'programWeek > 12',
+  '!Number.isInteger(dayOfWeek)',
+  'dayOfWeek < 1',
+  'dayOfWeek > 7',
+]) {
+  expectIncludes(
+    scheduledWorkoutHandler,
+    failClosedInputContract,
+    `T08 selected workout input gate: ${failClosedInputContract}`,
+  );
 }
 for (const selector of [
   '.schedule-shell',
@@ -2673,6 +2774,18 @@ for (const marker of [
   'KINETRA_T08_BROWSER_E2E=PASS',
 ]) {
   expectIncludes(browserTest, marker, `T08 browser marker: ${marker}`);
+}
+for (const selectedWorkoutBrowserContract of [
+  'T08 schedule card opens the exact current-week workout',
+  'window.history.state?.kinetraWorkoutVideoId === ${JSON.stringify(workoutVideoId(1, 4))}',
+  'window.history.state?.kinetraProgramWeek === 1',
+  'window.history.state?.kinetraWorkoutDayOfWeek === undefined',
+]) {
+  expectIncludes(
+    browserTest,
+    selectedWorkoutBrowserContract,
+    `T08 browser selected-workout contract: ${selectedWorkoutBrowserContract}`,
+  );
 }
 
 // T09 — protected progress dashboard, data contract, lightweight charts and acceptance.
@@ -3675,7 +3788,9 @@ for (const appPaymentContract of [
 
 const programHistory = await readText('apps/frontend/src/features/program/history.ts');
 for (const historyContract of [
-  "['kinetraWorkoutVideoId', 'kinetraProgramWeek']",
+  "'kinetraWorkoutVideoId'",
+  "'kinetraWorkoutDayOfWeek'",
+  "'kinetraProgramWeek'",
   'delete nextState[key]',
   "window.history.replaceState(nextState, '', window.location.href)",
 ]) {
@@ -3684,6 +3799,66 @@ for (const historyContract of [
     historyContract,
     `T11 expired entitlement clears only workout history: ${historyContract}`,
   );
+}
+for (const selectedWorkoutContract of [
+  'const programDayFromHistory = (value: unknown): number | null =>',
+  'dayOfWeek: programDayFromHistory(dayOfWeek)',
+  'const canonicalizeWorkoutHistorySelection = (videoId: string, programWeek: number): void =>',
+  'delete nextState.kinetraWorkoutDayOfWeek',
+  'nextState.kinetraWorkoutVideoId = videoId',
+  'selectedVideoIdRef.current === null && selectedDayOfWeekRef.current !== null',
+  'canonicalizeWorkoutHistorySelection(selectedDay.video.id, response.week.week_number)',
+  'isProgramWeekLocked(response, currentResponse.week.week_number)',
+  'isProgramWeekLocked(response, currentWeekNumber)',
+  'Эта тренировка откроется, когда начнётся выбранная неделя.',
+]) {
+  expectIncludes(
+    programScreen,
+    selectedWorkoutContract,
+    `T08 selected workout history contract: ${selectedWorkoutContract}`,
+  );
+}
+const canonicalSelectionStart = programScreen.indexOf(
+  'const canonicalizeWorkoutHistorySelection = (videoId: string, programWeek: number): void =>',
+);
+const canonicalSelection = programScreen.slice(
+  canonicalSelectionStart,
+  programScreen.indexOf('const workoutSelectionFromHistory', canonicalSelectionStart),
+);
+const daySentinelRemoval = canonicalSelection.indexOf('delete nextState.kinetraWorkoutDayOfWeek');
+const videoSentinelWrite = canonicalSelection.indexOf('nextState.kinetraWorkoutVideoId = videoId');
+const canonicalStateWrite = canonicalSelection.indexOf('window.history.replaceState');
+if (
+  daySentinelRemoval >= 0 &&
+  videoSentinelWrite > daySentinelRemoval &&
+  canonicalStateWrite > videoSentinelWrite
+) {
+  pass('T08 selected workout history is canonicalized from day to exact video before rendering');
+} else {
+  fail('T08 selected workout history is canonicalized from day to exact video before rendering');
+}
+for (const lockedWeekExpression of [
+  'isProgramWeekLocked(response, currentResponse.week.week_number)',
+  'isProgramWeekLocked(response, currentWeekNumber)',
+]) {
+  const lockedWeekStart = programScreen.indexOf(lockedWeekExpression);
+  const lockedWeekGuard = programScreen.slice(lockedWeekStart, lockedWeekStart + 1_800);
+
+  for (const failClosedContract of [
+    'clearWorkoutHistorySentinel();',
+    'selectedVideoIdRef.current = null',
+    'selectedDayOfWeekRef.current = null',
+    'selectedProgramWeekRef.current = null',
+    'setSelectedVideoId(null)',
+    'Эта тренировка откроется, когда начнётся выбранная неделя.',
+    'return;',
+  ]) {
+    expectIncludes(
+      lockedWeekGuard,
+      failClosedContract,
+      `T08 locked-week selection fails closed: ${lockedWeekExpression} -> ${failClosedContract}`,
+    );
+  }
 }
 
 for (const settingsPaymentContract of [
@@ -3725,7 +3900,7 @@ for (const frontendTestContract of [
   'T11 payment page renders the exact price, benefits and renewal disclosure',
   'success polling is non-overlapping and stops on active or at 30 seconds',
   'inactive subscription renders a locked T07 surface without rendering a player',
-  'inactive entitlement removes both workout sentinels while preserving unrelated history',
+  'inactive entitlement removes every workout sentinel while preserving unrelated history',
 ]) {
   expectIncludes(
     paymentsFrontendTests,
@@ -5039,7 +5214,6 @@ for (const apiContract of [
 }
 for (const appContract of [
   'useChatRuntime',
-  'ChatFloatingButton',
   'ClientChatScreen',
   'TrainerChatsScreen',
   'isTrainerRoute',
@@ -5048,6 +5222,35 @@ for (const appContract of [
   'onChatSessionEnd',
 ]) {
   expectIncludes(frontendApp, appContract, `T12 client/trainer app integration: ${appContract}`);
+}
+for (const appChatTabContract of [
+  "showChat={profile.user.onboardingStatus === 'active'}",
+  'chatUnreadCount={chatRuntime.unreadCount}',
+  'route === appRoutes.chat',
+  'return withActiveNavigation(',
+]) {
+  expectIncludes(
+    frontendApp,
+    appChatTabContract,
+    `T12 client chat tab integration: ${appChatTabContract}`,
+  );
+}
+const clientChatRouteStart = frontendApp.indexOf('if (route === appRoutes.chat)');
+const clientChatRoute = frontendApp.slice(
+  clientChatRouteStart,
+  frontendApp.indexOf('const activeContent =', clientChatRouteStart),
+);
+for (const chatRouteShellContract of ['return withActiveNavigation(', '<ClientChatScreen']) {
+  expectIncludes(
+    clientChatRoute,
+    chatRouteShellContract,
+    `T12 dedicated Chat tab retains active navigation: ${chatRouteShellContract}`,
+  );
+}
+if (frontendApp.includes('ChatFloatingButton')) {
+  fail('T12 App exposes client chat through the dedicated tab, not a floating button');
+} else {
+  pass('T12 App exposes client chat through the dedicated tab, not a floating button');
 }
 
 const frontendChatSources = (

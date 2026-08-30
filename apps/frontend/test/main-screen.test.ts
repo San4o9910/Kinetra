@@ -17,7 +17,6 @@ import {
   WORKOUT_COMPLETION_THRESHOLD,
   WORKOUT_PROGRESS_CHECK_INTERVAL_MS,
   dayOfWeekInTimeZone,
-  directionPresentation,
   optimisticallyCompleteWorkout,
 } from '../src/features/program/model.js';
 import { appRoutes } from '../src/routing.js';
@@ -89,8 +88,7 @@ const renderWeek = (
       completedBaseLessons: trainingLocked ? 1 : null,
       baseLessonUnlockThreshold: trainingLocked ? 4 : null,
       onOpenBaseLessons: () => undefined,
-      onPreviousWeek: () => undefined,
-      onNextWeek: () => undefined,
+      onOpenSchedule: () => undefined,
       onSelectWorkout: () => undefined,
     }),
   );
@@ -101,25 +99,28 @@ const buttonTag = (markup: string, testId: string): string => {
   return match?.[0] ?? '';
 };
 
-test('main screen renders seven canonical workout cards with exact icons and durations', () => {
+test('Today dashboard renders only the current and next workout', () => {
   const markup = renderWeek(weekResponse(), 1);
   const cards = markup.match(/data-testid="workout-card-\d+"/gu) ?? [];
 
-  assert.equal(cards.length, 7);
-  directions.forEach((direction, index) => {
-    const presentation = directionPresentation[direction];
-    assert.ok(markup.includes(presentation.label));
-    assert.ok(markup.includes(presentation.icon));
-    assert.ok(markup.includes(`${durations[index]} мин`));
-  });
-  assert.equal(markup.includes('Телесная терапия'), false);
-  assert.equal(markup.includes('heart-pulse'), false);
+  assert.equal(cards.length, 2);
+  assert.ok(markup.includes('data-testid="today-heading"'));
+  assert.ok(markup.includes('Сегодня'));
+  assert.ok(markup.includes('data-testid="workout-card-3"'));
+  assert.ok(markup.includes('Телесная терапия'));
+  assert.ok(markup.includes('30 мин'));
+  assert.ok(markup.includes('data-testid="next-workout"'));
+  assert.ok(markup.includes('data-testid="workout-card-4"'));
+  assert.ok(markup.includes('Seed title 4'));
+  assert.ok(markup.includes('35 мин'));
+  assert.equal(markup.includes('data-testid="workout-card-1"'), false);
+  assert.equal(markup.includes('data-testid="workout-card-7"'), false);
 });
 
-test('week progress exposes X/7 copy and accessible progressbar values', () => {
+test('week progress exposes completed count and accessible progressbar values', () => {
   const markup = renderWeek(weekResponse(1, 'active', 3), 1);
 
-  assert.ok(markup.includes('3/7'));
+  assert.ok(markup.includes('3 из 7'));
   assert.match(
     markup,
     /data-testid="week-progress"[^>]*aria-valuenow="3"[^>]*aria-valuetext="Пройдено 3 из 7"/u,
@@ -127,35 +128,30 @@ test('week progress exposes X/7 copy and accessible progressbar values', () => {
   assert.ok(markup.includes('style="width:42.857142857142854%"'));
 });
 
-test('week arrows stop at week one and at the current-plus-one preview boundary', () => {
-  const firstWeek = renderWeek(weekResponse(1, 'active'), 1);
-  assert.ok(buttonTag(firstWeek, 'week-previous').includes('disabled'));
-  assert.equal(buttonTag(firstWeek, 'week-next').includes('disabled'), false);
+test('Today dashboard delegates full week browsing to Schedule', () => {
+  const markup = renderWeek(weekResponse(1, 'active'), 1);
 
-  const preview = renderWeek(weekResponse(2, 'locked'), 1);
-  assert.equal(buttonTag(preview, 'week-previous').includes('disabled'), false);
-  assert.ok(buttonTag(preview, 'week-next').includes('disabled'));
-  assert.equal((preview.match(/data-state="locked"/gu) ?? []).length, 7);
-  assert.ok(buttonTag(preview, 'workout-card-1').includes('disabled'));
-
-  const finalWeek = renderWeek(weekResponse(12, 'active'), 12);
-  assert.ok(buttonTag(finalWeek, 'week-next').includes('disabled'));
+  assert.equal(markup.includes('data-testid="week-previous"'), false);
+  assert.equal(markup.includes('data-testid="week-next"'), false);
+  assert.ok(markup.includes('data-testid="today-open-schedule"'));
+  assert.ok(markup.includes('Открыть полное расписание'));
 });
 
 test('today is highlighted only in the actual current week', () => {
-  const current = renderWeek(weekResponse(1, 'active', 1), 1, 3);
+  const current = renderWeek(weekResponse(1, 'active', 3), 1, 3);
 
   assert.match(
     current,
     /data-testid="workout-card-3"[^>]*data-today="true"|data-today="true"[^>]*data-testid="workout-card-3"/u,
   );
   assert.ok(current.includes('data-testid="today-workout"'));
-  assert.match(current, /data-testid="workout-status-1"[^>]*data-state="completed"/u);
-  assert.match(current, /data-testid="workout-status-2"[^>]*data-state="available"/u);
+  assert.match(current, /data-testid="workout-status-3"[^>]*data-state="completed"/u);
+  assert.match(current, /data-testid="workout-status-4"[^>]*data-state="available"/u);
 
   const futurePreview = renderWeek(weekResponse(2, 'locked'), 1, 3);
   assert.equal(futurePreview.includes('data-today="true"'), false);
   assert.equal(futurePreview.includes('data-testid="today-workout"'), false);
+  assert.ok(futurePreview.includes('data-testid="today-rest-day"'));
 });
 
 test('training preparation keeps the program explorable without opening current workouts', () => {
@@ -164,13 +160,13 @@ test('training preparation keeps the program explorable without opening current 
   assert.ok(markup.includes('data-testid="training-preparation-card"'));
   assert.ok(markup.includes('Пройдено 1 из 4 необходимых'));
   assert.ok(markup.includes('data-testid="preparation-open-base-lessons"'));
-  assert.equal((markup.match(/data-training-access="base-lessons-required"/gu) ?? []).length, 7);
-  assert.equal((markup.match(/data-state="preparation-required"/gu) ?? []).length, 7);
-  assert.equal(buttonTag(markup, 'workout-card-1').includes('disabled'), false);
+  assert.equal((markup.match(/data-training-access="base-lessons-required"/gu) ?? []).length, 2);
+  assert.equal((markup.match(/data-state="preparation-required"/gu) ?? []).length, 2);
+  assert.equal(buttonTag(markup, 'workout-card-3').includes('disabled'), false);
 
   const future = renderWeek(weekResponse(2, 'locked'), 1, 3, true);
   assert.equal(future.includes('data-training-access="base-lessons-required"'), false);
-  assert.ok(buttonTag(future, 'workout-card-1').includes('disabled'));
+  assert.equal(future.includes('data-testid="workout-card-'), false);
 });
 
 test('base-lessons gate offers preparation and a return to app exploration', () => {
@@ -192,33 +188,45 @@ test('base-lessons gate offers preparation and a return to app exploration', () 
   assert.ok(markup.includes('Вернуться к изучению приложения'));
 });
 
-test('tab bar renders four routes and highlights only the active tab', () => {
+test('tab bar renders Today and a fifth active Chat tab with its unread badge', () => {
   const markup = renderToStaticMarkup(
     createElement(TabBar, {
-      route: appRoutes.progress,
+      route: appRoutes.chat,
+      showChat: true,
+      chatUnreadCount: 125,
       onNavigate: () => undefined,
     }),
   );
 
   assert.equal(
-    (markup.match(/data-testid="tab-(?:home|schedule|progress|settings)"/gu) ?? []).length,
-    4,
+    (markup.match(/data-testid="tab-(?:home|schedule|progress|chat|settings)"/gu) ?? []).length,
+    5,
   );
   assert.equal((markup.match(/aria-current="page"/gu) ?? []).length, 1);
-  assert.match(markup, /data-testid="tab-progress"[^>]*aria-current="page"/u);
-  assert.ok(markup.includes('Главная'));
+  assert.match(markup, /data-testid="tab-chat"[^>]*aria-current="page"/u);
+  assert.match(
+    markup,
+    /data-testid="tab-chat"[^>]*aria-label="Чат с тренером, 99\+ непрочитанных сообщений"/u,
+  );
+  assert.ok(markup.includes('data-testid="tab-chat-badge"'));
+  assert.ok(markup.includes('99+'));
+  assert.ok(markup.includes('Сегодня'));
   assert.ok(markup.includes('Расписание'));
   assert.ok(markup.includes('Прогресс'));
+  assert.ok(markup.includes('Чат'));
   assert.ok(markup.includes('Настройки'));
 
   const savingMarkup = renderToStaticMarkup(
     createElement(TabBar, {
       route: appRoutes.home,
       disabled: true,
+      showChat: false,
+      chatUnreadCount: 0,
       onNavigate: () => undefined,
     }),
   );
   assert.match(savingMarkup, /data-testid="tab-bar"[^>]*aria-busy="true"/u);
+  assert.equal(savingMarkup.includes('data-testid="tab-chat"'), false);
   assert.equal((savingMarkup.match(/aria-disabled="true"/gu) ?? []).length, 4);
   assert.equal((savingMarkup.match(/tabindex="-1"/gu) ?? []).length, 4);
 });

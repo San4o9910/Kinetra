@@ -27,7 +27,7 @@ import { ScheduleScreen } from './features/schedule/ScheduleScreen';
 import { SettingsScreen } from './features/settings/SettingsScreen';
 import { settleBestEffortWithin } from './features/settings/accountLifecycle';
 import { SurveyWizard } from './features/survey/SurveyWizard';
-import { ChatFloatingButton, ClientChatScreen, useChatRuntime } from './features/chat';
+import { ClientChatScreen, useChatRuntime } from './features/chat';
 import { TrainerChatsScreen } from './features/trainer-chat';
 import { TrainerAdminShell } from './features/trainer-shell/TrainerAdminShell';
 import { TrainerVerificationScreen } from './features/trainer-verification/TrainerVerificationScreen';
@@ -52,7 +52,6 @@ import { createFeatureChatRealtimeClient } from './realtime/socket';
 import {
   appRoutes,
   isActiveAppRoute,
-  isChatFabRoute,
   isExplorationAppRoute,
   isPaymentRoute,
   isSettingsRoute,
@@ -120,9 +119,8 @@ const SystemState = ({ kind, message, onRetry }: SystemStateProps): ReactNode =>
 interface ActiveAppShellProps {
   readonly route: AppRoute;
   readonly navigationDisabled: boolean;
-  readonly chatFabHidden: boolean;
+  readonly showChat: boolean;
   readonly chatUnreadCount: number;
-  readonly onOpenChat: () => void;
   readonly onNavigate: (route: AppRoute) => void;
   readonly children: ReactNode;
 }
@@ -130,16 +128,20 @@ interface ActiveAppShellProps {
 const ActiveAppShell = ({
   route,
   navigationDisabled,
-  chatFabHidden,
+  showChat,
   chatUnreadCount,
-  onOpenChat,
   onNavigate,
   children,
 }: ActiveAppShellProps): ReactNode => (
   <div className="active-app-shell">
     <div className="active-app-content">{children}</div>
-    <ChatFloatingButton unreadCount={chatUnreadCount} hidden={chatFabHidden} onOpen={onOpenChat} />
-    <TabBar route={route} disabled={navigationDisabled} onNavigate={onNavigate} />
+    <TabBar
+      route={route}
+      disabled={navigationDisabled}
+      showChat={showChat}
+      chatUnreadCount={chatUnreadCount}
+      onNavigate={onNavigate}
+    />
   </div>
 );
 
@@ -270,7 +272,7 @@ export const App = (): ReactNode => {
   const [authView, setAuthView] = useState<AuthView>('login');
   const [route, navigate] = useBrowserRoute();
   const [workoutCompletionBusy, setWorkoutCompletionBusy] = useState(false);
-  const [blockingDialogOpen, setBlockingDialogOpen] = useState(false);
+  const [, setBlockingDialogOpen] = useState(false);
   const [trainerSignOutState, setTrainerSignOutState] = useState<'idle' | TrainerSignOutUiState>(
     'idle',
   );
@@ -297,8 +299,15 @@ export const App = (): ReactNode => {
       }
 
       const workoutVideoId = window.history.state?.kinetraWorkoutVideoId;
+      const workoutDayOfWeek = window.history.state?.kinetraWorkoutDayOfWeek;
+      const workoutSelected =
+        typeof workoutVideoId === 'string' ||
+        (typeof workoutDayOfWeek === 'number' &&
+          Number.isInteger(workoutDayOfWeek) &&
+          workoutDayOfWeek >= 1 &&
+          workoutDayOfWeek <= 7);
 
-      if (typeof workoutVideoId === 'string') {
+      if (workoutSelected) {
         if (window.location.pathname === nextRoute) {
           window.history.back();
           return;
@@ -322,6 +331,34 @@ export const App = (): ReactNode => {
     setSession({ kind: 'unauthenticated' });
     navigate(appRoutes.login, true);
   }, [navigate]);
+
+  const openScheduledWorkout = useCallback(
+    (programWeek: number, dayOfWeek: number): void => {
+      if (
+        workoutCompletionBusy ||
+        !Number.isInteger(programWeek) ||
+        programWeek < 1 ||
+        programWeek > 12 ||
+        !Number.isInteger(dayOfWeek) ||
+        dayOfWeek < 1 ||
+        dayOfWeek > 7
+      ) {
+        return;
+      }
+
+      window.history.pushState(
+        {
+          kinetraWorkoutDayOfWeek: dayOfWeek,
+          kinetraProgramWeek: programWeek,
+        },
+        '',
+        appRoutes.home,
+      );
+      window.scrollTo({ top: 0, behavior: 'auto' });
+      navigate(appRoutes.home);
+    },
+    [navigate, workoutCompletionBusy],
+  );
 
   const handleTrainerVerificationProfileUpdated = useCallback(
     (updated: MeResponse): void => {
@@ -876,8 +913,6 @@ export const App = (): ReactNode => {
   }
 
   const chatControlledUnavailable = chatRuntime.state.kind === 'unavailable';
-  const chatFabHidden =
-    blockingDialogOpen || !isChatFabRoute(route) || chatControlledUnavailable || !chatEnabled;
 
   const withActiveNavigation = (content: ReactNode): ReactNode =>
     profile.user.onboardingStatus === 'active' ||
@@ -885,9 +920,8 @@ export const App = (): ReactNode => {
       <ActiveAppShell
         route={route}
         navigationDisabled={workoutCompletionBusy}
-        chatFabHidden={chatFabHidden}
+        showChat={profile.user.onboardingStatus === 'active'}
         chatUnreadCount={chatRuntime.unreadCount}
-        onOpenChat={() => navigate(appRoutes.chat)}
         onNavigate={navigateActiveTab}
       >
         {content}
@@ -981,29 +1015,29 @@ export const App = (): ReactNode => {
     const backToActiveApp = (): void => navigate(appRoutes.home);
 
     if (chatRuntime.state.kind === 'idle' || chatRuntime.state.kind === 'loading') {
-      return (
+      return withActiveNavigation(
         <ChatRouteState
           kind="loading"
           message="Загружаем диалог и проверяем защищённую сессию…"
           onBack={backToActiveApp}
-        />
+        />,
       );
     }
 
     if (chatRuntime.state.kind === 'unavailable') {
-      return (
+      return withActiveNavigation(
         <ChatRouteState
           kind="unavailable"
           message={chatUnavailableMessage(chatRuntime.state.reason)}
           showEmailFallback
           onBack={backToActiveApp}
           onRetry={chatRuntime.refresh}
-        />
+        />,
       );
     }
 
     if (chatRuntime.state.kind === 'error' || chatRuntime.state.session.role !== 'client') {
-      return (
+      return withActiveNavigation(
         <ChatRouteState
           kind="error"
           message={
@@ -1013,11 +1047,11 @@ export const App = (): ReactNode => {
           }
           onBack={backToActiveApp}
           onRetry={chatRuntime.refresh}
-        />
+        />,
       );
     }
 
-    return (
+    return withActiveNavigation(
       <ClientChatScreen
         accountId={profile.user.id}
         ownDisplayName={clientDisplayName(profile)}
@@ -1031,7 +1065,7 @@ export const App = (): ReactNode => {
         onSessionExpired={handleActiveSessionExpired}
         onConversationStateChange={chatRuntime.updateClientConversationState}
         registerObjectUrl={chatRuntime.registerObjectUrl}
-      />
+      />,
     );
   }
 
@@ -1040,7 +1074,7 @@ export const App = (): ReactNode => {
       subscriptionState.kind === 'ready' ? (
         isSubscriptionActive(subscriptionState.subscription) ? (
           <ScheduleScreen
-            onOpenHome={() => navigate(appRoutes.home)}
+            onOpenWorkout={openScheduledWorkout}
             onSessionExpired={handleActiveSessionExpired}
             onSubscriptionRequired={loadSubscription}
           />
@@ -1083,6 +1117,7 @@ export const App = (): ReactNode => {
           subscription={subscriptionState.subscription}
           trainingLocked={profile.user.onboardingStatus === 'base_lessons'}
           onOpenBaseLessons={() => navigate(appRoutes.baseLessons)}
+          onOpenSchedule={() => navigateActiveTab(appRoutes.schedule)}
           onOpenPayment={() => navigate(appRoutes.payment)}
           onSubscriptionRequired={loadSubscription}
           onWorkoutCompletionBusyChange={setWorkoutCompletionBusy}
@@ -1106,9 +1141,8 @@ export const App = (): ReactNode => {
     <ActiveAppShell
       route={route}
       navigationDisabled={workoutCompletionBusy}
-      chatFabHidden={chatFabHidden}
+      showChat={profile.user.onboardingStatus === 'active'}
       chatUnreadCount={chatRuntime.unreadCount}
-      onOpenChat={() => navigate(appRoutes.chat)}
       onNavigate={navigateActiveTab}
     >
       {activeContent}

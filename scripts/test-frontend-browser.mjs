@@ -22,6 +22,30 @@ const profileCleanupStabilityMs = 1_000;
 const profileCleanupPollMs = 100;
 const millisecondsPerDay = 24 * 60 * 60 * 1_000;
 const browserFixtureNow = Date.now();
+const browserTimeZone = 'Europe/Moscow';
+const browserTodayDayOfWeek = (() => {
+  const weekday = new Intl.DateTimeFormat('en-US', {
+    timeZone: browserTimeZone,
+    weekday: 'short',
+  }).format(new Date(browserFixtureNow));
+  const weekdayNumber = {
+    Mon: 1,
+    Tue: 2,
+    Wed: 3,
+    Thu: 4,
+    Fri: 5,
+    Sat: 6,
+    Sun: 7,
+  }[weekday];
+
+  assert.notEqual(weekdayNumber, undefined, `Unsupported browser fixture weekday ${weekday}.`);
+  return weekdayNumber;
+})();
+const browserNextWorkoutDayOfWeek = browserTodayDayOfWeek < 7 ? browserTodayDayOfWeek + 1 : null;
+const browserTodayDashboardDayNumbers = [
+  browserTodayDayOfWeek,
+  ...(browserNextWorkoutDayOfWeek === null ? [] : [browserNextWorkoutDayOfWeek]),
+];
 const fixtureTimestamp = (daysFromNow) =>
   new Date(browserFixtureNow + daysFromNow * millisecondsPerDay).toISOString();
 const initialSubscriptionStartsAt = fixtureTimestamp(-30);
@@ -2055,9 +2079,11 @@ const runBrowserScenario = async () => {
         const tabs = [
           ...document.querySelectorAll(${JSON.stringify('[data-testid^="tab-"]')})
         ].filter((tab) => tab.getAttribute('data-testid') !== 'tab-bar');
-        const lastCard = cards.at(-1);
+        const scheduleAction = document.querySelector(
+          ${JSON.stringify(selector('today-open-schedule'))}
+        );
         const tabBarRect = tabBar?.getBoundingClientRect();
-        const lastCardRect = lastCard?.getBoundingClientRect();
+        const scheduleActionRect = scheduleAction?.getBoundingClientRect();
         return {
           innerWidth: window.innerWidth,
           innerHeight: window.innerHeight,
@@ -2075,14 +2101,14 @@ const runBrowserScenario = async () => {
           tabBarBottom: tabBarRect?.bottom ?? -1,
           tabBarTop: tabBarRect?.top ?? -1,
           tabBarHeight: tabBarRect?.height ?? 0,
-          lastCardBottom: lastCardRect?.bottom ?? window.innerHeight + 1,
+          scheduleActionBottom: scheduleActionRect?.bottom ?? window.innerHeight + 1,
         };
       })()`);
       assert.equal(metrics.innerWidth, width);
       assert.ok(metrics.scrollWidth <= width, `Main screen horizontal overflow at ${width}px.`);
-      assert.equal(metrics.cardCount, 7);
+      assert.equal(metrics.cardCount, browserTodayDashboardDayNumbers.length);
       assert.equal(metrics.cardsInsideViewport, true, `Workout card overflow at ${width}px.`);
-      assert.equal(metrics.tabCount, 4);
+      assert.equal(metrics.tabCount, 5);
       assert.equal(metrics.tabTargetsAreLargeEnough, true, `Tab target below 44px at ${width}px.`);
       assert.ok(
         Math.abs(metrics.tabBarBottom - metrics.innerHeight) <= 1,
@@ -2090,8 +2116,8 @@ const runBrowserScenario = async () => {
       );
       assert.ok(metrics.tabBarHeight >= 56, `Tab bar is below 56px at ${width}px.`);
       assert.ok(
-        metrics.lastCardBottom <= metrics.tabBarTop,
-        `Tab bar overlaps the final workout at ${width}px.`,
+        metrics.scheduleActionBottom <= metrics.tabBarTop,
+        `Tab bar overlaps the Today schedule action at ${width}px.`,
       );
       await cdp.evaluate("window.scrollTo({ top: 0, behavior: 'auto' })");
     };
@@ -2243,7 +2269,7 @@ const runBrowserScenario = async () => {
         true,
         `Progress control below 44px at ${width}px.`,
       );
-      assert.equal(metrics.tabCount, 4);
+      assert.equal(metrics.tabCount, 5);
       assert.equal(
         metrics.tabTargetsAreLargeEnough,
         true,
@@ -2659,15 +2685,15 @@ const runBrowserScenario = async () => {
     assert.equal(await cdp.evaluate("sessionStorage.getItem('kinetra.onboarding.user')"), null);
 
     await waitFor(
-      'exploration preparation progress and seven protected workout cards',
+      'exploration preparation progress and protected Today workout cards',
       async () =>
         (await text('training-preparation-progress')) === 'Пройдено 0 из 4 необходимых' &&
         (await cdp.evaluate(
           `document.querySelectorAll(${JSON.stringify('[data-training-access="base-lessons-required"]')}).length`,
-        )) === 7,
+        )) === browserTodayDashboardDayNumbers.length,
     );
     const workoutCompletionsBeforeExploration = counters.workoutComplete;
-    await click('workout-card-1');
+    await click(`workout-card-${browserTodayDayOfWeek}`);
     await waitFor('base lessons explanation instead of workout player', () =>
       dialogIsOpen('base-lessons-required-dialog'),
     );
@@ -2681,6 +2707,13 @@ const runBrowserScenario = async () => {
     );
 
     assert.equal(await exists('chat-fab'), false);
+    assert.equal(await exists('tab-chat'), false);
+    assert.equal(
+      await cdp.evaluate(
+        `document.querySelectorAll(${JSON.stringify('[data-testid^="tab-"]')}).length - 1`,
+      ),
+      4,
+    );
     const chatSessionRequestsBeforeExplorationProbe = counters.chatSessionGet;
     await cdp.evaluate(`
       window.history.pushState(null, '', '/chat');
@@ -2691,7 +2724,8 @@ const runBrowserScenario = async () => {
       async () =>
         (await pathname()) === '/' &&
         (await exists('training-preparation-card')) &&
-        !(await exists('chat-fab')),
+        !(await exists('chat-fab')) &&
+        !(await exists('tab-chat')),
     );
     assert.equal(counters.chatSessionGet, chatSessionRequestsBeforeExplorationProbe);
     console.log('KINETRA_EXPLORATION_CHAT_LOCK=PASS');
@@ -2754,6 +2788,7 @@ const runBrowserScenario = async () => {
     assert.equal(await pathname(), '/base-lessons');
     assert.equal(await exists('tab-bar'), false);
     assert.equal(await exists('chat-fab'), false);
+    assert.equal(await exists('tab-chat'), false);
     console.log('KINETRA_BASE_LESSONS_STANDALONE=PASS');
 
     await click('base-lessons-back-to-app');
@@ -2975,26 +3010,36 @@ const runBrowserScenario = async () => {
     assert.equal(await pathname(), '/');
 
     await waitFor(
-      'current program week with seven workouts',
+      'Today dashboard with current and next workout context',
       async () =>
-        (await text('week-heading')) === 'Неделя 1' &&
+        (await text('today-heading')) === 'Сегодня' &&
         (await attribute('week-progress', 'aria-valuenow')) === '0' &&
         (await attribute('week-progress', 'aria-valuemax')) === '7' &&
+        (await text('week-progress-copy')) === '0 из 7' &&
+        (await exists('next-workout')) &&
+        (await exists('today-open-schedule')) &&
         (await cdp.evaluate(
           `document.querySelectorAll(${JSON.stringify('[data-testid^="workout-card-"]')}).length`,
-        )) === 7,
+        )) === browserTodayDashboardDayNumbers.length,
     );
     const renderedWorkoutCards = await cdp.evaluate(`[
       ...document.querySelectorAll(${JSON.stringify('[data-testid^="workout-card-"]')})
-    ].map((card) => card.textContent?.replace(/\\s+/gu, ' ').trim() ?? '')`);
-    assert.equal(renderedWorkoutCards.length, 7);
-    for (const [index, workout] of workoutSchedule.entries()) {
-      const cardText = renderedWorkoutCards[index] ?? '';
-      assert.ok(cardText.includes(workout.title), `Workout ${index + 1} title is missing.`);
-      assert.ok(cardText.includes(workout.icon), `Workout ${index + 1} icon is missing.`);
+    ].map((card) => ({
+      testId: card.getAttribute('data-testid'),
+      text: card.textContent?.replace(/\\s+/gu, ' ').trim() ?? '',
+    }))`);
+    assert.equal(renderedWorkoutCards.length, browserTodayDashboardDayNumbers.length);
+    for (const [index, dayOfWeek] of browserTodayDashboardDayNumbers.entries()) {
+      const workout = workoutSchedule[dayOfWeek - 1];
+      assert.notEqual(workout, undefined, `Fixture workout ${dayOfWeek} is missing.`);
+      const renderedCard = renderedWorkoutCards[index];
+      assert.equal(renderedCard?.testId, `workout-card-${dayOfWeek}`);
+      const cardText = renderedCard?.text ?? '';
+      assert.ok(cardText.includes(workout.title), `Workout ${dayOfWeek} title is missing.`);
+      assert.ok(cardText.includes(workout.icon), `Workout ${dayOfWeek} icon is missing.`);
       assert.ok(
         cardText.includes(String(workout.duration_minutes)),
-        `Workout ${index + 1} duration is missing.`,
+        `Workout ${dayOfWeek} duration is missing.`,
       );
     }
     const initialWorkoutStates = await cdp.evaluate(`[
@@ -3002,13 +3047,13 @@ const runBrowserScenario = async () => {
     ].map((status) => status.getAttribute('data-state'))`);
     assert.deepEqual(
       initialWorkoutStates,
-      Array.from({ length: 7 }, () => 'available'),
+      Array.from({ length: browserTodayDashboardDayNumbers.length }, () => 'available'),
     );
-    assert.equal(await disabled('week-previous'), true);
-    assert.equal(await disabled('week-next'), false);
+    assert.equal(await exists('week-previous'), false);
+    assert.equal(await exists('week-next'), false);
 
     const tabState = await cdp.evaluate(`(() => {
-      const ids = ['tab-home', 'tab-schedule', 'tab-progress', 'tab-settings'];
+      const ids = ['tab-home', 'tab-schedule', 'tab-progress', 'tab-chat', 'tab-settings'];
       return {
         count: ids.filter((id) => document.querySelector('[data-testid="' + id + '"]')).length,
         active: ids.filter((id) =>
@@ -3016,7 +3061,8 @@ const runBrowserScenario = async () => {
         ),
       };
     })()`);
-    assert.deepEqual(tabState, { count: 4, active: ['tab-home'] });
+    assert.deepEqual(tabState, { count: 5, active: ['tab-home'] });
+    assert.equal(await exists('chat-fab'), false);
 
     const todayState = await cdp.evaluate(`(() => {
       const cards = [
@@ -3030,6 +3076,11 @@ const runBrowserScenario = async () => {
     })()`);
     assert.deepEqual(todayState, { count: 1, highlighted: true });
     assert.equal(await exists('today-workout'), true);
+    if (browserNextWorkoutDayOfWeek === null) {
+      assert.ok((await text('next-workout'))?.includes('больше тренировок нет'));
+    } else {
+      assert.equal(await exists(`workout-card-${browserNextWorkoutDayOfWeek}`), true);
+    }
     await assertMainScreenLayout(320);
     await assertMainScreenLayout(428);
 
@@ -3112,16 +3163,46 @@ const runBrowserScenario = async () => {
     await assertScheduleLayout(320);
     await assertScheduleLayout(428);
 
-    await click('schedule-segment-current');
+    await click('schedule-next-day-4');
+    await waitFor(
+      'T08 locked next-week workout fails closed on Today',
+      async () =>
+        (await pathname()) === '/' &&
+        (await exists('main-screen')) &&
+        !(await exists('workout-player')) &&
+        (await text('main-screen'))?.includes('когда начнётся выбранная неделя') === true &&
+        (await cdp.evaluate(
+          `window.history.state?.kinetraWorkoutVideoId === undefined &&
+            window.history.state?.kinetraWorkoutDayOfWeek === undefined &&
+            window.history.state?.kinetraProgramWeek === undefined`,
+        )),
+    );
+    await click('tab-schedule');
     await waitFor('T08 current segment restored', () => exists('schedule-panel-current'));
     console.log('KINETRA_T08_SCHEDULE_CONTENT=PASS');
 
     await click('schedule-current-day-4');
     await waitFor(
-      'T08 schedule card opens Home',
-      async () => (await pathname()) === '/' && (await exists('main-screen')),
+      'T08 schedule card opens the exact current-week workout',
+      async () =>
+        (await pathname()) === '/' &&
+        (await exists('workout-player')) &&
+        (await cdp.evaluate(
+          `window.history.state?.kinetraWorkoutVideoId === ${JSON.stringify(workoutVideoId(1, 4))} &&
+            window.history.state?.kinetraProgramWeek === 1 &&
+            window.history.state?.kinetraWorkoutDayOfWeek === undefined`,
+        )),
     );
     assert.equal(await attribute('tab-home', 'aria-current'), 'page');
+    assert.equal(await exists('workout-video-placeholder'), true);
+    await click('workout-back');
+    await waitFor(
+      'Schedule restored after selected workout',
+      async () =>
+        (await pathname()) === '/schedule' &&
+        (await exists('schedule-panel-current')) &&
+        (await cdp.evaluate('window.history.state?.kinetraWorkoutVideoId === undefined')),
+    );
     console.log('KINETRA_T08_CARD_NAVIGATION=PASS');
 
     await click('tab-schedule');
@@ -3333,38 +3414,35 @@ const runBrowserScenario = async () => {
     );
     await cdp.evaluate('window.history.back()');
     await waitFor(
-      'week list after today workout system Back',
+      'Today dashboard after workout system Back',
       async () =>
         (await exists('main-screen')) &&
+        (await text('today-heading')) === 'Сегодня' &&
         (await cdp.evaluate('window.history.state?.kinetraWorkoutVideoId === undefined')),
     );
     console.log('KINETRA_T07_SYSTEM_BACK=PASS');
 
-    await click('workout-card-7');
-    await waitFor('placeholder before Home tab reselection', () =>
-      exists('workout-video-placeholder'),
-    );
+    await click(`workout-card-${browserTodayDayOfWeek}`);
+    await waitFor('workout before Today tab reselection', () => exists('workout-player'));
     await click('tab-home');
     await waitFor(
-      'Home tab closes the current workout without a hidden history entry',
+      'Today tab closes the current workout without a hidden history entry',
       async () =>
         (await pathname()) === '/' &&
         (await exists('main-screen')) &&
         (await cdp.evaluate('window.history.state?.kinetraWorkoutVideoId === undefined')),
     );
-    await click('week-next');
-    await waitFor(
-      'preview week before Forward restores a workout from another week',
-      async () => (await text('week-heading')) === 'Неделя 2',
-    );
     await cdp.evaluate('window.history.forward()');
     await waitFor(
-      'Forward restores the workout and week represented by its history entry',
+      'Forward restores the workout represented by its canonical history entry',
       async () =>
-        (await exists('workout-video-placeholder')) &&
+        (await exists('workout-player')) &&
         (await cdp.evaluate(`
-          typeof window.history.state?.kinetraWorkoutVideoId === 'string' &&
-          window.history.state?.kinetraProgramWeek === 1
+          window.history.state?.kinetraWorkoutVideoId === ${JSON.stringify(
+            workoutVideoId(1, browserTodayDayOfWeek),
+          )} &&
+          window.history.state?.kinetraProgramWeek === 1 &&
+          window.history.state?.kinetraWorkoutDayOfWeek === undefined
         `)),
     );
     await cdp.evaluate('window.history.back()');
@@ -3372,34 +3450,35 @@ const runBrowserScenario = async () => {
       'Back closes the Forward-restored workout',
       async () =>
         (await exists('main-screen')) &&
-        (await text('week-heading')) === 'Неделя 1' &&
+        (await text('today-heading')) === 'Сегодня' &&
         (await cdp.evaluate('window.history.state?.kinetraWorkoutVideoId === undefined')),
     );
 
-    await click('workout-card-7');
-    await waitFor('placeholder before player reload', () => exists('workout-video-placeholder'));
+    await click(`workout-card-${browserTodayDayOfWeek}`);
+    await waitFor('workout before player reload', () => exists('workout-player'));
     await cdp.send('Page.reload', { ignoreCache: true });
     await waitFor(
       'reload restores the workout from history state',
       async () =>
-        (await exists('workout-video-placeholder')) &&
+        (await exists('workout-player')) &&
         (await cdp.evaluate(`
-          typeof window.history.state?.kinetraWorkoutVideoId === 'string' &&
-          window.history.state?.kinetraProgramWeek === 1
+          window.history.state?.kinetraWorkoutVideoId === ${JSON.stringify(
+            workoutVideoId(1, browserTodayDayOfWeek),
+          )} &&
+          window.history.state?.kinetraProgramWeek === 1 &&
+          window.history.state?.kinetraWorkoutDayOfWeek === undefined
         `)),
     );
     await cdp.evaluate('window.history.back()');
     await waitFor(
-      'Back after player reload returns to the week',
+      'Back after player reload returns to Today',
       async () =>
         (await exists('main-screen')) &&
         (await cdp.evaluate('window.history.state?.kinetraWorkoutVideoId === undefined')),
     );
 
-    await click('workout-card-7');
-    await waitFor('placeholder before cross-tab navigation', () =>
-      exists('workout-video-placeholder'),
-    );
+    await click(`workout-card-${browserTodayDayOfWeek}`);
+    await waitFor('workout before cross-tab navigation', () => exists('workout-player'));
     await click('tab-schedule');
     await waitFor(
       'Schedule tab replaces the workout history sentinel',
@@ -3418,43 +3497,39 @@ const runBrowserScenario = async () => {
     );
     console.log('KINETRA_T07_PLAYER_TAB_HISTORY=PASS');
 
-    await click('week-next');
+    assert.equal(await exists('week-previous'), false);
+    assert.equal(await exists('week-next'), false);
+    await click('today-open-schedule');
     await waitFor(
-      'future week preview',
+      'Today schedule action opens the full current/next-week schedule',
       async () =>
-        (await text('week-heading')) === 'Неделя 2' &&
-        (await cdp.evaluate(`(() => {
-          const statuses = [
-            ...document.querySelectorAll(${JSON.stringify('[data-testid^="workout-status-"]')})
-          ];
-          return statuses.length === 7 &&
-            statuses.every((status) => status.getAttribute('data-state') === 'locked');
-        })()`)),
+        (await pathname()) === '/schedule' &&
+        (await exists('schedule-panel-current')) &&
+        (await exists('schedule-segment-next')),
     );
-    assert.equal(await disabled('week-previous'), false);
-    assert.equal(await disabled('week-next'), true);
-    assert.equal(await exists('today-workout'), false);
-    await click('week-previous');
+    await click('tab-home');
     await waitFor(
-      'current week after previous arrow',
-      async () => (await text('week-heading')) === 'Неделя 1',
+      'Today dashboard restored after full schedule',
+      async () => (await pathname()) === '/' && (await text('today-heading')) === 'Сегодня',
     );
-    console.log('KINETRA_T07_WEEK_NAVIGATION=PASS');
+    console.log('KINETRA_T07_TODAY_DASHBOARD=PASS');
 
-    await click('workout-card-7');
+    await click('tab-schedule');
+    await waitFor('schedule before missing-video selection', () =>
+      exists('schedule-panel-current'),
+    );
+    await click('schedule-current-day-7');
     await waitFor('T07 missing workout video placeholder', () =>
       exists('workout-video-placeholder'),
     );
     assert.ok((await text('workout-video-placeholder'))?.includes('Видео скоро будет доступно'));
     await click('workout-back');
     await waitFor(
-      'week list after workout placeholder',
-      async () =>
-        (await exists('main-screen')) &&
-        (await cdp.evaluate('window.history.state?.kinetraWorkoutVideoId === undefined')),
+      'schedule after workout placeholder',
+      async () => (await pathname()) === '/schedule' && (await exists('schedule-panel-current')),
     );
 
-    await click('workout-card-1');
+    await click('schedule-current-day-1');
     await waitFor('T07 workout video player', () => exists('workout-video'));
     const belowThresholdProgress = await cdp.evaluate(`(() => {
       const video = document.querySelector(${JSON.stringify(selector('workout-video'))});
@@ -3557,13 +3632,24 @@ const runBrowserScenario = async () => {
       await click('workout-back');
     }
     await waitFor(
-      'completed workout card after returning to week',
+      'completed workout after returning to Schedule',
       async () =>
-        (await attribute('workout-status-1', 'data-state')) === 'completed' &&
-        (await attribute('week-progress', 'aria-valuenow')) === '1' &&
+        (await pathname()) === '/schedule' &&
+        (await attribute('schedule-current-day-1', 'data-completed')) === 'true' &&
         (await cdp.evaluate('window.history.state?.kinetraWorkoutVideoId === undefined')),
     );
-    assert.ok((await text('workout-status-1'))?.includes('Пройдено'));
+    await click('tab-home');
+    await waitFor(
+      'Today weekly progress reflects the completed workout',
+      async () =>
+        (await pathname()) === '/' &&
+        (await attribute('week-progress', 'aria-valuenow')) === '1' &&
+        (await text('week-progress-copy')) === '1 из 7',
+    );
+    if (browserTodayDashboardDayNumbers.includes(1)) {
+      assert.equal(await attribute('workout-status-1', 'data-state'), 'completed');
+      assert.ok((await text('workout-status-1'))?.includes('Пройдено'));
+    }
     console.log('KINETRA_T07_WORKOUT_COMPLETION=PASS');
 
     await click('tab-schedule');
@@ -3607,7 +3693,11 @@ const runBrowserScenario = async () => {
     await cdp.send('Page.reload', { ignoreCache: true });
     await waitFor('T07 main route restored after reload', () => exists('main-screen'));
     assert.equal(await pathname(), '/');
-    assert.equal(await attribute('workout-status-1', 'data-state'), 'completed');
+    assert.equal(await attribute('week-progress', 'aria-valuenow'), '1');
+    assert.equal(await text('week-progress-copy'), '1 из 7');
+    if (browserTodayDashboardDayNumbers.includes(1)) {
+      assert.equal(await attribute('workout-status-1', 'data-state'), 'completed');
+    }
 
     await click('tab-settings');
     await waitFor(
@@ -3880,7 +3970,7 @@ const runBrowserScenario = async () => {
     assert.deepEqual(
       await cdp.evaluate(`(() => {
         const main = document.querySelector(${JSON.stringify(selector('main-screen'))});
-        const heading = document.querySelector(${JSON.stringify(selector('week-heading'))});
+        const heading = document.querySelector(${JSON.stringify(selector('today-heading'))});
         return {
           preference: document.documentElement.dataset.themePreference ?? null,
           resolved: document.documentElement.dataset.theme ?? null,
@@ -4032,6 +4122,7 @@ const runBrowserScenario = async () => {
       window.history.replaceState(
         {
           kinetraWorkoutVideoId: ${JSON.stringify(workoutVideoId(1, 2))},
+          kinetraWorkoutDayOfWeek: 2,
           kinetraProgramWeek: 1,
           browserAcceptanceState: 'preserved',
         },
@@ -4053,7 +4144,7 @@ const runBrowserScenario = async () => {
     assert.equal(await exists('workout-player'), false);
     assert.equal(
       await cdp.evaluate(
-        'window.history.state?.kinetraWorkoutVideoId === undefined && window.history.state?.kinetraProgramWeek === undefined',
+        'window.history.state?.kinetraWorkoutVideoId === undefined && window.history.state?.kinetraWorkoutDayOfWeek === undefined && window.history.state?.kinetraProgramWeek === undefined',
       ),
       true,
     );
@@ -4106,9 +4197,9 @@ const runBrowserScenario = async () => {
       async () =>
         (await pathname()) === '/' &&
         (await exists('main-screen')) &&
-        (await exists('workout-card-2')),
+        (await exists(`workout-card-${browserTodayDayOfWeek}`)),
     );
-    await click('workout-card-2');
+    await click(`workout-card-${browserTodayDayOfWeek}`);
     await waitFor('T11 activated subscription opens a workout player', () =>
       exists('workout-player'),
     );
@@ -4294,7 +4385,7 @@ const runBrowserScenario = async () => {
       },
     );
     assert.equal(counters.accountDelete, 1);
-    assert.equal(counters.weekGet, 4);
+    assert.equal(counters.weekGet, 1);
     assert.equal(counters.workoutComplete, 1);
     assert.equal(counters.logout, 1);
 
@@ -6199,9 +6290,11 @@ const launchT12BrowserContext = async (profileDirectory, width, height) => {
   const layoutMetrics = () =>
     cdp.evaluate(`(() => {
       const root = document.documentElement;
-      const fab = document.querySelector(${JSON.stringify(selector('chat-fab'))});
+      const chatTab = document.querySelector(${JSON.stringify(selector('tab-chat'))});
+      const composer = document.querySelector(${JSON.stringify(selector('chat-composer'))});
       const tabBar = document.querySelector('nav');
-      const fabRect = fab?.getBoundingClientRect() ?? null;
+      const chatTabRect = chatTab?.getBoundingClientRect() ?? null;
+      const composerRect = composer?.getBoundingClientRect() ?? null;
       const tabRect = tabBar?.getBoundingClientRect() ?? null;
       return {
         innerWidth: window.innerWidth,
@@ -6209,11 +6302,16 @@ const launchT12BrowserContext = async (profileDirectory, width, height) => {
         scrollWidth: root.scrollWidth,
         theme: root.dataset.theme ?? null,
         themePreference: root.dataset.themePreference ?? null,
-        fab: fabRect === null ? null : {
-          width: fabRect.width,
-          height: fabRect.height,
-          right: fabRect.right,
-          bottom: fabRect.bottom,
+        chatTab: chatTabRect === null ? null : {
+          width: chatTabRect.width,
+          height: chatTabRect.height,
+          left: chatTabRect.left,
+          right: chatTabRect.right,
+          bottom: chatTabRect.bottom,
+        },
+        composer: composerRect === null ? null : {
+          top: composerRect.top,
+          bottom: composerRect.bottom,
         },
         tab: tabRect === null ? null : {
           top: tabRect.top,
@@ -6512,14 +6610,15 @@ const runT12BrowserScenario = async () => {
             `${surface} horizontally overflows at ${width}x${height} in ${theme}.`,
           );
         }
-        assert.notEqual(clientMetrics.fab, null, 'Client home must expose the chat FAB.');
-        assert.equal(clientMetrics.fab.width, 56);
-        assert.equal(clientMetrics.fab.height, 56);
-        assert.ok(clientMetrics.fab.right <= width);
-        if (clientMetrics.tab !== null) {
+        assert.notEqual(clientMetrics.chatTab, null, 'Active client must expose the Chat tab.');
+        assert.ok(clientMetrics.chatTab.width >= 44);
+        assert.ok(clientMetrics.chatTab.height >= 44);
+        assert.ok(clientMetrics.chatTab.left >= 0);
+        assert.ok(clientMetrics.chatTab.right <= width);
+        if (clientMetrics.composer !== null && clientMetrics.tab !== null) {
           assert.ok(
-            clientMetrics.fab.bottom <= clientMetrics.tab.top,
-            `FAB overlaps bottom navigation at ${width}x${height} in ${theme}.`,
+            clientMetrics.composer.bottom <= clientMetrics.tab.top + 1,
+            `Chat composer overlaps bottom navigation at ${width}x${height} in ${theme}.`,
           );
         }
       }
@@ -6996,7 +7095,8 @@ const runT12BrowserScenario = async () => {
       async () =>
         (await client.pathname()) === '/' &&
         (await client.exists('main-screen')) &&
-        (await client.exists('chat-fab')),
+        (await client.exists('tab-chat')) &&
+        !(await client.exists('chat-fab')),
       20_000,
     );
 
@@ -7022,10 +7122,17 @@ const runT12BrowserScenario = async () => {
     );
     await assertResponsiveThemeMatrix();
 
-    await client.click('chat-fab');
+    await client.click('tab-chat');
     await waitFor('client chat route', async () => (await client.pathname()) === '/chat');
     await waitFor('client empty conversation', () => client.exists('chat-empty-state'), 20_000);
     assert.equal(fixture.state.conversationCreated, true);
+    const chatLayout = await client.layoutMetrics();
+    assert.notEqual(chatLayout.composer, null, 'Client chat must expose the composer.');
+    assert.notEqual(chatLayout.tab, null, 'Client chat must retain bottom navigation.');
+    assert.ok(
+      chatLayout.composer.bottom <= chatLayout.tab.top + 1,
+      'Client chat composer must not overlap the persistent bottom navigation.',
+    );
 
     await waitFor(
       'trainer realtime-created conversation without navigation',
@@ -7125,7 +7232,8 @@ const runT12BrowserScenario = async () => {
       async () =>
         (await client.pathname()) === '/' &&
         (await client.exists('main-screen')) &&
-        (await client.exists('chat-fab')),
+        (await client.exists('tab-chat')) &&
+        !(await client.exists('chat-fab')),
       20_000,
     );
     await waitFor(
@@ -7133,7 +7241,7 @@ const runT12BrowserScenario = async () => {
       () => fixture.state.socketConnections.client.size === 1,
       20_000,
     );
-    await trainer.setValue('chat-message-input', 'Ответ тренера для FAB');
+    await trainer.setValue('chat-message-input', 'Ответ тренера для вкладки Чат');
     await waitFor(
       'enabled trainer chat send',
       async () => !(await trainer.disabled('chat-send-button')),
@@ -7147,17 +7255,17 @@ const runT12BrowserScenario = async () => {
       20_000,
     );
     await waitFor(
-      'client FAB realtime unread badge',
-      async () => (await client.text('chat-fab-badge')) === '1',
+      'client Chat-tab realtime unread badge',
+      async () => (await client.text('tab-chat-badge')) === '1',
       20_000,
     );
 
-    await client.click('chat-fab');
+    await client.click('tab-chat');
     await waitFor(
       'client realtime answer history',
       async () =>
         (await client.pathname()) === '/chat' &&
-        (await client.bodyText()).includes('Ответ тренера для FAB'),
+        (await client.bodyText()).includes('Ответ тренера для вкладки Чат'),
       20_000,
     );
     await waitFor(
@@ -7200,13 +7308,13 @@ const runT12BrowserScenario = async () => {
     assert.equal(fixture.state.duplicateMessageId, duplicatePayload.message_id);
     await client.click('chat-back');
     await waitFor(
-      'duplicate event keeps server-authoritative FAB unread at one',
+      'duplicate event keeps server-authoritative Chat-tab unread at one',
       async () =>
-        (await client.exists('main-screen')) && (await client.text('chat-fab-badge')) === '1',
+        (await client.exists('main-screen')) && (await client.text('tab-chat-badge')) === '1',
       20_000,
     );
     assert.equal(fixture.state.clientReadSequence, readBeforeHiddenMessage);
-    await client.click('chat-fab');
+    await client.click('tab-chat');
     await waitFor(
       'hidden chat history deduplicates the realtime message',
       async () =>
@@ -7223,11 +7331,11 @@ const runT12BrowserScenario = async () => {
     );
     await client.click('chat-back');
     await waitFor(
-      'read acknowledgement resets server-authoritative FAB badge',
+      'read acknowledgement resets server-authoritative Chat-tab badge',
       async () =>
         (await client.exists('main-screen')) &&
-        (await client.exists('chat-fab')) &&
-        !(await client.exists('chat-fab-badge')),
+        (await client.exists('tab-chat')) &&
+        !(await client.exists('tab-chat-badge')),
       20_000,
     );
 
@@ -7277,9 +7385,9 @@ const runT12BrowserScenario = async () => {
       trainer_unread: 1,
     });
     await waitFor(
-      'newer conversation event updates FAB and trainer inbox before stale REST release',
+      'newer conversation event updates Chat tab and trainer inbox before stale REST release',
       async () =>
-        (await client.text('chat-fab-badge')) === '1' &&
+        (await client.text('tab-chat-badge')) === '1' &&
         (await trainer.cdp.evaluate(
           "document.querySelector('.trainer-conversation-badge')?.getAttribute('aria-label') ?? null",
         )) === '1 непрочитанных',
@@ -7299,7 +7407,7 @@ const runT12BrowserScenario = async () => {
       20_000,
     );
     await sleep(650);
-    assert.equal(await client.text('chat-fab-badge'), '1');
+    assert.equal(await client.text('tab-chat-badge'), '1');
     assert.equal(
       await trainer.cdp.evaluate(
         "document.querySelector('.trainer-conversation-badge')?.getAttribute('aria-label') ?? null",
@@ -7309,7 +7417,7 @@ const runT12BrowserScenario = async () => {
     );
     assert.equal(fixture.state.staleSessionRace?.eventMessageIds.length, 2);
 
-    await client.click('chat-fab');
+    await client.click('tab-chat');
     await waitFor('client chat reopened for photo flow', () =>
       client.exists('chat-conversation-screen'),
     );
@@ -7447,7 +7555,7 @@ const runT12BrowserScenario = async () => {
       async () =>
         (await client.exists('chat-conversation-screen')) &&
         (await client.bodyText()).includes('Сообщение клиента через realtime') &&
-        (await client.bodyText()).includes('Ответ тренера для FAB') &&
+        (await client.bodyText()).includes('Ответ тренера для вкладки Чат') &&
         (await client.bodyText()).includes('Подпись к безопасной фотографии') &&
         fixture.state.socketConnections.client.size === 1 &&
         fixture.state.socketConnectionCount.client > socketConnectionsBeforeHistoryReload &&
@@ -7640,7 +7748,7 @@ const runT12BrowserScenario = async () => {
     assert.deepEqual(await client.draftKeys(), [], 'Client logout must clear T12 chat drafts.');
 
     await loginContext(client, 'chat-client@example.test', 'client-password', '/', 'main-screen');
-    await client.click('chat-fab');
+    await client.click('tab-chat');
     await waitFor('client chat restored before account deletion', () =>
       client.exists('chat-conversation-screen'),
     );

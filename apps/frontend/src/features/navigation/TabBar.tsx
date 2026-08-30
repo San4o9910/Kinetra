@@ -1,8 +1,9 @@
 import React, { type MouseEvent, type ReactNode } from 'react';
 
 import { appRoutes, isSettingsRoute, type AppRoute } from '../../routing';
+import { chatFabAccessibleName, chatUnreadBadge } from '../chat/model';
 
-type TabIconName = 'home' | 'calendar' | 'progress' | 'settings';
+type TabIconName = 'home' | 'calendar' | 'progress' | 'chat' | 'settings';
 
 interface TabItem {
   readonly route: AppRoute;
@@ -12,7 +13,7 @@ interface TabItem {
 }
 
 const tabItems: readonly TabItem[] = [
-  { route: appRoutes.home, label: 'Главная', testId: 'tab-home', icon: 'home' },
+  { route: appRoutes.home, label: 'Сегодня', testId: 'tab-home', icon: 'home' },
   {
     route: appRoutes.schedule,
     label: 'Расписание',
@@ -25,6 +26,7 @@ const tabItems: readonly TabItem[] = [
     testId: 'tab-progress',
     icon: 'progress',
   },
+  { route: appRoutes.chat, label: 'Чат', testId: 'tab-chat', icon: 'chat' },
   { route: appRoutes.settings, label: 'Настройки', testId: 'tab-settings', icon: 'settings' },
 ];
 
@@ -55,6 +57,15 @@ const TabIcon = ({ name }: { readonly name: TabIconName }): ReactNode => {
     );
   }
 
+  if (name === 'chat') {
+    return (
+      <svg className="tab-bar-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M5 4.5h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-7.8L6 21v-3.5H5a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2Z" />
+        <path d="M7.5 9h9M7.5 13h6" />
+      </svg>
+    );
+  }
+
   return (
     <svg className="tab-bar-icon" viewBox="0 0 24 24" aria-hidden="true">
       <path d="M9.8 3.7 10.5 2h3l.7 1.7 1.7.7 1.7-.7 2.1 2.1-.7 1.7.7 1.7 1.8.8v3l-1.8.8-.7 1.7.7 1.7-2.1 2.1-1.7-.7-1.7.7-.7 1.8h-3l-.7-1.8-1.7-.7-1.7.7-2.1-2.1.7-1.7-.7-1.7L2.5 13v-3l1.8-.8.7-1.7-.7-1.7 2.1-2.1 1.7.7Z" />
@@ -66,11 +77,22 @@ const TabIcon = ({ name }: { readonly name: TabIconName }): ReactNode => {
 export interface TabBarProps {
   readonly route: AppRoute;
   readonly disabled?: boolean;
+  readonly showChat: boolean;
+  readonly chatUnreadCount: number;
   readonly onNavigate: (route: AppRoute) => void;
 }
 
-export const TabBar = ({ route, disabled = false, onNavigate }: TabBarProps): ReactNode => {
+export const TabBar = ({
+  route,
+  disabled = false,
+  showChat,
+  chatUnreadCount,
+  onNavigate,
+}: TabBarProps): ReactNode => {
   const activeRoute = isSettingsRoute(route) ? appRoutes.settings : route;
+  const visibleItems = showChat
+    ? tabItems
+    : tabItems.filter((item) => item.route !== appRoutes.chat);
 
   const navigate = (event: MouseEvent<HTMLAnchorElement>, nextRoute: AppRoute): void => {
     if (disabled) {
@@ -93,9 +115,11 @@ export const TabBar = ({ route, disabled = false, onNavigate }: TabBarProps): Re
       aria-label="Основная навигация"
       aria-busy={disabled}
     >
-      <div className="tab-bar-inner">
-        {tabItems.map((item) => {
+      <div className={`tab-bar-inner${showChat ? ' has-chat' : ''}`}>
+        {visibleItems.map((item) => {
           const active = activeRoute === item.route;
+          const unreadBadge =
+            item.route === appRoutes.chat ? chatUnreadBadge(chatUnreadCount) : null;
 
           return (
             <a
@@ -103,12 +127,22 @@ export const TabBar = ({ route, disabled = false, onNavigate }: TabBarProps): Re
               className={`tab-bar-link${active ? ' is-active' : ''}`}
               data-testid={item.testId}
               href={item.route}
+              aria-label={
+                item.route === appRoutes.chat ? chatFabAccessibleName(chatUnreadCount) : undefined
+              }
               aria-current={active ? 'page' : undefined}
               aria-disabled={disabled ? 'true' : undefined}
               tabIndex={disabled ? -1 : undefined}
               onClick={(event) => navigate(event, item.route)}
             >
-              <TabIcon name={item.icon} />
+              <span className="tab-bar-icon-wrap">
+                <TabIcon name={item.icon} />
+                {unreadBadge === null ? null : (
+                  <span className="tab-bar-badge" data-testid="tab-chat-badge" aria-hidden="true">
+                    {unreadBadge}
+                  </span>
+                )}
+              </span>
               <span>{item.label}</span>
             </a>
           );

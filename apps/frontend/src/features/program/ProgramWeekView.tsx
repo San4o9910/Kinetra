@@ -4,24 +4,17 @@ import type { ProgramDay, WeekResponse } from '@kinetra/shared';
 import {
   directionPresentation,
   isProgramWeekLocked,
-  maximumAccessibleWeek,
   weekdayShortLabels,
   weekProgressPercent,
   workoutCardState,
   type WorkoutCardState,
 } from './model';
 
-const NavigationArrowIcon = ({
-  direction,
-}: {
-  readonly direction: 'previous' | 'next';
-}): ReactNode =>
+const TodayHeading = (): ReactNode =>
   React.createElement(
-    'svg',
-    { className: 'program-navigation-icon', viewBox: '0 0 24 24', 'aria-hidden': true },
-    React.createElement('path', {
-      d: direction === 'previous' ? 'm15 5-7 7 7 7' : 'm9 5 7 7-7 7',
-    }),
+    'h1',
+    { id: 'program-today-heading', 'data-testid': 'today-heading' },
+    'Сегодня',
   );
 
 const WorkoutStatusIcon = ({
@@ -108,16 +101,16 @@ const WorkoutCard = ({
         data-training-access={preparationRequired ? 'base-lessons-required' : undefined}
         type="button"
         disabled={disabled}
-        aria-label={`${weekday}. ${presentation.label}. ${day.duration_minutes} мин. ${stateLabel}${isToday ? '. Сегодня' : ''}`}
+        aria-label={`${weekday}. ${day.title}. ${day.duration_minutes} мин. ${stateLabel}${isToday ? '. Сегодня' : ''}`}
         onClick={() => onSelect(day)}
       >
         <span className="workout-day">{weekday}</span>
         <span className="workout-card-copy">
           <span className="workout-card-primary">
             <span className="workout-direction-icon" aria-hidden="true">
-              {presentation.icon}
+              {day.icon || presentation.icon}
             </span>
-            <strong>{presentation.label}</strong>
+            <strong>{day.title}</strong>
             <span className="workout-separator" aria-hidden="true">
               ·
             </span>
@@ -156,8 +149,7 @@ export interface ProgramWeekViewProps {
   readonly preparationError?: string | null;
   readonly onOpenBaseLessons?: () => void;
   readonly onRetryPreparation?: () => void;
-  readonly onPreviousWeek: () => void;
-  readonly onNextWeek: () => void;
+  readonly onOpenSchedule: () => void;
   readonly onSelectWorkout: (day: ProgramDay) => void;
 }
 
@@ -174,23 +166,28 @@ export const ProgramWeekView = ({
   preparationError = null,
   onOpenBaseLessons,
   onRetryPreparation,
-  onPreviousWeek,
-  onNextWeek,
+  onOpenSchedule,
   onSelectWorkout,
 }: ProgramWeekViewProps): ReactNode => {
   const { week } = response;
   const weekLocked = isProgramWeekLocked(response, currentWeekNumber);
-  const canGoPrevious = week.week_number > 1;
-  const canGoNext =
-    week.week_number < maximumAccessibleWeek(currentWeekNumber, response.total_weeks);
   const progressPercent = weekProgressPercent(week.days_completed, week.total_days);
   const progressStyle = { width: `${progressPercent}%` } satisfies CSSProperties;
+  const currentWeekVisible = week.week_number === currentWeekNumber;
+  const todayWorkout = currentWeekVisible
+    ? week.days.find(({ day_of_week: dayOfWeek }) => dayOfWeek === todayDayOfWeek)
+    : undefined;
+  const nextWorkout = currentWeekVisible
+    ? [...week.days]
+        .sort((left, right) => left.day_of_week - right.day_of_week)
+        .find(({ completed, day_of_week: dayOfWeek }) => !completed && dayOfWeek > todayDayOfWeek)
+    : undefined;
 
   return (
     <main
       className="program-shell"
       data-testid="main-screen"
-      aria-labelledby="program-week-heading"
+      aria-labelledby="program-today-heading"
       aria-busy={isNavigating}
     >
       <section className="program-panel">
@@ -239,36 +236,20 @@ export const ProgramWeekView = ({
           </section>
         ) : null}
 
-        <header className="program-week-header">
-          <button
-            className="program-week-arrow"
-            data-testid="week-previous"
-            type="button"
-            aria-label="Предыдущая неделя"
-            disabled={!canGoPrevious || isNavigating}
-            onClick={onPreviousWeek}
-          >
-            <NavigationArrowIcon direction="previous" />
-          </button>
-          <h1 id="program-week-heading" data-testid="week-heading">
-            Неделя {week.week_number}
-          </h1>
-          <button
-            className="program-week-arrow"
-            data-testid="week-next"
-            type="button"
-            aria-label="Следующая неделя"
-            disabled={!canGoNext || isNavigating}
-            onClick={onNextWeek}
-          >
-            <NavigationArrowIcon direction="next" />
-          </button>
+        <header className="program-today-header">
+          <p className="program-kicker">НЕДЕЛЯ {currentWeekNumber}</p>
+          <TodayHeading />
+          <p>Текущая тренировка, прогресс недели и ближайший следующий шаг.</p>
         </header>
 
-        <section className="program-week-progress-wrap" aria-label="Прогресс недели">
-          <span className="program-week-progress-copy">
-            {week.days_completed}/{week.total_days}
-          </span>
+        <section
+          className="program-week-progress-wrap program-today-progress"
+          aria-label="Прогресс недели"
+        >
+          <span className="program-week-progress-copy">Прогресс недели</span>
+          <strong data-testid="week-progress-copy">
+            {week.days_completed} из {week.total_days}
+          </strong>
           <div
             className="program-week-progress"
             data-testid="week-progress"
@@ -289,25 +270,74 @@ export const ProgramWeekView = ({
           </p>
         )}
 
-        <ol className="workout-list" aria-label={`Тренировки недели ${week.week_number}`}>
-          {week.days.map((day) => (
-            <WorkoutCard
-              key={day.id}
-              day={day}
-              state={workoutCardState(day, weekLocked)}
-              interactionDisabled={isNavigating}
-              preparationRequired={
-                trainingLocked && workoutCardState(day, weekLocked) === 'available'
-              }
-              isToday={
-                !weekLocked &&
-                week.week_number === currentWeekNumber &&
-                day.day_of_week === todayDayOfWeek
-              }
-              onSelect={onSelectWorkout}
-            />
-          ))}
-        </ol>
+        <section className="program-today-section" aria-labelledby="today-workout-heading">
+          <div className="program-today-section-heading">
+            <h2 id="today-workout-heading">Тренировка на сегодня</h2>
+            <span>{weekdayShortLabels[todayDayOfWeek] ?? ''}</span>
+          </div>
+          {todayWorkout === undefined ? (
+            <div className="program-today-rest" data-testid="today-rest-day" role="status">
+              <strong>Сегодня по плану отдых</strong>
+              <span>Восстановление — такая же важная часть программы, как тренировки.</span>
+            </div>
+          ) : (
+            <ol
+              className="workout-list program-today-workout-list"
+              aria-label="Тренировка на сегодня"
+            >
+              <WorkoutCard
+                day={todayWorkout}
+                state={workoutCardState(todayWorkout, weekLocked)}
+                interactionDisabled={isNavigating}
+                preparationRequired={
+                  trainingLocked && workoutCardState(todayWorkout, weekLocked) === 'available'
+                }
+                isToday
+                onSelect={onSelectWorkout}
+              />
+            </ol>
+          )}
+        </section>
+
+        <section
+          className="program-today-section program-next-section"
+          data-testid="next-workout"
+          aria-labelledby="next-workout-heading"
+        >
+          <div className="program-today-section-heading">
+            <h2 id="next-workout-heading">Следующая тренировка</h2>
+          </div>
+          {nextWorkout === undefined ? (
+            <p className="program-next-empty">
+              На этой неделе больше тренировок нет. Следующую неделю можно посмотреть в расписании.
+            </p>
+          ) : (
+            <ol
+              className="workout-list program-next-workout-list"
+              aria-label="Следующая тренировка"
+            >
+              <WorkoutCard
+                day={nextWorkout}
+                state={workoutCardState(nextWorkout, weekLocked)}
+                interactionDisabled={isNavigating}
+                preparationRequired={
+                  trainingLocked && workoutCardState(nextWorkout, weekLocked) === 'available'
+                }
+                isToday={false}
+                onSelect={onSelectWorkout}
+              />
+            </ol>
+          )}
+        </section>
+
+        <button
+          className="secondary-button program-schedule-action"
+          data-testid="today-open-schedule"
+          type="button"
+          onClick={onOpenSchedule}
+        >
+          Открыть полное расписание
+        </button>
       </section>
     </main>
   );

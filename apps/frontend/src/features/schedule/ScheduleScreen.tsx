@@ -10,7 +10,7 @@ type ScheduleLoadState =
   | { readonly kind: 'error'; readonly message: string };
 
 export interface ScheduleScreenProps {
-  readonly onOpenHome: () => void;
+  readonly onOpenWorkout: (programWeek: number, dayOfWeek: number) => void;
   readonly onSessionExpired: () => void;
   readonly onSubscriptionRequired: () => void;
 }
@@ -50,7 +50,7 @@ const ScheduleState = ({
 );
 
 export const ScheduleScreen = ({
-  onOpenHome,
+  onOpenWorkout,
   onSessionExpired,
   onSubscriptionRequired,
 }: ScheduleScreenProps): ReactNode => {
@@ -132,7 +132,7 @@ export const ScheduleScreen = ({
       response={state.response}
       activeSection={activeSection}
       onSectionChange={setActiveSection}
-      onOpenDay={onOpenHome}
+      onOpenWorkout={onOpenWorkout}
     />
   );
 };

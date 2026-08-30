@@ -128,16 +128,18 @@ test('inactive subscription renders a locked T07 surface without rendering a pla
   assert.equal(markup.includes('data-testid="main-screen"'), false);
 });
 
-test('inactive entitlement removes both workout sentinels while preserving unrelated history', () => {
+test('inactive entitlement removes every workout sentinel while preserving unrelated history', () => {
   assert.deepEqual(
     withoutWorkoutHistorySentinel({
       kinetraWorkoutVideoId: 'video-7',
+      kinetraWorkoutDayOfWeek: 6,
       kinetraProgramWeek: 4,
       navigationId: 'keep-me',
     }),
     { navigationId: 'keep-me' },
   );
   assert.equal(withoutWorkoutHistorySentinel({ kinetraWorkoutVideoId: 'video-7' }), null);
+  assert.equal(withoutWorkoutHistorySentinel({ kinetraWorkoutDayOfWeek: 6 }), null);
 
   const untouched = { navigationId: 'unchanged' };
   assert.equal(withoutWorkoutHistorySentinel(untouched), untouched);
