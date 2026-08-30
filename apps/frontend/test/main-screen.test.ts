@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -229,6 +230,60 @@ test('tab bar renders Today and a fifth active Chat tab with its unread badge', 
   assert.equal(savingMarkup.includes('data-testid="tab-chat"'), false);
   assert.equal((savingMarkup.match(/aria-disabled="true"/gu) ?? []).length, 4);
   assert.equal((savingMarkup.match(/tabindex="-1"/gu) ?? []).length, 4);
+});
+
+test('system Back keeps the saving workout on its canonical history entry', async () => {
+  const [appSource, programScreenSource] = await Promise.all([
+    readFile(new URL('../src/App.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../src/features/program/ProgramScreen.tsx', import.meta.url), 'utf8'),
+  ]);
+
+  const appPopStateStart = appSource.indexOf('const handlePopState = (): void => {');
+  const appPopStateEnd = appSource.indexOf(
+    "window.addEventListener('popstate', handlePopState)",
+    appPopStateStart,
+  );
+  assert.notEqual(appPopStateStart, -1);
+  assert.notEqual(appPopStateEnd, -1);
+  const appPopStateHandler = appSource.slice(appPopStateStart, appPopStateEnd);
+  const appHistoryFence = appPopStateHandler.indexOf('if (historyFenceRef.current)');
+  const appRouteWrite = appPopStateHandler.indexOf(
+    'setRoute(normalizeAppRoute(window.location.pathname))',
+  );
+  assert.notEqual(appHistoryFence, -1);
+  assert.notEqual(appRouteWrite, -1);
+  assert.ok(appHistoryFence < appRouteWrite);
+  assert.ok(appPopStateHandler.slice(appHistoryFence, appRouteWrite).includes('return;'));
+
+  const busyCallbackStart = appSource.indexOf(
+    'const handleWorkoutCompletionBusyChange = useCallback(',
+  );
+  const busyCallbackEnd = appSource.indexOf(
+    'const navigateActiveTab = useCallback(',
+    busyCallbackStart,
+  );
+  assert.notEqual(busyCallbackStart, -1);
+  assert.notEqual(busyCallbackEnd, -1);
+  const busyCallback = appSource.slice(busyCallbackStart, busyCallbackEnd);
+  const busyRefWrite = busyCallback.indexOf('workoutCompletionBusyRef.current = busy');
+  const busyStateWrite = busyCallback.indexOf('setWorkoutCompletionBusy(busy)');
+  assert.notEqual(busyRefWrite, -1);
+  assert.notEqual(busyStateWrite, -1);
+  assert.ok(busyRefWrite < busyStateWrite);
+  assert.ok(
+    appSource.includes('onWorkoutCompletionBusyChange={handleWorkoutCompletionBusyChange}'),
+  );
+
+  const programFenceStart = programScreenSource.indexOf('completionBusyRef.current &&');
+  const programFenceEnd = programScreenSource.indexOf('\n\n      if (', programFenceStart);
+  assert.notEqual(programFenceStart, -1);
+  assert.notEqual(programFenceEnd, -1);
+  const programFence = programScreenSource.slice(programFenceStart, programFenceEnd);
+  assert.ok(programFence.includes('window.history.pushState('));
+  assert.ok(programFence.includes('kinetraWorkoutVideoId: selectedVideoIdRef.current'));
+  assert.ok(programFence.includes('kinetraProgramWeek: selectedProgramWeekRef.current'));
+  assert.ok(programFence.includes('appRoutes.home'));
+  assert.equal(programFence.includes('window.location.href'), false);
 });
 
 test('workout player renders the prescribed placeholder for a null video URL', () => {

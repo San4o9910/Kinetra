@@ -242,14 +242,26 @@ interface TrainerSignOutAttempt {
 const routeAtStartup = (): AppRoute =>
   typeof window === 'undefined' ? appRoutes.login : normalizeAppRoute(window.location.pathname);
 
-const useBrowserRoute = (): readonly [AppRoute, (route: AppRoute, replace?: boolean) => void] => {
+interface BrowserRouteHistoryFence {
+  readonly current: boolean;
+}
+
+const useBrowserRoute = (
+  historyFenceRef: BrowserRouteHistoryFence,
+): readonly [AppRoute, (route: AppRoute, replace?: boolean) => void] => {
   const [route, setRoute] = useState<AppRoute>(routeAtStartup);
 
   useEffect(() => {
-    const handlePopState = (): void => setRoute(normalizeAppRoute(window.location.pathname));
+    const handlePopState = (): void => {
+      if (historyFenceRef.current) {
+        return;
+      }
+
+      setRoute(normalizeAppRoute(window.location.pathname));
+    };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
+  }, [historyFenceRef]);
 
   const navigate = useCallback((nextRoute: AppRoute, replace = false): void => {
     if (typeof window !== 'undefined' && window.location.pathname !== nextRoute) {
@@ -270,7 +282,8 @@ const useBrowserRoute = (): readonly [AppRoute, (route: AppRoute, replace?: bool
 export const App = (): ReactNode => {
   const [session, setSession] = useState<SessionState>({ kind: 'booting' });
   const [authView, setAuthView] = useState<AuthView>('login');
-  const [route, navigate] = useBrowserRoute();
+  const workoutCompletionBusyRef = useRef(false);
+  const [route, navigate] = useBrowserRoute(workoutCompletionBusyRef);
   const [workoutCompletionBusy, setWorkoutCompletionBusy] = useState(false);
   const [, setBlockingDialogOpen] = useState(false);
   const [trainerSignOutState, setTrainerSignOutState] = useState<'idle' | TrainerSignOutUiState>(
@@ -291,6 +304,11 @@ export const App = (): ReactNode => {
     () => createFeatureChatRealtimeClient(ensureAccessToken, refreshInMemoryAccessToken),
     [],
   );
+
+  const handleWorkoutCompletionBusyChange = useCallback((busy: boolean): void => {
+    workoutCompletionBusyRef.current = busy;
+    setWorkoutCompletionBusy(busy);
+  }, []);
 
   const navigateActiveTab = useCallback(
     (nextRoute: AppRoute): void => {
@@ -1120,7 +1138,7 @@ export const App = (): ReactNode => {
           onOpenSchedule={() => navigateActiveTab(appRoutes.schedule)}
           onOpenPayment={() => navigate(appRoutes.payment)}
           onSubscriptionRequired={loadSubscription}
-          onWorkoutCompletionBusyChange={setWorkoutCompletionBusy}
+          onWorkoutCompletionBusyChange={handleWorkoutCompletionBusyChange}
           onSessionExpired={handleActiveSessionExpired}
         />
       ) : (

@@ -1885,6 +1885,86 @@ expectIncludes(
   'exploration mode keeps the workout player locked until onboarding becomes active',
 );
 
+const appWorkoutHistoryPopStateStart = frontendApp.indexOf('const handlePopState = (): void => {');
+const appWorkoutHistoryPopStateEnd = frontendApp.indexOf(
+  "window.addEventListener('popstate', handlePopState)",
+  appWorkoutHistoryPopStateStart,
+);
+const appWorkoutHistoryPopState =
+  appWorkoutHistoryPopStateStart >= 0 &&
+  appWorkoutHistoryPopStateEnd > appWorkoutHistoryPopStateStart
+    ? frontendApp.slice(appWorkoutHistoryPopStateStart, appWorkoutHistoryPopStateEnd)
+    : '';
+const appWorkoutHistoryFence = appWorkoutHistoryPopState.indexOf('if (historyFenceRef.current)');
+const appWorkoutHistoryRouteWrite = appWorkoutHistoryPopState.indexOf(
+  'setRoute(normalizeAppRoute(window.location.pathname))',
+);
+if (
+  appWorkoutHistoryFence >= 0 &&
+  appWorkoutHistoryRouteWrite > appWorkoutHistoryFence &&
+  appWorkoutHistoryPopState
+    .slice(appWorkoutHistoryFence, appWorkoutHistoryRouteWrite)
+    .includes('return;')
+) {
+  pass('T07 saving-time history fence blocks App route reconciliation before its route write');
+} else {
+  fail('T07 saving-time history fence blocks App route reconciliation before its route write');
+}
+
+const appWorkoutBusyCallbackStart = frontendApp.indexOf(
+  'const handleWorkoutCompletionBusyChange = useCallback(',
+);
+const appWorkoutBusyCallbackEnd = frontendApp.indexOf(
+  'const navigateActiveTab = useCallback(',
+  appWorkoutBusyCallbackStart,
+);
+const appWorkoutBusyCallback =
+  appWorkoutBusyCallbackStart >= 0 && appWorkoutBusyCallbackEnd > appWorkoutBusyCallbackStart
+    ? frontendApp.slice(appWorkoutBusyCallbackStart, appWorkoutBusyCallbackEnd)
+    : '';
+const appWorkoutBusyRefWrite = appWorkoutBusyCallback.indexOf(
+  'workoutCompletionBusyRef.current = busy',
+);
+const appWorkoutBusyStateWrite = appWorkoutBusyCallback.indexOf('setWorkoutCompletionBusy(busy)');
+if (appWorkoutBusyRefWrite >= 0 && appWorkoutBusyStateWrite > appWorkoutBusyRefWrite) {
+  pass('T07 completion callback closes the popstate race before the React state update');
+} else {
+  fail('T07 completion callback closes the popstate race before the React state update');
+}
+expectIncludes(
+  frontendApp,
+  'onWorkoutCompletionBusyChange={handleWorkoutCompletionBusyChange}',
+  'T07 ProgramScreen uses the synchronous App history-fence callback',
+);
+
+const programWorkoutHistoryFenceStart = programScreen.indexOf('completionBusyRef.current &&');
+const programWorkoutHistoryFenceEnd = programScreen.indexOf(
+  '\n\n      if (',
+  programWorkoutHistoryFenceStart,
+);
+const programWorkoutHistoryFence =
+  programWorkoutHistoryFenceStart >= 0 &&
+  programWorkoutHistoryFenceEnd > programWorkoutHistoryFenceStart
+    ? programScreen.slice(programWorkoutHistoryFenceStart, programWorkoutHistoryFenceEnd)
+    : '';
+for (const historyFenceContract of [
+  'window.history.pushState(',
+  'kinetraWorkoutVideoId: selectedVideoIdRef.current',
+  'kinetraProgramWeek: selectedProgramWeekRef.current',
+  'appRoutes.home',
+]) {
+  expectIncludes(
+    programWorkoutHistoryFence,
+    historyFenceContract,
+    `T07 saving-time workout history fence: ${historyFenceContract}`,
+  );
+}
+if (programWorkoutHistoryFence.includes('window.location.href')) {
+  fail('T07 saving-time workout history fence never adopts the popped destination pathname');
+} else {
+  pass('T07 saving-time workout history fence never adopts the popped destination pathname');
+}
+
 const baseLessonsRequiredDialog = await readText(
   'apps/frontend/src/features/base-lessons/BaseLessonsRequiredDialog.tsx',
 );
@@ -2223,6 +2303,41 @@ expectIncludes(
   'KINETRA_T07_SYSTEM_BACK=PASS',
   'T07 browser scenario proves standalone-PWA system Back from a workout',
 );
+const savingWorkoutBackAssertionAnchor = browserTest.indexOf(
+  'system Back is held on the single player entry while completion is saving',
+);
+const savingWorkoutBackAssertionStart = browserTest.lastIndexOf(
+  "await cdp.evaluate('window.history.back()')",
+  savingWorkoutBackAssertionAnchor,
+);
+const savingWorkoutBackAssertionEnd = browserTest.indexOf(
+  'releaseWorkoutCompletionResponse();',
+  savingWorkoutBackAssertionAnchor,
+);
+const savingWorkoutBackAssertion =
+  savingWorkoutBackAssertionAnchor >= 0 &&
+  savingWorkoutBackAssertionStart >= 0 &&
+  savingWorkoutBackAssertionEnd > savingWorkoutBackAssertionAnchor
+    ? browserTest.slice(savingWorkoutBackAssertionStart, savingWorkoutBackAssertionEnd)
+    : '';
+for (const browserHistoryFenceContract of [
+  'system Back is held on the single player entry while completion is saving',
+  "exists('workout-player')",
+  "attribute('workout-player', 'aria-busy')",
+  'window.history.state?.kinetraWorkoutVideoId === ${JSON.stringify(workoutVideoId(1, 1))}',
+  "await cdp.evaluate('window.history.forward()')",
+  'assert.deepEqual(playerAfterBlockedForward, {',
+  'visible: true',
+  "busy: 'true'",
+  'videoId: workoutVideoId(1, 1)',
+  'programWeek: 1',
+]) {
+  expectIncludes(
+    savingWorkoutBackAssertion,
+    browserHistoryFenceContract,
+    `T07 browser saving-time history assertion remains strict: ${browserHistoryFenceContract}`,
+  );
+}
 expectIncludes(
   browserTest,
   'KINETRA_T07_PLAYER_TAB_HISTORY=PASS',
@@ -2541,6 +2656,7 @@ for (const scenario of [
   'today dashboard delegates full week browsing to schedule',
   'today is highlighted only in the actual current week',
   'tab bar renders today and a fifth active chat tab with its unread badge',
+  'system back keeps the saving workout on its canonical history entry',
 ]) {
   expectIncludes(
     mainScreenFrontendTests.toLowerCase(),

@@ -7,6 +7,7 @@ import type {
 } from '@kinetra/shared';
 
 import { ApiRequestError, getBaseLessons, getCurrentWeek, getWeek } from '../../lib/api';
+import { appRoutes } from '../../routing';
 import { BaseLessonsRequiredDialog } from '../base-lessons/BaseLessonsRequiredDialog';
 import { isSubscriptionActive } from '../payments/model';
 import { SubscriptionPaywallDialog } from '../payments/SubscriptionPaywallDialog';
@@ -470,7 +471,7 @@ export const ProgramScreen = ({
             kinetraProgramWeek: selectedProgramWeekRef.current,
           },
           '',
-          window.location.href,
+          appRoutes.home,
         );
         return;
       }
