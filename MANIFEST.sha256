@@ -22,6 +22,7 @@ c05550d0bd3dca13b6cf4a4254c677c4348999bcef3b6f9eb8d8ad76df9de7f4  ./apps/backend
 c7d473250981cddd6db9febf11b7018d8c11a81885f9c7471ea7d458aba36d4e  ./apps/backend/migrations/013_trainer_verification.sql
 af04321899d9e5127863c7468b9c1e85ca2983fe6139427a4460264a9426a941  ./apps/backend/package.json
 7f6ee59410d5c1f9e642e547fb2430db62f4f551f9890982cef5b7d29ec34662  ./apps/backend/scripts/migrate.mjs
+74b37449ca4b3b414778bb2013c22d01396527a04293c0fcb461b8f210c4c08e  ./apps/backend/scripts/seed-local-demo.mjs
 462ab106bd6244e5890c5954d13226a725b05a5490f84a60450466b198a849d2  ./apps/backend/scripts/seed.mjs
 2a2c8ad58226d8721177cd8a72d185791eef4d8179c3ba960d8e99b1bab705df  ./apps/backend/scripts/verify-content.mjs
 3b1852f8353a555aaf12f8f798ce28175bbfad889248d023d3cf05a6067992f6  ./apps/backend/src/app.ts
@@ -327,11 +328,14 @@ a9b1c236d0feea9883c7d1e0b54d7260cd692d179fc65c6a99609392af213bba  ./docs/T14_VID
 cf715055ccd10f1098d83cf11facdb3278ea844b0e30c737e2ed9be7360f4ff2  ./docs/TRAINER_VERIFICATION.md
 42cb4e2ce5f3c1726688d1f5ecb4238b79ed9b97e5f80455cbfeeaf28b2821bf  ./eslint.config.mjs
 ca34313e3e69827306dc65884bd88ff99e91e35c6bb29db8d9e4c3e49fb3f9a6  ./package-lock.json
-944db83ca6c13e04fa3931f8ec042ae3360d2f8e2d6a72eeab89e3057732cc07  ./package.json
+67946edf50475090423548f35b8a2746f8c7f27d0b50ce2053ae2afd0700b9ae  ./package.json
 1226b52db0d0863828daae249e0b8ba56452f40c4d6ebc4dab1f6bb40e532da8  ./packages/shared/package.json
 238e09f069ed2aaab52fdbda24e618941ed6cbe6078e3b0df90e51570d2403a5  ./packages/shared/src/index.ts
 c8171db33a1b645b8c36d542cf4bfc5c47073df8842b846f91a6ebf083973c5e  ./packages/shared/tsconfig.json
 4c9d6d3999285a6ab8712d8582d54e69a76f434b4faf933a886c664a65031c54  ./scripts/check-changed-format.mjs
+259007db6c5a60f3e7ab47a727bee1bb094a6e5c56496e5c86c930b8d2d90d8f  ./scripts/local-demo-guard.mjs
+497f99fbc44c2eb4efe09b8a7d3f42a93d9df699e57e89c62cb8169ead5a9ce0  ./scripts/prepare-local-demo.mjs
+978ef07a77a4ca22e48309cd2cd35c4718bd9181d5307f77acfc45feeade9c9f  ./scripts/run-local-demo.mjs
 c44be0485235b31c8652bfce6d504b7d9af44f62d5de472f00f2edc677d7b5ce  ./scripts/test-frontend-browser.mjs
 9f4c57b2d172a7a6d2b21c593de9e58e909f9e7fe32cc21af6e661e78d78a2f2  ./scripts/verify-project.mjs
 2b67887209f3334ebdc96426f5c2cb87480fb85ff2f75c0d42b0a944dae7922a  ./tsconfig.base.json
