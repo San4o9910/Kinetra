@@ -5,6 +5,7 @@ import { config as loadEnv } from 'dotenv';
 
 import {
   assertLocalDemoDatabase,
+  createNpmInvocation,
   defaultLocalDatabaseUrl,
   LOCAL_DEMO_CONFIRMATION,
   parseDemoClientEmail,
@@ -30,8 +31,6 @@ const childEnvironment = {
   KINETRA_LOCAL_DEMO_CONFIRMATION: LOCAL_DEMO_CONFIRMATION,
 };
 
-const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-
 const run = (command, arguments_) =>
   new Promise((resolve, reject) => {
     const child = spawn(command, arguments_, {
@@ -56,6 +55,11 @@ const run = (command, arguments_) =>
     });
   });
 
-await run(npmCommand, ['run', 'db:migrate']);
-await run(npmCommand, ['run', 'db:seed']);
+const runNpm = (arguments_) => {
+  const invocation = createNpmInvocation(arguments_);
+  return run(invocation.command, invocation.arguments);
+};
+
+await runNpm(['run', 'db:migrate']);
+await runNpm(['run', 'db:seed']);
 await run(process.execPath, ['apps/backend/scripts/seed-local-demo.mjs', ...forwardedArguments]);

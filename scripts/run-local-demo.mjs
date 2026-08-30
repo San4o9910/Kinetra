@@ -5,6 +5,7 @@ import { config as loadEnv } from 'dotenv';
 
 import {
   assertLocalDemoDatabase,
+  createNpmInvocation,
   defaultLocalDatabaseUrl,
   LOCAL_DEMO_CONFIRMATION,
 } from './local-demo-guard.mjs';
@@ -19,8 +20,8 @@ assertLocalDemoDatabase({
   confirmation: LOCAL_DEMO_CONFIRMATION,
 });
 
-const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-const child = spawn(npmCommand, ['run', 'dev'], {
+const npmInvocation = createNpmInvocation(['run', 'dev']);
+const child = spawn(npmInvocation.command, npmInvocation.arguments, {
   cwd: repositoryRoot,
   env: {
     ...process.env,

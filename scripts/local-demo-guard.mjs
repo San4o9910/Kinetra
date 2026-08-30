@@ -70,3 +70,26 @@ export const parseDemoClientEmail = (arguments_, reservedTrainerEmail) => {
 
   return email;
 };
+
+export const createNpmInvocation = (
+  arguments_,
+  {
+    platform = process.platform,
+    nodeExecutable = process.execPath,
+    npmExecutablePath = process.env.npm_execpath,
+  } = {},
+) => {
+  if (platform !== 'win32') {
+    return { command: 'npm', arguments: arguments_ };
+  }
+
+  const npmCliPath = npmExecutablePath?.trim();
+  if (!npmCliPath) {
+    refuse('npm_execpath is missing; run the local demo through npm.');
+  }
+
+  return {
+    command: nodeExecutable,
+    arguments: [npmCliPath, ...arguments_],
+  };
+};
