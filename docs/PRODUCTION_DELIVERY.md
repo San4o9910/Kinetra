@@ -12,7 +12,9 @@ The frontend is static. Its API and private media origins are fixed during the i
 
 ## Images and build contract
 
-Use the reviewed Node Debian bookworm-slim image (Node satisfying package.json) and the reviewed `nginxinc/nginx-unprivileged` image with UID/GID 101. Resolve their immutable digests from the chosen registry and record provenance. `NODE_IMAGE` and `NGINX_IMAGE` must contain `@sha256:` plus 64 hex digits; templates intentionally have invalid placeholders. No digest or current vulnerability status is invented here.
+Use the reviewed Node 22 Debian bookworm-slim image and `nginxinc/nginx-unprivileged:1.30.4-alpine-slim` (Alpine 3.24, UID/GID 101). The frontend needs only nginx core modules; the slim image omits unused image-filter, XSLT, GeoIP and njs dependencies. Resolve their immutable digests from the chosen registry and record provenance. `NODE_IMAGE` and `NGINX_IMAGE` must contain `@sha256:` plus 64 hex digits; templates intentionally have invalid placeholders. No digest or current vulnerability status is invented here.
+
+The backend final image removes npm, npx, Corepack and Yarn programs and their vendored dependencies. They remain available in the build stage; production API and job entrypoints run Node directly. This removes unused runtime software, not scanner metadata. Preserve OS and language package inventory, HIGH/CRITICAL vulnerability and secret scanning, and all image smoke assertions. The 2026-09-09 Debian image scan found additional OS/media vulnerabilities; package-manager removal alone does not qualify the backend for deployment.
 
 Use Docker BuildKit with `-f deploy/Containerfile` and the repository root as context. Its matching `deploy/Containerfile.dockerignore` allows only source, manifests and Nginx configuration. Do not replace this with a generic `COPY . .`. Runtime secrets never belong in build arguments, source files, build logs or the frontend.
 
