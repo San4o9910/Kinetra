@@ -11,6 +11,7 @@ inspect that evidence and correct the cause before starting another run.
 from __future__ import annotations
 
 import importlib.util
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -35,10 +36,12 @@ REMOTE_SECONDS = 1100
 # This is a separate, fixed mutating program. The inspection program and helper
 # module are never replaced or monkeypatched during production execution.
 GUEST_BOOTSTRAP = r'''
-import fcntl, json, os, pathlib, re, shlex, shutil, signal, stat, subprocess, tempfile, time
+import fcntl, ipaddress, json, os, pathlib, re, shlex, shutil, signal, stat, subprocess, tempfile, time
 
 class BootstrapError(Exception):
-    pass
+    def __init__(self, code, unexpected_listener=None):
+        super().__init__(code)
+        self.unexpected_listener = unexpected_listener
 
 def interrupted(_signum, _frame):
     raise BootstrapError("REMOTE_INTERRUPTED_PARTIAL_STATE")
@@ -155,6 +158,48 @@ def assert_expected_ufw_rules():
         if row and not row.startswith("Added user rules") and row not in allowed:
             raise BootstrapError("EXISTING_UFW_RULES_REQUIRE_INSPECTION")
 
+def assert_expected_listeners(output):
+    """Parse numeric ss TCP output; expose only a normalized rejected endpoint."""
+    for line in output.splitlines():
+        if not line.strip():
+            continue
+        fields = line.split()
+        # `ss -H -lnt` emits State/Recv-Q/Send-Q/Local/Peer. Also handle the
+        # explicit TCP Netid column without guessing indexes from other formats.
+        offset = 1 if fields[0] == "tcp" else 0
+        if len(fields) != offset + 5 or fields[offset] != "LISTEN" or not all(
+            re.fullmatch(r"[0-9]+", value) for value in fields[offset + 1:offset + 3]
+        ):
+            raise BootstrapError("TCP_LISTENER_OUTPUT_INVALID")
+        endpoint = fields[offset + 3]
+        address, separator, port_text = endpoint.rpartition(":")
+        if not separator or not re.fullmatch(r"[0-9]{1,5}", port_text) or not 1 <= int(port_text) <= 65535:
+            raise BootstrapError("TCP_LISTENER_ENDPOINT_INVALID")
+        port = int(port_text)
+        if address.startswith("[") and address.endswith("]"):
+            address = address[1:-1]
+        elif "[" in address or "]" in address:
+            raise BootstrapError("TCP_LISTENER_ENDPOINT_INVALID")
+        if "%" in address:
+            address, zone = address.split("%", 1)
+            if not re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", zone):
+                raise BootstrapError("TCP_LISTENER_ENDPOINT_INVALID")
+        if address == "*":
+            normalized, loopback = "*", False
+        else:
+            try:
+                numeric = ipaddress.ip_address(address)
+            except ValueError:
+                raise BootstrapError("TCP_LISTENER_ENDPOINT_INVALID") from None
+            normalized = str(numeric)
+            loopback = numeric.is_loopback
+            if isinstance(numeric, ipaddress.IPv6Address) and numeric.ipv4_mapped is not None:
+                loopback = numeric.ipv4_mapped.is_loopback
+        if port != 22 and not loopback:
+            raise BootstrapError("EXISTING_PUBLIC_LISTENER_REFUSED", {
+                "address": normalized, "port": port,
+            })
+
 def assert_empty_host():
     if os.geteuid() != 0:
         raise BootstrapError("ROOT_REQUIRED")
@@ -179,14 +224,10 @@ def assert_empty_host():
             raise BootstrapError("EXISTING_APPLICATION_DATA_REFUSED")
     if shutil.disk_usage("/").free < 5 * 1024**3:
         raise BootstrapError("FREE_DISK_TOO_SMALL")
-    # Ignore loopback-only OS services and DHCP; every public TCP listener must
+    # Ignore loopback-only OS services; every public TCP listener must
     # be SSH on the already inspected port. No existing web app is disturbed.
     output = command(["/usr/bin/ss", "-H", "-lnt"], capture=True)
-    for line in output.splitlines():
-        fields = line.split()
-        address, _, port = fields[3].rpartition(":")
-        if port != "22" and address not in {"127.0.0.1", "127.0.0.53%lo", "127.0.0.54%lo", "[::1]", "::1"}:
-            raise BootstrapError("EXISTING_PUBLIC_LISTENER_REFUSED")
+    assert_expected_listeners(output)
     assert_empty_docker()
     assert_expected_ufw_rules()
 
@@ -230,7 +271,7 @@ def configure_firewall():
 def main():
     state = {"schema": 1, "result": "FAIL", "stage": "PRECONDITIONS", "error": None,
              "docker_config": None, "docker_version": None, "compose_version": None,
-             "firewall": None, "application_deployed": False}
+             "firewall": None, "application_deployed": False, "unexpected_listener": None}
     descriptor = None
     try:
         descriptor = os.open("/run/kinetra-host-bootstrap.lock", os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o600)
@@ -265,6 +306,7 @@ def main():
         state["stage"], state["result"] = "HOST_PREREQUISITES_COMPLETE", "PASS"
     except BootstrapError as error:
         state["error"] = str(error)
+        state["unexpected_listener"] = error.unexpected_listener
     except BaseException:
         state["error"] = "REMOTE_UNEXPECTED_ERROR_PARTIAL_STATE"
     finally:
@@ -302,7 +344,7 @@ def validate_bootstrap_result(raw):
     except (ValueError, UnicodeError, RecursionError):
         raise Error("BOOTSTRAP_RESULT_INVALID_PARTIAL_STATE") from None
     expected = {"schema", "result", "stage", "error", "docker_config", "docker_version",
-                "compose_version", "firewall", "application_deployed"}
+                "compose_version", "firewall", "application_deployed", "unexpected_listener"}
     if not isinstance(result, dict) or set(result) != expected or type(result["schema"]) is not int or result["schema"] != 1 or result["application_deployed"] is not False:
         raise Error("BOOTSTRAP_RESULT_SCHEMA_INVALID_PARTIAL_STATE")
     if result["result"] not in {"PASS", "FAIL"}:
@@ -316,6 +358,26 @@ def validate_bootstrap_result(raw):
         value = result[name]
         if value is not None and (not isinstance(value, str) or not re.fullmatch(r"v?[0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.~-]+)?", value)):
             raise Error("BOOTSTRAP_RESULT_SCHEMA_INVALID_PARTIAL_STATE")
+    listener = result["unexpected_listener"]
+    if listener is not None:
+        if not isinstance(listener, dict) or set(listener) != {"address", "port"}:
+            raise Error("BOOTSTRAP_LISTENER_EVIDENCE_INVALID")
+        address, port = listener["address"], listener["port"]
+        if not isinstance(address, str) or type(port) is not int or not 1 <= port <= 65535 or port == 22:
+            raise Error("BOOTSTRAP_LISTENER_EVIDENCE_INVALID")
+        if address != "*":
+            try:
+                numeric = ipaddress.ip_address(address)
+            except ValueError:
+                raise Error("BOOTSTRAP_LISTENER_EVIDENCE_INVALID") from None
+            if str(numeric) != address or "%" in address or numeric.is_loopback or (
+                isinstance(numeric, ipaddress.IPv6Address) and numeric.ipv4_mapped is not None and numeric.ipv4_mapped.is_loopback
+            ):
+                raise Error("BOOTSTRAP_LISTENER_EVIDENCE_INVALID")
+        if result["result"] != "FAIL" or result["stage"] != "PRECONDITIONS" or result["error"] != "EXISTING_PUBLIC_LISTENER_REFUSED":
+            raise Error("BOOTSTRAP_LISTENER_EVIDENCE_INVALID")
+    elif result["error"] == "EXISTING_PUBLIC_LISTENER_REFUSED":
+        raise Error("BOOTSTRAP_LISTENER_EVIDENCE_MISSING")
     if result["result"] == "PASS" and (
         result["stage"] != "HOST_PREREQUISITES_COMPLETE" or result["error"] is not None
         or result["docker_config"] not in {"EXISTING_PRESERVED", "CREATED_BOUNDED_LOCAL_LOGS"}

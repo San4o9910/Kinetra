@@ -32,8 +32,8 @@ jobs:
           test "$GITHUB_RUN_ATTEMPT" = '1'
           sha256sum --check --strict <<'SHA256'
           567d892221925bb438ece6a893360a891ffd4228f8af0a18252b8ba365a682c0  ops/timeweb/inspect-server.py
-          12abf0314359a09189f72fa58626a1625193f17dbf0d3d4afacdfda41dadb510  ops/timeweb/bootstrap-server.py
-          b59810fde2dcc1ccc8a4e91169a744a8a0840b5cc5e8992fae6982ef5b3c0b8a  ops/timeweb/test-bootstrap-server.py
+          af7374f2ed3f3bf8a1b72825e6ca01e1db873284c56c30ccb8ebcc16ca221f71  ops/timeweb/bootstrap-server.py
+          2c5cd99a2c32ffa3e31fcdc5a1cccc1d8f0f51256c25de0e05309c25e6524c96  ops/timeweb/test-bootstrap-server.py
           SHA256
           test "$(gh api repos/San4o9910/Kinetra/actions/runs/34404918625 --jq '.status')" = completed
           test "$(gh api repos/San4o9910/Kinetra/actions/runs/34404918625 --jq '.conclusion')" = success

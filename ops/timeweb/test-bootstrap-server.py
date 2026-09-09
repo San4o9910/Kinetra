@@ -35,6 +35,7 @@ def successful_bootstrap():
         "docker_config": "CREATED_BOUNDED_LOCAL_LOGS", "docker_version": "28.2.2",
         "compose_version": "2.37.1", "firewall": "ACTIVE_22_80_443_ALLOWED_DEFAULT_INCOMING_DENY",
         "application_deployed": False,
+        "unexpected_listener": None,
     }
 
 
@@ -184,8 +185,73 @@ class BootstrapOrchestrationTests(unittest.TestCase):
         response["compose_version"] = "2.30.0"
         self.assertEqual(bootstrap.validate_bootstrap_result(json.dumps(response))["result"], "PASS")
 
+    def test_rejected_listener_evidence_accepts_only_sanitized_endpoint(self):
+        response = successful_bootstrap()
+        response.update(result="FAIL", stage="PRECONDITIONS", error="EXISTING_PUBLIC_LISTENER_REFUSED",
+            unexpected_listener={"address": "80.68.156.131", "port": 443})
+        self.assertEqual(bootstrap.validate_bootstrap_result(json.dumps(response))["unexpected_listener"],
+            {"address": "80.68.156.131", "port": 443})
+        for evidence in (
+            {"address": "80.68.156.131", "port": 443, "process": "do not emit"},
+            {"address": "secret.example", "port": 443},
+            {"address": "127.0.0.53", "port": 53},
+            {"address": "fe80::1%secret", "port": 443},
+            {"address": "80.68.156.131", "port": 22},
+            {"address": "80.68.156.131", "port": True},
+        ):
+            with self.subTest(evidence=evidence), self.assertRaisesRegex(bootstrap.Error, "LISTENER_EVIDENCE_INVALID"):
+                bootstrap.validate_bootstrap_result(json.dumps({**response, "unexpected_listener": evidence}))
+
+    def test_rejected_listener_requires_evidence_and_fail_result(self):
+        response = successful_bootstrap()
+        response.update(result="FAIL", stage="PRECONDITIONS", error="EXISTING_PUBLIC_LISTENER_REFUSED")
+        with self.assertRaisesRegex(bootstrap.Error, "LISTENER_EVIDENCE_MISSING"):
+            bootstrap.validate_bootstrap_result(json.dumps(response))
+        response.update(result="PASS", unexpected_listener={"address": "*", "port": 443})
+        with self.assertRaisesRegex(bootstrap.Error, "LISTENER_EVIDENCE_INVALID"):
+            bootstrap.validate_bootstrap_result(json.dumps(response))
+
 
 class GuestOperationTests(unittest.TestCase):
+    def test_standard_ss_loopback_dns_and_ssh_formats_are_accepted(self):
+        output = "\n".join([
+            "LISTEN 0 4096 127.0.0.53:53 0.0.0.0:*",
+            "LISTEN 0 4096 127.0.0.54:53 0.0.0.0:*",
+            "LISTEN 0 4096 127.0.0.53%lo:53 0.0.0.0:*",
+            "LISTEN 0 4096 127.127.1.2:8080 0.0.0.0:*",
+            "LISTEN 0 4096 [::1]:631 [::]:*",
+            "LISTEN 0 4096 [::1%lo]:631 [::]:*",
+            "LISTEN 0 4096 ::1:631 :::*",
+            "LISTEN 0 4096 [::ffff:127.0.0.53]:53 [::]:*",
+            "LISTEN 0 4096 0.0.0.0:22 0.0.0.0:*",
+            "LISTEN 0 4096 [::]:22 [::]:*",
+            "LISTEN 0 4096 *:22 *:*",
+            "tcp LISTEN 0 4096 80.68.156.131:22 0.0.0.0:*",
+        ])
+        guest["assert_expected_listeners"](output)
+
+    def test_non_loopback_services_still_rejected_with_only_address_and_port(self):
+        for endpoint, normalized in (
+            ("80.68.156.131:443", "80.68.156.131"), ("0.0.0.0:443", "0.0.0.0"),
+            ("*:443", "*"), ("[::]:443", "::"),
+            ("[2001:DB8::1]:443", "2001:db8::1"),
+            ("[fe80::1%ens18]:443", "fe80::1"), ("10.0.0.1:443", "10.0.0.1"),
+        ):
+            with self.subTest(endpoint=endpoint), self.assertRaisesRegex(guest["BootstrapError"], "EXISTING_PUBLIC_LISTENER_REFUSED") as raised:
+                guest["assert_expected_listeners"]("LISTEN 0 4096 " + endpoint + " *:*")
+            self.assertEqual(raised.exception.unexpected_listener, {"address": normalized, "port": 443})
+
+    def test_invalid_ss_formats_fail_without_reflecting_raw_output(self):
+        for output in (
+            "secret text", "LISTEN 0 4096 secret.example:443 *:*", "LISTEN 0 4096 0.0.0.0:65536 *:*",
+            "LISTEN 0 4096 127.0.0.53:domain *:*", "LISTEN 0 4096 [::1:443 *:*",
+            "LISTEN 0 4096 127.0.0.53%bad%scope:53 *:*", "LISTEN 0 4096 127.0.0.53:53 *:* users:secret",
+        ):
+            with self.subTest(output=output), self.assertRaises(guest["BootstrapError"]) as raised:
+                guest["assert_expected_listeners"](output)
+            self.assertIsNone(raised.exception.unexpected_listener)
+            self.assertNotIn("secret", str(raised.exception))
+
     def test_existing_valid_docker_config_preserved_byte_for_byte(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "daemon.json"
