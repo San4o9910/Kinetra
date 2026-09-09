@@ -1,8 +1,8 @@
-# New bounded resume authorized after STOP from run34399036669; activate this corrected tree once.
+# Continuous fix/deployment approved; this run validates the corrected achievements/theme/radar tree.
 # Keep this control workflow separate from the candidate Git tree and its manifest.
 # It never creates an application commit, updates a ref, opens a PR, or deploys.
 name: Kinetra PRECOMMIT_CANDIDATE_TREE validation
-run-name: Kinetra PRECOMMIT_CANDIDATE_TREE CLI resume
+run-name: Kinetra PRECOMMIT_CANDIDATE_TREE UX correction
 
 on:
   push:
@@ -13,14 +13,14 @@ permissions:
   contents: read
 
 concurrency:
-  group: kinetra-precommit-candidate-b4259c1ab0e211cb1806592affaee7923ee60aed
+  group: kinetra-precommit-candidate-a55587f844b4076656e226d1bf4f90e2a917c1f9
   cancel-in-progress: false
 
 env:
   NODE_VERSION: '22'
   VITE_API_URL: https://api.ci.kinetra.test
   BASE_COMMIT_SHA: '4ae3f1b97849982c92f703e4a446f7968a474039'
-  CANDIDATE_TREE_SHA: 'b4259c1ab0e211cb1806592affaee7923ee60aed'
+  CANDIDATE_TREE_SHA: 'a55587f844b4076656e226d1bf4f90e2a917c1f9'
   FORCE_COLOR: '0'
 
 jobs:
@@ -58,7 +58,7 @@ jobs:
           assert os.environ["BASE_COMMIT_SHA"] == BASE
           assert os.environ["GITHUB_EVENT_NAME"] == "push"
           assert os.environ["GITHUB_REF"] == "refs/heads/ops/timeweb-hourly-preflight-20260909"
-          assert os.environ["GITHUB_RUN_ATTEMPT"] == "1", "STOP: reruns are prohibited."
+          assert os.environ["GITHUB_RUN_ATTEMPT"] == "1", "Use a new reviewed candidate activation after a justified correction; no blind reruns."
 
           def git(*args, data=None):
               return subprocess.check_output(["git", *args], input=data)
