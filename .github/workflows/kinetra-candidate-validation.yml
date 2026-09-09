@@ -1,8 +1,8 @@
-# Activated once for the reviewed immutable candidate tree on 2026-09-09.
+# New bounded resume authorized after STOP from run34399036669; activate this corrected tree once.
 # Keep this control workflow separate from the candidate Git tree and its manifest.
 # It never creates an application commit, updates a ref, opens a PR, or deploys.
 name: Kinetra PRECOMMIT_CANDIDATE_TREE validation
-run-name: Kinetra PRECOMMIT_CANDIDATE_TREE one-shot validation
+run-name: Kinetra PRECOMMIT_CANDIDATE_TREE CLI resume
 
 on:
   push:
@@ -13,14 +13,14 @@ permissions:
   contents: read
 
 concurrency:
-  group: kinetra-precommit-candidate-664f9affd5e4fb99f43aacbdbce7fa85acb0171b
+  group: kinetra-precommit-candidate-b4259c1ab0e211cb1806592affaee7923ee60aed
   cancel-in-progress: false
 
 env:
   NODE_VERSION: '22'
   VITE_API_URL: https://api.ci.kinetra.test
   BASE_COMMIT_SHA: '4ae3f1b97849982c92f703e4a446f7968a474039'
-  CANDIDATE_TREE_SHA: '664f9affd5e4fb99f43aacbdbce7fa85acb0171b'
+  CANDIDATE_TREE_SHA: 'b4259c1ab0e211cb1806592affaee7923ee60aed'
   FORCE_COLOR: '0'
 
 jobs:
