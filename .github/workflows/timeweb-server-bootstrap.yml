@@ -38,7 +38,9 @@ jobs:
           test "$(gh api repos/San4o9910/Kinetra/actions/runs/34404918625 --jq '.status')" = completed
           test "$(gh api repos/San4o9910/Kinetra/actions/runs/34404918625 --jq '.conclusion')" = success
           test "$(gh api repos/San4o9910/Kinetra/actions/runs/34404918625 --jq '.head_sha')" = 6c7fb00411bd24c74d2a685a4077b45f8bf52850
-          python3 ops/timeweb/test-bootstrap-server.py
+          # Guest file ownership checks require root-owned disposable fixtures.
+          # No cloud credentials or inherited environment reach these offline tests.
+          sudo --non-interactive env -i PATH=/usr/bin:/bin python3 ops/timeweb/test-bootstrap-server.py
       - name: Install host prerequisites on server 9069403 with pinned SSH identity
         shell: bash
         env:
