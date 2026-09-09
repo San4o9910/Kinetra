@@ -1,0 +1,542 @@
+# Activated once for the reviewed immutable candidate tree on 2026-09-09.
+# Keep this control workflow separate from the candidate Git tree and its manifest.
+# It never creates an application commit, updates a ref, opens a PR, or deploys.
+name: Kinetra PRECOMMIT_CANDIDATE_TREE validation
+run-name: Kinetra PRECOMMIT_CANDIDATE_TREE one-shot validation
+
+on:
+  push:
+    branches: [ops/timeweb-hourly-preflight-20260909]
+    paths: [.github/workflows/kinetra-candidate-validation.yml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kinetra-precommit-candidate-664f9affd5e4fb99f43aacbdbce7fa85acb0171b
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: '22'
+  VITE_API_URL: https://api.ci.kinetra.test
+  BASE_COMMIT_SHA: '4ae3f1b97849982c92f703e4a446f7968a474039'
+  CANDIDATE_TREE_SHA: '664f9affd5e4fb99f43aacbdbce7fa85acb0171b'
+  FORCE_COLOR: '0'
+
+jobs:
+  validation:
+    name: PRECOMMIT_CANDIDATE_TREE sequential validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: San4o9910/Kinetra
+          ref: 4ae3f1b97849982c92f703e4a446f7968a474039
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Materialize and identify PRECOMMIT_CANDIDATE_TREE
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_MATERIALIZE'
+          import base64
+          import hashlib
+          import json
+          import os
+          import pathlib
+          import re
+          import subprocess
+          import urllib.request
+
+          BASE = "4ae3f1b97849982c92f703e4a446f7968a474039"
+          TREE = os.environ["CANDIDATE_TREE_SHA"]
+          assert re.fullmatch(r"[0-9a-f]{40}", TREE), "Root must supply the reviewed immutable candidate tree SHA before activation."
+          assert os.environ["BASE_COMMIT_SHA"] == BASE
+          assert os.environ["GITHUB_EVENT_NAME"] == "push"
+          assert os.environ["GITHUB_REF"] == "refs/heads/ops/timeweb-hourly-preflight-20260909"
+          assert os.environ["GITHUB_RUN_ATTEMPT"] == "1", "STOP: reruns are prohibited."
+
+          def git(*args, data=None):
+              return subprocess.check_output(["git", *args], input=data)
+
+          assert git("rev-parse", "HEAD").decode().strip() == BASE
+          assert git("status", "--porcelain", "--untracked-files=all") == b"", "Checkout must start clean."
+
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  raise RuntimeError("GitHub API redirect rejected; do not change source identity.")
+
+          opener = urllib.request.build_opener(NoRedirect)
+          def api(suffix):
+              request = urllib.request.Request(
+                  "https://api.github.com/repos/San4o9910/Kinetra/git/" + suffix,
+                  headers={
+                      "Accept": "application/vnd.github+json",
+                      "Authorization": "Bearer " + os.environ["GH_TOKEN"],
+                      "X-GitHub-Api-Version": "2022-11-28",
+                  },
+              )
+              with opener.open(request, timeout=30) as response:
+                  return json.load(response)
+
+          def valid_path(path):
+              assert isinstance(path, str) and path
+              assert not path.startswith("/") and "\\" not in path
+              assert not any(ord(char) < 32 or ord(char) == 127 for char in path)
+              assert all(part not in ("", ".", "..") and part.casefold() != ".git" for part in path.split("/"))
+              return path
+
+          prefixes = ("apps/frontend/", "apps/backend/", "deploy/", "ops/", "docs/")
+          exact = {
+              "scripts/verify-project.mjs", "scripts/test-frontend-browser.mjs", ".env.example",
+              ".github/workflows/ci.yml", "README.md", "package-lock.json", "MANIFEST.sha256",
+          }
+          def allowed(path):
+              return path.startswith(prefixes) or path in exact
+
+          baseline = {}
+          for entry in git("ls-tree", "-rz", BASE).split(b"\0"):
+              if not entry:
+                  continue
+              metadata, raw_path = entry.split(b"\t", 1)
+              mode, kind, sha = metadata.decode("ascii").split(" ")
+              path = valid_path(raw_path.decode("utf-8"))
+              assert kind == "blob" and mode in ("100644", "100755"), "Unsupported base entry."
+              baseline[path] = (mode, sha)
+
+          response = api("trees/" + TREE + "?recursive=1")
+          assert response.get("sha") == TREE
+          assert response.get("truncated") is False, "A truncated tree cannot identify the candidate."
+          candidate = {}
+          for entry in response["tree"]:
+              path = valid_path(entry["path"])
+              if entry["type"] == "tree":
+                  assert entry["mode"] == "040000"
+                  continue
+              assert entry["type"] == "blob" and entry["mode"] in ("100644", "100755"), "Symlinks and submodules are prohibited."
+              assert re.fullmatch(r"[0-9a-f]{40}", entry["sha"])
+              assert path not in candidate, "Duplicate candidate path."
+              candidate[path] = (entry["mode"], entry["sha"])
+
+          changed = sorted(path for path in baseline.keys() | candidate.keys() if baseline.get(path) != candidate.get(path))
+          assert changed, "No candidate changes."
+          for path in changed:
+              assert allowed(path), "Candidate change outside allowlist: " + path
+
+          # Download only changed immutable blobs. Never fetch or execute a branch-tip application.
+          for path in changed:
+              if path not in candidate:
+                  continue
+              mode, sha = candidate[path]
+              if baseline.get(path, (None, None))[1] == sha:
+                  continue
+              blob = api("blobs/" + sha)
+              assert blob.get("sha") == sha and blob.get("encoding") == "base64"
+              content = base64.b64decode(blob["content"].replace("\n", "").replace("\r", ""), validate=True)
+              assert len(content) == blob["size"]
+              assert hashlib.sha1(b"blob " + str(len(content)).encode() + b"\0" + content).hexdigest() == sha
+              assert git("hash-object", "-w", "--stdin", data=content).decode().strip() == sha
+
+          # Only this disposable checkout receives an index update; no commit or ref is created.
+          for path in changed:
+              if path not in candidate:
+                  git("update-index", "--force-remove", "--", path)
+                  old_path = pathlib.Path(path)
+                  if old_path.is_file() or old_path.is_symlink():
+                      old_path.unlink()
+          for path in changed:
+              if path in candidate:
+                  mode, sha = candidate[path]
+                  git("update-index", "--add", "--cacheinfo", mode + "," + sha + "," + path)
+          assert git("write-tree").decode().strip() == TREE, "Computed Git tree does not match root-supplied candidate."
+          git("checkout-index", "--all", "--force")
+          git("diff", "--exit-code")
+          assert git("ls-files", "--others", "--exclude-standard", "-z") == b""
+          assert git("rev-parse", "HEAD").decode().strip() == BASE
+          assert git("write-tree").decode().strip() == TREE
+
+          summary = (
+              "Validation semantics: PRECOMMIT_CANDIDATE_TREE\n"
+              f"Application repository: San4o9910/Kinetra\nBase commit: {BASE}\n"
+              f"Candidate Git tree: {TREE}\nChanged paths: {len(changed)}\n"
+              "HEAD remains the base commit; application changes exist only in the index and worktree.\n"
+          )
+          print(summary)
+          print("KINETRA_PRECOMMIT_CANDIDATE_TREE_MATERIALIZATION=PASS")
+          for path in changed:
+              print("Candidate changed path: " + path)
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as handle:
+              handle.write(summary + "\n")
+          PY_MATERIALIZE
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Audit dependencies
+        run: npm audit --audit-level=moderate
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Verify candidate formatting with the real base and staged diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_FORMAT'
+          import json, os
+          from pathlib import Path
+          Path(os.environ['RUNNER_TEMP'], 'kinetra-format-base.json').write_text(
+              json.dumps({'before': os.environ['BASE_COMMIT_SHA']})
+          )
+          PY_FORMAT
+          GITHUB_BASE_REF='' GITHUB_EVENT_PATH="$RUNNER_TEMP/kinetra-format-base.json" npm run format:changed
+
+      - name: Verify deployment configuration and shell syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test ops/test-production-env.mjs
+          for script in ops/*.sh; do bash -n "$script"; done
+
+      - name: Build
+        run: npm run build
+
+      - name: Verify project structure
+        run: node scripts/verify-project.mjs
+
+      - name: Verify source manifest against the candidate index
+        shell: bash
+        run: |
+          set -euo pipefail
+          diff -u \
+            <(git ls-files | sed '/^MANIFEST\.sha256$/d' | sed 's#^#./#' | LC_ALL=C sort) \
+            <(awk '{ print $2 }' MANIFEST.sha256 | LC_ALL=C sort)
+          sha256sum -c MANIFEST.sha256
+
+      - name: Confirm candidate identity after ordinary quality
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$BASE_COMMIT_SHA"
+          test "$(git write-tree)" = "$CANDIDATE_TREE_SHA"
+          git diff --exit-code
+          echo 'KINETRA_PRECOMMIT_ORDINARY_QUALITY=PASS'
+          echo 'Ordinary quality passed. The PG17/S3/browser gate is still NOT_RUN.' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Configure deterministic mandatory test fixtures after ordinary quality
+        shell: bash
+        env:
+          DATABASE_URL: postgresql://kinetra:kinetra_test_ci@localhost:5432/kinetra_test
+          JWT_ACCESS_SECRET: ci-test-access-secret-not-real-32-bytes
+          JWT_REFRESH_SECRET: ci-test-refresh-secret-not-real-32-bytes
+          NODE_ENV: test
+          PORT: 3000
+          HOST: 0.0.0.0
+          CORS_ORIGIN: http://localhost:5173
+          YUKASSA_SHOP_ID: ci-test-shop-not-real
+          YUKASSA_SECRET_KEY: ci-test-secret-not-real
+          YUKASSA_RETURN_URL: http://localhost:5173/payment/success
+          YUKASSA_REQUEST_TIMEOUT_MS: '10000'
+          VAPID_PUBLIC_KEY: BG_wO5SSQc4drdQ1GeaWDgqFtBppoFwygQOqK84VlMoWPE91OlW_AdxT9sCwx-7ni0DG_30lqW4igrmJzvccFEo
+          VAPID_PRIVATE_KEY: AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE
+          VAPID_SUBJECT: mailto:ci@kinetra.test
+          CHAT_ENABLED: 'true'
+          CHAT_PHOTO_UPLOADS_ENABLED: 'false'
+          CHAT_PHOTO_UPLOAD_IDLE_TIMEOUT_SECONDS: '15'
+          CHAT_PHOTO_UPLOAD_TOTAL_TIMEOUT_SECONDS: '120'
+          CHAT_MEDIA_URL_TTL_SECONDS: '300'
+          CI: 'true'
+          KINETRA_REQUIRE_POSTGRES_TEST: 'true'
+          KINETRA_REQUIRE_S3_TEST: 'true'
+          KINETRA_S3_TEST_ENDPOINT: http://127.0.0.1:9000
+          KINETRA_S3_TEST_ACCESS_KEY: kinetra-test-access
+          KINETRA_S3_TEST_SECRET_KEY: kinetra-test-secret-not-for-production
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_TEST_ENV'
+          import os
+          names = ['DATABASE_URL', 'JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET', 'NODE_ENV', 'PORT', 'HOST', 'CORS_ORIGIN', 'YUKASSA_SHOP_ID', 'YUKASSA_SECRET_KEY', 'YUKASSA_RETURN_URL', 'YUKASSA_REQUEST_TIMEOUT_MS', 'VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY', 'VAPID_SUBJECT', 'CHAT_ENABLED', 'CHAT_PHOTO_UPLOADS_ENABLED', 'CHAT_PHOTO_UPLOAD_IDLE_TIMEOUT_SECONDS', 'CHAT_PHOTO_UPLOAD_TOTAL_TIMEOUT_SECONDS', 'CHAT_MEDIA_URL_TTL_SECONDS', 'CI', 'KINETRA_REQUIRE_POSTGRES_TEST', 'KINETRA_REQUIRE_S3_TEST', 'KINETRA_S3_TEST_ENDPOINT', 'KINETRA_S3_TEST_ACCESS_KEY', 'KINETRA_S3_TEST_SECRET_KEY']
+          with open(os.environ['GITHUB_ENV'], 'a') as target:
+              for name in names:
+                  value = os.environ[name]
+                  assert '\n' not in value and '\r' not in value
+                  target.write(name + '=' + value + '\n')
+          PY_TEST_ENV
+
+      - name: Start isolated PostgreSQL 17 fixture after ordinary quality
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --detach --rm --name kinetra-precommit-postgres \
+            --publish 5432:5432 \
+            --env POSTGRES_DB=kinetra_test \
+            --env POSTGRES_USER=kinetra \
+            --env POSTGRES_PASSWORD=kinetra_test_ci \
+            --health-cmd 'pg_isready -U kinetra -d kinetra_test' \
+            --health-interval 5s --health-timeout 5s --health-retries 10 \
+            postgres:17-alpine
+          ready='false'
+          for _ in $(seq 1 60); do
+            if [[ "$(docker inspect --format '{{.State.Health.Status}}' kinetra-precommit-postgres)" == 'healthy' ]]; then
+              ready='true'
+              break
+            fi
+            sleep 1
+          done
+          if [[ "$ready" != 'true' ]]; then
+            docker logs kinetra-precommit-postgres
+            exit 1
+          fi
+          echo 'KINETRA_PRECOMMIT_POSTGRES_FIXTURE_READY=PASS'
+
+      - name: Confirm runner browser prerequisite
+        shell: bash
+        run: |
+          set -euo pipefail
+          for candidate in /usr/bin/google-chrome /usr/bin/google-chrome-stable /usr/bin/chromium /usr/bin/chromium-browser; do
+            if [[ -x "$candidate" ]]; then
+              "$candidate" --version
+              echo "CHROME_BIN=$candidate" >> "$GITHUB_ENV"
+              exit 0
+            fi
+          done
+          echo 'STOP: Chrome/Chromium is unavailable; the mandatory gate cannot run.' >&2
+          exit 1
+
+      - name: Install real media decoders
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends ffmpeg imagemagick
+          identify -version
+          convert -version
+          ffmpeg -version
+          ffprobe -version
+
+      - name: Start pinned private S3-compatible fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --detach --rm --name kinetra-t14-minio \
+            --publish 9000:9000 \
+            --env MINIO_ROOT_USER="$KINETRA_S3_TEST_ACCESS_KEY" \
+            --env MINIO_ROOT_PASSWORD="$KINETRA_S3_TEST_SECRET_KEY" \
+            --env 'MINIO_KMS_SECRET_KEY=kinetra-t14-ci-key:MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=' \
+            minio/minio:RELEASE.2025-06-13T11-33-47Z \
+            server /data --address ':9000'
+          ready='false'
+          for _ in $(seq 1 40); do
+            if curl --fail --silent http://127.0.0.1:9000/minio/health/ready >/dev/null; then
+              ready='true'
+              break
+            fi
+            sleep 1
+          done
+          if [[ "$ready" != 'true' ]]; then
+            docker logs kinetra-t14-minio
+            exit 1
+          fi
+
+      - name: Run migrations
+        run: npm run db:migrate
+
+      - name: Verify idempotent migrations
+        run: npm run db:migrate
+
+      - name: Seed content model
+        run: npm run db:seed
+
+      - name: Verify idempotent seed
+        run: npm run db:seed
+
+      - name: Verify content model
+        run: npm run db:verify-content
+
+      - name: Confirm PostgreSQL integration test prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${DATABASE_URL:-}"
+          echo 'KINETRA_T04_POSTGRES_PREREQUISITES=PASS'
+
+      - name: Confirm one-shot candidate identity before the mandatory sequence
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_RUN_ATTEMPT" = '1'
+          test "$(git rev-parse HEAD)" = "$BASE_COMMIT_SHA"
+          test "$(git write-tree)" = "$CANDIDATE_TREE_SHA"
+          git diff --exit-code
+          test ! -e /tmp/kinetra-test.log
+          echo 'KINETRA_PRECOMMIT_MANDATORY_SEQUENCE=START'
+
+      - name: Run tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run test 2>&1 | tee /tmp/kinetra-test.log
+          grep -Eq '^(#|ℹ) tests [1-9][0-9]*$' /tmp/kinetra-test.log
+          if grep -Eq '^(#|ℹ) (fail|cancelled|skipped) [1-9][0-9]*$' /tmp/kinetra-test.log; then
+            echo 'A test failed or was skipped; release validation is blocked.' >&2
+            exit 1
+          fi
+          grep -F 'KINETRA_T04_POSTGRES_INTEGRATION=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T04_BROWSER_E2E=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T05_POSTGRES_INTEGRATION=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T05_BROWSER_E2E=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T06_BACKEND_E2E=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T06_POSTGRES_INTEGRATION=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T06_BROWSER_E2E=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T07_BACKEND_E2E=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T07_POSTGRES_INTEGRATION=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T07_PLAYER_TAB_HISTORY=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T07_BROWSER_E2E=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T08_BACKEND_E2E=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T08_CARD_NAVIGATION=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T08_COMPLETION_STATE=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T08_BROWSER_E2E=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T09_BACKEND_E2E=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T09_POSTGRES_INTEGRATION=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T09_PROGRESS_CONTENT=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T09_GOAL_UPDATE=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T09_WEEKLY_METRICS=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T09_CHARTS=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T09_BROWSER_E2E=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T10_BACKEND_E2E=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T10_POSTGRES_INTEGRATION=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T10_SETTINGS_CONTENT=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T10_NOTIFICATIONS=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T10_THEME_MODES=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T10_LOGOUT=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T10_ACCOUNT_DELETION=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T10_BROWSER_E2E=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T11_YOOKASSA_CLIENT=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T11_BACKEND_E2E=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T11_WEBHOOK_AUTH=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T11_WEBHOOK_IDEMPOTENCY=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T11_POSTGRES_INTEGRATION=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T11_RENEWAL_IDEMPOTENCY=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T11_PAYMENT_FLOW=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T11_PAYWALL=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T11_SETTINGS_SUBSCRIPTION=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T11_BROWSER_E2E=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T13_WEBPUSH_SENDER=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T13_BACKEND_E2E=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T13_POSTGRES_INTEGRATION=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T13_SCHEDULER=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T13_SERVICE_WORKER=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T13_PERMISSION_LIFECYCLE=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T13_SETTINGS_INTEGRATION=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T13_BROWSER_E2E=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T12_BACKEND_E2E=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T12_SOCKET_AUTHORIZATION=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T12_MESSAGE_DELIVERY=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T12_POSTGRES_INTEGRATION=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T12_MULTIPART_TIMEOUT=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T12_PHOTO_SECURITY=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T12_CLIENT_UI=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T12_TRAINER_ADMIN=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T12_T13_COEXISTENCE=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T12_BROWSER_E2E=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T14_BACKEND_E2E=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T14_UPLOAD_AUTHORIZATION=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T14_S3_MULTIPART=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T14_VIDEO_VERIFICATION=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T14_POSTGRES_INTEGRATION=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T14_TRAINER_UI=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T14_UPLOAD_LIFECYCLE=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T14_REPLACE_UNPUBLISH=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T14_T07_T12_T13_COEXISTENCE=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_T14_BROWSER_E2E=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_TRAINER_VERIFICATION_MIGRATION_POSTGRES17=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_REGISTRATION_ROLES_POSTGRES17=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_SQLSTATE_42804_REGRESSION_POSTGRES17=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_REGISTRATION_PROFILE_POSTGRES17=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_TRAINER_VERIFICATION_REVIEWER_CLI_POSTGRES17=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_TRAINER_VERIFICATION_LIFECYCLE_POSTGRES17=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_TRAINER_VERIFICATION_APPROVAL_GUARDS_POSTGRES17=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_TRAINER_VERIFICATION_AUDIT_CASCADE_POSTGRES17=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_TRAINER_VERIFICATION_LATEST_REQUEST_POSTGRES17=PASS' /tmp/kinetra-test.log
+          echo 'KINETRA_T04_TEST_SUITE=PASS'
+          echo 'KINETRA_T05_TEST_SUITE=PASS'
+          echo 'KINETRA_T06_TEST_SUITE=PASS'
+          echo 'KINETRA_T07_TEST_SUITE=PASS'
+          echo 'KINETRA_T08_TEST_SUITE=PASS'
+          echo 'KINETRA_T09_TEST_SUITE=PASS'
+          echo 'KINETRA_T10_TEST_SUITE=PASS'
+          echo 'KINETRA_T11_TEST_SUITE=PASS'
+          echo 'KINETRA_T13_TEST_SUITE=PASS'
+          echo 'KINETRA_T12_TEST_SUITE=PASS'
+          echo 'KINETRA_T14_TEST_SUITE=PASS'
+
+      - name: Require complete suites and exact test-output markers
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_EVIDENCE'
+          import pathlib, re
+          log = pathlib.Path('/tmp/kinetra-test.log').read_text()
+          for field in ('tests', 'pass', 'fail', 'cancelled', 'skipped', 'todo'):
+              values = [int(value) for value in re.findall(r'^(?:#|ℹ) ' + field + r' ([0-9]+)$', log, re.MULTILINE)]
+              assert len(values) == 2, f'Expected both backend and frontend-unit completed summaries for {field}, got {values}.'
+              if field in ('tests', 'pass'):
+                  assert all(value > 0 for value in values), f'An empty suite is prohibited: {field}={values}.'
+              else:
+                  assert values == [0, 0], f'Failure, cancellation, skip or TODO blocks release: {field}={values}.'
+          required = ['KINETRA_T04_POSTGRES_INTEGRATION=PASS', 'KINETRA_T04_BROWSER_E2E=PASS', 'KINETRA_T05_POSTGRES_INTEGRATION=PASS', 'KINETRA_T05_BROWSER_E2E=PASS', 'KINETRA_T06_BACKEND_E2E=PASS', 'KINETRA_T06_POSTGRES_INTEGRATION=PASS', 'KINETRA_T06_BROWSER_E2E=PASS', 'KINETRA_T07_BACKEND_E2E=PASS', 'KINETRA_T07_POSTGRES_INTEGRATION=PASS', 'KINETRA_T07_PLAYER_TAB_HISTORY=PASS', 'KINETRA_T07_BROWSER_E2E=PASS', 'KINETRA_T08_BACKEND_E2E=PASS', 'KINETRA_T08_CARD_NAVIGATION=PASS', 'KINETRA_T08_COMPLETION_STATE=PASS', 'KINETRA_T08_BROWSER_E2E=PASS', 'KINETRA_T09_BACKEND_E2E=PASS', 'KINETRA_T09_POSTGRES_INTEGRATION=PASS', 'KINETRA_T09_PROGRESS_CONTENT=PASS', 'KINETRA_T09_GOAL_UPDATE=PASS', 'KINETRA_T09_WEEKLY_METRICS=PASS', 'KINETRA_T09_CHARTS=PASS', 'KINETRA_T09_BROWSER_E2E=PASS', 'KINETRA_T10_BACKEND_E2E=PASS', 'KINETRA_T10_POSTGRES_INTEGRATION=PASS', 'KINETRA_T10_SETTINGS_CONTENT=PASS', 'KINETRA_T10_NOTIFICATIONS=PASS', 'KINETRA_T10_THEME_MODES=PASS', 'KINETRA_T10_LOGOUT=PASS', 'KINETRA_T10_ACCOUNT_DELETION=PASS', 'KINETRA_T10_BROWSER_E2E=PASS', 'KINETRA_T11_YOOKASSA_CLIENT=PASS', 'KINETRA_T11_BACKEND_E2E=PASS', 'KINETRA_T11_WEBHOOK_AUTH=PASS', 'KINETRA_T11_WEBHOOK_IDEMPOTENCY=PASS', 'KINETRA_T11_POSTGRES_INTEGRATION=PASS', 'KINETRA_T11_RENEWAL_IDEMPOTENCY=PASS', 'KINETRA_T11_PAYMENT_FLOW=PASS', 'KINETRA_T11_PAYWALL=PASS', 'KINETRA_T11_SETTINGS_SUBSCRIPTION=PASS', 'KINETRA_T11_BROWSER_E2E=PASS', 'KINETRA_T13_WEBPUSH_SENDER=PASS', 'KINETRA_T13_BACKEND_E2E=PASS', 'KINETRA_T13_POSTGRES_INTEGRATION=PASS', 'KINETRA_T13_SCHEDULER=PASS', 'KINETRA_T13_SERVICE_WORKER=PASS', 'KINETRA_T13_PERMISSION_LIFECYCLE=PASS', 'KINETRA_T13_SETTINGS_INTEGRATION=PASS', 'KINETRA_T13_BROWSER_E2E=PASS', 'KINETRA_T12_BACKEND_E2E=PASS', 'KINETRA_T12_SOCKET_AUTHORIZATION=PASS', 'KINETRA_T12_MESSAGE_DELIVERY=PASS', 'KINETRA_T12_POSTGRES_INTEGRATION=PASS', 'KINETRA_T12_MULTIPART_TIMEOUT=PASS', 'KINETRA_T12_PHOTO_SECURITY=PASS', 'KINETRA_T12_CLIENT_UI=PASS', 'KINETRA_T12_TRAINER_ADMIN=PASS', 'KINETRA_T12_T13_COEXISTENCE=PASS', 'KINETRA_T12_BROWSER_E2E=PASS', 'KINETRA_T14_BACKEND_E2E=PASS', 'KINETRA_T14_UPLOAD_AUTHORIZATION=PASS', 'KINETRA_T14_S3_MULTIPART=PASS', 'KINETRA_T14_VIDEO_VERIFICATION=PASS', 'KINETRA_T14_POSTGRES_INTEGRATION=PASS', 'KINETRA_T14_TRAINER_UI=PASS', 'KINETRA_T14_UPLOAD_LIFECYCLE=PASS', 'KINETRA_T14_REPLACE_UNPUBLISH=PASS', 'KINETRA_T14_T07_T12_T13_COEXISTENCE=PASS', 'KINETRA_T14_BROWSER_E2E=PASS', 'KINETRA_TRAINER_VERIFICATION_MIGRATION_POSTGRES17=PASS', 'KINETRA_REGISTRATION_ROLES_POSTGRES17=PASS', 'KINETRA_SQLSTATE_42804_REGRESSION_POSTGRES17=PASS', 'KINETRA_REGISTRATION_PROFILE_POSTGRES17=PASS', 'KINETRA_TRAINER_VERIFICATION_REVIEWER_CLI_POSTGRES17=PASS', 'KINETRA_TRAINER_VERIFICATION_LIFECYCLE_POSTGRES17=PASS', 'KINETRA_TRAINER_VERIFICATION_APPROVAL_GUARDS_POSTGRES17=PASS', 'KINETRA_TRAINER_VERIFICATION_AUDIT_CASCADE_POSTGRES17=PASS', 'KINETRA_TRAINER_VERIFICATION_LATEST_REQUEST_POSTGRES17=PASS', 'KINETRA_T14_S3_LEGACY_CLEANUP=PASS', 'KINETRA_AUTH_LOGOUT_FAMILY_POSTGRES=PASS', 'KINETRA_AUTH_REFRESH_LOGOUT_SERIALIZATION=PASS', 'KINETRA_T11_ATTACH_MONOTONICITY=PASS', 'KINETRA_EXPLORATION_CHAT_LOCK=PASS', 'KINETRA_ONBOARDING_EXPLORATION_NAVIGATION=PASS', 'KINETRA_EXPLORATION_PAYWALL_PRECEDENCE=PASS']
+          for marker in required:
+              assert re.search(r'^(?:# |ℹ )?' + re.escape(marker) + r'$', log, re.MULTILINE), 'Missing asserted test-output marker: ' + marker
+          print('KINETRA_PRECOMMIT_COMPLETED_SUITE_EVIDENCE=PASS')
+          PY_EVIDENCE
+
+      - name: Stop private S3 fixture
+        if: always()
+        shell: bash
+        run: docker stop kinetra-t14-minio >/dev/null 2>&1 || true
+
+      - name: Verify browser profile cleanup
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          leftovers="$(find /tmp -maxdepth 1 -type d -name 'kinetra-browser-*' -print)"
+          if [[ -n "$leftovers" ]]; then
+            echo 'Browser profile directories were not removed:' >&2
+            echo "$leftovers" >&2
+            exit 1
+          fi
+          echo 'KINETRA_BROWSER_TMP_CLEANUP=PASS'
+
+
+      - name: Stop isolated PostgreSQL fixture
+        if: always()
+        shell: bash
+        run: docker stop kinetra-precommit-postgres >/dev/null 2>&1 || true
+
+      - name: Attest completed PRECOMMIT_CANDIDATE_TREE validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$BASE_COMMIT_SHA"
+          test "$(git write-tree)" = "$CANDIDATE_TREE_SHA"
+          git diff --exit-code
+          {
+            echo 'Validation semantics: PRECOMMIT_CANDIDATE_TREE'
+            echo "Base commit: $BASE_COMMIT_SHA"
+            echo "Candidate Git tree: $CANDIDATE_TREE_SHA"
+            echo "Workflow run: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo "Run attempt: $GITHUB_RUN_ATTEMPT"
+            echo 'KINETRA_PRECOMMIT_CANDIDATE_TREE_VALIDATION=PASS'
+            echo 'This is precommit candidate evidence. PR-head and merge-ref evidence do not yet exist.'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
