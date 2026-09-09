@@ -1,0 +1,134 @@
+name: Timeweb hourly pricing preflight (read only)
+
+on:
+  push:
+    branches: [ops/timeweb-hourly-preflight-20260909]
+    paths: [.github/workflows/timeweb-hourly-preflight.yml]
+
+permissions: {}
+
+concurrency:
+  group: kinetra-timeweb-pricing-preflight
+  cancel-in-progress: false
+
+jobs:
+  read-prices:
+    name: Read account access and public prices; create nothing
+    if: github.repository == 'San4o9910/Kinetra'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - name: Read Timeweb API with a masked repository secret
+        shell: python
+        env:
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+        run: |
+          import json
+          import math
+          import os
+          import sys
+          import urllib.error
+          import urllib.request
+
+          BASE = 'https://api.timeweb.cloud/api/v1'
+          PATHS = frozenset({
+              '/account/status', '/account/finances', '/presets/servers',
+              '/presets/storages', '/configurator/servers', '/os/servers',
+          })
+
+          class ProbeError(Exception):
+              pass
+
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, request, fp, code, message, headers, new_url):
+                  raise ProbeError('API_REDIRECT_REFUSED')
+
+          def get_json(path, token):
+              if path not in PATHS:
+                  raise ProbeError('API_PATH_REFUSED')
+              request = urllib.request.Request(
+                  BASE + path, method='GET',
+                  headers={'Authorization': 'Bearer ' + token, 'Accept': 'application/json'},
+              )
+              try:
+                  with urllib.request.build_opener(NoRedirect()).open(request, timeout=20) as response:
+                      if response.status != 200:
+                          raise ProbeError('API_NON_200')
+                      raw = response.read(4_194_305)
+              except urllib.error.HTTPError as error:
+                  raise ProbeError('API_HTTP_' + str(error.code)) from None
+              except (urllib.error.URLError, TimeoutError):
+                  raise ProbeError('API_CONNECTION_FAILED') from None
+              if len(raw) > 4_194_304:
+                  raise ProbeError('API_RESPONSE_TOO_LARGE')
+              result = json.loads(raw)
+              if not isinstance(result, dict):
+                  raise ProbeError('API_RESPONSE_SHAPE_INVALID')
+              return result
+
+          def rows(response, key):
+              value = response.get(key)
+              if not isinstance(value, list) or not all(isinstance(row, dict) for row in value):
+                  raise ProbeError('API_CATALOG_SHAPE_INVALID')
+              return value
+
+          def emit_catalog(label, values, keys):
+              # Fixed public catalog fields only. Never log account responses or credentials.
+              for row in values:
+                  safe = {}
+                  for key in keys:
+                      value = row.get(key)
+                      if value is None or isinstance(value, (bool, int)):
+                          safe[key] = value
+                      elif isinstance(value, float) and math.isfinite(value):
+                          safe[key] = value
+                      elif isinstance(value, str) and len(value) <= 100:
+                          safe[key] = value
+                  print(label + '=' + json.dumps(safe, ensure_ascii=True, allow_nan=False))
+
+          def main():
+              if os.environ.get('GITHUB_RUN_ATTEMPT') != '1':
+                  raise ProbeError('REPEATED_RUN_REFUSED')
+              token = os.environ.pop('TIMEWEB_CLOUD_TOKEN', '')
+              if not token or token.strip() != token or any(c.isspace() for c in token):
+                  raise ProbeError('TIMEWEB_SECRET_MISSING_OR_INVALID')
+              status = get_json('/account/status', token).get('status')
+              if not isinstance(status, dict):
+                  raise ProbeError('ACCOUNT_SHAPE_INVALID')
+              if status.get('is_blocked') is not False or status.get('is_permanent_blocked') is not False:
+                  raise ProbeError('ACCOUNT_BLOCKED_OR_STATUS_UNKNOWN')
+              finances = get_json('/account/finances', token).get('finances')
+              if not isinstance(finances, dict) or finances.get('currency') != 'RUB':
+                  raise ProbeError('RUBLE_BILLING_NOT_CONFIRMED')
+              servers = rows(get_json('/presets/servers', token), 'server_presets')
+              storage = rows(get_json('/presets/storages', token), 'storages_presets')
+              configurators = rows(get_json('/configurator/servers', token), 'server_configurators')
+              operating_systems = rows(get_json('/os/servers', token), 'servers_os')
+              candidates = [r for r in servers if r.get('cpu') == 2 and r.get('ram') == 4096]
+              if not candidates:
+                  raise ProbeError('NO_2CPU_4GB_PRESET')
+              print('TIMEWEB_ACCESS=PASS')
+              print('TIMEWEB_BUDGET_RUB_PER_MONTH=2000')
+              print('TIMEWEB_BILLING_REQUIREMENT=HOURLY_NO_PREPAYMENT')
+              emit_catalog('SERVER_PRESET', candidates, (
+                  'id', 'location', 'price', 'cpu', 'cpu_frequency', 'ram', 'disk',
+                  'disk_type', 'bandwidth', 'is_allowed_local_network',
+                  'availability_zone', 'preset_type',
+              ))
+              emit_catalog('STORAGE_PRESET', storage, ('id', 'location', 'price', 'disk', 'storage_class'))
+              emit_catalog('SERVER_CONFIGURATOR', configurators, ('id', 'location', 'disk_type'))
+              emit_catalog('SERVER_OS', operating_systems, ('id', 'name', 'version'))
+              print('TIMEWEB_PRICE_QUOTE=REQUIRES_REVIEW_WITH_IPV4_AND_TRAFFIC')
+              print('TIMEWEB_RESOURCES_CREATED=0')
+              print('KINETRA_APPLICATION_VALIDATION=NOT_PART_OF_THIS_PRICE_PROBE')
+
+          try:
+              main()
+          except ProbeError as error:
+              # These messages are constants constructed locally, never provider response bodies.
+              print('TIMEWEB_PREFLIGHT=FAIL ' + str(error))
+              sys.exit(1)
+          except Exception:
+              # Do not print exception details: they can contain request headers or response data.
+              print('TIMEWEB_PREFLIGHT=FAIL UNEXPECTED_RESPONSE_OR_RUNTIME_ERROR')
+              sys.exit(1)
