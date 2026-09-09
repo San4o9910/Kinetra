@@ -28,15 +28,26 @@ _spec = importlib.util.spec_from_file_location(
 )
 inspection = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(inspection)
+_monitoring_spec = importlib.util.spec_from_file_location(
+    "kinetra_monitoring_inspection", Path(__file__).with_name("inspect-host-monitoring.py")
+)
+monitoring_inspection = importlib.util.module_from_spec(_monitoring_spec)
+_monitoring_spec.loader.exec_module(monitoring_inspection)
 Error = inspection.InspectError
 PINNED_FINGERPRINT = "SHA256:T3RfyVAstE+dyvneeMMYUjIm1Ej+NN3D5Vr9sIyRUG0"
 BOOTSTRAP_SECONDS = 1800
 REMOTE_SECONDS = 1100
+PROVIDER_SOURCES = ("92.53.116.12", "92.53.116.111", "92.53.116.119")
 
 # This is a separate, fixed mutating program. The inspection program and helper
 # module are never replaced or monkeypatched during production execution.
-GUEST_BOOTSTRAP = r'''
+GUEST_BOOTSTRAP = "MONITORING_GUEST_SOURCE = " + repr(monitoring_inspection.GUEST_PROGRAM) + "\n" + r'''
 import fcntl, ipaddress, json, os, pathlib, re, shlex, shutil, signal, stat, subprocess, tempfile, time
+
+monitoring = {"__name__": "kinetra_read_only_monitoring_helpers"}
+exec(compile(MONITORING_GUEST_SOURCE, "<reviewed-monitoring-helpers>", "exec"), monitoring)
+PROVIDER_SOURCES = ("92.53.116.12", "92.53.116.111", "92.53.116.119")
+PROVIDER_CONFIG = "/etc/zabbix/zabbix_agentd.conf"
 
 class BootstrapError(Exception):
     def __init__(self, code, unexpected_listener=None):
@@ -48,7 +59,7 @@ def interrupted(_signum, _frame):
 
 def command(args, timeout=30, capture=False):
     """Every child has a bounded lifetime; package output never reaches SSH."""
-    environment = dict(os.environ, LC_ALL="C", DEBIAN_FRONTEND="noninteractive")
+    environment = dict(os.environ, LC_ALL="C", DEBIAN_FRONTEND="noninteractive", NEEDRESTART_MODE="l")
     process = subprocess.Popen(args, stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE if capture else subprocess.DEVNULL,
         stderr=subprocess.DEVNULL, env=environment, start_new_session=True)
@@ -148,17 +159,110 @@ def assert_empty_docker():
         if command(["/usr/bin/docker", *arguments], capture=True).strip():
             raise BootstrapError("EXISTING_DOCKER_WORKLOAD_REFUSED")
 
-def assert_expected_ufw_rules():
-    if shutil.which("ufw") is None:
-        return
-    output = command(["/usr/sbin/ufw", "show", "added"], capture=True)
+def validate_added_ufw_rules(output):
     allowed = {"ufw allow 22/tcp", "ufw allow 80/tcp", "ufw allow 443/tcp"}
-    for row in output.splitlines():
-        row = row.strip()
-        if row and not row.startswith("Added user rules") and row not in allowed:
+    rows = [row.strip() for row in output.splitlines() if row.strip()]
+    heading = "Added user rules (see 'ufw status' for running firewall):"
+    if rows and rows[0] == heading:
+        rows = rows[1:]
+    # Stock ufw 0.36.2 prints this exact sentinel for an empty ruleset.
+    # Confirmed in Debian release-source diff: src/frontend.py:354, msgid (None).
+    if rows == ["(None)"]:
+        return
+    for row in rows:
+        if row in allowed:
+            continue
+        try:
+            parts = shlex.split(row)
+        except ValueError:
+            raise BootstrapError("EXISTING_UFW_RULES_REQUIRE_INSPECTION")
+        if len(parts) == 10 and parts[:3] == ["ufw", "allow", "from"] and parts[4:] == ["to", "any", "port", "10050", "proto", "tcp"]:
+            source = parts[3]
+        elif len(parts) == 10 and parts[:5] == ["ufw", "allow", "proto", "tcp", "from"] and parts[6:] == ["to", "any", "port", "10050"]:
+            source = parts[5]
+        else:
+            raise BootstrapError("EXISTING_UFW_RULES_REQUIRE_INSPECTION")
+        if source not in {ip for ip in PROVIDER_SOURCES} | {ip + "/32" for ip in PROVIDER_SOURCES}:
             raise BootstrapError("EXISTING_UFW_RULES_REQUIRE_INSPECTION")
 
-def assert_expected_listeners(output):
+def assert_expected_ufw_rules():
+    if shutil.which("ufw") is not None:
+        validate_added_ufw_rules(command(["/usr/sbin/ufw", "show", "added"], capture=True))
+
+def approved_agent_arguments(raw):
+    # Parse argv privately. The raw bytes and argument strings are never emitted.
+    if not isinstance(raw, bytes) or len(raw) > 16384 or not raw.endswith(b"\0"):
+        raise BootstrapError("PROVIDER_AGENT_ARGUMENTS_UNCONFIRMED")
+    try:
+        arguments = [item.decode("utf-8", errors="strict") for item in raw[:-1].split(b"\0")]
+    except UnicodeError:
+        raise BootstrapError("PROVIDER_AGENT_ARGUMENTS_UNCONFIRMED") from None
+    if not arguments or arguments[0] not in {"/usr/sbin/zabbix_agentd", "zabbix_agentd"}:
+        raise BootstrapError("PROVIDER_AGENT_ARGUMENTS_UNCONFIRMED")
+    explicit, index = False, 1
+    while index < len(arguments):
+        argument = arguments[index]
+        if argument in {"-f", "--foreground"}:
+            index += 1
+            continue
+        if argument in {"-c", "--config"} and index + 1 < len(arguments):
+            path = arguments[index + 1]
+            index += 2
+        elif argument.startswith("--config="):
+            path = argument[len("--config="):]
+            index += 1
+        elif argument.startswith("-c") and len(argument) > 2:
+            path = argument[2:]
+            index += 1
+        else:
+            raise BootstrapError("PROVIDER_AGENT_ARGUMENTS_UNCONFIRMED")
+        if explicit or path != PROVIDER_CONFIG:
+            raise BootstrapError("PROVIDER_AGENT_CONFIG_OVERRIDE_REFUSED")
+        explicit = True
+    return "EXPLICIT_APPROVED_PATH" if explicit else "PACKAGE_DEFAULT_PATH"
+
+def require_provider_process(process):
+    expected_service = {"Id": "zabbix-agent.service", "LoadState": "loaded", "ActiveState": "active", "SubState": "running"}
+    if process.get("status") != "IDENTIFIED" or process.get("name") != "zabbix_agentd" or process.get("executable") != "/usr/sbin/zabbix_agentd" or process.get("package") != "zabbix-agent-timeweb" or process.get("service") != "zabbix-agent.service" or process.get("service_state") != expected_service:
+        raise BootstrapError("PROVIDER_AGENT_IDENTITY_UNCONFIRMED")
+
+def verify_provider_monitoring():
+    # Reuse the independently reviewed read-only collector explicitly. Its main
+    # function is never run or changed; only these narrow helper functions run.
+    try:
+        output = command(["/usr/bin/ss", "-H", "-lntp", "sport = :10050"], capture=True)
+        listeners, pids = monitoring["socket_evidence"](output)
+        if not listeners or any(listener["address"] != "0.0.0.0" for listener in listeners):
+            raise BootstrapError("PROVIDER_AGENT_BINDING_UNCONFIRMED")
+        for pid in pids:
+            require_provider_process(monitoring["process_evidence"](pid))
+        main_pid = command(["/usr/bin/systemctl", "show", "zabbix-agent.service", "--property=MainPID", "--value"], capture=True).strip()
+        if not re.fullmatch(r"[1-9][0-9]{0,8}", main_pid):
+            raise BootstrapError("PROVIDER_AGENT_MAIN_PID_UNCONFIRMED")
+        require_provider_process(monitoring["process_evidence"](int(main_pid)))
+        with open("/proc/" + main_pid + "/cmdline", "rb") as stream:
+            argument_mode = approved_agent_arguments(stream.read(16385))
+        if argument_mode == "PACKAGE_DEFAULT_PATH":
+            # Do not infer a compiled default from the package name. The exact
+            # installed binary must report the approved default config in help.
+            help_text = command(["/usr/sbin/zabbix_agentd", "--help"], capture=True)
+            defaults = re.findall(r'default:\s*["\']?(/[^\s"\')]+)', help_text, re.IGNORECASE)
+            if defaults != [PROVIDER_CONFIG]:
+                raise BootstrapError("PROVIDER_AGENT_DEFAULT_CONFIG_UNCONFIRMED")
+        configs = monitoring["configuration_evidence"]([PROVIDER_CONFIG])
+        if len(configs) != 1:
+            raise BootstrapError("PROVIDER_AGENT_CONFIG_UNCONFIRMED")
+        config = configs[0]
+        if config["path"] != PROVIDER_CONFIG or config["status"] != "READ_APPROVED_KEYS_ONLY" or config["includes"] or config["issues"] or set(config["values"]) != {"Server"} or sorted(config["values"]["Server"]) != sorted(PROVIDER_SOURCES):
+            raise BootstrapError("PROVIDER_AGENT_SOURCE_ALLOWLIST_CHANGED")
+        return {"result": "VERIFIED", "config_path": PROVIDER_CONFIG,
+            "config_argument_mode": argument_mode, "sources": list(PROVIDER_SOURCES), "port": 10050}
+    except BootstrapError:
+        raise
+    except Exception:
+        raise BootstrapError("PROVIDER_AGENT_PROOF_UNAVAILABLE") from None
+
+def assert_expected_listeners(output, provider_monitoring=None):
     """Parse numeric ss TCP output; expose only a normalized rejected endpoint."""
     for line in output.splitlines():
         if not line.strip():
@@ -196,6 +300,8 @@ def assert_expected_listeners(output):
             if isinstance(numeric, ipaddress.IPv6Address) and numeric.ipv4_mapped is not None:
                 loopback = numeric.ipv4_mapped.is_loopback
         if port != 22 and not loopback:
+            if port == 10050 and normalized == "0.0.0.0" and provider_monitoring is not None and provider_monitoring.get("result") == "VERIFIED":
+                continue
             raise BootstrapError("EXISTING_PUBLIC_LISTENER_REFUSED", {
                 "address": normalized, "port": port,
             })
@@ -227,9 +333,11 @@ def assert_empty_host():
     # Ignore loopback-only OS services; every public TCP listener must
     # be SSH on the already inspected port. No existing web app is disturbed.
     output = command(["/usr/bin/ss", "-H", "-lnt"], capture=True)
-    assert_expected_listeners(output)
+    provider_monitoring = verify_provider_monitoring()
+    assert_expected_listeners(output, provider_monitoring)
     assert_empty_docker()
     assert_expected_ufw_rules()
+    return provider_monitoring
 
 def install_packages():
     keyring = pathlib.Path("/usr/share/keyrings/ubuntu-archive-keyring.gpg")
@@ -257,6 +365,8 @@ def configure_firewall():
     assert_expected_ufw_rules()
     for port in (22, 80, 443):
         command(["/usr/sbin/ufw", "allow", str(port) + "/tcp"])
+    for source in PROVIDER_SOURCES:
+        command(["/usr/sbin/ufw", "allow", "from", source + "/32", "to", "any", "port", "10050", "proto", "tcp"])
     command(["/usr/sbin/ufw", "default", "deny", "incoming"])
     command(["/usr/sbin/ufw", "default", "allow", "outgoing"])
     command(["/usr/sbin/ufw", "--force", "enable"])
@@ -266,12 +376,17 @@ def configure_firewall():
     for port in (22, 80, 443):
         if not re.search(r"^" + str(port) + r"/tcp\s+ALLOW IN\s+Anywhere\s*$", status, re.MULTILINE):
             raise BootstrapError("UFW_ALLOWED_PORT_NOT_VERIFIED")
-    return "ACTIVE_22_80_443_ALLOWED_DEFAULT_INCOMING_DENY"
+    for source in PROVIDER_SOURCES:
+        if not re.search(r"^10050/tcp\s+ALLOW IN\s+" + re.escape(source) + r"(?:/32)?\s*$", status, re.MULTILINE):
+            raise BootstrapError("UFW_PROVIDER_SOURCE_NOT_VERIFIED")
+    assert_expected_ufw_rules()
+    return "ACTIVE_WEB_SSH_AND_RESTRICTED_PROVIDER_MONITORING"
 
 def main():
     state = {"schema": 1, "result": "FAIL", "stage": "PRECONDITIONS", "error": None,
              "docker_config": None, "docker_version": None, "compose_version": None,
-             "firewall": None, "application_deployed": False, "unexpected_listener": None}
+             "firewall": None, "application_deployed": False, "unexpected_listener": None,
+             "provider_monitoring": None}
     descriptor = None
     try:
         descriptor = os.open("/run/kinetra-host-bootstrap.lock", os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o600)
@@ -282,7 +397,7 @@ def main():
             fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             raise BootstrapError("REMOTE_BOOTSTRAP_ALREADY_RUNNING") from None
-        assert_empty_host()
+        state["provider_monitoring"] = assert_empty_host()
         state["stage"] = "DOCKER_CONFIGURATION"
         state["docker_config"] = configure_docker()
         state["stage"] = "PACKAGE_INSTALLATION"
@@ -302,7 +417,9 @@ def main():
         if compose_minor < 30:
             raise BootstrapError("COMPOSE_2_30_REQUIRED_FOR_RAW_ENV_FILES")
         state["stage"] = "FIREWALL_CONFIGURATION"
+        state["provider_monitoring"] = verify_provider_monitoring()
         state["firewall"] = configure_firewall()
+        state["provider_monitoring"] = verify_provider_monitoring()
         state["stage"], state["result"] = "HOST_PREREQUISITES_COMPLETE", "PASS"
     except BootstrapError as error:
         state["error"] = str(error)
@@ -344,7 +461,7 @@ def validate_bootstrap_result(raw):
     except (ValueError, UnicodeError, RecursionError):
         raise Error("BOOTSTRAP_RESULT_INVALID_PARTIAL_STATE") from None
     expected = {"schema", "result", "stage", "error", "docker_config", "docker_version",
-                "compose_version", "firewall", "application_deployed", "unexpected_listener"}
+                "compose_version", "firewall", "application_deployed", "unexpected_listener", "provider_monitoring"}
     if not isinstance(result, dict) or set(result) != expected or type(result["schema"]) is not int or result["schema"] != 1 or result["application_deployed"] is not False:
         raise Error("BOOTSTRAP_RESULT_SCHEMA_INVALID_PARTIAL_STATE")
     if result["result"] not in {"PASS", "FAIL"}:
@@ -382,9 +499,14 @@ def validate_bootstrap_result(raw):
         result["stage"] != "HOST_PREREQUISITES_COMPLETE" or result["error"] is not None
         or result["docker_config"] not in {"EXISTING_PRESERVED", "CREATED_BOUNDED_LOCAL_LOGS"}
         or not result["docker_version"] or not result["compose_version"]
-        or result["firewall"] != "ACTIVE_22_80_443_ALLOWED_DEFAULT_INCOMING_DENY"
+        or result["firewall"] != "ACTIVE_WEB_SSH_AND_RESTRICTED_PROVIDER_MONITORING"
+        or result["provider_monitoring"] is None
     ):
         raise Error("BOOTSTRAP_PASS_EVIDENCE_INCOMPLETE")
+    provider = result["provider_monitoring"]
+    if provider is not None:
+        if not isinstance(provider, dict) or set(provider) != {"result", "config_path", "config_argument_mode", "sources", "port"} or provider["result"] != "VERIFIED" or provider["config_path"] != "/etc/zabbix/zabbix_agentd.conf" or provider["config_argument_mode"] not in {"EXPLICIT_APPROVED_PATH", "PACKAGE_DEFAULT_PATH"} or provider["sources"] != list(PROVIDER_SOURCES) or type(provider["port"]) is not int or provider["port"] != 10050:
+            raise Error("BOOTSTRAP_PROVIDER_EVIDENCE_INVALID")
     if result["result"] == "PASS":
         version = result["compose_version"].lstrip("v").split(".")
         if int(version[0]) != 2 or int(version[1]) < 30:

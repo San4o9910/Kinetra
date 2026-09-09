@@ -22,7 +22,7 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 1
-      - name: Verify reviewed source and green mandatory candidate evidence
+      - name: Verify reviewed source and green mandatory source evidence
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -32,12 +32,16 @@ jobs:
           test "$GITHUB_RUN_ATTEMPT" = '1'
           sha256sum --check --strict <<'SHA256'
           567d892221925bb438ece6a893360a891ffd4228f8af0a18252b8ba365a682c0  ops/timeweb/inspect-server.py
-          af7374f2ed3f3bf8a1b72825e6ca01e1db873284c56c30ccb8ebcc16ca221f71  ops/timeweb/bootstrap-server.py
-          2c5cd99a2c32ffa3e31fcdc5a1cccc1d8f0f51256c25de0e05309c25e6524c96  ops/timeweb/test-bootstrap-server.py
+          3ffc667a66330c323836d1335e78f92940d6ebdc1877cf66048265d774bb3086  ops/timeweb/inspect-host-monitoring.py
+          a19aca3ea953feecdcb9be6e9dcabdfc8b0e2b4f3938184391cdfb2ff3e87c9e  ops/timeweb/bootstrap-server.py
+          04c1b798104c3c7e7cff47af1f9300e4e4b6197207e2940c66790732cc4bec9c  ops/timeweb/test-bootstrap-server.py
           SHA256
-          test "$(gh api repos/San4o9910/Kinetra/actions/runs/34404918625 --jq '.status')" = completed
-          test "$(gh api repos/San4o9910/Kinetra/actions/runs/34404918625 --jq '.conclusion')" = success
-          test "$(gh api repos/San4o9910/Kinetra/actions/runs/34404918625 --jq '.head_sha')" = 6c7fb00411bd24c74d2a685a4077b45f8bf52850
+          test "$(gh api repos/San4o9910/Kinetra/actions/runs/34406930670 --jq '.status')" = completed
+          test "$(gh api repos/San4o9910/Kinetra/actions/runs/34406930670 --jq '.conclusion')" = success
+          test "$(gh api repos/San4o9910/Kinetra/actions/runs/34406930670 --jq '.head_sha')" = 88199890d6f636fcf781d924137b15847a87e601
+          test "$(gh api repos/San4o9910/Kinetra/actions/runs/34406934645 --jq '.status')" = completed
+          test "$(gh api repos/San4o9910/Kinetra/actions/runs/34406934645 --jq '.conclusion')" = success
+          test "$(gh api repos/San4o9910/Kinetra/actions/runs/34406934645 --jq '.head_sha')" = 88199890d6f636fcf781d924137b15847a87e601
           # Guest file ownership checks require root-owned disposable fixtures.
           # No cloud credentials or inherited environment reach these offline tests.
           sudo --non-interactive env -i PATH=/usr/bin:/bin python3 ops/timeweb/test-bootstrap-server.py

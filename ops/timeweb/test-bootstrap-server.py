@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import mock_open, patch
 
 spec = importlib.util.spec_from_file_location("bootstrap", Path(__file__).with_name("bootstrap-server.py"))
 bootstrap = importlib.util.module_from_spec(spec)
@@ -33,10 +33,22 @@ def successful_bootstrap():
     return {
         "schema": 1, "result": "PASS", "stage": "HOST_PREREQUISITES_COMPLETE", "error": None,
         "docker_config": "CREATED_BOUNDED_LOCAL_LOGS", "docker_version": "28.2.2",
-        "compose_version": "2.37.1", "firewall": "ACTIVE_22_80_443_ALLOWED_DEFAULT_INCOMING_DENY",
+        "compose_version": "2.37.1", "firewall": "ACTIVE_WEB_SSH_AND_RESTRICTED_PROVIDER_MONITORING",
         "application_deployed": False,
         "unexpected_listener": None,
+        "provider_monitoring": provider_proof(),
     }
+
+
+def provider_proof():
+    return {"result": "VERIFIED", "config_path": "/etc/zabbix/zabbix_agentd.conf",
+        "config_argument_mode": "EXPLICIT_APPROVED_PATH", "sources": list(bootstrap.PROVIDER_SOURCES), "port": 10050}
+
+
+def provider_process():
+    return {"pid": 777, "status": "IDENTIFIED", "name": "zabbix_agentd", "executable": "/usr/sbin/zabbix_agentd",
+        "package": "zabbix-agent-timeweb", "service": "zabbix-agent.service", "service_state": {
+            "Id": "zabbix-agent.service", "LoadState": "loaded", "ActiveState": "active", "SubState": "running"}}
 
 
 class FakeApi:
@@ -213,6 +225,67 @@ class BootstrapOrchestrationTests(unittest.TestCase):
 
 
 class GuestOperationTests(unittest.TestCase):
+    def test_provider_public_listener_requires_live_proof(self):
+        row = "LISTEN 0 4096 0.0.0.0:10050 0.0.0.0:*"
+        with self.assertRaisesRegex(guest["BootstrapError"], "EXISTING_PUBLIC_LISTENER_REFUSED"):
+            guest["assert_expected_listeners"](row)
+        guest["assert_expected_listeners"](row, provider_proof())
+        with self.assertRaisesRegex(guest["BootstrapError"], "EXISTING_PUBLIC_LISTENER_REFUSED"):
+            guest["assert_expected_listeners"]("LISTEN 0 4096 0.0.0.0:443 0.0.0.0:*", provider_proof())
+
+    def test_provider_argv_accepts_only_approved_config_without_echoing_it(self):
+        self.assertEqual(guest["approved_agent_arguments"](b"/usr/sbin/zabbix_agentd\0-c\0/etc/zabbix/zabbix_agentd.conf\0"), "EXPLICIT_APPROVED_PATH")
+        self.assertEqual(guest["approved_agent_arguments"](b"/usr/sbin/zabbix_agentd\0"), "PACKAGE_DEFAULT_PATH")
+        for raw in (b"zabbix_agentd: listener #1 [waiting]\0", b"/usr/sbin/zabbix_agentd\0-c\0/root/secret.conf\0",
+            b"/usr/sbin/zabbix_agentd\0--config=/etc/zabbix/zabbix_agentd.conf\0-c\0/etc/zabbix/zabbix_agentd.conf\0"):
+            with self.subTest(raw=raw), self.assertRaises(guest["BootstrapError"]) as raised:
+                guest["approved_agent_arguments"](raw)
+            self.assertNotIn("secret", str(raised.exception))
+
+    def run_provider_proof(self, process=None, config=None, raw=None):
+        process = provider_process() if process is None else process
+        config = {"path": "/etc/zabbix/zabbix_agentd.conf", "status": "READ_APPROVED_KEYS_ONLY", "includes": [],
+            "issues": [], "values": {"Server": list(bootstrap.PROVIDER_SOURCES)}} if config is None else config
+        raw = b"/usr/sbin/zabbix_agentd\0-c\0/etc/zabbix/zabbix_agentd.conf\0" if raw is None else raw
+        def command(args, **_kwargs):
+            if args[0].endswith("systemctl"):
+                return "777\n"
+            if args[0].endswith("zabbix_agentd"):
+                return 'Default configuration (default: "/etc/zabbix/zabbix_agentd.conf")\n'
+            return 'LISTEN 0 128 0.0.0.0:10050 0.0.0.0:* users:(("zabbix_agentd",pid=777,fd=4))'
+        helpers = {**guest["monitoring"], "process_evidence": lambda _pid: process,
+            "configuration_evidence": lambda _paths: [config]}
+        with patch.dict(guest, {"monitoring": helpers, "command": command}), patch("builtins.open", mock_open(read_data=raw)):
+            return guest["verify_provider_monitoring"]()
+
+    def test_provider_identity_and_config_match_confirmed_facts(self):
+        self.assertEqual(self.run_provider_proof(), provider_proof())
+        self.assertEqual(self.run_provider_proof(raw=b"/usr/sbin/zabbix_agentd\0")["config_argument_mode"], "PACKAGE_DEFAULT_PATH")
+
+    def test_provider_changed_package_service_or_sources_are_refused(self):
+        for override in ({"package": "zabbix-agent"}, {"service": "unrelated.service"}, {"executable": "/tmp/zabbix_agentd"}):
+            with self.subTest(override=override), self.assertRaisesRegex(guest["BootstrapError"], "IDENTITY_UNCONFIRMED"):
+                self.run_provider_proof(process={**provider_process(), **override})
+        for values in ({"Server": ["0.0.0.0/0"]}, {"Server": list(bootstrap.PROVIDER_SOURCES), "ListenPort": 10051}):
+            config = {"path": "/etc/zabbix/zabbix_agentd.conf", "status": "READ_APPROVED_KEYS_ONLY", "includes": [], "issues": [], "values": values}
+            with self.subTest(values=values), self.assertRaisesRegex(guest["BootstrapError"], "SOURCE_ALLOWLIST_CHANGED"):
+                self.run_provider_proof(config=config)
+
+    def test_ufw_empty_and_existing_narrow_rules_are_accepted(self):
+        heading = "Added user rules (see 'ufw status' for running firewall):\n"
+        guest["validate_added_ufw_rules"](heading + "\n(None)\n")
+        rules = ["ufw allow 22/tcp", "ufw allow 80/tcp", "ufw allow 443/tcp"]
+        rules += ["ufw allow from " + source + "/32 to any port 10050 proto tcp" for source in bootstrap.PROVIDER_SOURCES]
+        guest["validate_added_ufw_rules"](heading + "\n".join(rules))
+        guest["validate_added_ufw_rules"]("ufw allow proto tcp from 92.53.116.12 to any port 10050")
+
+    def test_broad_wrong_source_or_protocol_ufw_rules_are_refused(self):
+        for row in ("ufw allow 10050/tcp", "ufw allow from 92.53.116.0/24 to any port 10050 proto tcp",
+            "ufw allow from 92.53.116.13 to any port 10050 proto tcp", "ufw allow from 92.53.116.12 to any port 10050",
+            "ufw allow from 92.53.116.12 to any port 10050 proto udp", "ufw allow 22/tcp\n(None)"):
+            with self.subTest(row=row), self.assertRaisesRegex(guest["BootstrapError"], "UFW_RULES_REQUIRE_INSPECTION"):
+                guest["validate_added_ufw_rules"](row)
+
     def test_standard_ss_loopback_dns_and_ssh_formats_are_accepted(self):
         output = "\n".join([
             "LISTEN 0 4096 127.0.0.53:53 0.0.0.0:*",
@@ -318,14 +391,17 @@ class GuestOperationTests(unittest.TestCase):
         calls = []
         status = "Status: active\nDefault: deny (incoming), allow (outgoing), disabled (routed)\n"
         status += "\n".join(str(port) + "/tcp ALLOW IN Anywhere" for port in (22, 80, 443))
+        status += "\n" + "\n".join("10050/tcp ALLOW IN " + source for source in bootstrap.PROVIDER_SOURCES)
         def command(args, **_kwargs):
             calls.append(args)
             return status if args[1:] == ["status", "verbose"] else ""
         with patch.dict(guest, {"command": command, "assert_expected_ufw_rules": lambda: None}):
-            self.assertEqual(guest["configure_firewall"](), "ACTIVE_22_80_443_ALLOWED_DEFAULT_INCOMING_DENY")
+            self.assertEqual(guest["configure_firewall"](), "ACTIVE_WEB_SSH_AND_RESTRICTED_PROVIDER_MONITORING")
         enabled = calls.index(["/usr/sbin/ufw", "--force", "enable"])
         for port in (22, 80, 443):
             self.assertLess(calls.index(["/usr/sbin/ufw", "allow", str(port) + "/tcp"]), enabled)
+        for source in bootstrap.PROVIDER_SOURCES:
+            self.assertLess(calls.index(["/usr/sbin/ufw", "allow", "from", source + "/32", "to", "any", "port", "10050", "proto", "tcp"]), enabled)
         self.assertFalse(any("reset" in call for call in calls))
 
 

@@ -269,50 +269,185 @@ jobs:
           PY
 
       - name: Generate SBOMs and enforce HIGH/CRITICAL image vulnerability and secret scan
+        id: image_scan
         shell: bash
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/kinetra-image-evidence"
           scan_dir="$RUNNER_TEMP/kinetra-image-scan"
+          scratch_dir="$RUNNER_TEMP/kinetra-trivy-tmp"
+          scratch_file="$RUNNER_TEMP/kinetra-trivy-tmp.ext4"
+          scanner_name="kinetra-image-scan-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          # A Java DB download exceeded the previous 256 MiB tmpfs. Use an isolated
+          # 4 GiB disk filesystem; keep six GiB free for archives and database cache.
+          # https://trivy.dev/docs/latest/guide/references/troubleshooting/#running-out-of-space-during-image-scans
           mkdir -m 700 "$scan_dir" "$scan_dir/cache"
+          test ! -e "$scratch_dir"
+          test ! -e "$scratch_file"
+          cleanup_scan() {
+            local original_status=$? cleanup_failed=0 container_ids
+            trap - EXIT INT TERM
+            if container_ids="$(docker container ls --all --filter "name=^/$scanner_name$" --format '{{.ID}}')"; then
+              if [[ -n "$container_ids" ]]; then
+                docker rm --force "$scanner_name" >/dev/null 2>&1 || cleanup_failed=1
+              fi
+              if container_ids="$(docker container ls --all --filter "name=^/$scanner_name$" --format '{{.ID}}')"; then
+                [[ -z "$container_ids" ]] || cleanup_failed=1
+              else
+                cleanup_failed=1
+              fi
+            else
+              cleanup_failed=1
+            fi
+            if [[ "$cleanup_failed" = 0 ]] && mountpoint -q "$scratch_dir"; then
+              sudo umount "$scratch_dir" || cleanup_failed=1
+            fi
+            if [[ "$cleanup_failed" != 0 ]] || mountpoint -q "$scratch_dir"; then
+              cleanup_failed=1
+            else
+              if [[ -e "$scratch_file" ]]; then rm -- "$scratch_file" || cleanup_failed=1; fi
+              if [[ -d "$scratch_dir" ]]; then rmdir -- "$scratch_dir" || cleanup_failed=1; fi
+            fi
+            printf '%s\n' "$cleanup_failed" > "$evidence/scanner-cleanup.status"
+            if [[ "$cleanup_failed" != 0 ]]; then
+              echo 'Scanner scratch/container cleanup failed.' >&2
+              original_status=1
+            fi
+            exit "$original_status"
+          }
+          trap cleanup_scan EXIT
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+          python3 - <<'PY'
+          import json, os, pathlib, shutil
+          root = pathlib.Path(os.environ['RUNNER_TEMP'])
+          free = shutil.disk_usage(root).free
+          evidence = {'free_bytes_before': free, 'scratch_limit_bytes': 4 * 1024**3,
+                      'minimum_free_before_bytes': 10 * 1024**3}
+          (root / 'kinetra-image-evidence/scanner-storage.json').write_text(json.dumps(evidence, indent=2) + '\n')
+          if free < evidence['minimum_free_before_bytes']:
+              raise SystemExit('Scanner needs 10 GiB free: 4 GiB bounded scratch plus 6 GiB archive/cache reserve.')
+          PY
+          mkdir -m 700 "$scratch_dir"
+          install -m 600 /dev/null "$scratch_file"
+          fallocate --length 4G "$scratch_file"
+          mkfs.ext4 -q -m 0 "$scratch_file"
+          sudo mount -o loop,nodev,nosuid,noexec "$scratch_file" "$scratch_dir"
+          sudo chown "$(id -u):$(id -g)" "$scratch_dir"
+          chmod 700 "$scratch_dir"
+          findmnt --json --target "$scratch_dir" > "$evidence/scanner-scratch-mount.json"
           failed=0
           for target in backend frontend; do
             docker image save "kinetra-$target:qualified" --output "$scan_dir/$target.tar"
             sha256sum "$scan_dir/$target.tar" >> "$evidence/image-archive-sha256.txt"
-            scanner=(docker run --rm --user "$(id -u):$(id -g)" --read-only --cap-drop ALL
-              --security-opt no-new-privileges --tmpfs /tmp:rw,noexec,nosuid,size=256m
+            scanner=(docker run --rm --name "$scanner_name" --user "$(id -u):$(id -g)" --read-only --cap-drop ALL
+              --security-opt no-new-privileges --env TMPDIR=/tmp
+              --mount "type=bind,source=$scratch_dir,target=/tmp"
               --mount "type=bind,source=$scan_dir,target=/scan"
               --mount "type=bind,source=$evidence,target=/evidence" "$TRIVY_IMAGE"
               image --cache-dir /scan/cache --timeout 15m --disable-telemetry --ignorefile /dev/null
               --input "/scan/$target.tar")
-            "${scanner[@]}" --scanners vuln --format spdx-json --output "/evidence/$target.spdx.json"
+            if "${scanner[@]}" --scanners vuln --format spdx-json --output "/evidence/$target.spdx.json"; then
+              status=0
+            else
+              status=$?
+            fi
+            printf '%s\n' "$status" > "$evidence/$target-sbom.status"
+            test "$status" = 0
             # No --ignore-unfixed, ignore-policy, ignore-status, continue-on-error or suppression file.
-            if ! "${scanner[@]}" --scanners vuln,secret --severity HIGH,CRITICAL --exit-code 1 \
-              --format json --output "/scan/$target-scan.raw.json"; then failed=1; fi
+            if "${scanner[@]}" --scanners vuln,secret --severity HIGH,CRITICAL --exit-code 1 \
+              --format json --output "/scan/$target-scan.raw.json"; then
+              status=0
+            else
+              status=$?
+              failed=1
+            fi
+            printf '%s\n' "$status" > "$evidence/$target-scan.status"
           done
-          test -f "$scan_dir/cache/db/metadata.json"
-          cp "$scan_dir/cache/db/metadata.json" "$evidence/trivy-db-metadata.json"
+          test "$failed" = 0
+
+      - name: Sanitize and retain available scanner evidence even after operational failure
+        if: always() && steps.image_scan.outcome != 'skipped'
+        env:
+          SCAN_STEP_OUTCOME: ${{ steps.image_scan.outcome }}
+        shell: bash
+        run: |
+          set -euo pipefail
           python3 - <<'PY'
           import json, os, pathlib
           root = pathlib.Path(os.environ['RUNNER_TEMP']) / 'kinetra-image-evidence'
           raw_root = pathlib.Path(os.environ['RUNNER_TEMP']) / 'kinetra-image-scan'
+          errors = []
+          summaries = []
+          def read_json(path):
+              try:
+                  return json.loads(path.read_text())
+              except (OSError, ValueError):
+                  errors.append(path.name + ': missing or invalid JSON')
+                  return None
+          def require(condition, message):
+              if not condition: errors.append(message)
           for target in ('backend', 'frontend'):
-              sbom = json.loads((root / (target + '.spdx.json')).read_text())
-              assert sbom['spdxVersion'].startswith('SPDX-') and sbom.get('packages')
-              report = json.loads((raw_root / (target + '-scan.raw.json')).read_text())
-              assert report.get('Results') and report.get('Metadata', {}).get('OS', {}).get('Family') == 'debian'
-              assert any(result.get('Class') == 'os-pkgs' for result in report['Results'])
-              if target == 'backend': assert any(result.get('Class') == 'lang-pkgs' for result in report['Results'])
+              for stage in ('sbom', 'scan'):
+                  path = root / (target + '-' + stage + '.status')
+                  status = path.read_text().strip() if path.is_file() else 'not_completed'
+                  require(status == '0', target + ' ' + stage + ' exit status: ' + status)
+              sbom = read_json(root / (target + '.spdx.json'))
+              require(isinstance(sbom, dict) and str(sbom.get('spdxVersion', '')).startswith('SPDX-')
+                      and bool(sbom.get('packages')), target + ': incomplete SBOM')
+              report = read_json(raw_root / (target + '-scan.raw.json'))
+              if not isinstance(report, dict): continue
+              results = report.get('Results')
+              if not isinstance(results, list) or not all(isinstance(result, dict) for result in results):
+                  errors.append(target + ': invalid result structure')
+                  continue
               # Retain finding identities and locations, never matched secret text or code excerpts.
-              for result in report['Results']:
+              vulnerabilities = []
+              secret_count = 0
+              for result in results:
                   if 'Secrets' in result:
+                      secrets = result['Secrets'] or []
+                      if not isinstance(secrets, list) or not all(isinstance(finding, dict) for finding in secrets):
+                          errors.append(target + ': invalid secret result structure')
+                          secrets = []
+                      secret_count += len(secrets)
                       result['Secrets'] = [{key: finding[key] for key in
-                          ('RuleID', 'Category', 'Severity', 'Title', 'StartLine', 'EndLine') if key in finding}
-                          for finding in result['Secrets']]
+                          ('RuleID', 'Category', 'Severity', 'StartLine', 'EndLine') if key in finding}
+                          for finding in secrets]
+                  findings = result.get('Vulnerabilities') or []
+                  if not isinstance(findings, list) or not all(isinstance(finding, dict) for finding in findings):
+                      errors.append(target + ': invalid vulnerability result structure')
+                      findings = []
+                  for finding in findings:
+                      item = {'image': target, **{key: finding.get(key, '') for key in
+                          ('VulnerabilityID', 'PkgName', 'InstalledVersion', 'FixedVersion', 'Severity')}}
+                      vulnerabilities.append(item)
+                      print('KINETRA_IMAGE_VULNERABILITY ' + json.dumps(item, ensure_ascii=True))
               (root / (target + '-scan.json')).write_text(json.dumps(report, indent=2) + '\n')
+              image_metadata = report.get('Metadata') or {}
+              image_os = image_metadata.get('OS') if isinstance(image_metadata, dict) else None
+              require(bool(results) and isinstance(image_os, dict) and image_os.get('Family') == 'debian',
+                      target + ': Debian scan metadata missing')
+              require(any(result.get('Class') == 'os-pkgs' for result in results), target + ': OS coverage missing')
+              if target == 'backend':
+                  require(any(result.get('Class') == 'lang-pkgs' for result in results), target + ': language coverage missing')
+              require(not vulnerabilities and secret_count == 0, target + ': HIGH/CRITICAL findings present')
+              summaries.append({'image': target, 'vulnerability_count': len(vulnerabilities), 'secret_count': secret_count})
+          metadata = read_json(raw_root / 'cache/db/metadata.json')
+          if isinstance(metadata, dict):
+              (root / 'trivy-db-metadata.json').write_text(json.dumps(metadata, indent=2) + '\n')
+          else:
+              errors.append('Trivy vulnerability database metadata missing')
+          cleanup = root / 'scanner-cleanup.status'
+          require(cleanup.is_file() and cleanup.read_text().strip() == '0', 'Scanner scratch/container cleanup incomplete')
+          require(os.environ['SCAN_STEP_OUTCOME'] == 'success', 'Scanner step did not complete successfully')
+          evidence = {'scanner_step_outcome': os.environ['SCAN_STEP_OUTCOME'], 'images': summaries, 'errors': errors}
+          (root / 'scan-summary.json').write_text(json.dumps(evidence, indent=2) + '\n')
+          print('KINETRA_IMAGE_SCAN_SUMMARY ' + json.dumps(evidence, ensure_ascii=True))
+          if errors: raise SystemExit('Image scan qualification failed; available sanitized evidence retained.')
+          (root / 'qualification.txt').write_text('KINETRA_IMAGE_SCAN_HIGH_CRITICAL=PASS\n')
+          print('KINETRA_IMAGE_SCAN_HIGH_CRITICAL=PASS')
           PY
-          test "$failed" = 0
-          printf '%s\n' 'KINETRA_IMAGE_SCAN_HIGH_CRITICAL=PASS' | tee "$evidence/qualification.txt"
 
       - name: Publish qualified images to project GHCR packages when enabled
         if: env.PUBLISH_TO_GHCR == 'true'
