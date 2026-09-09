@@ -2,6 +2,7 @@ a6b98ea7cb6d61ed8d430dd0dffa46c87012b5cf859d4ce7207898954951fdcd  ./.editorconfi
 2e5772bfc8344d80505455b75d51de6036603cdbfe8133f88222fc21019c414e  ./.env.example
 9e51d19d5b68d58f51bc448b367e18b99a8577fe6bcb9f529029c987b12b8f4d  ./.github/workflows/ci.yml
 c159c4dae3199d76644da1ed4eea55e9a3c8eee57654d4afb691ed376cfe3e02  ./.github/workflows/kinetra-candidate-validation.yml
+bb91cc6905330b25532179652ffc01f2beb053c93d9a70d9c4227f09da119671  ./.github/workflows/progress-geometry-diagnostic.yml
 df04e6f357e774e7abdc2d31ce90543eb2910cb752bd685ea4c075444fcea63f  ./.github/workflows/timeweb-hourly-preflight.yml
 5759fab75ef133f64b0faac6c832c57d305464519cf7abf2e4388e34cb02b79b  ./.github/workflows/timeweb-hourly-provision.yml
 de701be574b475ab49565f84ca6de8debb136a97eefacc9fc0aca87307285afe  ./.github/workflows/timeweb-key-reconcile.yml
@@ -336,6 +337,7 @@ cf715055ccd10f1098d83cf11facdb3278ea844b0e30c737e2ed9be7360f4ff2  ./docs/TRAINER
 42cb4e2ce5f3c1726688d1f5ecb4238b79ed9b97e5f80455cbfeeaf28b2821bf  ./eslint.config.mjs
 af7374f2ed3f3bf8a1b72825e6ca01e1db873284c56c30ccb8ebcc16ca221f71  ./ops/timeweb/bootstrap-server.py
 567d892221925bb438ece6a893360a891ffd4228f8af0a18252b8ba365a682c0  ./ops/timeweb/inspect-server.py
+eef25408791b38844f27f15d74e2e3dbf73592aa12743375604ddf0b5d52f6e7  ./ops/timeweb/progress-geometry-smoke.mjs
 e62a6130be5583bd2f0e287fec2b098012206d722311681aea7357508d7f2cc0  ./ops/timeweb/provision-hourly.py
 2c5cd99a2c32ffa3e31fcdc5a1cccc1d8f0f51256c25de0e05309c25e6524c96  ./ops/timeweb/test-bootstrap-server.py
 ca34313e3e69827306dc65884bd88ff99e91e35c6bb29db8d9e4c3e49fb3f9a6  ./package-lock.json

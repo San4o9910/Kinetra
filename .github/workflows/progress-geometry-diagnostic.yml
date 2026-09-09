@@ -1,0 +1,55 @@
+# Root-reviewed diagnostic for the exact-head Progress control geometry failure.
+# This measures isolated DOM geometry. It is not the mandatory browser gate.
+name: Kinetra progress geometry diagnostic
+on:
+  push:
+    branches: [ops/timeweb-hourly-preflight-20260909]
+    paths: [.github/workflows/progress-geometry-diagnostic.yml]
+permissions:
+  contents: read
+concurrency:
+  group: kinetra-progress-geometry-b222c6dc4358c879a5df0b8b8160d0647cd63697
+  cancel-in-progress: false
+jobs:
+  geometry:
+    if: github.repository == 'San4o9910/Kinetra'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout diagnostic controls
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: San4o9910/Kinetra
+          ref: ${{ github.sha }}
+          path: controls
+          persist-credentials: false
+      - name: Checkout exact application commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: San4o9910/Kinetra
+          ref: b222c6dc4358c879a5df0b8b8160d0647cd63697
+          path: app
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+      - name: Verify identities and install isolated renderer dependencies
+        working-directory: app
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          test "$GITHUB_REF" = refs/heads/ops/timeweb-hourly-preflight-20260909
+          test "$(git rev-parse HEAD)" = b222c6dc4358c879a5df0b8b8160d0647cd63697
+          test "$(git -C ../controls rev-parse HEAD)" = "$GITHUB_SHA"
+          npm ci
+          npm run build -w @kinetra/shared
+          /usr/bin/google-chrome --version
+      - name: Measure real progress controls throughout entrance animation
+        working-directory: app
+        shell: bash
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+        run: |
+          set -euo pipefail
+          node --import tsx ../controls/ops/timeweb/progress-geometry-smoke.mjs
