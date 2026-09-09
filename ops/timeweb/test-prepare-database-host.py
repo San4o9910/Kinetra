@@ -200,6 +200,12 @@ class OrchestrationTests(unittest.TestCase):
 
 
 class ContractTests(unittest.TestCase):
+    def test_compose_supports_verified_ubuntu_suffix_without_accepting_unsupported_versions(self):
+        for version in ('2.40.3+ds1-0ubuntu1~24.04.1', 'v2.30.0', '2.40.3'):
+            guest['validate_compose_version'](version)
+        for version in ('2.29.9+ds1', '1.40.3', '3.40.3', 'vv2.40.3', '2.40.3 arbitrary', '2.40.3;echo'):
+            with self.assertRaises(guest['StageError']): guest['validate_compose_version'](version)
+
     def test_exact_source_sets_and_image_contracts_match_both_sides(self):
         self.assertEqual(stage.SOURCE_PATHS, guest["SOURCE_PATHS"])
         self.assertEqual(stage.IMAGE_PATTERNS, guest["IMAGE_PATTERNS"])

@@ -225,6 +225,11 @@ def validate_payload(data):
         result[name] = raw
     return result
 
+def validate_compose_version(version):
+    match = re.fullmatch(r'v?2\.([0-9]+)\.[0-9]+(?:[-+][A-Za-z0-9.~-]+)?', version)
+    if match is None or int(match[1]) < 30:
+        raise StageError('COMPOSE_RAW_ENV_UNSUPPORTED')
+
 def preconditions():
     if os.geteuid() != 0: raise StageError('ROOT_REQUIRED')
     safe_parent(STAGE.parent)
@@ -243,9 +248,8 @@ def preconditions():
         raise StageError('EXISTING_VOLUMES_PRESERVED')
     networks = command(['/usr/bin/docker', 'network', 'ls', '--format', '{{.Name}}'], capture=True).splitlines()
     if set(networks) != {'bridge', 'host', 'none'}: raise StageError('EXISTING_CUSTOM_NETWORKS_PRESERVED')
-    compose = command(['/usr/bin/docker', 'compose', 'version', '--short'], capture=True).strip().lstrip('v')
-    if not re.fullmatch(r'2\.[0-9]+\.[0-9]+', compose) or int(compose.split('.')[1]) < 30:
-        raise StageError('COMPOSE_RAW_ENV_UNSUPPORTED')
+    compose = command(['/usr/bin/docker', 'compose', 'version', '--short'], capture=True).strip()
+    validate_compose_version(compose)
     sockets = command(['/usr/bin/ss', '-H', '-lnt'], capture=True)
     for row in sockets.splitlines():
         fields = row.split()
@@ -477,7 +481,8 @@ def main():
         if any(len(row.split()) >= 4 and row.split()[3].rsplit(':', 1)[-1] in {'5432', '8080'} for row in listeners.splitlines()):
             raise StageError('TEMPORARY_LISTENER_CLEANUP_INCOMPLETE')
         state['result'], state['stage'] = 'STAGED_ONLY', 'STAGING_COMPLETE'
-        write_new(STAGE / 'evidence/stage.json', (json.dumps(state, sort_keys=True) + '\n').encode())
+        evidence = dict(state, images=data['images'], source_hashes={name: entry['sha256'] for name, entry in data['files'].items()})
+        write_new(STAGE / 'evidence/stage.json', (json.dumps(evidence, sort_keys=True) + '\n').encode())
     except StageError as error: state['result'], state['error'] = 'FAIL', str(error)
     except BaseException: state['result'], state['error'] = 'FAIL', 'UNEXPECTED_ERROR_PARTIAL_STATE_PRESERVED'
     finally:

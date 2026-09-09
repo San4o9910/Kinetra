@@ -1,0 +1,60 @@
+name: Prepare disabled Caddy on existing hourly Kinetra host
+on:
+  push:
+    branches: [ops/timeweb-hourly-preflight-20260909]
+    paths:
+      - .github/workflows/timeweb-caddy-preparation.yml
+      - ops/timeweb/prepare-caddy-host.py
+      - ops/timeweb/prepare-caddy.sh
+      - ops/timeweb/test-prepare-caddy-host.py
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: kinetra-timeweb-hourly-provision
+  cancel-in-progress: false
+jobs:
+  prepare-caddy:
+    if: github.repository == 'San4o9910/Kinetra'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify reviewed source and completed host bootstrap
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ROOT_VERIFIED_HOST_BOOTSTRAP_RUN: '34408679429'
+          ROOT_VERIFIED_HOST_BOOTSTRAP_SHA: '13793cb2a0b65381f2cd92f4f7a3c01eebe3e335'
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$GITHUB_RUN_ATTEMPT" = '1'
+          [[ "$ROOT_VERIFIED_HOST_BOOTSTRAP_RUN" =~ ^[1-9][0-9]{0,19}$ ]]
+          [[ "$ROOT_VERIFIED_HOST_BOOTSTRAP_SHA" =~ ^[a-f0-9]{40}$ ]]
+          sha256sum --check --strict <<'SHA256'
+          567d892221925bb438ece6a893360a891ffd4228f8af0a18252b8ba365a682c0  ops/timeweb/inspect-server.py
+          a23d52b21f7c638f757a723048ee632d37e8f217ae796f97dd92ec3bbb990e2d  ops/timeweb/prepare-caddy.sh
+          3df382ffcd71c42adfaa9d0e1f76cce0fd8512f07721c1ef0297b6fd145bc6ec  ops/timeweb/prepare-caddy-host.py
+          412e6f55aa42598e1f9582ddbe17c5813cc87773e0a255ccd473ed2fb7caf96d  ops/timeweb/test-prepare-caddy-host.py
+          SHA256
+          evidence=$(gh api "repos/San4o9910/Kinetra/actions/runs/$ROOT_VERIFIED_HOST_BOOTSTRAP_RUN" --jq '[.status,.conclusion,.head_sha,.path,.repository.full_name] | @tsv')
+          IFS=$'\t' read -r status conclusion head workflow repository <<< "$evidence"
+          test "$status" = completed
+          test "$conclusion" = success
+          test "$head" = "$ROOT_VERIFIED_HOST_BOOTSTRAP_SHA"
+          test "$workflow" = .github/workflows/timeweb-server-bootstrap.yml
+          test "$repository" = San4o9910/Kinetra
+          test "$(gh api "repos/San4o9910/Kinetra/actions/runs/$ROOT_VERIFIED_HOST_BOOTSTRAP_RUN/jobs" --jq '[.jobs[] | select(.name == "bootstrap" and .status == "completed" and .conclusion == "success") | .steps[] | select(.name == "Install host prerequisites on server 9069403 with pinned SSH identity" and .status == "completed" and .conclusion == "success")] | length')" = 1
+          bash -n ops/timeweb/prepare-caddy.sh
+          env -i PATH=/usr/bin:/bin python3 ops/timeweb/test-prepare-caddy-host.py
+      - name: Prepare Caddy with service disabled on server 9069403
+        shell: bash
+        env:
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 ops/timeweb/prepare-caddy-host.py --prepare-disabled-caddy-existing-server

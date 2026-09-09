@@ -1,0 +1,2774 @@
+{
+  "run_id": 34408679490,
+  "job_id": 102657712664,
+  "findings": [
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-53613",
+      "PkgName": "bsdutils",
+      "InstalledVersion": "1:2.38.1-5+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-76642",
+      "PkgName": "bsdutils",
+      "InstalledVersion": "1:2.38.1-5+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-78408",
+      "PkgName": "bsdutils",
+      "InstalledVersion": "1:2.38.1-5+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-78409",
+      "PkgName": "bsdutils",
+      "InstalledVersion": "1:2.38.1-5+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-78410",
+      "PkgName": "bsdutils",
+      "InstalledVersion": "1:2.38.1-5+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-58049",
+      "PkgName": "ffmpeg",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64830",
+      "PkgName": "ffmpeg",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64831",
+      "PkgName": "ffmpeg",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64832",
+      "PkgName": "ffmpeg",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64833",
+      "PkgName": "ffmpeg",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64834",
+      "PkgName": "ffmpeg",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64835",
+      "PkgName": "ffmpeg",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-66036",
+      "PkgName": "ffmpeg",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-66039",
+      "PkgName": "ffmpeg",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-66040",
+      "PkgName": "ffmpeg",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-70628",
+      "PkgName": "ffmpeg",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-70632",
+      "PkgName": "ffmpeg",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-75142",
+      "PkgName": "ffmpeg",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-75143",
+      "PkgName": "ffmpeg",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-75144",
+      "PkgName": "ffmpeg",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-75146",
+      "PkgName": "ffmpeg",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-8461",
+      "PkgName": "ffmpeg",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-41992",
+      "PkgName": "gzip",
+      "InstalledVersion": "1.12-1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-86420",
+      "PkgName": "imagemagick",
+      "InstalledVersion": "8:6.9.11.60+dfsg-1.6+deb12u13",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-86421",
+      "PkgName": "imagemagick",
+      "InstalledVersion": "8:6.9.11.60+dfsg-1.6+deb12u13",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-86420",
+      "PkgName": "imagemagick-6-common",
+      "InstalledVersion": "8:6.9.11.60+dfsg-1.6+deb12u13",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-86421",
+      "PkgName": "imagemagick-6-common",
+      "InstalledVersion": "8:6.9.11.60+dfsg-1.6+deb12u13",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-86420",
+      "PkgName": "imagemagick-6.q16",
+      "InstalledVersion": "8:6.9.11.60+dfsg-1.6+deb12u13",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-86421",
+      "PkgName": "imagemagick-6.q16",
+      "InstalledVersion": "8:6.9.11.60+dfsg-1.6+deb12u13",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-54369",
+      "PkgName": "libacl1",
+      "InstalledVersion": "2.3.1-3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2023-6879",
+      "PkgName": "libaom3",
+      "InstalledVersion": "3.6.0-1+deb12u3",
+      "FixedVersion": "",
+      "Severity": "CRITICAL"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2023-39616",
+      "PkgName": "libaom3",
+      "InstalledVersion": "3.6.0-1+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-58049",
+      "PkgName": "libavcodec59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64830",
+      "PkgName": "libavcodec59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64831",
+      "PkgName": "libavcodec59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64832",
+      "PkgName": "libavcodec59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64833",
+      "PkgName": "libavcodec59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64834",
+      "PkgName": "libavcodec59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64835",
+      "PkgName": "libavcodec59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-66036",
+      "PkgName": "libavcodec59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-66039",
+      "PkgName": "libavcodec59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-66040",
+      "PkgName": "libavcodec59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-70628",
+      "PkgName": "libavcodec59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-70632",
+      "PkgName": "libavcodec59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-75142",
+      "PkgName": "libavcodec59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-75143",
+      "PkgName": "libavcodec59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-75144",
+      "PkgName": "libavcodec59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-75146",
+      "PkgName": "libavcodec59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-8461",
+      "PkgName": "libavcodec59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-58049",
+      "PkgName": "libavdevice59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64830",
+      "PkgName": "libavdevice59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64831",
+      "PkgName": "libavdevice59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64832",
+      "PkgName": "libavdevice59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64833",
+      "PkgName": "libavdevice59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64834",
+      "PkgName": "libavdevice59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64835",
+      "PkgName": "libavdevice59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-66036",
+      "PkgName": "libavdevice59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-66039",
+      "PkgName": "libavdevice59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-66040",
+      "PkgName": "libavdevice59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-70628",
+      "PkgName": "libavdevice59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-70632",
+      "PkgName": "libavdevice59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-75142",
+      "PkgName": "libavdevice59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-75143",
+      "PkgName": "libavdevice59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-75144",
+      "PkgName": "libavdevice59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-75146",
+      "PkgName": "libavdevice59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-8461",
+      "PkgName": "libavdevice59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-58049",
+      "PkgName": "libavfilter8",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64830",
+      "PkgName": "libavfilter8",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64831",
+      "PkgName": "libavfilter8",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64832",
+      "PkgName": "libavfilter8",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64833",
+      "PkgName": "libavfilter8",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64834",
+      "PkgName": "libavfilter8",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64835",
+      "PkgName": "libavfilter8",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-66036",
+      "PkgName": "libavfilter8",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-66039",
+      "PkgName": "libavfilter8",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-66040",
+      "PkgName": "libavfilter8",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-70628",
+      "PkgName": "libavfilter8",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-70632",
+      "PkgName": "libavfilter8",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-75142",
+      "PkgName": "libavfilter8",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-75143",
+      "PkgName": "libavfilter8",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-75144",
+      "PkgName": "libavfilter8",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-75146",
+      "PkgName": "libavfilter8",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-8461",
+      "PkgName": "libavfilter8",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-58049",
+      "PkgName": "libavformat59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64830",
+      "PkgName": "libavformat59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64831",
+      "PkgName": "libavformat59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64832",
+      "PkgName": "libavformat59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64833",
+      "PkgName": "libavformat59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64834",
+      "PkgName": "libavformat59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64835",
+      "PkgName": "libavformat59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-66036",
+      "PkgName": "libavformat59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-66039",
+      "PkgName": "libavformat59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-66040",
+      "PkgName": "libavformat59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-70628",
+      "PkgName": "libavformat59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-70632",
+      "PkgName": "libavformat59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-75142",
+      "PkgName": "libavformat59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-75143",
+      "PkgName": "libavformat59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-75144",
+      "PkgName": "libavformat59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-75146",
+      "PkgName": "libavformat59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-8461",
+      "PkgName": "libavformat59",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-58049",
+      "PkgName": "libavutil57",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64830",
+      "PkgName": "libavutil57",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64831",
+      "PkgName": "libavutil57",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64832",
+      "PkgName": "libavutil57",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64833",
+      "PkgName": "libavutil57",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64834",
+      "PkgName": "libavutil57",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64835",
+      "PkgName": "libavutil57",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-66036",
+      "PkgName": "libavutil57",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-66039",
+      "PkgName": "libavutil57",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-66040",
+      "PkgName": "libavutil57",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-70628",
+      "PkgName": "libavutil57",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-70632",
+      "PkgName": "libavutil57",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-75142",
+      "PkgName": "libavutil57",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-75143",
+      "PkgName": "libavutil57",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-75144",
+      "PkgName": "libavutil57",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-75146",
+      "PkgName": "libavutil57",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-8461",
+      "PkgName": "libavutil57",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-53613",
+      "PkgName": "libblkid1",
+      "InstalledVersion": "2.38.1-5+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-76642",
+      "PkgName": "libblkid1",
+      "InstalledVersion": "2.38.1-5+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-78408",
+      "PkgName": "libblkid1",
+      "InstalledVersion": "2.38.1-5+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-78409",
+      "PkgName": "libblkid1",
+      "InstalledVersion": "2.38.1-5+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-78410",
+      "PkgName": "libblkid1",
+      "InstalledVersion": "2.38.1-5+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-16554",
+      "PkgName": "libcjson1",
+      "InstalledVersion": "1.7.15-1+deb12u4",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-29036",
+      "PkgName": "libcjson1",
+      "InstalledVersion": "1.7.15-1+deb12u4",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-67215",
+      "PkgName": "libcjson1",
+      "InstalledVersion": "1.7.15-1+deb12u4",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-67216",
+      "PkgName": "libcjson1",
+      "InstalledVersion": "1.7.15-1+deb12u4",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-33164",
+      "PkgName": "libde265-0",
+      "InstalledVersion": "1.0.11-1+deb12u2",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2025-59375",
+      "PkgName": "libexpat1",
+      "InstalledVersion": "2.5.0-1+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-25210",
+      "PkgName": "libexpat1",
+      "InstalledVersion": "2.5.0-1+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-45186",
+      "PkgName": "libexpat1",
+      "InstalledVersion": "2.5.0-1+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-58016",
+      "PkgName": "libglib2.0-0",
+      "InstalledVersion": "2.74.6-2+deb12u9",
+      "FixedVersion": "",
+      "Severity": "CRITICAL"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-58010",
+      "PkgName": "libglib2.0-0",
+      "InstalledVersion": "2.74.6-2+deb12u9",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-58011",
+      "PkgName": "libglib2.0-0",
+      "InstalledVersion": "2.74.6-2+deb12u9",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-58012",
+      "PkgName": "libglib2.0-0",
+      "InstalledVersion": "2.74.6-2+deb12u9",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-58013",
+      "PkgName": "libglib2.0-0",
+      "InstalledVersion": "2.74.6-2+deb12u9",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-58014",
+      "PkgName": "libglib2.0-0",
+      "InstalledVersion": "2.74.6-2+deb12u9",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-58015",
+      "PkgName": "libglib2.0-0",
+      "InstalledVersion": "2.74.6-2+deb12u9",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2023-25193",
+      "PkgName": "libharfbuzz0b",
+      "InstalledVersion": "6.0.0+dfsg-3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2025-68431",
+      "PkgName": "libheif1",
+      "InstalledVersion": "1.15.1-1+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-32740",
+      "PkgName": "libheif1",
+      "InstalledVersion": "1.15.1-1+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-32741",
+      "PkgName": "libheif1",
+      "InstalledVersion": "1.15.1-1+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-32882",
+      "PkgName": "libheif1",
+      "InstalledVersion": "1.15.1-1+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-41071",
+      "PkgName": "libheif1",
+      "InstalledVersion": "1.15.1-1+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-47178",
+      "PkgName": "libheif1",
+      "InstalledVersion": "1.15.1-1+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2025-70103",
+      "PkgName": "libjxl0.7",
+      "InstalledVersion": "0.7.0-10+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-86420",
+      "PkgName": "libmagickcore-6.q16-6",
+      "InstalledVersion": "8:6.9.11.60+dfsg-1.6+deb12u13",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-86421",
+      "PkgName": "libmagickcore-6.q16-6",
+      "InstalledVersion": "8:6.9.11.60+dfsg-1.6+deb12u13",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-86420",
+      "PkgName": "libmagickwand-6.q16-6",
+      "InstalledVersion": "8:6.9.11.60+dfsg-1.6+deb12u13",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-86421",
+      "PkgName": "libmagickwand-6.q16-6",
+      "InstalledVersion": "8:6.9.11.60+dfsg-1.6+deb12u13",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2025-47917",
+      "PkgName": "libmbedcrypto7",
+      "InstalledVersion": "2.28.3-1",
+      "FixedVersion": "",
+      "Severity": "CRITICAL"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-34873",
+      "PkgName": "libmbedcrypto7",
+      "InstalledVersion": "2.28.3-1",
+      "FixedVersion": "",
+      "Severity": "CRITICAL"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-34875",
+      "PkgName": "libmbedcrypto7",
+      "InstalledVersion": "2.28.3-1",
+      "FixedVersion": "",
+      "Severity": "CRITICAL"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2024-23775",
+      "PkgName": "libmbedcrypto7",
+      "InstalledVersion": "2.28.3-1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2025-48965",
+      "PkgName": "libmbedcrypto7",
+      "InstalledVersion": "2.28.3-1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2025-52496",
+      "PkgName": "libmbedcrypto7",
+      "InstalledVersion": "2.28.3-1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-25835",
+      "PkgName": "libmbedcrypto7",
+      "InstalledVersion": "2.28.3-1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-34872",
+      "PkgName": "libmbedcrypto7",
+      "InstalledVersion": "2.28.3-1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2023-45221",
+      "PkgName": "libmfx1",
+      "InstalledVersion": "22.5.4-1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-53613",
+      "PkgName": "libmount1",
+      "InstalledVersion": "2.38.1-5+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-76642",
+      "PkgName": "libmount1",
+      "InstalledVersion": "2.38.1-5+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-78408",
+      "PkgName": "libmount1",
+      "InstalledVersion": "2.38.1-5+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-78409",
+      "PkgName": "libmount1",
+      "InstalledVersion": "2.38.1-5+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-78410",
+      "PkgName": "libmount1",
+      "InstalledVersion": "2.38.1-5+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2025-69720",
+      "PkgName": "libncursesw6",
+      "InstalledVersion": "6.4-4",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-58049",
+      "PkgName": "libpostproc56",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64830",
+      "PkgName": "libpostproc56",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64831",
+      "PkgName": "libpostproc56",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64832",
+      "PkgName": "libpostproc56",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64833",
+      "PkgName": "libpostproc56",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64834",
+      "PkgName": "libpostproc56",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64835",
+      "PkgName": "libpostproc56",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-66036",
+      "PkgName": "libpostproc56",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-66039",
+      "PkgName": "libpostproc56",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-66040",
+      "PkgName": "libpostproc56",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-70628",
+      "PkgName": "libpostproc56",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-70632",
+      "PkgName": "libpostproc56",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-75142",
+      "PkgName": "libpostproc56",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-75143",
+      "PkgName": "libpostproc56",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-75144",
+      "PkgName": "libpostproc56",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-75146",
+      "PkgName": "libpostproc56",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-8461",
+      "PkgName": "libpostproc56",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-53613",
+      "PkgName": "libsmartcols1",
+      "InstalledVersion": "2.38.1-5+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-76642",
+      "PkgName": "libsmartcols1",
+      "InstalledVersion": "2.38.1-5+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-78408",
+      "PkgName": "libsmartcols1",
+      "InstalledVersion": "2.38.1-5+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-78409",
+      "PkgName": "libsmartcols1",
+      "InstalledVersion": "2.38.1-5+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-78410",
+      "PkgName": "libsmartcols1",
+      "InstalledVersion": "2.38.1-5+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-37555",
+      "PkgName": "libsndfile1",
+      "InstalledVersion": "1.2.0-1+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-0966",
+      "PkgName": "libssh-gcrypt-4",
+      "InstalledVersion": "0.10.6-0+deb12u2",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-15370",
+      "PkgName": "libssh-gcrypt-4",
+      "InstalledVersion": "0.10.6-0+deb12u2",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-3731",
+      "PkgName": "libssh-gcrypt-4",
+      "InstalledVersion": "0.10.6-0+deb12u2",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-59847",
+      "PkgName": "libssh-gcrypt-4",
+      "InstalledVersion": "0.10.6-0+deb12u2",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-59849",
+      "PkgName": "libssh-gcrypt-4",
+      "InstalledVersion": "0.10.6-0+deb12u2",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-59850",
+      "PkgName": "libssh-gcrypt-4",
+      "InstalledVersion": "0.10.6-0+deb12u2",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-58049",
+      "PkgName": "libswresample4",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64830",
+      "PkgName": "libswresample4",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64831",
+      "PkgName": "libswresample4",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64832",
+      "PkgName": "libswresample4",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64833",
+      "PkgName": "libswresample4",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64834",
+      "PkgName": "libswresample4",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64835",
+      "PkgName": "libswresample4",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-66036",
+      "PkgName": "libswresample4",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-66039",
+      "PkgName": "libswresample4",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-66040",
+      "PkgName": "libswresample4",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-70628",
+      "PkgName": "libswresample4",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-70632",
+      "PkgName": "libswresample4",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-75142",
+      "PkgName": "libswresample4",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-75143",
+      "PkgName": "libswresample4",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-75144",
+      "PkgName": "libswresample4",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-75146",
+      "PkgName": "libswresample4",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-8461",
+      "PkgName": "libswresample4",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-58049",
+      "PkgName": "libswscale6",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64830",
+      "PkgName": "libswscale6",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64831",
+      "PkgName": "libswscale6",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64832",
+      "PkgName": "libswscale6",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64833",
+      "PkgName": "libswscale6",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64834",
+      "PkgName": "libswscale6",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-64835",
+      "PkgName": "libswscale6",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-66036",
+      "PkgName": "libswscale6",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-66039",
+      "PkgName": "libswscale6",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-66040",
+      "PkgName": "libswscale6",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-70628",
+      "PkgName": "libswscale6",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-70632",
+      "PkgName": "libswscale6",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-75142",
+      "PkgName": "libswscale6",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-75143",
+      "PkgName": "libswscale6",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-75144",
+      "PkgName": "libswscale6",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-75146",
+      "PkgName": "libswscale6",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-8461",
+      "PkgName": "libswscale6",
+      "InstalledVersion": "7:5.1.9-0+deb12u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-16742",
+      "PkgName": "libsystemd0",
+      "InstalledVersion": "252.39-1~deb12u2",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2023-52355",
+      "PkgName": "libtiff6",
+      "InstalledVersion": "4.5.0-6+deb12u4",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-12912",
+      "PkgName": "libtiff6",
+      "InstalledVersion": "4.5.0-6+deb12u4",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-36849",
+      "PkgName": "libtiff6",
+      "InstalledVersion": "4.5.0-6+deb12u4",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-52490",
+      "PkgName": "libtiff6",
+      "InstalledVersion": "4.5.0-6+deb12u4",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2025-69720",
+      "PkgName": "libtinfo6",
+      "InstalledVersion": "6.4-4",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-16742",
+      "PkgName": "libudev1",
+      "InstalledVersion": "252.39-1~deb12u2",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-53613",
+      "PkgName": "libuuid1",
+      "InstalledVersion": "2.38.1-5+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-76642",
+      "PkgName": "libuuid1",
+      "InstalledVersion": "2.38.1-5+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-78408",
+      "PkgName": "libuuid1",
+      "InstalledVersion": "2.38.1-5+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-78409",
+      "PkgName": "libuuid1",
+      "InstalledVersion": "2.38.1-5+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-78410",
+      "PkgName": "libuuid1",
+      "InstalledVersion": "2.38.1-5+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-6653",
+      "PkgName": "libxml2",
+      "InstalledVersion": "2.9.14+dfsg-1.3~deb12u6",
+      "FixedVersion": "",
+      "Severity": "CRITICAL"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-86140",
+      "PkgName": "libxml2",
+      "InstalledVersion": "2.9.14+dfsg-1.3~deb12u6",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-53613",
+      "PkgName": "mount",
+      "InstalledVersion": "2.38.1-5+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-76642",
+      "PkgName": "mount",
+      "InstalledVersion": "2.38.1-5+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-78408",
+      "PkgName": "mount",
+      "InstalledVersion": "2.38.1-5+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-78409",
+      "PkgName": "mount",
+      "InstalledVersion": "2.38.1-5+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-78410",
+      "PkgName": "mount",
+      "InstalledVersion": "2.38.1-5+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2025-69720",
+      "PkgName": "ncurses-base",
+      "InstalledVersion": "6.4-4",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2025-69720",
+      "PkgName": "ncurses-bin",
+      "InstalledVersion": "6.4-4",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-13221",
+      "PkgName": "perl-base",
+      "InstalledVersion": "5.36.0-7+deb12u3",
+      "FixedVersion": "",
+      "Severity": "CRITICAL"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-42496",
+      "PkgName": "perl-base",
+      "InstalledVersion": "5.36.0-7+deb12u3",
+      "FixedVersion": "",
+      "Severity": "CRITICAL"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-8376",
+      "PkgName": "perl-base",
+      "InstalledVersion": "5.36.0-7+deb12u3",
+      "FixedVersion": "",
+      "Severity": "CRITICAL"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-42497",
+      "PkgName": "perl-base",
+      "InstalledVersion": "5.36.0-7+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-48962",
+      "PkgName": "perl-base",
+      "InstalledVersion": "5.36.0-7+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-57432",
+      "PkgName": "perl-base",
+      "InstalledVersion": "5.36.0-7+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-57433",
+      "PkgName": "perl-base",
+      "InstalledVersion": "5.36.0-7+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-9538",
+      "PkgName": "perl-base",
+      "InstalledVersion": "5.36.0-7+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-53613",
+      "PkgName": "util-linux",
+      "InstalledVersion": "2.38.1-5+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-76642",
+      "PkgName": "util-linux",
+      "InstalledVersion": "2.38.1-5+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-78408",
+      "PkgName": "util-linux",
+      "InstalledVersion": "2.38.1-5+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-78409",
+      "PkgName": "util-linux",
+      "InstalledVersion": "2.38.1-5+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-78410",
+      "PkgName": "util-linux",
+      "InstalledVersion": "2.38.1-5+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-53613",
+      "PkgName": "util-linux-extra",
+      "InstalledVersion": "2.38.1-5+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-76642",
+      "PkgName": "util-linux-extra",
+      "InstalledVersion": "2.38.1-5+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-78408",
+      "PkgName": "util-linux-extra",
+      "InstalledVersion": "2.38.1-5+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-78409",
+      "PkgName": "util-linux-extra",
+      "InstalledVersion": "2.38.1-5+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-78410",
+      "PkgName": "util-linux-extra",
+      "InstalledVersion": "2.38.1-5+deb12u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2023-45853",
+      "PkgName": "zlib1g",
+      "InstalledVersion": "1:1.2.13.dfsg-1",
+      "FixedVersion": "",
+      "Severity": "CRITICAL"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-13149",
+      "PkgName": "brace-expansion",
+      "InstalledVersion": "2.0.2",
+      "FixedVersion": "5.0.7, 1.1.16, 2.1.2",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-14257",
+      "PkgName": "brace-expansion",
+      "InstalledVersion": "2.0.2",
+      "FixedVersion": "5.0.8, 3.0.3, 2.1.3, 1.1.17",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-69152",
+      "PkgName": "brace-expansion",
+      "InstalledVersion": "2.0.2",
+      "FixedVersion": "1.1.18, 2.1.4, 3.0.6, 5.0.9",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-69192",
+      "PkgName": "ip-address",
+      "InstalledVersion": "10.1.0",
+      "FixedVersion": "10.3.1",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-9496",
+      "PkgName": "pacote",
+      "InstalledVersion": "19.0.2",
+      "FixedVersion": "21.5.1",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-9496",
+      "PkgName": "pacote",
+      "InstalledVersion": "20.0.1",
+      "FixedVersion": "21.5.1",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-33671",
+      "PkgName": "picomatch",
+      "InstalledVersion": "4.0.3",
+      "FixedVersion": "4.0.4, 3.0.2, 2.3.2",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-48815",
+      "PkgName": "sigstore",
+      "InstalledVersion": "3.1.0",
+      "FixedVersion": "4.1.1",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-59873",
+      "PkgName": "tar",
+      "InstalledVersion": "7.5.11",
+      "FixedVersion": "7.5.19",
+      "Severity": "CRITICAL"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-59874",
+      "PkgName": "tar",
+      "InstalledVersion": "7.5.11",
+      "FixedVersion": "7.5.18",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "backend",
+      "VulnerabilityID": "CVE-2026-73566",
+      "PkgName": "tar",
+      "InstalledVersion": "7.5.11",
+      "FixedVersion": "7.5.21",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-76642",
+      "PkgName": "bsdutils",
+      "InstalledVersion": "1:2.41.5-0+deb13u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-78408",
+      "PkgName": "bsdutils",
+      "InstalledVersion": "1:2.41.5-0+deb13u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-78409",
+      "PkgName": "bsdutils",
+      "InstalledVersion": "1:2.41.5-0+deb13u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-78410",
+      "PkgName": "bsdutils",
+      "InstalledVersion": "1:2.41.5-0+deb13u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-12064",
+      "PkgName": "curl",
+      "InstalledVersion": "8.14.1-2+deb13u4",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-8286",
+      "PkgName": "curl",
+      "InstalledVersion": "8.14.1-2+deb13u4",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-8458",
+      "PkgName": "curl",
+      "InstalledVersion": "8.14.1-2+deb13u4",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-8927",
+      "PkgName": "curl",
+      "InstalledVersion": "8.14.1-2+deb13u4",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-41992",
+      "PkgName": "gzip",
+      "InstalledVersion": "1.13-1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-54369",
+      "PkgName": "libacl1",
+      "InstalledVersion": "2.3.2-2+b1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-76642",
+      "PkgName": "libblkid1",
+      "InstalledVersion": "2.41.5-0+deb13u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-78408",
+      "PkgName": "libblkid1",
+      "InstalledVersion": "2.41.5-0+deb13u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-78409",
+      "PkgName": "libblkid1",
+      "InstalledVersion": "2.41.5-0+deb13u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-78410",
+      "PkgName": "libblkid1",
+      "InstalledVersion": "2.41.5-0+deb13u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-12064",
+      "PkgName": "libcurl4t64",
+      "InstalledVersion": "8.14.1-2+deb13u4",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-8286",
+      "PkgName": "libcurl4t64",
+      "InstalledVersion": "8.14.1-2+deb13u4",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-8458",
+      "PkgName": "libcurl4t64",
+      "InstalledVersion": "8.14.1-2+deb13u4",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-8927",
+      "PkgName": "libcurl4t64",
+      "InstalledVersion": "8.14.1-2+deb13u4",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-76956",
+      "PkgName": "libexpat1",
+      "InstalledVersion": "2.8.3-1~deb13u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-76957",
+      "PkgName": "libexpat1",
+      "InstalledVersion": "2.8.3-1~deb13u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-76642",
+      "PkgName": "liblastlog2-2",
+      "InstalledVersion": "2.41.5-0+deb13u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-78408",
+      "PkgName": "liblastlog2-2",
+      "InstalledVersion": "2.41.5-0+deb13u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-78409",
+      "PkgName": "liblastlog2-2",
+      "InstalledVersion": "2.41.5-0+deb13u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-78410",
+      "PkgName": "liblastlog2-2",
+      "InstalledVersion": "2.41.5-0+deb13u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-76642",
+      "PkgName": "libmount1",
+      "InstalledVersion": "2.41.5-0+deb13u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-78408",
+      "PkgName": "libmount1",
+      "InstalledVersion": "2.41.5-0+deb13u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-78409",
+      "PkgName": "libmount1",
+      "InstalledVersion": "2.41.5-0+deb13u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-78410",
+      "PkgName": "libmount1",
+      "InstalledVersion": "2.41.5-0+deb13u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-76642",
+      "PkgName": "libsmartcols1",
+      "InstalledVersion": "2.41.5-0+deb13u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-78408",
+      "PkgName": "libsmartcols1",
+      "InstalledVersion": "2.41.5-0+deb13u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-78409",
+      "PkgName": "libsmartcols1",
+      "InstalledVersion": "2.41.5-0+deb13u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-78410",
+      "PkgName": "libsmartcols1",
+      "InstalledVersion": "2.41.5-0+deb13u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-11822",
+      "PkgName": "libsqlite3-0",
+      "InstalledVersion": "3.46.1-7+deb13u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-11824",
+      "PkgName": "libsqlite3-0",
+      "InstalledVersion": "3.46.1-7+deb13u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-58050",
+      "PkgName": "libssh2-1t64",
+      "InstalledVersion": "1.11.1-1+deb13u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-16742",
+      "PkgName": "libsystemd0",
+      "InstalledVersion": "257.13-1~deb13u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-36849",
+      "PkgName": "libtiff6",
+      "InstalledVersion": "4.7.0-3+deb13u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-52490",
+      "PkgName": "libtiff6",
+      "InstalledVersion": "4.7.0-3+deb13u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2025-69720",
+      "PkgName": "libtinfo6",
+      "InstalledVersion": "6.5+20250216-2",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-16742",
+      "PkgName": "libudev1",
+      "InstalledVersion": "257.13-1~deb13u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-76642",
+      "PkgName": "libuuid1",
+      "InstalledVersion": "2.41.5-0+deb13u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-78408",
+      "PkgName": "libuuid1",
+      "InstalledVersion": "2.41.5-0+deb13u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-78409",
+      "PkgName": "libuuid1",
+      "InstalledVersion": "2.41.5-0+deb13u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-78410",
+      "PkgName": "libuuid1",
+      "InstalledVersion": "2.41.5-0+deb13u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-6653",
+      "PkgName": "libxml2",
+      "InstalledVersion": "2.12.7+dfsg+really2.9.14-2.1+deb13u3",
+      "FixedVersion": "",
+      "Severity": "CRITICAL"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-86140",
+      "PkgName": "libxml2",
+      "InstalledVersion": "2.12.7+dfsg+really2.9.14-2.1+deb13u3",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-76642",
+      "PkgName": "login",
+      "InstalledVersion": "1:4.16.0-2+really2.41.5-0+deb13u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-78408",
+      "PkgName": "login",
+      "InstalledVersion": "1:4.16.0-2+really2.41.5-0+deb13u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-78409",
+      "PkgName": "login",
+      "InstalledVersion": "1:4.16.0-2+really2.41.5-0+deb13u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-78410",
+      "PkgName": "login",
+      "InstalledVersion": "1:4.16.0-2+really2.41.5-0+deb13u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-76642",
+      "PkgName": "mount",
+      "InstalledVersion": "2.41.5-0+deb13u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-78408",
+      "PkgName": "mount",
+      "InstalledVersion": "2.41.5-0+deb13u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-78409",
+      "PkgName": "mount",
+      "InstalledVersion": "2.41.5-0+deb13u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-78410",
+      "PkgName": "mount",
+      "InstalledVersion": "2.41.5-0+deb13u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2025-69720",
+      "PkgName": "ncurses-base",
+      "InstalledVersion": "6.5+20250216-2",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2025-69720",
+      "PkgName": "ncurses-bin",
+      "InstalledVersion": "6.5+20250216-2",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-13221",
+      "PkgName": "perl-base",
+      "InstalledVersion": "5.40.1-6",
+      "FixedVersion": "",
+      "Severity": "CRITICAL"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-42496",
+      "PkgName": "perl-base",
+      "InstalledVersion": "5.40.1-6",
+      "FixedVersion": "",
+      "Severity": "CRITICAL"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-8376",
+      "PkgName": "perl-base",
+      "InstalledVersion": "5.40.1-6",
+      "FixedVersion": "",
+      "Severity": "CRITICAL"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-42497",
+      "PkgName": "perl-base",
+      "InstalledVersion": "5.40.1-6",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-48962",
+      "PkgName": "perl-base",
+      "InstalledVersion": "5.40.1-6",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-57432",
+      "PkgName": "perl-base",
+      "InstalledVersion": "5.40.1-6",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-57433",
+      "PkgName": "perl-base",
+      "InstalledVersion": "5.40.1-6",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-9538",
+      "PkgName": "perl-base",
+      "InstalledVersion": "5.40.1-6",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-76642",
+      "PkgName": "util-linux",
+      "InstalledVersion": "2.41.5-0+deb13u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-78408",
+      "PkgName": "util-linux",
+      "InstalledVersion": "2.41.5-0+deb13u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-78409",
+      "PkgName": "util-linux",
+      "InstalledVersion": "2.41.5-0+deb13u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    },
+    {
+      "image": "frontend",
+      "VulnerabilityID": "CVE-2026-78410",
+      "PkgName": "util-linux",
+      "InstalledVersion": "2.41.5-0+deb13u1",
+      "FixedVersion": "",
+      "Severity": "HIGH"
+    }
+  ]
+}
