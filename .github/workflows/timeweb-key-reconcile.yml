@@ -1,0 +1,54 @@
+name: Timeweb read-only key reconciliation
+on:
+  push:
+    branches: [ops/timeweb-hourly-preflight-20260909]
+    paths: [.github/workflows/timeweb-key-reconcile.yml]
+permissions: {}
+concurrency:
+  group: kinetra-timeweb-hourly-provision
+  cancel-in-progress: false
+jobs:
+  inspect:
+    if: github.repository == 'San4o9910/Kinetra'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Read only the affected temporary key and server names
+        env:
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_READ'
+          import os,json,urllib.request,hashlib,re
+          assert os.environ['GITHUB_RUN_ATTEMPT']=='1'
+          token=os.environ.pop('TIMEWEB_CLOUD_TOKEN')
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self,*args): raise RuntimeError('REDIRECT_REFUSED')
+          opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),NoRedirect())
+          for path in ['/ssh-keys','/servers?limit=100&offset=0']:
+              req=urllib.request.Request('https://api.timeweb.cloud/api/v1'+path,method='GET',headers={'Authorization':'Bearer '+token,'Accept':'application/json'})
+              try:
+                  with opener.open(req,timeout=20) as resp:
+                      raw=resp.read(4194305)
+                  assert len(raw)<=4194304
+                  doc=json.loads(raw)
+                  assert isinstance(doc,dict)
+              except Exception:
+                  print('TIMEWEB_RECONCILE=READ_FAILED')
+                  raise SystemExit(1)
+              shapes={k:type(v).__name__ for k,v in doc.items() if re.fullmatch('[a-z_-]{1,40}',k)}
+              matches=[]
+              for value in doc.values():
+                  rows=value if isinstance(value,list) else []
+                  for row in rows:
+                      if not isinstance(row,dict): continue
+                      if row.get('name') not in ['kinetra-ephemeral-34397615093','kinetra-app-hourly-20260909']: continue
+                      assert type(row.get('id')) is int and row['id']>0
+                      item={'id':row['id'],'name':row['name'],'is_default':row.get('is_default') is True}
+                      if isinstance(row.get('body'),str):
+                          item['public_key_sha256']=hashlib.sha256(row['body'].encode()).hexdigest()
+                          item['ephemeral_key_comment']=row['body'].endswith(' kinetra-ephemeral')
+                      matches.append(item)
+              print('TIMEWEB_RECONCILE='+json.dumps({'path':path,'shape':shapes,'matches':matches,'total':doc.get('meta',{}).get('total')},sort_keys=True))
+          PY_READ
