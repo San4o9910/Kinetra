@@ -18,6 +18,7 @@
 !apps/backend/migrations/*.sql
 !apps/backend/scripts
 !apps/backend/scripts/migrate.mjs
+!apps/backend/scripts/seed.mjs
 !apps/frontend
 !apps/frontend/package.json
 !apps/frontend/tsconfig.json

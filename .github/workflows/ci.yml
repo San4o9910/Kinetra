@@ -315,6 +315,26 @@ jobs:
           grep -F 'KINETRA_TRAINER_VERIFICATION_APPROVAL_GUARDS_POSTGRES17=PASS' /tmp/kinetra-test.log
           grep -F 'KINETRA_TRAINER_VERIFICATION_AUDIT_CASCADE_POSTGRES17=PASS' /tmp/kinetra-test.log
           grep -F 'KINETRA_TRAINER_VERIFICATION_LATEST_REQUEST_POSTGRES17=PASS' /tmp/kinetra-test.log
+          grep -E '^(# |ℹ )?KINETRA_PRODUCTION_CONTENT_SEED_POSTGRES_TEST=PASS$' /tmp/kinetra-test.log
+          node --input-type=module <<'JS_SUITE_EVIDENCE'
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+          const log = readFileSync('/tmp/kinetra-test.log', 'utf8');
+          const summary = {};
+          for (const field of ['tests', 'pass', 'fail', 'cancelled', 'skipped', 'todo']) {
+            const values = [...log.matchAll(new RegExp('^(?:#|ℹ) ' + field + ' ([0-9]+)$', 'gm'))]
+              .map((match) => Number(match[1]));
+            assert.equal(values.length, 2, `Both completed suite summaries are required: ${field}`);
+            if (field === 'tests' || field === 'pass') {
+              assert.ok(values.every((value) => value > 0), `Empty suite: ${field}`);
+            } else {
+              assert.deepEqual(values, [0, 0], `Failed, skipped or incomplete suite: ${field}`);
+            }
+            summary[field] = values;
+          }
+          assert.deepEqual(summary.tests, summary.pass);
+          console.log('KINETRA_COMPLETE_TEST_SUITES_NO_SKIPS=PASS');
+          JS_SUITE_EVIDENCE
           echo 'KINETRA_T04_TEST_SUITE=PASS'
           echo 'KINETRA_T05_TEST_SUITE=PASS'
           echo 'KINETRA_T06_TEST_SUITE=PASS'

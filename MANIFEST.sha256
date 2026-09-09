@@ -1,6 +1,6 @@
 a6b98ea7cb6d61ed8d430dd0dffa46c87012b5cf859d4ce7207898954951fdcd  ./.editorconfig
 755498903b00086f23089b69328eec2e9ba179ad42f8c5e6f9220760244e3459  ./.env.example
-9a0561259084382b1437f4aa5409752d8812d706e1cb488840e5170e94fb6329  ./.github/workflows/ci.yml
+b8ded83221b36f0169780ddda72e82c39baa65e10b8be0d4d9025797b6b8f2c8  ./.github/workflows/ci.yml
 bf0b9f2976cc6caa82bd0268fc6c19b11d72a7bf17624cf1fb866462e3811e31  ./.gitignore
 177d20030d4dcc37eae9ef92865ec54dadce60e8f19e9a34a5d4f37502195a36  ./.nvmrc
 019a6ff828333978e4ecceae4a881852c6f850fbc6d86755f5e4c9c068727ec8  ./.prettierignore
@@ -23,7 +23,7 @@ c7d473250981cddd6db9febf11b7018d8c11a81885f9c7471ea7d458aba36d4e  ./apps/backend
 af04321899d9e5127863c7468b9c1e85ca2983fe6139427a4460264a9426a941  ./apps/backend/package.json
 ef4d52c58446978f2fd05c7c9422ddd27908813d905e59b9b57d2fd138f71423  ./apps/backend/scripts/migrate.mjs
 74b37449ca4b3b414778bb2013c22d01396527a04293c0fcb461b8f210c4c08e  ./apps/backend/scripts/seed-local-demo.mjs
-462ab106bd6244e5890c5954d13226a725b05a5490f84a60450466b198a849d2  ./apps/backend/scripts/seed.mjs
+a4baf2d7d8303c8b4e1f662b1054eea2c6f5de65a1390b7067f17a3251db2f9b  ./apps/backend/scripts/seed.mjs
 2a2c8ad58226d8721177cd8a72d185791eef4d8179c3ba960d8e99b1bab705df  ./apps/backend/scripts/verify-content.mjs
 c342b2bd79c23590f65e14180782da3799b5da8a2df4fed4d6ff24ae787b5aa4  ./apps/backend/src/app.ts
 43c2f9a6a86c48678c003094e151053260a4e6964a8df8b75f429f461d09926e  ./apps/backend/src/auth/cookies.ts
@@ -157,6 +157,7 @@ ad9309812d81432c2a82fa066131d5729ff2ba1c2123c9f797ee473c6ba8d572  ./apps/backend
 f6632dcacd03ddb221a7f11f54218e75625b7bd04ced8b8eee994902e92d6cbe  ./apps/backend/test/payments.e2e.test.ts
 f217f941475fd6e1cc942600a512ffa96919e706901548080808bf47114fee43  ./apps/backend/test/payments.postgres.test.ts
 455ddffa8265df94c4c606cfa4a3d6fa0489e4c616cb24f759d8467949af5f05  ./apps/backend/test/platform.test.ts
+52613a7a4f7448410892489820d97f18c134c03f4549ab30efe04800e1a4f00b  ./apps/backend/test/production-content-seed.test.ts
 d64b39aa4338bf643ac337c2cedda01527d4a8a6bcd740f21ac69e88e9c15de0  ./apps/backend/test/profile.e2e.test.ts
 07e84d5ed0c2190e33a56293b582b4852895be15e1c72afd129a8c8aa9dff6fc  ./apps/backend/test/profile.postgres.test.ts
 c5d277753edf3cb13bbedb862e3c26b4520c50000f93cba43569e26a7e89f69c  ./apps/backend/test/program.e2e.test.ts
@@ -292,7 +293,7 @@ c66a3e3320adb426e470b8afac330608948291f2231e2c981a9139a5feb61110  ./apps/fronten
 f65d6dc912ad0ce9c4cf7c69f71e4dbe2db849878a195f96f1d865d77d0c3577  ./apps/frontend/src/pwa/registerServiceWorker.ts
 2f9ad659021866bc007aea56ea0703fc1e7070f0175fd121c0262b0f6b3b7c05  ./apps/frontend/src/realtime/socket.ts
 fb665289461c07867ceb19e86e88ff31f8c9e795f48dae5d96bc8ae6560917d1  ./apps/frontend/src/routing.ts
-5208c42a8ebe0a6da5e0344b3dcc7dc2fa4f5be2eef1806437b17a5657c8cba4  ./apps/frontend/src/styles.css
+63b2cddea2651447bf045f113f9126a25f5e9678b4db6bdf4e971e639b457161  ./apps/frontend/src/styles.css
 8e6a482dec7d62533619e4354794d9248850e9171d650832e7acdf4c313ef0d8  ./apps/frontend/src/vite-env.d.ts
 6b05ae8ab3c10f85b663ffdf99e4b0ff51bf3d3795c1fbcb4762ec2fbc9b41ad  ./apps/frontend/test/api-session.test.ts
 9d00f031dcc00f458cfc33950cc82cd2c08681ec6bf51ed2efdc2952fdc2253f  ./apps/frontend/test/base-lessons-api.test.ts
@@ -326,8 +327,8 @@ dea7d86584c54c3f77059e2099e3f00ae5705846eb55350a09b3cf8962d0cbf3  ./apps/fronten
 6f8ed6ddb3f7748c5e7cbb99be45ebbfad34a77d5f5ed41f24acd8862273c0b1  ./apps/frontend/tsconfig.json
 5d527470103f07878c76c3f8e2f1a0f90cc6a3127d2ac881797ac0a8825fd4d2  ./apps/frontend/vite.config.ts
 30cec796f9cdeb694c0aa4d71e9ae836645ba22f502e4369029bdd812d4e4fa5  ./deploy/.gitignore
-05ea2e74a39b3829b74a22bff1d49f7d6b506b2abcb34f53ec6deff2096c1e37  ./deploy/Containerfile
-d129aa3c805679a6f77e8f83d964c99d7f876cb39f2c92d9f24d9c3a75ce3878  ./deploy/Containerfile.dockerignore
+1140047c2acd47508db0bb5ec138d1cb0853b98c5303b081acb9775c1eaf36c1  ./deploy/Containerfile
+dec45bcbd87a508da50ce41a5e88c12bd82dcf649073df5ed4cb77c24e656f58  ./deploy/Containerfile.dockerignore
 066922464158d1308512cba2fcfab0cd05af3fe3d1dbfce8f3976383f6ce5df7  ./deploy/api.env.example
 f6d04c4c5ce99c9ab48786130607c0790bf4462040ba54651cfc5315ac0ac4a3  ./deploy/compose.production.yml
 de3df2717c7484c4c486eef2e38c1250597db070fbb6cccaa39dcc8c1c40f885  ./deploy/compose.single-server.yml
@@ -353,13 +354,13 @@ f154eedac3930c22fe497e81404f12f2d35927d56e0f202dd7e9af9bd31c1f00  ./deploy/postg
 488a81bb9d1eb4525ace4d439204f69b8763bc059a07d29451272e35599dd82d  ./deploy/production.env.example
 1f23635f93bd6720b16e07581bb455a4f70935757430e421c2f8f52d35be4ef5  ./docker-compose.yml
 4886a014b25ffc2f459dd91f910ac6cc7bd25da7e340c1596c97f401d0e41f11  ./docs/DISASTER_RECOVERY.md
-dca44b2036740cefe35e359e632b9fef1e5e1663636b81c42940ceb228011b2e  ./docs/IP_HTTPS_DEPLOYMENT.md
+ef1acd72396bef79c34151b24fc9bb7e38847b4f0a6b5b13347ada1e885b3ec9  ./docs/IP_HTTPS_DEPLOYMENT.md
 0a26b9906736452f0fd0531504e5d9bf09641d2bfe23dca286929d1b9e9097f8  ./docs/PRODUCTION_DELIVERY.md
 6c55fdd86a488b639f85961d6611b3c6a7c50bd11a3318a42f6686257df91961  ./docs/PRODUCTION_LAUNCH_RUNBOOK.md
 c886b8c7080fa4a87f68f24fe0f6b4990c947e7be7b9db8fdc2b79b963f95d2a  ./docs/PRODUCTION_MONITORING.md
-ca470c7bdfbf2bcd0cd69e98938849f51703b84fa75126a4a8dfc813f7867896  ./docs/PRODUCTION_READINESS_REVIEW.md
+25fd9d4d9c4948eb5cf2e40dac4d6ca40b2d8e9302f86b9abec8c36d5c348ccc  ./docs/PRODUCTION_READINESS_REVIEW.md
 44a9dd4a666e5dc54473588f15aaded2af471669d80c48495190640d8b839cde  ./docs/PRODUCT_DIRECTION.md
-46a19ece439953529e18ced06977f80b913fa4690a749e4a752ccda4e1a58587  ./docs/SINGLE_SERVER_DEPLOYMENT.md
+6ebd1bd683b6f904fa70fb4764fdef350001ab3bb1ffde03567b9eee2e7c8115  ./docs/SINGLE_SERVER_DEPLOYMENT.md
 910478406609dbe7be3dad5323a69d219a1bdeeee86607a8fd49fdf13fa04b30  ./docs/T02_AUTH_API.md
 f01f5ec12a490c691b3fbe9586ab3bb3d810caba713bb01c9010ee84a12371b0  ./docs/T03_CONTENT_MODEL.md
 ea0a2b01f19484df4d79c52e2ba04c7bfe93e9c9b28a7157a93f6c1ecbaf3dd2  ./docs/T04_PROFILE_SURVEY.md

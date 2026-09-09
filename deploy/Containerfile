@@ -37,7 +37,7 @@ COPY --from=build --chown=node:node /app/packages/shared/package.json ./packages
 COPY --from=build --chown=node:node /app/packages/shared/dist ./packages/shared/dist
 COPY --from=build --chown=node:node /app/apps/backend/package.json ./apps/backend/package.json
 COPY --from=build --chown=node:node /app/apps/backend/dist ./apps/backend/dist
-COPY --chown=node:node apps/backend/scripts/migrate.mjs ./apps/backend/scripts/migrate.mjs
+COPY --chown=node:node apps/backend/scripts/migrate.mjs apps/backend/scripts/seed.mjs ./apps/backend/scripts/
 COPY --chown=node:node apps/backend/migrations ./apps/backend/migrations
 RUN test -x /usr/bin/tini && ffprobe -version >/dev/null && ffmpeg -version >/dev/null && identify -version >/dev/null && convert -version >/dev/null
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000
