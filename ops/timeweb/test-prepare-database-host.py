@@ -23,7 +23,7 @@ exec(compile(stage.GUEST_PREPARE, "<guest-prepare>", "exec"), guest)
 
 IMAGES = {
     "NODE_IMAGE": "docker.io/library/node:22-bookworm-slim@sha256:" + "1" * 64,
-    "NGINX_IMAGE": "docker.io/nginxinc/nginx-unprivileged:1.30.4@sha256:" + "2" * 64,
+    "NGINX_IMAGE": "docker.io/nginxinc/nginx-unprivileged:1.30.4-alpine-slim@sha256:" + "2" * 64,
     "BACKEND_IMAGE": "ghcr.io/san4o9910/kinetra-backend@sha256:" + "3" * 64,
     "FRONTEND_IMAGE": "ghcr.io/san4o9910/kinetra-frontend@sha256:" + "4" * 64,
     "POSTGRES_IMAGE": "postgres:17-bookworm@sha256:" + "5" * 64,

@@ -37,3 +37,9 @@ New-host staging, generated private database credentials/TLS, initial empty data
 Host bootstrap https://github.com/San4o9910/Kinetra/actions/runs/34408679429 passed: Docker 29.1.3, Compose 2.40.3+ds1-0ubuntu1~24.04.1, bounded local Docker logs, active incoming-deny UFW with SSH/HTTP/HTTPS and three exact provider source addresses for TCP10050. The installed Zabbix binary confirmed its default configuration path. Fresh SSH reconnect passed; temporary key 768761 was removed from guest/account/local state. No application or database started.
 
 Image run https://github.com/San4o9910/Kinetra/actions/runs/34408679490 completed the corrected scanner without storage or cleanup errors, but found 278 backend and 68 frontend HIGH/CRITICAL package/CVE entries (including duplicate CVEs across related packages), zero secrets. These counts are findings, not distinct exploitable application vulnerabilities. Publication remained blocked. Sanitized entries are in image-findings-34408679490.json. Remediation is investigating patched runtime packages and removal of unused build tools/modules, preserving complete image scanning.
+
+## Current C3 source and stopped edge
+
+C3 app commit `2e20e6d20ea202bccca44488a2f897e4b6b9552d` (tree `de7e164ac1e064e978d99100645729032f2c7071`) removes runtime package managers and selects minimal nginx Alpine3.24. Exact-head CI 34409666852 and merge-ref CI 34409670669 both passed all three jobs; backend226/frontend179 and zero skips remain. Verified merge checkout is `a27c8a280ea9918123352e4cf29137bdb464c3a6`; the PR remains draft/unmerged. Local typecheck/lint/structure/format and build with the actual API origin also passed.
+
+Caddy preparation https://github.com/San4o9910/Kinetra/actions/runs/34409119237 passed. Caddy2.11.4 was installed, isolated config validation and freshSSH reconnect succeeded. Service is disabled/inactive; no ACME or app startup occurred. Temporary key768767 was removed from guest/account/local state.

@@ -18,15 +18,15 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  APPROVED_APP_COMMIT: 88199890d6f636fcf781d924137b15847a87e601
+  APPROVED_APP_COMMIT: 2e20e6d20ea202bccca44488a2f897e4b6b9552d
   APPROVED_BASE_COMMIT: ea0412a20baa87b7a00c4ce466d204d12fb052cc
-  APPROVED_MERGE_COMMIT: bc3d8e9811c3a592f3887baf718e285ca05707c5
-  APPROVED_HEAD_RUN: '34406930670'
-  APPROVED_MERGE_RUN: '34406934645'
+  APPROVED_MERGE_COMMIT: a27c8a280ea9918123352e4cf29137bdb464c3a6
+  APPROVED_HEAD_RUN: '34409666852'
+  APPROVED_MERGE_RUN: '34409670669'
   PUBLISH_TO_GHCR: 'true'
   PUBLIC_ORIGIN: https://80.68.156.131
   NODE_TAG: docker.io/library/node:22-bookworm-slim
-  NGINX_TAG: docker.io/nginxinc/nginx-unprivileged:1.30.4
+  NGINX_TAG: docker.io/nginxinc/nginx-unprivileged:1.30.4-alpine-slim
   TRIVY_TAG: docker.io/aquasec/trivy:0.74.0
 
 jobs:
@@ -159,7 +159,7 @@ jobs:
             > "$evidence/node-base-version.txt"
           docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges \
             --user 101:101 --entrypoint sh "$NGINX_IMAGE" -ec \
-            '. /etc/os-release; test "$VERSION_CODENAME" = trixie; nginx -v 2>&1 | grep -Fx "nginx version: nginx/1.30.4"; cat /etc/os-release' \
+            '. /etc/os-release; test "$ID" = alpine; case "$VERSION_ID" in 3.24.*) ;; *) exit 1 ;; esac; nginx -v 2>&1 | grep -Fx "nginx version: nginx/1.30.4"; cat /etc/os-release' \
             > "$evidence/nginx-base-version.txt"
           docker run --rm --network none "$TRIVY_IMAGE" --version > "$evidence/trivy-version.txt"
           grep -Fx 'Version: 0.74.0' "$evidence/trivy-version.txt"
@@ -193,6 +193,7 @@ jobs:
               node --input-type=module -e '\''const s=await import("@kinetra/shared");if(!Object.keys(s).length)process.exit(1)'\''
               if touch /app/.readonly-smoke 2>/dev/null; then exit 1; fi
               node --version
+              for program in npm npx yarn yarnpkg corepack; do ! command -v "$program"; done
               ffmpeg -version
               ffprobe -version
               identify -version
@@ -426,8 +427,9 @@ jobs:
               (root / (target + '-scan.json')).write_text(json.dumps(report, indent=2) + '\n')
               image_metadata = report.get('Metadata') or {}
               image_os = image_metadata.get('OS') if isinstance(image_metadata, dict) else None
-              require(bool(results) and isinstance(image_os, dict) and image_os.get('Family') == 'debian',
-                      target + ': Debian scan metadata missing')
+              expected_family = {'backend': 'debian', 'frontend': 'alpine'}[target]
+              require(bool(results) and isinstance(image_os, dict) and image_os.get('Family') == expected_family,
+                      target + ': expected ' + expected_family + ' scan metadata missing')
               require(any(result.get('Class') == 'os-pkgs' for result in results), target + ': OS coverage missing')
               if target == 'backend':
                   require(any(result.get('Class') == 'lang-pkgs' for result in results), target + ': language coverage missing')
@@ -518,7 +520,7 @@ jobs:
 # and erase the host's temporary Docker auth directory immediately after pull.
 # No persistent PAT is required for that workflow-owned pull; this draft never SSHs.
 # Reviewed primary sources (2026-09-09):
-# https://github.com/nginx/docker-nginx-unprivileged (stable Debian = trixie, 1.30.4)
+# https://github.com/nginx/docker-nginx-unprivileged/tree/main/stable/alpine-slim (Alpine 3.24, 1.30.4)
 # https://github.com/aquasecurity/trivy/releases/tag/v0.74.0
 # https://trivy.dev/docs/latest/references/configuration/cli/trivy_image/
 # https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry

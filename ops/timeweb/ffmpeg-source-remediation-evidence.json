@@ -1,0 +1,151 @@
+[
+  {
+    "cve": "CVE-2026-58049",
+    "source": "https://security-tracker.debian.org/tracker/CVE-2026-58049",
+    "notes": "[trixie] - ffmpeg <postponed> (Wait until fixed in 7.1.x upstream branch)https://github.com/bikini/exploitarium/tree/main/ffmpeg-rasc-dlta-calc-pocFixed by: https://code.ffmpeg.org/FFmpeg/FFmpeg/commit/11ff18a6c80187405fc492f9bb07ba9f2f663f76Fixed by: https://code.ffmpeg.org/FFmpeg/FFmpeg/commit/f8d7795dcca36a4dd412e89cbd83e3dfec1e0d81 (n9.0)",
+    "commits": [
+      "11ff18a6c80187405fc492f9bb07ba9f2f663f76",
+      "f8d7795dcca36a4dd412e89cbd83e3dfec1e0d81"
+    ]
+  },
+  {
+    "cve": "CVE-2026-64830",
+    "source": "https://security-tracker.debian.org/tracker/CVE-2026-64830",
+    "notes": "[trixie] - ffmpeg <postponed> (Wait until fixed in 7.1.x upstream branch)https://code.ffmpeg.org/FFmpeg/FFmpeg/pulls/23657Fixed by: https://code.ffmpeg.org/FFmpeg/FFmpeg/commit/dbd495f066a85ba96b17433f4306582aa37c3951",
+    "commits": [
+      "dbd495f066a85ba96b17433f4306582aa37c3951"
+    ]
+  },
+  {
+    "cve": "CVE-2026-64831",
+    "source": "https://security-tracker.debian.org/tracker/CVE-2026-64831",
+    "notes": "[trixie] - ffmpeg <postponed> (Wait until fixed in 7.1.x upstream branch)https://code.ffmpeg.org/FFmpeg/FFmpeg/pulls/23665Fixed by: https://code.ffmpeg.org/FFmpeg/FFmpeg/commit/92737390dc133daadce47dd7d2ec8ef3d9ebcbedFixed by: https://code.ffmpeg.org/FFmpeg/FFmpeg/commit/6b3015cd92d4a0f96b0511e8110c50ac0dcc9d3a (release/8.1)",
+    "commits": [
+      "92737390dc133daadce47dd7d2ec8ef3d9ebcbed",
+      "6b3015cd92d4a0f96b0511e8110c50ac0dcc9d3a"
+    ]
+  },
+  {
+    "cve": "CVE-2026-64832",
+    "source": "https://security-tracker.debian.org/tracker/CVE-2026-64832",
+    "notes": "[trixie] - ffmpeg <postponed> (Wait until fixed in 7.1.x upstream branch)https://code.ffmpeg.org/FFmpeg/FFmpeg/pulls/23664Fixed by: https://code.ffmpeg.org/FFmpeg/FFmpeg/commit/4c6217477fc64305055b37d9d1d0d76d30e37f97Fixed by: https://code.ffmpeg.org/FFmpeg/FFmpeg/commit/9cbcf979a587a66b280496657d00fabe301bf20f (release/8.1)",
+    "commits": [
+      "4c6217477fc64305055b37d9d1d0d76d30e37f97",
+      "9cbcf979a587a66b280496657d00fabe301bf20f"
+    ]
+  },
+  {
+    "cve": "CVE-2026-64833",
+    "source": "https://security-tracker.debian.org/tracker/CVE-2026-64833",
+    "notes": "[trixie] - ffmpeg <postponed> (Wait until fixed in 7.1.x upstream branch)https://code.ffmpeg.org/FFmpeg/FFmpeg/pulls/23661Fixed by: https://code.ffmpeg.org/FFmpeg/FFmpeg/commit/6f80e2765492700622596af720534cef33dd31b4",
+    "commits": [
+      "6f80e2765492700622596af720534cef33dd31b4"
+    ]
+  },
+  {
+    "cve": "CVE-2026-64834",
+    "source": "https://security-tracker.debian.org/tracker/CVE-2026-64834",
+    "notes": "[trixie] - ffmpeg <postponed> (Wait until fixed in 7.1.x upstream branch)https://code.ffmpeg.org/FFmpeg/FFmpeg/pulls/23663Fixed by: https://code.ffmpeg.org/FFmpeg/FFmpeg/commit/11d5f475be95d22d5f0692220cc772b116abc632",
+    "commits": [
+      "11d5f475be95d22d5f0692220cc772b116abc632"
+    ]
+  },
+  {
+    "cve": "CVE-2026-64835",
+    "source": "https://security-tracker.debian.org/tracker/CVE-2026-64835",
+    "notes": "[trixie] - ffmpeg <postponed> (Wait until fixed in 7.1.x upstream branch)https://code.ffmpeg.org/FFmpeg/FFmpeg/pulls/23659Fixed by: https://code.ffmpeg.org/FFmpeg/FFmpeg/commit/1836ef96846937a6cc2443698a693104f5c0b21e",
+    "commits": [
+      "1836ef96846937a6cc2443698a693104f5c0b21e"
+    ]
+  },
+  {
+    "cve": "CVE-2026-66036",
+    "source": "https://security-tracker.debian.org/tracker/CVE-2026-66036",
+    "notes": "[trixie] - ffmpeg <postponed> (Wait until fixed in 7.1.x upstream branch)https://code.ffmpeg.org/FFmpeg/FFmpeg/pulls/23783https://code.ffmpeg.org/FFmpeg/FFmpeg/commit/5d7112c60e6f0f0742ce47d448e6da0718a70f4c",
+    "commits": [
+      "5d7112c60e6f0f0742ce47d448e6da0718a70f4c"
+    ]
+  },
+  {
+    "cve": "CVE-2026-66039",
+    "source": "https://security-tracker.debian.org/tracker/CVE-2026-66039",
+    "notes": "[trixie] - ffmpeg <postponed> (Wait until fixed in 7.1.x upstream branch)https://code.ffmpeg.org/FFmpeg/FFmpeg/pulls/23631https://code.ffmpeg.org/FFmpeg/FFmpeg/commit/aafb5c655edc76a753275c383ebb139feb032718",
+    "commits": [
+      "aafb5c655edc76a753275c383ebb139feb032718"
+    ]
+  },
+  {
+    "cve": "CVE-2026-66040",
+    "source": "https://security-tracker.debian.org/tracker/CVE-2026-66040",
+    "notes": "[trixie] - ffmpeg <postponed> (Wait until fixed in 7.1.x upstream branch)https://code.ffmpeg.org/FFmpeg/FFmpeg/pulls/23786https://code.ffmpeg.org/FFmpeg/FFmpeg/commit/b506fafec9a19fcbc2be5271875fd4a63d6615bc",
+    "commits": [
+      "b506fafec9a19fcbc2be5271875fd4a63d6615bc"
+    ]
+  },
+  {
+    "cve": "CVE-2026-70628",
+    "source": "https://security-tracker.debian.org/tracker/CVE-2026-70628",
+    "notes": "[trixie] - ffmpeg <postponed> (Wait until fixed in 7.1.x upstream branch)https://code.ffmpeg.org/FFmpeg/FFmpeg/pulls/23897Introduced with: https://code.ffmpeg.org/FFmpeg/FFmpeg/commit/c6ec28b18cd1eb7d39e6163137367f2d1c62aa7c (v0.5)Fixed by: https://code.ffmpeg.org/FFmpeg/FFmpeg/commit/93f2a525ec6c7b467bae68322720d10188fc6e30 (master)Fixed by: https://code.ffmpeg.org/FFmpeg/FFmpeg/commit/02fc47e13f903768b75f7985a2706a6223ab4506 (n9.0)",
+    "commits": [
+      "c6ec28b18cd1eb7d39e6163137367f2d1c62aa7c",
+      "93f2a525ec6c7b467bae68322720d10188fc6e30",
+      "02fc47e13f903768b75f7985a2706a6223ab4506"
+    ]
+  },
+  {
+    "cve": "CVE-2026-70632",
+    "source": "https://security-tracker.debian.org/tracker/CVE-2026-70632",
+    "notes": "[trixie] - ffmpeg <postponed> (Wait until fixed in 7.1.x upstream branch)https://code.ffmpeg.org/FFmpeg/FFmpeg/pulls/23898Introduced with: https://code.ffmpeg.org/FFmpeg/FFmpeg/commit/1006a2151236f9235bf02822f263b3fb0532111e (n4.4)Fixed by: https://code.ffmpeg.org/FFmpeg/FFmpeg/commit/16b2049d4d5222db6cd7c031409058571c94f6a9 (n9.0)Fixed by: https://code.ffmpeg.org/FFmpeg/FFmpeg/commit/db05df9d135fb56a4babb836d5e9f5c1d984e087 (master)",
+    "commits": [
+      "1006a2151236f9235bf02822f263b3fb0532111e",
+      "16b2049d4d5222db6cd7c031409058571c94f6a9",
+      "db05df9d135fb56a4babb836d5e9f5c1d984e087"
+    ]
+  },
+  {
+    "cve": "CVE-2026-75142",
+    "source": "https://security-tracker.debian.org/tracker/CVE-2026-75142",
+    "notes": "[trixie] - ffmpeg <postponed> (Wait until fixed in 7.1.x upstream branch)https://code.ffmpeg.org/FFmpeg/FFmpeg/pulls/24087Fixed by: https://code.ffmpeg.org/FFmpeg/FFmpeg/commit/9d786e4b5e9b8482651928574de33772aeee7be1 (master)Fixed by: https://code.ffmpeg.org/FFmpeg/FFmpeg/commit/b274f0d21ba684446fd59b49e00f3f8e9ed954df (n9.0.1)",
+    "commits": [
+      "9d786e4b5e9b8482651928574de33772aeee7be1",
+      "b274f0d21ba684446fd59b49e00f3f8e9ed954df"
+    ]
+  },
+  {
+    "cve": "CVE-2026-75143",
+    "source": "https://security-tracker.debian.org/tracker/CVE-2026-75143",
+    "notes": "[trixie] - ffmpeg <postponed> (Wait until fixed in 7.1.x upstream branch)https://code.ffmpeg.org/FFmpeg/FFmpeg/pulls/24089Fixed by: https://code.ffmpeg.org/FFmpeg/FFmpeg/commit/1c10bcc2e17255dacb717a25ab3db142ce390602 (master)Fixed by: https://code.ffmpeg.org/FFmpeg/FFmpeg/commit/8880a174d08131f94f58a0492d1c8c6d68b74f67 (n9.0.1)",
+    "commits": [
+      "1c10bcc2e17255dacb717a25ab3db142ce390602",
+      "8880a174d08131f94f58a0492d1c8c6d68b74f67"
+    ]
+  },
+  {
+    "cve": "CVE-2026-75144",
+    "source": "https://security-tracker.debian.org/tracker/CVE-2026-75144",
+    "notes": "[trixie] - ffmpeg <postponed> (Wait until fixed in 7.1.x upstream branch)https://code.ffmpeg.org/FFmpeg/FFmpeg/pulls/24091Fixed by: https://code.ffmpeg.org/FFmpeg/FFmpeg/commit/1cdeb3c4e7f1f8566d846b9b451e01c376398818 (master)Fixed by: https://code.ffmpeg.org/FFmpeg/FFmpeg/commit/1afd5c3ddafda4209e0881cd30684b919e99de7c (n9.0.1)",
+    "commits": [
+      "1cdeb3c4e7f1f8566d846b9b451e01c376398818",
+      "1afd5c3ddafda4209e0881cd30684b919e99de7c"
+    ]
+  },
+  {
+    "cve": "CVE-2026-75146",
+    "source": "https://security-tracker.debian.org/tracker/CVE-2026-75146",
+    "notes": "[trixie] - ffmpeg <postponed> (Wait until fixed in 7.1.x upstream branch)https://code.ffmpeg.org/FFmpeg/FFmpeg/pulls/24093Fixed by: https://code.ffmpeg.org/FFmpeg/FFmpeg/commit/65b0dab903e5975e036b30ecc58f5935d4f151e0 (master)Fixed by: https://code.ffmpeg.org/FFmpeg/FFmpeg/commit/999f8ba75ce0bf1167677de7e11a5af678fdb866 (n9.0.1)",
+    "commits": [
+      "65b0dab903e5975e036b30ecc58f5935d4f151e0",
+      "999f8ba75ce0bf1167677de7e11a5af678fdb866"
+    ]
+  },
+  {
+    "cve": "CVE-2026-8461",
+    "source": "https://security-tracker.debian.org/tracker/CVE-2026-8461",
+    "notes": "https://code.ffmpeg.org/FFmpeg/FFmpeg/pulls/23159Fixed by: https://git.ffmpeg.org/gitweb/ffmpeg.git/c23d4da3128c279b714b282e6ec292e8755007e3 (master)Fixed by: https://git.ffmpeg.org/gitweb/ffmpeg.git/commit/a991b3e1102824730de6b0b2afd1c7e41fbdf03d (n8.1.2)Fixed by: https://git.ffmpeg.org/gitweb/ffmpeg.git/commit/15882781ac5267a653e4e55f5fa656ba9db688fd (n7.1.5)Fixed by: https://git.ffmpeg.org/gitweb/ffmpeg.git/commit/0216a4847e6adb922c22ad18abb8b223c6290416 (n5.1.10)",
+    "commits": [
+      "a991b3e1102824730de6b0b2afd1c7e41fbdf03d",
+      "15882781ac5267a653e4e55f5fa656ba9db688fd",
+      "0216a4847e6adb922c22ad18abb8b223c6290416"
+    ]
+  }
+]
