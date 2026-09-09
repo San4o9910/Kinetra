@@ -1,0 +1,42 @@
+name: Timeweb hourly server provisioning
+
+on:
+  push:
+    branches: [ops/timeweb-hourly-preflight-20260909]
+    paths:
+      - .github/workflows/timeweb-hourly-provision.yml
+      - ops/timeweb/provision-hourly.py
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kinetra-timeweb-hourly-provision
+  cancel-in-progress: false
+
+jobs:
+  provision:
+    name: Create one hourly Kinetra server within the approved budget
+    if: github.repository == 'San4o9910/Kinetra'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify the reviewed workflow checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$GITHUB_RUN_ATTEMPT" = '1'
+          test "$GITHUB_REPOSITORY" = 'San4o9910/Kinetra'
+          python3 -m py_compile ops/timeweb/provision-hourly.py
+      - name: Provision server using hourly account billing
+        shell: bash
+        env:
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 ops/timeweb/provision-hourly.py --execute-hourly-server
