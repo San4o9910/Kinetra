@@ -1,6 +1,5 @@
 import { readFile, mkdtemp, rm } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
-import { once } from 'node:events';
 import vm from 'node:vm';
 import { pathToFileURL } from 'node:url';
 import assert from 'node:assert/strict';
@@ -112,6 +111,20 @@ const evaluate = async (expression) => {
   if (r.exceptionDetails) throw Error(JSON.stringify(r.exceptionDetails));
   return r.result.value;
 };
+const waitForChromeExit = () => {
+  if (chrome.exitCode !== null || chrome.signalCode !== null) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const onExit = () => {
+      clearTimeout(timer);
+      resolve(true);
+    };
+    const timer = setTimeout(() => {
+      chrome.off('exit', onExit);
+      resolve(false);
+    }, 5000);
+    chrome.once('exit', onExit);
+  });
+};
 try {
   const target = (await send('Target.getTargets')).targetInfos.find((t) => t.type === 'page');
   assert.ok(target, 'Chrome page target missing.');
@@ -150,8 +163,15 @@ try {
   }
 } finally {
   if (chrome.exitCode === null && chrome.signalCode === null) {
-    chrome.kill('SIGTERM');
-    await once(chrome, 'exit');
+    // Browser.close flushes profile writers; pipe closure can race its acknowledgement.
+    await send('Browser.close').catch(() => undefined);
+    if (!(await waitForChromeExit())) {
+      chrome.kill('SIGTERM');
+      if (!(await waitForChromeExit())) {
+        chrome.kill('SIGKILL');
+        assert.ok(await waitForChromeExit(), 'Chrome did not exit during diagnostic cleanup.');
+      }
+    }
   }
-  await rm(profile, { recursive: true, force: true });
+  await rm(profile, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 });
 }

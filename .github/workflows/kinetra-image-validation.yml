@@ -1,0 +1,389 @@
+# Root-reviewed qualified image build after green exact-head and merge-ref CI.
+# GHCR storage/bandwidth is currently free; no paid cloud resource is created.
+# No host, Timeweb, payment, delivery, database or application runtime secrets.
+name: Kinetra qualified production images
+
+on:
+  push:
+    branches: [ops/timeweb-hourly-preflight-20260909]
+    paths: [.github/workflows/kinetra-image-validation.yml]
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+
+concurrency:
+  group: kinetra-qualified-images
+  cancel-in-progress: false
+
+env:
+  APPROVED_APP_COMMIT: 88199890d6f636fcf781d924137b15847a87e601
+  APPROVED_BASE_COMMIT: ea0412a20baa87b7a00c4ce466d204d12fb052cc
+  APPROVED_MERGE_COMMIT: bc3d8e9811c3a592f3887baf718e285ca05707c5
+  APPROVED_HEAD_RUN: '34406930670'
+  APPROVED_MERGE_RUN: '34406934645'
+  PUBLISH_TO_GHCR: 'true'
+  PUBLIC_ORIGIN: https://80.68.156.131
+  NODE_TAG: docker.io/library/node:22-bookworm-slim
+  NGINX_TAG: docker.io/nginxinc/nginx-unprivileged:1.30.4
+  TRIVY_TAG: docker.io/aquasec/trivy:0.74.0
+
+jobs:
+  qualify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+      packages: write
+    steps:
+      - name: Verify current PR and both immutable successful CI runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = San4o9910/Kinetra
+          test "$GITHUB_REF" = refs/heads/ops/timeweb-hourly-preflight-20260909
+          python3 - <<'PY'
+          import json, os, pathlib, re, urllib.error, urllib.parse, urllib.request
+          repo = 'San4o9910/Kinetra'
+          app, base, merge = [os.environ[k] for k in
+              ('APPROVED_APP_COMMIT', 'APPROVED_BASE_COMMIT', 'APPROVED_MERGE_COMMIT')]
+          assert all(re.fullmatch(r'[0-9a-f]{40}', sha) for sha in (app, base, merge))
+          assert os.environ['PUBLISH_TO_GHCR'] in ('true', 'false')
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, request, file, code, message, headers, new_url): return None
+          opener = urllib.request.build_opener(NoRedirect)
+          def request(path):
+              return urllib.request.Request('https://api.github.com/repos/' + repo + path,
+                  headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                           'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28'})
+          def get(path):
+              with opener.open(request(path), timeout=30) as response:
+                  return json.load(response)
+          def logs(job_id):
+              try:
+                  response = opener.open(request('/actions/jobs/' + str(job_id) + '/logs'), timeout=30)
+              except urllib.error.HTTPError as error:
+                  if error.code != 302: raise
+                  location = error.headers['Location']
+                  url = urllib.parse.urlsplit(location)
+                  assert url.scheme == 'https' and not url.username and not url.password
+                  assert url.port in (None, 443) and url.hostname
+                  assert url.hostname.endswith(('.blob.core.windows.net', '.actions.githubusercontent.com'))
+                  # Signed GitHub log location receives no GitHub bearer header.
+                  response = opener.open(urllib.request.Request(location), timeout=30)
+              with response:
+                  raw = response.read(16 * 1024 * 1024 + 1)
+              assert len(raw) <= 16 * 1024 * 1024
+              return raw.decode('utf-8-sig')
+          pr = get('/pulls/21')
+          assert pr['state'] == 'open' and pr['draft'] and not pr['merged']
+          assert pr['head']['repo']['full_name'] == repo
+          assert pr['head']['ref'] == 'feature/onboarding-exploration-mode'
+          assert (pr['head']['sha'], pr['base']['sha'], pr['merge_commit_sha']) == (app, base, merge)
+          assert [p['sha'] for p in get('/commits/' + merge)['parents']] == [base, app]
+          evidence = {'repository': repo, 'app_commit': app, 'base_commit': base, 'merge_commit': merge, 'runs': []}
+          for kind, variable, event in (
+              ('exact-head', 'APPROVED_HEAD_RUN', 'push'), ('merge-ref', 'APPROVED_MERGE_RUN', 'pull_request')):
+              run_id = os.environ[variable]
+              assert re.fullmatch(r'[1-9][0-9]*', run_id)
+              run = get('/actions/runs/' + run_id)
+              assert run['repository']['full_name'] == repo and run['event'] == event
+              assert run['path'] == '.github/workflows/ci.yml'
+              assert run['status'] == 'completed' and run['conclusion'] == 'success'
+              assert run['head_sha'] == app
+              if event == 'pull_request':
+                  assert any(p['number'] == 21 and p['head']['sha'] == app and p['base']['sha'] == base
+                             for p in run['pull_requests'])
+              jobs = get('/actions/runs/' + run_id + '/attempts/' + str(run['run_attempt']) + '/jobs?per_page=100')
+              assert jobs['total_count'] == 3
+              assert {j['name'] for j in jobs['jobs']} == {'Lint, Typecheck & Build', 'Unit & E2E Tests', 'Structure Verification'}
+              checked_jobs = []
+              for job in jobs['jobs']:
+                  assert job['status'] == 'completed' and job['conclusion'] == 'success'
+                  assert job['steps'] and all(s['conclusion'] == 'success' for s in job['steps'])
+                  output = logs(job['id'])
+                  prefix = r'^\d{4}-\d\d-\d\dT[0-9:.]+Z '
+                  semantics = re.findall(prefix + r'Checkout semantics: ([a-z-]+)\r?$', output, re.M)
+                  checkout = re.findall(prefix + r'Checkout SHA: ([a-f0-9]{40})\r?$', output, re.M)
+                  assert semantics == ['push-head' if event == 'push' else 'pull-request-merge']
+                  assert checkout == [app if event == 'push' else merge]
+                  checked_jobs.append({'id': job['id'], 'name': job['name'], 'semantics': semantics[0], 'checkout': checkout[0]})
+              evidence['runs'].append({'kind': kind, 'id': int(run_id), 'attempt': run['run_attempt'], 'url': run['html_url'], 'jobs': checked_jobs})
+          path = pathlib.Path(os.environ['RUNNER_TEMP']) / 'kinetra-image-evidence'
+          path.mkdir(mode=0o700)
+          (path / 'source-gates.json').write_text(json.dumps(evidence, indent=2) + '\n')
+          print('KINETRA_IMAGE_SOURCE_GATES=PASS')
+          PY
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # verified upstream commit
+        with:
+          ref: ${{ env.APPROVED_APP_COMMIT }}
+          persist-credentials: false
+
+      - name: Verify exact source and resolve immutable registry inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$APPROVED_APP_COMMIT"
+          git diff --exit-code
+          sha256sum --check --quiet MANIFEST.sha256
+          evidence="$RUNNER_TEMP/kinetra-image-evidence"
+          docker version > "$evidence/docker-version.txt"
+          docker buildx version >> "$evidence/docker-version.txt"
+          resolve() {
+            local variable="$1" tag="$2" digest
+            docker pull --platform linux/amd64 "$tag"
+            digest="$(docker image inspect "$tag" --format '{{index .RepoDigests 0}}')"
+            [[ "$digest" =~ @sha256:[a-f0-9]{64}$ ]]
+            printf '%s=%s\n' "$variable" "$digest" >> "$GITHUB_ENV"
+            printf '%s\t%s\t%s\n' "$variable" "$tag" "$digest" >> "$evidence/registry-inputs.tsv"
+            docker image inspect "$digest" > "$evidence/$variable-inspect.json"
+          }
+          resolve NODE_IMAGE "$NODE_TAG"
+          resolve NGINX_IMAGE "$NGINX_TAG"
+          resolve TRIVY_IMAGE "$TRIVY_TAG"
+
+      - name: Check actual upstream versions and build both final targets
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/kinetra-image-evidence"
+          docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges \
+            --user 1000:1000 --entrypoint sh "$NODE_IMAGE" -ec \
+            '. /etc/os-release; test "$VERSION_CODENAME" = bookworm; node -e '\''if(process.versions.node.split(".")[0]!=="22")process.exit(1)'\''; node --version; npm --version; cat /etc/os-release' \
+            > "$evidence/node-base-version.txt"
+          docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges \
+            --user 101:101 --entrypoint sh "$NGINX_IMAGE" -ec \
+            '. /etc/os-release; test "$VERSION_CODENAME" = trixie; nginx -v 2>&1 | grep -Fx "nginx version: nginx/1.30.4"; cat /etc/os-release' \
+            > "$evidence/nginx-base-version.txt"
+          docker run --rm --network none "$TRIVY_IMAGE" --version > "$evidence/trivy-version.txt"
+          grep -Fx 'Version: 0.74.0' "$evidence/trivy-version.txt"
+          for target in backend frontend; do
+            docker buildx build --platform linux/amd64 --load --provenance=false --sbom=false \
+              --file deploy/Containerfile --target "$target" --tag "kinetra-$target:qualified" \
+              --build-arg NODE_IMAGE="$NODE_IMAGE" --build-arg NGINX_IMAGE="$NGINX_IMAGE" \
+              --build-arg VCS_REF="$APPROVED_APP_COMMIT" --build-arg VITE_API_URL="$PUBLIC_ORIGIN" \
+              --build-arg VITE_PRIVATE_MEDIA_ORIGIN='' \
+              --label org.opencontainers.image.source=https://github.com/San4o9910/Kinetra \
+              --label org.opencontainers.image.revision="$APPROVED_APP_COMMIT" .
+            docker image inspect "kinetra-$target:qualified" > "$evidence/$target-image.json"
+            test "$(docker image inspect "kinetra-$target:qualified" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" = "$APPROVED_APP_COMMIT"
+          done
+
+      - name: Smoke backend tooling as UID 1000 with immutable filesystem
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --network none --user 1000:1000 --read-only --cap-drop ALL \
+            --security-opt no-new-privileges --tmpfs /tmp:rw,noexec,nosuid,size=256m,uid=1000,gid=1000,mode=0700 \
+            --entrypoint sh kinetra-backend:qualified -ec '
+              test "$(id -u)" = 1000
+              test -x /usr/bin/tini
+              test -f apps/backend/dist/server.js
+              test -f apps/backend/scripts/migrate.mjs
+              test -f apps/backend/scripts/seed.mjs
+              test -f apps/backend/migrations/001_auth.sql
+              node --check apps/backend/scripts/migrate.mjs
+              node --check apps/backend/scripts/seed.mjs
+              node --input-type=module -e '\''const s=await import("@kinetra/shared");if(!Object.keys(s).length)process.exit(1)'\''
+              if touch /app/.readonly-smoke 2>/dev/null; then exit 1; fi
+              node --version
+              ffmpeg -version
+              ffprobe -version
+              identify -version
+              convert -version
+              convert -size 2x2 xc:white /tmp/smoke.png
+              test "$(identify -format "%wx%h" /tmp/smoke.png)" = 2x2
+              ffmpeg -v error -f lavfi -i color=c=black:s=16x16:d=0.1 -c:v libx264 /tmp/smoke.mp4
+              test "$(ffprobe -v error -select_streams v:0 -show_entries stream=codec_name -of csv=p=0 /tmp/smoke.mp4)" = h264
+              dpkg-query -W
+            ' > "$RUNNER_TEMP/kinetra-image-evidence/backend-smoke.txt"
+          echo 'KINETRA_BACKEND_IMAGE_TOOLING=PASS'
+
+      - name: Smoke nginx config, static assets and CSP as UID 101
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/kinetra-image-evidence"
+          name="kinetra-image-smoke-$GITHUB_RUN_ID"
+          trap 'docker rm --force "$name" >/dev/null 2>&1 || true' EXIT
+          options=(--user 101:101 --read-only --cap-drop ALL --security-opt no-new-privileges
+            --tmpfs /tmp:rw,noexec,nosuid,size=64m,uid=101,gid=101,mode=0700 --add-host backend:127.0.0.1)
+          docker run --rm --network none "${options[@]}" --entrypoint sh kinetra-frontend:qualified -ec \
+            'test "$(id -u)" = 101; if touch /usr/share/nginx/html/.readonly-smoke 2>/dev/null; then exit 1; fi; nginx -t; nginx -v' \
+            > "$evidence/frontend-nginx.txt" 2>&1
+          docker run --detach --name "$name" "${options[@]}" --publish 127.0.0.1::8080 kinetra-frontend:qualified
+          export SMOKE_PORT="$(docker inspect "$name" --format '{{(index (index .NetworkSettings.Ports "8080/tcp") 0).HostPort}}')"
+          python3 - <<'PY'
+          import html.parser, json, os, pathlib, time, urllib.error, urllib.request
+          root = 'http://127.0.0.1:' + os.environ['SMOKE_PORT']
+          def get(path):
+              try:
+                  with urllib.request.urlopen(root + path, timeout=5) as response:
+                      return response.status, dict(response.headers.items()), response.read()
+              except urllib.error.HTTPError as error:
+                  return error.code, dict(error.headers.items()), error.read()
+          for attempt in range(30):
+              try:
+                  status, headers, body = get('/')
+                  if status == 200: break
+              except urllib.error.URLError:
+                  pass
+              time.sleep(1)
+          else: raise RuntimeError('nginx did not serve index within 30 seconds')
+          normalized = {k.lower(): v for k, v in headers.items()}
+          assert normalized['x-content-type-options'] == 'nosniff'
+          assert normalized['x-frame-options'] == 'DENY'
+          assert normalized['referrer-policy'] == 'no-referrer'
+          header_csp = normalized['content-security-policy']
+          for directive in ("default-src 'self'", "script-src 'self'", "object-src 'none'", "frame-ancestors 'none'"):
+              assert directive in header_csp
+          class Index(html.parser.HTMLParser):
+              def __init__(self): super().__init__(); self.assets = []; self.policies = []
+              def handle_starttag(self, tag, attributes):
+                  attrs = dict(attributes)
+                  if tag == 'meta' and attrs.get('http-equiv', '').lower() == 'content-security-policy':
+                      self.policies.append(attrs.get('content', ''))
+                  value = attrs.get('src') if tag == 'script' else attrs.get('href') if tag == 'link' else None
+                  if value and value.startswith('/assets/'): self.assets.append(value)
+          page = Index(); page.feed(body.decode())
+          assert page.policies == ["img-src 'self' blob:; media-src 'self' blob:;"]
+          assert any(p.endswith('.js') for p in page.assets) and any(p.endswith('.css') for p in page.assets)
+          for asset in page.assets:
+              assert '..' not in asset and '?' not in asset
+              code, asset_headers, content = get(asset)
+              assert code == 200 and len(content) > 0
+              assert any(k.lower() == 'cache-control' and '31536000' in v for k, v in asset_headers.items())
+          assert get('/ready')[0] == 404
+          assert get('/assets/nonexistent-kinetra-smoke.js')[0] == 404
+          assert get('/progress')[0] == 200
+          evidence = {'result': 'PASS_STATIC_ONLY', 'headers': headers, 'assets': page.assets,
+                      'api_started': False, 'public_https_verified': False}
+          (pathlib.Path(os.environ['RUNNER_TEMP']) / 'kinetra-image-evidence/frontend-http.json').write_text(json.dumps(evidence, indent=2) + '\n')
+          print('KINETRA_FRONTEND_IMAGE_STATIC=PASS')
+          PY
+
+      - name: Generate SBOMs and enforce HIGH/CRITICAL image vulnerability and secret scan
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/kinetra-image-evidence"
+          scan_dir="$RUNNER_TEMP/kinetra-image-scan"
+          mkdir -m 700 "$scan_dir" "$scan_dir/cache"
+          failed=0
+          for target in backend frontend; do
+            docker image save "kinetra-$target:qualified" --output "$scan_dir/$target.tar"
+            sha256sum "$scan_dir/$target.tar" >> "$evidence/image-archive-sha256.txt"
+            scanner=(docker run --rm --user "$(id -u):$(id -g)" --read-only --cap-drop ALL
+              --security-opt no-new-privileges --tmpfs /tmp:rw,noexec,nosuid,size=256m
+              --mount "type=bind,source=$scan_dir,target=/scan"
+              --mount "type=bind,source=$evidence,target=/evidence" "$TRIVY_IMAGE"
+              image --cache-dir /scan/cache --timeout 15m --disable-telemetry --ignorefile /dev/null
+              --input "/scan/$target.tar")
+            "${scanner[@]}" --scanners vuln --format spdx-json --output "/evidence/$target.spdx.json"
+            # No --ignore-unfixed, ignore-policy, ignore-status, continue-on-error or suppression file.
+            if ! "${scanner[@]}" --scanners vuln,secret --severity HIGH,CRITICAL --exit-code 1 \
+              --format json --output "/scan/$target-scan.raw.json"; then failed=1; fi
+          done
+          test -f "$scan_dir/cache/db/metadata.json"
+          cp "$scan_dir/cache/db/metadata.json" "$evidence/trivy-db-metadata.json"
+          python3 - <<'PY'
+          import json, os, pathlib
+          root = pathlib.Path(os.environ['RUNNER_TEMP']) / 'kinetra-image-evidence'
+          raw_root = pathlib.Path(os.environ['RUNNER_TEMP']) / 'kinetra-image-scan'
+          for target in ('backend', 'frontend'):
+              sbom = json.loads((root / (target + '.spdx.json')).read_text())
+              assert sbom['spdxVersion'].startswith('SPDX-') and sbom.get('packages')
+              report = json.loads((raw_root / (target + '-scan.raw.json')).read_text())
+              assert report.get('Results') and report.get('Metadata', {}).get('OS', {}).get('Family') == 'debian'
+              assert any(result.get('Class') == 'os-pkgs' for result in report['Results'])
+              if target == 'backend': assert any(result.get('Class') == 'lang-pkgs' for result in report['Results'])
+              # Retain finding identities and locations, never matched secret text or code excerpts.
+              for result in report['Results']:
+                  if 'Secrets' in result:
+                      result['Secrets'] = [{key: finding[key] for key in
+                          ('RuleID', 'Category', 'Severity', 'Title', 'StartLine', 'EndLine') if key in finding}
+                          for finding in result['Secrets']]
+              (root / (target + '-scan.json')).write_text(json.dumps(report, indent=2) + '\n')
+          PY
+          test "$failed" = 0
+          printf '%s\n' 'KINETRA_IMAGE_SCAN_HIGH_CRITICAL=PASS' | tee "$evidence/qualification.txt"
+
+      - name: Publish qualified images to project GHCR packages when enabled
+        if: env.PUBLISH_TO_GHCR == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The token is step-local, sent only to GitHub/GHCR, never a build arg or artifact.
+          export DOCKER_CONFIG="$RUNNER_TEMP/kinetra-ghcr-auth"
+          mkdir -m 700 "$DOCKER_CONFIG"
+          trap 'docker logout ghcr.io >/dev/null 2>&1 || true; rm -rf "$DOCKER_CONFIG"' EXIT
+          python3 - <<'PY'
+          import json, os, urllib.error, urllib.request
+          for package in ('kinetra-backend', 'kinetra-frontend'):
+              req = urllib.request.Request('https://api.github.com/users/San4o9910/packages/container/' + package,
+                  headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                           'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28'})
+              try:
+                  with urllib.request.urlopen(req, timeout=30) as response: data = json.load(response)
+              except urllib.error.HTTPError as error:
+                  if error.code == 404: continue
+                  raise RuntimeError('Cannot verify existing package visibility') from None
+              assert data['visibility'] == 'private', 'Existing package is not private'
+              assert data.get('repository', {}).get('full_name') == 'San4o9910/Kinetra', 'Package belongs to another project'
+          PY
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          for target in backend frontend; do
+            image="ghcr.io/san4o9910/kinetra-$target:sha-$APPROVED_APP_COMMIT-run-$GITHUB_RUN_ID-attempt-$GITHUB_RUN_ATTEMPT"
+            docker tag "kinetra-$target:qualified" "$image"
+            docker push "$image"
+            digest="$(docker image inspect "$image" --format '{{json .RepoDigests}}' | python3 -c 'import json,sys; prefix=sys.argv[1]+"@sha256:"; values=[v for v in json.load(sys.stdin) if v.startswith(prefix)]; assert len(values)==1; print(values[0])' "${image%%:*}")"
+            [[ "$digest" =~ @sha256:[a-f0-9]{64}$ ]]
+            docker buildx imagetools inspect --raw "$digest" > "$RUNNER_TEMP/kinetra-image-evidence/$target-registry-manifest.json"
+            test "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["config"]["digest"])' "$RUNNER_TEMP/kinetra-image-evidence/$target-registry-manifest.json")" = "$(docker image inspect "$image" --format '{{.Id}}')"
+            printf '%s_IMAGE=%s\n' "${target^^}" "$digest" >> "$RUNNER_TEMP/kinetra-image-evidence/published-images.env"
+          done
+          python3 - <<'PY'
+          import json, os, pathlib, urllib.request
+          evidence = []
+          for package in ('kinetra-backend', 'kinetra-frontend'):
+              req = urllib.request.Request('https://api.github.com/users/San4o9910/packages/container/' + package,
+                  headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                           'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28'})
+              with urllib.request.urlopen(req, timeout=30) as response: data = json.load(response)
+              assert data['visibility'] == 'private'
+              assert data.get('repository', {}).get('full_name') == 'San4o9910/Kinetra'
+              evidence.append({'package': package, 'visibility': data['visibility'], 'repository': data['repository']['full_name']})
+          (pathlib.Path(os.environ['RUNNER_TEMP']) / 'kinetra-image-evidence/package-visibility.json').write_text(json.dumps(evidence, indent=2) + '\n')
+          PY
+          echo 'KINETRA_QUALIFIED_IMAGES_PUBLISHED=PASS'
+
+      - name: Retain actual evidence, including reports from failed scans
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # verified upstream v4.6.2
+        with:
+          name: kinetra-image-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/kinetra-image-evidence/
+          if-no-files-found: error
+          retention-days: 14
+
+# Qualification is limited to exact source gates, final image contents, tooling,
+# static serving and this dated scanner database. It is NOT live API readiness,
+# browser UX validation against production, payment/delivery integration, HTTPS,
+# host deployment, backup/restore proof or a claim that no vulnerabilities exist.
+# New GHCR packages default to private; this workflow never changes visibility.
+# The optional future deployment job may pull with its short-lived project token
+# and erase the host's temporary Docker auth directory immediately after pull.
+# No persistent PAT is required for that workflow-owned pull; this draft never SSHs.
+# Reviewed primary sources (2026-09-09):
+# https://github.com/nginx/docker-nginx-unprivileged (stable Debian = trixie, 1.30.4)
+# https://github.com/aquasecurity/trivy/releases/tag/v0.74.0
+# https://trivy.dev/docs/latest/references/configuration/cli/trivy_image/
+# https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry
