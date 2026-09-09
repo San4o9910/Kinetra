@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import base64
 from decimal import Decimal, InvalidOperation, ROUND_CEILING
+import hashlib
 import ipaddress
 import json
 import os
@@ -31,6 +32,11 @@ REPOSITORY = "San4o9910/Kinetra"
 SERVER_NAME = "kinetra-app-hourly-20260909"
 PRESET_ID = 2453
 OS_ID = 99
+# Read-only reconciliation of failed run 34397615093 identified this one
+# orphan. Its POST /servers was never attempted. No other old key is eligible.
+ORPHAN_KEY_ID = 768633
+ORPHAN_KEY_NAME = "kinetra-ephemeral-34397615093"
+ORPHAN_KEY_BODY_SHA256 = "c74814cb35e0d500da8553164d8c329ddd9bd2fb3f12e1f5eb1e266a900dbf22"
 MAX_BODY = 4_194_304
 MAX_PAGES = 100
 PAGE_SIZE = 100
@@ -88,6 +94,19 @@ def rows(document, key):
     return value
 
 
+def ssh_key_object(document):
+    """CLI uses underscores; the generated SDK documents hyphen aliases.
+
+    Accept exactly one documented wrapper and never search arbitrary fields.
+    """
+    if not isinstance(document, dict):
+        raise ProvisionError("SSH_KEY_RESPONSE_SHAPE_INVALID")
+    wrappers = [name for name in ("ssh_key", "ssh-key") if name in document]
+    if len(wrappers) != 1 or not isinstance(document[wrappers[0]], dict):
+        raise ProvisionError("SSH_KEY_RESPONSE_WRAPPER_INVALID")
+    return document[wrappers[0]]
+
+
 def money(value):
     if isinstance(value, bool) or not isinstance(value, (str, int, float, Decimal)):
         raise ProvisionError("MONEY_VALUE_INVALID")
@@ -107,7 +126,7 @@ def reject_json_constant(_value):
 
 
 class Api:
-    """Capabilities are fixed reads, single creates, and cleanup of created IDs."""
+    """Fixed reads, single creates, verified new IDs and one verified orphan."""
 
     def __init__(self, token):
         self.token = token
@@ -118,6 +137,12 @@ class Api:
         self.server_id = None
         self.key_post_attempted = False
         self.server_post_attempted = False
+        self.preflight_passed = False
+        self.key_identity_verified = False
+        self.orphan_read_attempted = False
+        self.orphan_identity_verified = False
+        self.orphan_delete_attempted = False
+        self.orphan_cleanup_complete = False
 
     def _authorize(self, method, path):
         if method == "GET" and path in READ_PATHS:
@@ -126,17 +151,26 @@ class Api:
             offset = int(path.rsplit("=", 1)[1])
             if offset < MAX_PAGES * PAGE_SIZE:
                 return
+        if path == f"/ssh-keys/{ORPHAN_KEY_ID}" and self.preflight_passed and not self.key_post_attempted:
+            if method == "GET" and not self.orphan_read_attempted:
+                self.orphan_read_attempted = True
+                return
+            if method == "DELETE" and self.orphan_identity_verified and not self.orphan_delete_attempted:
+                self.orphan_delete_attempted = True
+                return
         if method == "POST" and path == "/ssh-keys" and not self.key_post_attempted:
+            if not self.preflight_passed or not self.orphan_cleanup_complete:
+                raise ProvisionError("PREFLIGHT_AND_ORPHAN_CLEANUP_REQUIRED")
             self.key_post_attempted = True
             return
         if method == "POST" and path == "/servers" and not self.server_post_attempted:
-            if self.key_id is None:
+            if self.key_id is None or not self.key_identity_verified:
                 raise ProvisionError("SERVER_CREATE_WITHOUT_TRACKED_KEY_REFUSED")
             self.server_post_attempted = True
             return
         if self.server_id is not None and method == "GET" and path == f"/servers/{self.server_id}":
             return
-        if self.key_id is not None and method == "DELETE":
+        if self.key_id is not None and self.key_identity_verified and method == "DELETE":
             if path == f"/ssh-keys/{self.key_id}":
                 return
             if self.server_id is not None and path == f"/servers/{self.server_id}/ssh-keys/{self.key_id}":
@@ -305,6 +339,43 @@ def preflight(api, state):
     state["preflight"] = "PASS"
 
 
+def cleanup_reconciled_orphan(api, state):
+    """One GET and at most one DELETE of the specifically reconciled orphan."""
+    state["orphan_key_cleanup"] = "CHECK_PENDING"
+    try:
+        document = api.request("GET", f"/ssh-keys/{ORPHAN_KEY_ID}")
+    except ProvisionError as error:
+        if str(error) != "API_HTTP_404":
+            raise
+        state["orphan_key_cleanup"] = "ALREADY_ABSENT"
+        api.orphan_cleanup_complete = True
+        return
+    key = ssh_key_object(document)
+    body = key.get("body")
+    if (
+        positive_id(key.get("id")) != ORPHAN_KEY_ID
+        or key.get("name") != ORPHAN_KEY_NAME
+        or key.get("is_default") is not False
+        or not isinstance(body, str)
+        or not 1 <= len(body) <= 16_384
+        or hashlib.sha256(body.encode("utf-8")).hexdigest() != ORPHAN_KEY_BODY_SHA256
+    ):
+        state["orphan_key_cleanup"] = "IDENTITY_MISMATCH_RECONCILE"
+        raise ProvisionError("RECONCILED_ORPHAN_IDENTITY_MISMATCH")
+    api.orphan_identity_verified = True
+    state["orphan_key_cleanup"] = "DELETE_OUTCOME_UNKNOWN_RECONCILE"
+    emit(state)
+    try:
+        api.request("DELETE", f"/ssh-keys/{ORPHAN_KEY_ID}")
+    except ProvisionError as error:
+        if str(error) != "API_HTTP_404":
+            raise
+        state["orphan_key_cleanup"] = "ALREADY_ABSENT"
+    else:
+        state["orphan_key_cleanup"] = "API_DELETE_CONFIRMED"
+    api.orphan_cleanup_complete = True
+
+
 def ephemeral_public_key():
     """Keep private material in pipes/memory only; no private key file exists."""
     # Prevent crash dumps from persisting token/key process memory.
@@ -397,7 +468,10 @@ def wait_until_on(api, state):
 
 def cleanup_keys(api, state):
     if api.key_id is None:
-        state["account_key_cleanup"] = "UNKNOWN_ID_RECONCILE" if api.key_post_attempted else "NOT_NEEDED"
+        if state["ssh_key_id"] is not None:
+            state["account_key_cleanup"] = "UNVERIFIED_KEY_ID_RECONCILE"
+        else:
+            state["account_key_cleanup"] = "UNKNOWN_ID_RECONCILE" if api.key_post_attempted else "NOT_NEEDED"
         return
     # Cleanup operations deliberately have independent exception boundaries.
     if api.server_id is not None:
@@ -433,6 +507,7 @@ def main(argv=None, environ=None, api_factory=Api):
         "result": "IN_PROGRESS", "preflight": "NOT_COMPLETED", "server_creation": "NOT_ATTEMPTED",
         "server_id": None, "server_status": "UNKNOWN", "public_ipv4": None,
         "ssh_key_id": None,
+        "orphan_ssh_key_id": ORPHAN_KEY_ID, "orphan_key_cleanup": "NOT_CHECKED",
         "preset_id": PRESET_ID, "project_id": None, "server_poll": "NOT_COMPLETED",
         "guest_key_cleanup": "NOT_NEEDED", "account_key_cleanup": "NOT_NEEDED",
         "billing_mode": "ORDINARY_CPU_HOURLY_NO_FINANCE_WRITES",
@@ -459,15 +534,28 @@ def main(argv=None, environ=None, api_factory=Api):
         api = api_factory(token)
         del token
         preflight(api, state)
+        api.preflight_passed = True
+        cleanup_reconciled_orphan(api, state)
         public_key = ephemeral_public_key()
-        key = api.request("POST", "/ssh-keys", {
-            "name": "kinetra-ephemeral-" + run_id,
+        key_name = "kinetra-ephemeral-" + run_id
+        key = ssh_key_object(api.request("POST", "/ssh-keys", {
+            "name": key_name,
             "body": public_key, "is_default": False,
-        }).get("ssh-key")
-        if not isinstance(key, dict):
-            raise ProvisionError("CREATED_SSH_KEY_RESPONSE_INVALID")
-        api.key_id = positive_id(key.get("id"))
-        state["ssh_key_id"] = api.key_id
+        }))
+        # An ID alone does not authorize deletion: a malformed response could
+        # identify an unrelated key. Record its safe ID but grant capabilities
+        # only when it matches the new key's exact submitted identity.
+        key_id = positive_id(key.get("id"))
+        state["ssh_key_id"] = key_id
+        if (
+            key_id == ORPHAN_KEY_ID
+            or key.get("name") != key_name
+            or key.get("body") != public_key
+            or key.get("is_default") is not False
+        ):
+            raise ProvisionError("CREATED_SSH_KEY_IDENTITY_MISMATCH")
+        api.key_id = key_id
+        api.key_identity_verified = True
         state["account_key_cleanup"] = "PENDING"
         emit(state)
         state["server_creation"] = "OUTCOME_UNKNOWN_RECONCILE_BEFORE_RETRY"
