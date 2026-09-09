@@ -6,6 +6,7 @@ import type { RefreshCookieConfig } from './cookies.js';
 import {
   ConsoleAuthTokenDelivery,
   DisabledAuthTokenDelivery,
+  WebhookAuthTokenDelivery,
   type AuthTokenDelivery,
 } from './delivery.js';
 import { BcryptPasswordHasher } from './password.js';
@@ -25,9 +26,11 @@ export interface AuthRuntime {
 }
 
 const createTokenDelivery = (): AuthTokenDelivery =>
-  env.auth.tokenDeliveryMode === 'console'
-    ? new ConsoleAuthTokenDelivery()
-    : new DisabledAuthTokenDelivery();
+  env.auth.tokenDeliveryWebhook !== null
+    ? new WebhookAuthTokenDelivery(env.auth.tokenDeliveryWebhook)
+    : env.auth.tokenDeliveryMode === 'console'
+      ? new ConsoleAuthTokenDelivery()
+      : new DisabledAuthTokenDelivery();
 
 export const createProductionAuthRuntime = (): AuthRuntime => {
   const refreshTtlMs = env.auth.refreshTtlDays * DAY_IN_MILLISECONDS;

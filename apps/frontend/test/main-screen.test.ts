@@ -12,6 +12,7 @@ import type {
 
 import { BaseLessonsRequiredDialog } from '../src/features/base-lessons/BaseLessonsRequiredDialog.js';
 import { TabBar } from '../src/features/navigation/TabBar.js';
+import { ActiveAppHeader } from '../src/features/navigation/ActiveAppHeader.js';
 import { ProgramWeekView } from '../src/features/program/ProgramWeekView.js';
 import { WorkoutPlayer } from '../src/features/program/WorkoutPlayer.js';
 import {
@@ -189,7 +190,7 @@ test('base-lessons gate offers preparation and a return to app exploration', () 
   assert.ok(markup.includes('Вернуться к изучению приложения'));
 });
 
-test('tab bar renders Today and a fifth active Chat tab with its unread badge', () => {
+test('tab bar renders four client routes with Trainer and its unread badge', () => {
   const markup = renderToStaticMarkup(
     createElement(TabBar, {
       route: appRoutes.chat,
@@ -201,7 +202,7 @@ test('tab bar renders Today and a fifth active Chat tab with its unread badge', 
 
   assert.equal(
     (markup.match(/data-testid="tab-(?:home|schedule|progress|chat|settings)"/gu) ?? []).length,
-    5,
+    4,
   );
   assert.equal((markup.match(/aria-current="page"/gu) ?? []).length, 1);
   assert.match(markup, /data-testid="tab-chat"[^>]*aria-current="page"/u);
@@ -212,10 +213,11 @@ test('tab bar renders Today and a fifth active Chat tab with its unread badge', 
   assert.ok(markup.includes('data-testid="tab-chat-badge"'));
   assert.ok(markup.includes('99+'));
   assert.ok(markup.includes('Сегодня'));
-  assert.ok(markup.includes('Расписание'));
+  assert.ok(markup.includes('План'));
   assert.ok(markup.includes('Прогресс'));
   assert.ok(markup.includes('Чат'));
-  assert.ok(markup.includes('Настройки'));
+  assert.ok(markup.includes('Тренер'));
+  assert.equal(markup.includes('data-testid="tab-settings"'), false);
 
   const savingMarkup = renderToStaticMarkup(
     createElement(TabBar, {
@@ -228,8 +230,8 @@ test('tab bar renders Today and a fifth active Chat tab with its unread badge', 
   );
   assert.match(savingMarkup, /data-testid="tab-bar"[^>]*aria-busy="true"/u);
   assert.equal(savingMarkup.includes('data-testid="tab-chat"'), false);
-  assert.equal((savingMarkup.match(/aria-disabled="true"/gu) ?? []).length, 4);
-  assert.equal((savingMarkup.match(/tabindex="-1"/gu) ?? []).length, 4);
+  assert.equal((savingMarkup.match(/aria-disabled="true"/gu) ?? []).length, 3);
+  assert.equal((savingMarkup.match(/tabindex="-1"/gu) ?? []).length, 3);
 });
 
 test('system Back keeps the saving workout on its canonical history entry', async () => {
@@ -324,4 +326,14 @@ test('timezone weekday and optimistic boundary completion are deterministic', ()
   assert.equal(completed.overall_progress.total_workouts_done, 7);
   assert.equal(WORKOUT_COMPLETION_THRESHOLD, 90);
   assert.equal(WORKOUT_PROGRESS_CHECK_INTERVAL_MS, 10_000);
+});
+
+test('profile settings stays reachable at the top and disabled while a workout saves', () => {
+  const props = { displayName: 'Санжар', settingsActive: true, onOpenSettings: () => undefined };
+  const ready = renderToStaticMarkup(createElement(ActiveAppHeader, { ...props, disabled: false }));
+  assert.match(ready, /data-testid="header-settings"[^>]*aria-current="page"/u);
+  assert.match(ready, /aria-label="Открыть настройки"/u);
+  assert.match(ready, /class="active-app-avatar"[^>]*>С</u);
+  const busy = renderToStaticMarkup(createElement(ActiveAppHeader, { ...props, disabled: true }));
+  assert.match(busy, /data-testid="header-settings"[^>]*disabled/u);
 });

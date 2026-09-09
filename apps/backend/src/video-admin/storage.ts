@@ -156,8 +156,11 @@ export class S3VideoStorage implements VideoStorage {
   private readonly client: S3Client;
 
   public constructor(
-    private readonly s3: Readonly<S3Environment>,
-    private readonly video: Readonly<VideoUploadsEnvironment>,
+    private readonly s3: Readonly<Omit<S3Environment, 'presignedUrlTtlSeconds'>>,
+    private readonly video: Readonly<VideoEncryptionExpectation> = {
+      serverSideEncryption: 'AES256',
+      kmsKeyId: null,
+    },
   ) {
     this.client = new S3Client({
       region: s3.region,

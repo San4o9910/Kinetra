@@ -633,7 +633,7 @@ export const ChatComposer = ({
           </section>
         )}
 
-        <div className="chat-composer-row">
+        <div className={`chat-composer-row${photoUploadsEnabled ? ' has-attachment' : ''}`}>
           {photoUploadsEnabled ? (
             <React.Fragment>
               <input

@@ -115,9 +115,13 @@ const buildFrontendForBrowserTest = async () => {
 
   const assetDirectory = path.join(frontendDist, 'assets');
   const builtAssets = await readdir(assetDirectory);
-  const javascriptAsset = builtAssets.find((fileName) => fileName.endsWith('.js'));
-  assert.notEqual(javascriptAsset, undefined, 'Vite did not produce a JavaScript asset.');
-  const javascript = await readFile(path.join(assetDirectory, javascriptAsset), 'utf8');
+  const javascriptAssets = builtAssets.filter((fileName) => fileName.endsWith('.js'));
+  assert.ok(javascriptAssets.length > 0, 'Vite did not produce a JavaScript asset.');
+  const javascript = (
+    await Promise.all(
+      javascriptAssets.map((fileName) => readFile(path.join(assetDirectory, fileName), 'utf8')),
+    )
+  ).join('\n');
   assert.ok(
     javascript.includes(browserApiOrigin),
     `Browser build does not contain the expected API origin ${browserApiOrigin}.`,
@@ -2108,7 +2112,7 @@ const runBrowserScenario = async () => {
       assert.ok(metrics.scrollWidth <= width, `Main screen horizontal overflow at ${width}px.`);
       assert.equal(metrics.cardCount, browserTodayDashboardDayNumbers.length);
       assert.equal(metrics.cardsInsideViewport, true, `Workout card overflow at ${width}px.`);
-      assert.equal(metrics.tabCount, 5);
+      assert.equal(metrics.tabCount, 4);
       assert.equal(metrics.tabTargetsAreLargeEnough, true, `Tab target below 44px at ${width}px.`);
       assert.ok(
         Math.abs(metrics.tabBarBottom - metrics.innerHeight) <= 1,
@@ -2252,11 +2256,31 @@ const runBrowserScenario = async () => {
           tabBarBottom: tabBarRect?.bottom ?? -1,
           tabBarTop: tabBarRect?.top ?? -1,
           lastAchievementBottom: lastAchievementRect?.bottom ?? window.innerHeight + 1,
+          sectionOrder: [...document.querySelectorAll('.progress-panel > section')].map(
+            (section) => section.getAttribute('data-testid'),
+          ),
+          extraSectionsInsideViewport: ['progress-journey', 'progress-wellbeing-overview'].every((id) => {
+            const rect = document.querySelector('[data-testid="' + id + '"]')?.getBoundingClientRect();
+            return rect !== undefined && rect.left >= 0 && rect.right <= window.innerWidth;
+          }),
         };
       })()`);
       assert.equal(metrics.innerWidth, width);
       assert.ok(metrics.scrollWidth <= width, `Progress horizontal overflow at ${width}px.`);
       assert.equal(metrics.sectionCount, 4);
+      assert.deepEqual(metrics.sectionOrder, [
+        'progress-goal-section',
+        'progress-metrics-section',
+        'progress-stats-section',
+        'progress-achievements-section',
+        'progress-journey',
+        'progress-wellbeing-overview',
+      ]);
+      assert.equal(
+        metrics.extraSectionsInsideViewport,
+        true,
+        `New progress views overflow at ${width}px.`,
+      );
       assert.equal(
         metrics.sectionsInsideViewport,
         true,
@@ -2269,7 +2293,7 @@ const runBrowserScenario = async () => {
         true,
         `Progress control below 44px at ${width}px.`,
       );
-      assert.equal(metrics.tabCount, 5);
+      assert.equal(metrics.tabCount, 4);
       assert.equal(
         metrics.tabTargetsAreLargeEnough,
         true,
@@ -2712,8 +2736,9 @@ const runBrowserScenario = async () => {
       await cdp.evaluate(
         `document.querySelectorAll(${JSON.stringify('[data-testid^="tab-"]')}).length - 1`,
       ),
-      4,
+      3,
     );
+    assert.equal(await exists('header-settings'), true);
     const chatSessionRequestsBeforeExplorationProbe = counters.chatSessionGet;
     await cdp.evaluate(`
       window.history.pushState(null, '', '/chat');
@@ -2740,7 +2765,7 @@ const runBrowserScenario = async () => {
       'progress is available during exploration',
       async () => (await pathname()) === '/progress' && (await exists('progress-goal-section')),
     );
-    await click('tab-settings');
+    await click('header-settings');
     await waitFor(
       'settings are available during exploration',
       async () => (await pathname()) === '/settings' && (await exists('settings-screen')),
@@ -3053,7 +3078,7 @@ const runBrowserScenario = async () => {
     assert.equal(await exists('week-next'), false);
 
     const tabState = await cdp.evaluate(`(() => {
-      const ids = ['tab-home', 'tab-schedule', 'tab-progress', 'tab-chat', 'tab-settings'];
+      const ids = ['tab-home', 'tab-schedule', 'tab-progress', 'tab-chat', 'header-settings'];
       return {
         count: ids.filter((id) => document.querySelector('[data-testid="' + id + '"]')).length,
         active: ids.filter((id) =>
@@ -3579,7 +3604,9 @@ const runBrowserScenario = async () => {
     );
     assert.equal(await attribute('tab-bar', 'aria-busy'), 'true');
     assert.equal(await attribute('tab-schedule', 'aria-disabled'), 'true');
+    assert.equal(await disabled('header-settings'), true);
     await click('tab-schedule');
+    await click('header-settings');
     const routeWhileSaving = await cdp.evaluate(`new Promise((resolve) => {
       requestAnimationFrame(() => resolve({
         pathname: window.location.pathname,
@@ -3699,7 +3726,7 @@ const runBrowserScenario = async () => {
       assert.equal(await attribute('workout-status-1', 'data-state'), 'completed');
     }
 
-    await click('tab-settings');
+    await click('header-settings');
     await waitFor(
       'T10 settings content',
       async () =>
@@ -3712,7 +3739,7 @@ const runBrowserScenario = async () => {
         (await exists('settings-account-section')),
     );
     assert.equal(await pathname(), '/settings');
-    assert.equal(await attribute('tab-settings', 'aria-current'), 'page');
+    assert.equal(await attribute('header-settings', 'aria-current'), 'page');
     assert.ok((await text('settings-screen'))?.includes('Подписка'));
     assert.ok((await text('settings-screen'))?.includes('Уведомления'));
     assert.ok((await text('settings-screen'))?.includes('Профиль'));
@@ -3851,7 +3878,7 @@ const runBrowserScenario = async () => {
         weekly_survey_reminder: true,
       },
     ]);
-    await click('tab-settings');
+    await click('header-settings');
     await waitFor('T10 settings restored after unmount notification flush', () =>
       exists('settings-appearance-section'),
     );
@@ -3986,7 +4013,7 @@ const runBrowserScenario = async () => {
         headingColor: 'rgb(17, 20, 20)',
       },
     );
-    await click('tab-settings');
+    await click('header-settings');
     await waitFor(
       'T10 light preference remains selected after returning to settings',
       async () =>
@@ -4233,7 +4260,7 @@ const runBrowserScenario = async () => {
       async () => (await pathname()) === '/' && (await exists('main-screen')),
     );
 
-    await click('tab-settings');
+    await click('header-settings');
     await waitFor('T11 settings restored before destructive T10 flows', () =>
       exists('settings-account-section'),
     );
@@ -4300,7 +4327,7 @@ const runBrowserScenario = async () => {
       'T10 active app after reauthentication following deletion mock',
       async () => (await pathname()) === '/' && (await exists('main-screen')),
     );
-    await click('tab-settings');
+    await click('header-settings');
     await waitFor('T10 settings before confirmed logout', () => exists('settings-account-section'));
     await waitFor(
       'T13 device is unsubscribed after account deletion',
@@ -6292,9 +6319,11 @@ const launchT12BrowserContext = async (profileDirectory, width, height) => {
       const root = document.documentElement;
       const chatTab = document.querySelector(${JSON.stringify(selector('tab-chat'))});
       const composer = document.querySelector(${JSON.stringify(selector('chat-composer'))});
+      const input = document.querySelector(${JSON.stringify(selector('chat-message-input'))});
       const tabBar = document.querySelector('nav');
       const chatTabRect = chatTab?.getBoundingClientRect() ?? null;
       const composerRect = composer?.getBoundingClientRect() ?? null;
+      const inputRect = input?.getBoundingClientRect() ?? null;
       const tabRect = tabBar?.getBoundingClientRect() ?? null;
       return {
         innerWidth: window.innerWidth,
@@ -6313,6 +6342,7 @@ const launchT12BrowserContext = async (profileDirectory, width, height) => {
           top: composerRect.top,
           bottom: composerRect.bottom,
         },
+        input: inputRect === null ? null : { width: inputRect.width, height: inputRect.height },
         tab: tabRect === null ? null : {
           top: tabRect.top,
           bottom: tabRect.bottom,
@@ -6609,6 +6639,14 @@ const runT12BrowserScenario = async () => {
             metrics.scrollWidth <= width,
             `${surface} horizontally overflows at ${width}x${height} in ${theme}.`,
           );
+          if (metrics.composer !== null) {
+            assert.notEqual(metrics.input, null, `${surface} composer must have a text input.`);
+            assert.ok(
+              metrics.input.width >= 120,
+              `${surface} chat text input is squeezed at ${width}px.`,
+            );
+            assert.ok(metrics.input.height >= 44, `${surface} chat text input is below 44px.`);
+          }
         }
         assert.notEqual(clientMetrics.chatTab, null, 'Active client must expose the Chat tab.');
         assert.ok(clientMetrics.chatTab.width >= 44);
@@ -7771,7 +7809,7 @@ const runT12BrowserScenario = async () => {
         )),
       20_000,
     );
-    await client.click('tab-settings');
+    await client.click('header-settings');
     await waitFor('settings account deletion surface', () =>
       client.exists('settings-account-section'),
     );

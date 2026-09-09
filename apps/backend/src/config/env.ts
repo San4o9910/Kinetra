@@ -1,16 +1,8 @@
-import { config as loadEnv } from 'dotenv';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { parseDatabaseUrl, parseNodeEnvironment, type NodeEnvironment } from './database.js';
+export { parseDatabaseUrl } from './database.js';
 
-const currentDirectory = dirname(fileURLToPath(import.meta.url));
-const backendRoot = resolve(currentDirectory, '../..');
-const repositoryRoot = resolve(backendRoot, '../..');
-
-loadEnv({ path: resolve(repositoryRoot, '.env'), quiet: true });
-
-type NodeEnvironment = 'development' | 'test' | 'production';
 type SameSiteMode = 'lax' | 'strict' | 'none';
-type TokenDeliveryMode = 'console' | 'disabled';
+type TokenDeliveryMode = 'console' | 'disabled' | 'webhook';
 
 export interface S3Environment {
   readonly endpoint: string | null;
@@ -329,11 +321,18 @@ export const parseS3Environment = (
       throw new Error('S3_ENDPOINT must be a valid HTTP or HTTPS URL.');
     }
 
-    if (!['http:', 'https:'].includes(parsedEndpoint.protocol)) {
+    if (
+      !['http:', 'https:'].includes(parsedEndpoint.protocol) ||
+      parsedEndpoint.username ||
+      parsedEndpoint.password ||
+      parsedEndpoint.pathname !== '/' ||
+      parsedEndpoint.search ||
+      parsedEndpoint.hash
+    ) {
       throw new Error('S3_ENDPOINT must be a valid HTTP or HTTPS URL.');
     }
 
-    const loopback = ['localhost', '127.0.0.1', '::1'].includes(parsedEndpoint.hostname);
+    const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(parsedEndpoint.hostname);
     if (parsedEndpoint.protocol !== 'https:' && (nodeEnvironment === 'production' || !loopback)) {
       throw new Error('S3_ENDPOINT must use HTTPS outside explicit loopback development or tests.');
     }
@@ -469,11 +468,70 @@ const parseVapidEnvironment = (
   return Object.freeze({ publicKey, privateKey, subject });
 };
 
-const nodeEnv = parseEnum<NodeEnvironment>('NODE_ENV', process.env.NODE_ENV, 'development', [
-  'development',
-  'test',
-  'production',
-]);
+export interface TokenDeliveryWebhookEnvironment {
+  readonly url: string;
+  readonly secret: string;
+  readonly timeoutMs: number;
+}
+
+export const parseTokenDeliveryWebhook = (
+  values: NodeJS.ProcessEnv,
+): Readonly<TokenDeliveryWebhookEnvironment> => {
+  const rawUrl = values.AUTH_TOKEN_DELIVERY_WEBHOOK_URL ?? '';
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    throw new Error('AUTH_TOKEN_DELIVERY_WEBHOOK_URL must be an HTTPS URL.');
+  }
+  if (
+    rawUrl.length > 2048 ||
+    url.protocol !== 'https:' ||
+    url.username ||
+    url.password ||
+    url.search ||
+    url.hash
+  ) {
+    throw new Error(
+      'AUTH_TOKEN_DELIVERY_WEBHOOK_URL must use HTTPS without credentials, query or fragment.',
+    );
+  }
+  const secret = values.AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET ?? '';
+  if (!/^[\x21-\x7e]{32,512}$/u.test(secret)) {
+    throw new Error(
+      'AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET must contain 32-512 printable non-space ASCII characters.',
+    );
+  }
+  return Object.freeze({
+    url: url.toString(),
+    secret,
+    timeoutMs: parseInteger(
+      'AUTH_TOKEN_DELIVERY_TIMEOUT_MS',
+      values.AUTH_TOKEN_DELIVERY_TIMEOUT_MS,
+      10000,
+      1000,
+      30000,
+    ),
+  });
+};
+
+export const parseShutdownEnvironment = (
+  values: NodeJS.ProcessEnv,
+): Readonly<{ drainMs: number; timeoutMs: number }> => {
+  const drainMs = parseInteger('SHUTDOWN_DRAIN_MS', values.SHUTDOWN_DRAIN_MS, 5000, 0, 30000);
+  const timeoutMs = parseInteger(
+    'SHUTDOWN_TIMEOUT_MS',
+    values.SHUTDOWN_TIMEOUT_MS,
+    25000,
+    1000,
+    120000,
+  );
+  if (drainMs >= timeoutMs)
+    throw new Error('SHUTDOWN_DRAIN_MS must be less than SHUTDOWN_TIMEOUT_MS.');
+  return Object.freeze({ drainMs, timeoutMs });
+};
+
+const nodeEnv = parseNodeEnvironment(process.env.NODE_ENV);
 const s3 = parseS3Environment(nodeEnv);
 const videoUploads = parseVideoUploadsEnvironment(process.env);
 const chatEnabled = parseBoolean('CHAT_ENABLED', process.env.CHAT_ENABLED, false);
@@ -511,8 +569,8 @@ const refreshCookieSameSite = parseEnum<SameSiteMode>(
 const tokenDeliveryMode = parseEnum<TokenDeliveryMode>(
   'AUTH_TOKEN_DELIVERY_MODE',
   process.env.AUTH_TOKEN_DELIVERY_MODE,
-  nodeEnv === 'production' ? 'disabled' : 'console',
-  ['console', 'disabled'],
+  nodeEnv === 'production' ? 'webhook' : 'console',
+  ['console', 'disabled', 'webhook'],
 );
 const phoneLoginEnabled = parseBoolean(
   'AUTH_PHONE_LOGIN_ENABLED',
@@ -547,9 +605,15 @@ if (nodeEnv === 'production' && jwtAccessSecret === DEVELOPMENT_ACCESS_SECRET) {
   throw new Error('JWT_ACCESS_SECRET must be replaced before production startup.');
 }
 
-if (nodeEnv === 'production' && tokenDeliveryMode === 'console') {
-  throw new Error('AUTH_TOKEN_DELIVERY_MODE=console is forbidden in production.');
+if (nodeEnv === 'production' && tokenDeliveryMode !== 'webhook') {
+  throw new Error('AUTH_TOKEN_DELIVERY_MODE=webhook is required in production.');
 }
+if (nodeEnv === 'production' && !refreshCookieSecure) {
+  throw new Error('AUTH_REFRESH_COOKIE_SECURE=true is required in production.');
+}
+const tokenDeliveryWebhook =
+  tokenDeliveryMode === 'webhook' ? parseTokenDeliveryWebhook(process.env) : null;
+const shutdown = parseShutdownEnvironment(process.env);
 
 export const env = Object.freeze({
   nodeEnv,
@@ -557,8 +621,15 @@ export const env = Object.freeze({
   port: parseInteger('PORT', process.env.PORT, 3000, 1, 65_535),
   corsOrigins: parseCorsOrigins(process.env.CORS_ORIGIN, nodeEnv),
   trustProxyHops: parseInteger('TRUST_PROXY_HOPS', process.env.TRUST_PROXY_HOPS, 0, 0, 10),
-  databaseUrl:
-    process.env.DATABASE_URL ?? 'postgresql://kinetra:kinetra_local_only@localhost:5432/kinetra',
+  databaseUrl: parseDatabaseUrl(nodeEnv, process.env.DATABASE_URL),
+  readinessTimeoutMs: parseInteger(
+    'READINESS_TIMEOUT_MS',
+    process.env.READINESS_TIMEOUT_MS,
+    2000,
+    100,
+    5000,
+  ),
+  shutdown,
   s3,
   videoUploads,
   yookassa: parseYooKassaEnvironment(nodeEnv),
@@ -641,5 +712,6 @@ export const env = Object.freeze({
       100,
     ),
     tokenDeliveryMode,
+    tokenDeliveryWebhook,
   }),
 });

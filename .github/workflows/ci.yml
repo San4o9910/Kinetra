@@ -16,13 +16,17 @@ on:
 
 env:
   NODE_VERSION: '22'
+  VITE_API_URL: https://api.ci.kinetra.test
+
+permissions:
+  contents: read
 
 jobs:
   quality:
     name: Lint, Typecheck & Build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
 
@@ -54,13 +58,16 @@ jobs:
           } | tee -a "$GITHUB_STEP_SUMMARY"
           echo "KINETRA_CI_CHECKOUT_SEMANTICS=$semantics"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Audit dependencies
+        run: npm audit --audit-level=moderate
 
       - name: Typecheck
         run: npm run typecheck
@@ -70,6 +77,13 @@ jobs:
 
       - name: Verify formatting
         run: npm run format:changed
+
+      - name: Verify deployment configuration and shell syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test ops/test-production-env.mjs
+          for script in ops/*.sh; do bash -n "$script"; done
 
       - name: Build
         run: npm run build
@@ -119,7 +133,7 @@ jobs:
       KINETRA_S3_TEST_ACCESS_KEY: kinetra-test-access
       KINETRA_S3_TEST_SECRET_KEY: kinetra-test-secret-not-for-production
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 2
 
@@ -151,7 +165,7 @@ jobs:
           } | tee -a "$GITHUB_STEP_SUMMARY"
           echo "KINETRA_CI_CHECKOUT_SEMANTICS=$semantics"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
@@ -219,6 +233,11 @@ jobs:
         run: |
           set -euo pipefail
           npm run test 2>&1 | tee /tmp/kinetra-test.log
+          grep -Eq '^(#|ℹ) tests [1-9][0-9]*$' /tmp/kinetra-test.log
+          if grep -Eq '^(#|ℹ) (fail|cancelled|skipped) [1-9][0-9]*$' /tmp/kinetra-test.log; then
+            echo 'A test failed or was skipped; release validation is blocked.' >&2
+            exit 1
+          fi
           grep -F 'KINETRA_T04_POSTGRES_INTEGRATION=PASS' /tmp/kinetra-test.log
           grep -F 'KINETRA_T04_BROWSER_E2E=PASS' /tmp/kinetra-test.log
           grep -F 'KINETRA_T05_POSTGRES_INTEGRATION=PASS' /tmp/kinetra-test.log
@@ -330,7 +349,7 @@ jobs:
     name: Structure Verification
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 2
 
@@ -362,7 +381,7 @@ jobs:
           } | tee -a "$GITHUB_STEP_SUMMARY"
           echo "KINETRA_CI_CHECKOUT_SEMANTICS=$semantics"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'

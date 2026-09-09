@@ -237,7 +237,7 @@ export const ProgramWeekView = ({
         ) : null}
 
         <header className="program-today-header">
-          <p className="program-kicker">НЕДЕЛЯ {currentWeekNumber}</p>
+          <p className="program-kicker">ПРОТОКОЛ ДНЯ · НЕДЕЛЯ {currentWeekNumber}</p>
           <TodayHeading />
           <p>Текущая тренировка, прогресс недели и ближайший следующий шаг.</p>
         </header>

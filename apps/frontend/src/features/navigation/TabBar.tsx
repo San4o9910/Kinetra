@@ -1,9 +1,9 @@
 import React, { type MouseEvent, type ReactNode } from 'react';
 
-import { appRoutes, isSettingsRoute, type AppRoute } from '../../routing';
+import { appRoutes, type AppRoute } from '../../routing';
 import { chatFabAccessibleName, chatUnreadBadge } from '../chat/model';
 
-type TabIconName = 'home' | 'calendar' | 'progress' | 'chat' | 'settings';
+type TabIconName = 'home' | 'calendar' | 'progress' | 'chat';
 
 interface TabItem {
   readonly route: AppRoute;
@@ -16,7 +16,7 @@ const tabItems: readonly TabItem[] = [
   { route: appRoutes.home, label: 'Сегодня', testId: 'tab-home', icon: 'home' },
   {
     route: appRoutes.schedule,
-    label: 'Расписание',
+    label: 'План',
     testId: 'tab-schedule',
     icon: 'calendar',
   },
@@ -26,8 +26,7 @@ const tabItems: readonly TabItem[] = [
     testId: 'tab-progress',
     icon: 'progress',
   },
-  { route: appRoutes.chat, label: 'Чат', testId: 'tab-chat', icon: 'chat' },
-  { route: appRoutes.settings, label: 'Настройки', testId: 'tab-settings', icon: 'settings' },
+  { route: appRoutes.chat, label: 'Тренер', testId: 'tab-chat', icon: 'chat' },
 ];
 
 const TabIcon = ({ name }: { readonly name: TabIconName }): ReactNode => {
@@ -66,12 +65,7 @@ const TabIcon = ({ name }: { readonly name: TabIconName }): ReactNode => {
     );
   }
 
-  return (
-    <svg className="tab-bar-icon" viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M9.8 3.7 10.5 2h3l.7 1.7 1.7.7 1.7-.7 2.1 2.1-.7 1.7.7 1.7 1.8.8v3l-1.8.8-.7 1.7.7 1.7-2.1 2.1-1.7-.7-1.7.7-.7 1.8h-3l-.7-1.8-1.7-.7-1.7.7-2.1-2.1.7-1.7-.7-1.7L2.5 13v-3l1.8-.8.7-1.7-.7-1.7 2.1-2.1 1.7.7Z" />
-      <circle cx="12" cy="11.5" r="3" />
-    </svg>
-  );
+  return null;
 };
 
 export interface TabBarProps {
@@ -89,7 +83,7 @@ export const TabBar = ({
   chatUnreadCount,
   onNavigate,
 }: TabBarProps): ReactNode => {
-  const activeRoute = isSettingsRoute(route) ? appRoutes.settings : route;
+  const activeRoute = route;
   const visibleItems = showChat
     ? tabItems
     : tabItems.filter((item) => item.route !== appRoutes.chat);

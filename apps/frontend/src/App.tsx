@@ -13,6 +13,7 @@ import { LoginScreen } from './features/auth/LoginScreen';
 import { RegisterScreen } from './features/auth/RegisterScreen';
 import { BaseLessonsScreen } from './features/base-lessons/BaseLessonsScreen';
 import { TabBar } from './features/navigation/TabBar';
+import { ActiveAppHeader } from './features/navigation/ActiveAppHeader';
 import { OnboardingCarousel } from './features/onboarding/OnboardingCarousel';
 import { PaymentCancelScreen } from './features/payments/PaymentCancelScreen';
 import { PaymentScreen } from './features/payments/PaymentScreen';
@@ -117,6 +118,7 @@ const SystemState = ({ kind, message, onRetry }: SystemStateProps): ReactNode =>
 );
 
 interface ActiveAppShellProps {
+  readonly displayName: string;
   readonly route: AppRoute;
   readonly navigationDisabled: boolean;
   readonly showChat: boolean;
@@ -126,6 +128,7 @@ interface ActiveAppShellProps {
 }
 
 const ActiveAppShell = ({
+  displayName,
   route,
   navigationDisabled,
   showChat,
@@ -134,6 +137,12 @@ const ActiveAppShell = ({
   children,
 }: ActiveAppShellProps): ReactNode => (
   <div className="active-app-shell">
+    <ActiveAppHeader
+      displayName={displayName}
+      settingsActive={isSettingsRoute(route)}
+      disabled={navigationDisabled}
+      onOpenSettings={() => onNavigate(appRoutes.settings)}
+    />
     <div className="active-app-content">{children}</div>
     <TabBar
       route={route}
@@ -936,6 +945,7 @@ export const App = (): ReactNode => {
     profile.user.onboardingStatus === 'active' ||
     profile.user.onboardingStatus === 'base_lessons' ? (
       <ActiveAppShell
+        displayName={clientDisplayName(profile)}
         route={route}
         navigationDisabled={workoutCompletionBusy}
         showChat={profile.user.onboardingStatus === 'active'}
@@ -1157,6 +1167,7 @@ export const App = (): ReactNode => {
 
   return (
     <ActiveAppShell
+      displayName={clientDisplayName(profile)}
       route={route}
       navigationDisabled={workoutCompletionBusy}
       showChat={profile.user.onboardingStatus === 'active'}

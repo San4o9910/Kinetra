@@ -1,11 +1,15 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { spawnSync } from 'node:child_process';
 
 import {
   parseChatPhotoUploadTimeouts,
   parseCorsOrigins,
   parseS3Environment,
   parseVideoUploadsEnvironment,
+  parseTokenDeliveryWebhook,
+  parseShutdownEnvironment,
+  parseDatabaseUrl,
 } from '../src/config/env.js';
 
 test('CORS allowlist normalizes and deduplicates exact HTTP(S) origins', () => {
@@ -149,4 +153,124 @@ test('private S3 configuration is complete and HTTP is restricted to explicit lo
       }),
     /must use HTTPS/u,
   );
+});
+
+test('production database refuses local defaults, ambiguous TLS and URL overrides', () => {
+  const valid = 'postgresql://worker:secure%40password@db.example.test/kinetra?sslmode=verify-full';
+  assert.equal(parseDatabaseUrl('production', valid), valid);
+  assert.match(parseDatabaseUrl('test', undefined), /localhost/u);
+  for (const invalid of [
+    undefined,
+    '',
+    valid + ' ',
+    valid.replace('worker:', '%20:'),
+    'http://db.example.test/kinetra',
+    valid.replace('secure%40password', 'kinetra_local_only'),
+    valid.replace('worker:secure%40password', ':'),
+    valid.replace('?sslmode=verify-full', ''),
+    valid + '&sslmode=disable',
+    valid + '&ssl=false',
+    valid + '&options=-c%20statement_timeout%3D0',
+  ]) {
+    assert.throws(() => parseDatabaseUrl('production', invalid), /DATABASE_URL/u);
+  }
+  for (const local of [
+    'localhost',
+    'localhost.',
+    'db.localhost.',
+    '127.0.0.1',
+    '127.1',
+    '2130706433',
+    '0x7f000001',
+    '[::1]',
+    '[::ffff:127.0.0.1]',
+    '0.0.0.0',
+  ]) {
+    assert.throws(
+      () => parseDatabaseUrl('production', valid.replace('db.example.test', local)),
+      /DATABASE_URL/u,
+    );
+  }
+});
+
+test('delivery webhook rejects credentials, redirects via URL, weak secrets and unbounded timeout', () => {
+  const valid = {
+    AUTH_TOKEN_DELIVERY_WEBHOOK_URL: 'https://delivery.example.test/v1/tokens',
+    AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET: 'synthetic-test-only-delivery-secret-32plus',
+  };
+  assert.equal(parseTokenDeliveryWebhook(valid).timeoutMs, 10000);
+  for (const url of [
+    'http://delivery.example.test',
+    'https://user:secret@delivery.example.test',
+    'https://delivery.example.test?a=1',
+    'https://delivery.example.test/#secret',
+  ]) {
+    assert.throws(
+      () => parseTokenDeliveryWebhook({ ...valid, AUTH_TOKEN_DELIVERY_WEBHOOK_URL: url }),
+      /AUTH_TOKEN_DELIVERY_WEBHOOK_URL/u,
+    );
+  }
+  for (const secret of [
+    '',
+    'short',
+    'contains whitespace even when long enough',
+    'a'.repeat(513),
+    'a'.repeat(32) + '\n',
+  ]) {
+    assert.throws(
+      () => parseTokenDeliveryWebhook({ ...valid, AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET: secret }),
+      /SECRET/u,
+    );
+  }
+  assert.throws(
+    () => parseTokenDeliveryWebhook({ ...valid, AUTH_TOKEN_DELIVERY_TIMEOUT_MS: '0' }),
+    /TIMEOUT/u,
+  );
+  assert.deepEqual(parseShutdownEnvironment({}), { drainMs: 5000, timeoutMs: 25000 });
+  assert.throws(
+    () => parseShutdownEnvironment({ SHUTDOWN_DRAIN_MS: '5000', SHUTDOWN_TIMEOUT_MS: '5000' }),
+    /SHUTDOWN/u,
+  );
+});
+
+test('actual production startup requires secure cookie and configured webhook without networking', () => {
+  const values = {
+    NODE_ENV: 'production',
+    DATABASE_URL: 'postgresql://api:synthetic-password@db.example.test/kinetra?sslmode=verify-full',
+    CORS_ORIGIN: 'https://app.example.test',
+    JWT_ACCESS_SECRET: 'synthetic-test-only-jwt-secret-32plus',
+    AUTH_TOKEN_DELIVERY_MODE: 'webhook',
+    AUTH_TOKEN_DELIVERY_WEBHOOK_URL: 'https://delivery.example.test/token',
+    AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET: 'synthetic-test-only-delivery-secret-32plus',
+    YUKASSA_SHOP_ID: 'synthetic-shop',
+    YUKASSA_SECRET_KEY: 'synthetic-key',
+    YUKASSA_RETURN_URL: 'https://app.example.test/payment/success',
+    VAPID_PUBLIC_KEY: 'a'.repeat(87),
+    VAPID_PRIVATE_KEY: 'a'.repeat(43),
+    VAPID_SUBJECT: 'mailto:test@example.test',
+  };
+  const moduleUrl = new URL('../src/config/env.ts', import.meta.url).href;
+  const run = (overrides: NodeJS.ProcessEnv) =>
+    spawnSync(
+      process.execPath,
+      [
+        '--import',
+        'tsx',
+        '--input-type=module',
+        '-e',
+        `try { await import(${JSON.stringify(moduleUrl)}); process.stdout.write('STARTUP_VALID'); } catch (error) { process.stderr.write(error.message); process.exitCode = 1; }`,
+      ],
+      { env: { ...values, ...overrides }, encoding: 'utf8' },
+    );
+  const valid = run({});
+  assert.equal(valid.status, 0, valid.stderr);
+  assert.equal(valid.stdout, 'STARTUP_VALID');
+  const insecure = run({ AUTH_REFRESH_COOKIE_SECURE: 'false' });
+  assert.equal(insecure.status, 1);
+  assert.match(insecure.stderr, /AUTH_REFRESH_COOKIE_SECURE/u);
+  for (const mode of ['console', 'disabled']) {
+    const invalid = run({ AUTH_TOKEN_DELIVERY_MODE: mode });
+    assert.equal(invalid.status, 1);
+    assert.match(invalid.stderr, /AUTH_TOKEN_DELIVERY_MODE=webhook/u);
+  }
 });

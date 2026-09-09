@@ -52,6 +52,13 @@ test('T14 video trainer CLI exposes strict grant and revoke contracts without da
   const extra = await run(['revoke', '--user-id', '00000000-0000-4000-8000-000000000001', '--all']);
   assert.equal(extra.code, 1);
   assert.equal(extra.stderr.trim(), 'Provide exactly --user-id <UUID>.');
+
+  for (const command of ['grant', 'revoke']) {
+    const result = await run([command, '--user-id', '00000000-0000-4000-8000-000000000001']);
+    assert.equal(result.code, 1);
+    assert.equal(result.stdout, '');
+    assert.equal(result.stderr.trim(), 'DATABASE_URL must be an explicit PostgreSQL URL.');
+  }
 });
 
 test('T14 quarantined upload recovery CLI is strict without database access', async () => {
@@ -62,4 +69,12 @@ test('T14 quarantined upload recovery CLI is strict without database access', as
   const invalid = await run(['retry', '--upload-id', 'not-a-uuid'], recoveryCliPath);
   assert.equal(invalid.code, 1);
   assert.equal(invalid.stderr.trim(), '--upload-id must be a UUID.');
+
+  const missingDatabase = await run(
+    ['retry', '--upload-id', '00000000-0000-4000-8000-000000000001'],
+    recoveryCliPath,
+  );
+  assert.equal(missingDatabase.code, 1);
+  assert.equal(missingDatabase.stdout, '');
+  assert.equal(missingDatabase.stderr.trim(), 'DATABASE_URL must be an explicit PostgreSQL URL.');
 });

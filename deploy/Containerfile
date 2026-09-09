@@ -1,0 +1,60 @@
+# Supply reviewed Debian bookworm-slim Node and nginx-unprivileged image digests.
+ARG NODE_IMAGE
+ARG NGINX_IMAGE
+FROM ${NODE_IMAGE} AS build
+ARG NODE_IMAGE
+ARG VCS_REF
+ARG VITE_API_URL
+ARG VITE_PRIVATE_MEDIA_ORIGIN
+WORKDIR /app
+RUN node -e 'if (!/@sha256:[a-f0-9]{64}$/.test(process.argv[1]) || !/^[a-f0-9]{40}([a-f0-9]{24})?$/.test(process.argv[2])) process.exit(1)' "$NODE_IMAGE" "$VCS_REF"
+COPY package.json package-lock.json tsconfig.base.json ./
+COPY packages/shared/package.json ./packages/shared/
+COPY apps/backend/package.json ./apps/backend/
+COPY apps/frontend/package.json ./apps/frontend/
+RUN npm ci --no-audit --no-fund
+COPY packages/shared/src ./packages/shared/src
+COPY packages/shared/tsconfig.json ./packages/shared/
+COPY apps/backend/src ./apps/backend/src
+COPY apps/backend/tsconfig*.json ./apps/backend/
+COPY apps/frontend/src ./apps/frontend/src
+COPY apps/frontend/public ./apps/frontend/public
+COPY apps/frontend/index.html apps/frontend/vite.config.ts apps/frontend/tsconfig.json ./apps/frontend/
+RUN node -e 'const u = new URL(process.argv[1]); if (u.protocol !== "https:" || u.username || u.password || u.pathname !== "/" || u.search || u.hash) process.exit(1)' "$VITE_API_URL"
+RUN VITE_API_URL="$VITE_API_URL" VITE_PRIVATE_MEDIA_ORIGIN="$VITE_PRIVATE_MEDIA_ORIGIN" npm run build
+RUN npm prune --omit=dev --no-audit --no-fund
+
+FROM ${NODE_IMAGE} AS backend
+ARG VCS_REF
+LABEL org.opencontainers.image.revision=$VCS_REF
+# Final image packages must be scanned and the final image deployed by digest.
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates ffmpeg imagemagick tini && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY --from=build --chown=node:node /app/node_modules ./node_modules
+COPY --from=build --chown=node:node /app/package.json ./package.json
+COPY --from=build --chown=node:node /app/packages/shared/package.json ./packages/shared/package.json
+COPY --from=build --chown=node:node /app/packages/shared/dist ./packages/shared/dist
+COPY --from=build --chown=node:node /app/apps/backend/package.json ./apps/backend/package.json
+COPY --from=build --chown=node:node /app/apps/backend/dist ./apps/backend/dist
+COPY --chown=node:node apps/backend/scripts/migrate.mjs ./apps/backend/scripts/migrate.mjs
+COPY --chown=node:node apps/backend/migrations ./apps/backend/migrations
+RUN test -x /usr/bin/tini && ffprobe -version >/dev/null && ffmpeg -version >/dev/null && identify -version >/dev/null && convert -version >/dev/null
+ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000
+USER node
+EXPOSE 3000
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["node", "apps/backend/dist/server.js"]
+
+FROM ${NGINX_IMAGE} AS frontend
+ARG NGINX_IMAGE
+ARG VCS_REF
+LABEL org.opencontainers.image.revision=$VCS_REF
+USER root
+RUN case "$NGINX_IMAGE" in *@sha256:*) ;; *) exit 1 ;; esac; digest=${NGINX_IMAGE##*@sha256:}; test "${#digest}" = 64; case "$digest" in *[!a-f0-9]*) exit 1 ;; esac
+COPY deploy/nginx.conf /etc/nginx/nginx.conf
+COPY --from=build /app/apps/frontend/dist /usr/share/nginx/html
+USER 101:101
+EXPOSE 8080
+ENTRYPOINT ["nginx"]
+CMD ["-g", "daemon off;"]

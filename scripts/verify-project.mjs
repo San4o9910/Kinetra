@@ -52,6 +52,48 @@ const expectMatches = (text, pattern, message) => {
 };
 
 const requiredFiles = [
+  'apps/frontend/src/features/trainer-videos/preview-dialog-lifecycle.ts',
+  'apps/backend/test/platform.test.ts',
+  'apps/backend/test/job-env.test.ts',
+  'ops/test-production-env.mjs',
+  'ops/monitoring/alerts.example.yml',
+  'deploy/.gitignore',
+  'docs/PRODUCTION_READINESS_REVIEW.md',
+
+  'apps/frontend/src/features/navigation/ActiveAppHeader.tsx',
+  'apps/frontend/src/features/progress/ProgressJourney.tsx',
+  'apps/frontend/src/features/progress/ProgressWellbeingOverview.tsx',
+  'apps/frontend/src/features/progress/ProgressBalanceRadar.tsx',
+  'apps/frontend/src/features/progress/journey.ts',
+  'apps/frontend/src/features/progress/radar.ts',
+  'apps/backend/src/config/database.ts',
+  'apps/backend/src/config/job-env.ts',
+  'apps/backend/src/db/job-pool.ts',
+  'apps/backend/src/shutdown.ts',
+  'apps/backend/test/migration-runner.test.ts',
+  'deploy/Containerfile',
+  'deploy/Containerfile.dockerignore',
+  'deploy/compose.production.yml',
+  'deploy/nginx.conf',
+  'deploy/production.env.example',
+  'deploy/api.env.example',
+  'deploy/jobs/migrate.env.example',
+  'deploy/jobs/notifications.env.example',
+  'deploy/jobs/renewals.env.example',
+  'deploy/jobs/chat-cleanup.env.example',
+  'deploy/jobs/video-cleanup.env.example',
+  'deploy/jobs/video-verify.env.example',
+  'deploy/jobs/disabled.env.example',
+  'ops/backup-postgres.sh',
+  'ops/restore-drill-postgres.sh',
+  'ops/run-production-job.sh',
+  'ops/validate-production-env.mjs',
+  'docs/PRODUCT_DIRECTION.md',
+  'docs/PRODUCTION_DELIVERY.md',
+  'docs/PRODUCTION_MONITORING.md',
+  'docs/PRODUCTION_LAUNCH_RUNBOOK.md',
+  'docs/DISASTER_RECOVERY.md',
+
   '.env.example',
   '.github/workflows/ci.yml',
   'docker-compose.yml',
@@ -1724,21 +1766,18 @@ expectIncludes(
 );
 
 const tabBar = await readText('apps/frontend/src/features/navigation/TabBar.tsx');
-for (const testId of [
-  'tab-bar',
-  'tab-home',
-  'tab-schedule',
-  'tab-progress',
-  'tab-chat',
-  'tab-settings',
-]) {
+const activeAppHeader = await readText('apps/frontend/src/features/navigation/ActiveAppHeader.tsx');
+for (const contract of ['header-settings', 'disabled={disabled}', 'settingsActive', 'Настройки']) {
+  expectIncludes(activeAppHeader, contract, `UX settings header contract: ${contract}`);
+}
+for (const testId of ['tab-bar', 'tab-home', 'tab-schedule', 'tab-progress', 'tab-chat']) {
   expectIncludes(tabBar, testId, `T07 tab bar test hook: ${testId}`);
 }
-for (const label of ['Сегодня', 'Расписание', 'Прогресс', 'Чат', 'Настройки']) {
+for (const label of ['Сегодня', 'План', 'Прогресс', 'Тренер']) {
   expectIncludes(tabBar, label, `T07 tab bar label: ${label}`);
 }
 for (const chatTabContract of [
-  "{ route: appRoutes.chat, label: 'Чат', testId: 'tab-chat', icon: 'chat' }",
+  "{ route: appRoutes.chat, label: 'Тренер', testId: 'tab-chat', icon: 'chat' }",
   'readonly showChat: boolean',
   'readonly chatUnreadCount: number',
   'tabItems.filter((item) => item.route !== appRoutes.chat)',
@@ -2151,6 +2190,11 @@ expectIncludes(indexHtml, 'fonts.googleapis.com', 'Inter stylesheet is connected
 expectIncludes(indexHtml, 'family=Inter', 'Inter font family is requested');
 
 const browserTest = await readText('scripts/test-frontend-browser.mjs');
+expectIncludes(
+  browserTest,
+  "disabled('header-settings')",
+  'UX browser checks top Settings while saving',
+);
 expectIncludes(browserTest, 'KINETRA_T04_BROWSER_E2E=PASS', 'T04 browser acceptance test exists');
 expectIncludes(browserTest, 'KINETRA_T05_BROWSER_E2E=PASS', 'T05 browser acceptance test exists');
 expectIncludes(browserTest, 'KINETRA_T06_BROWSER_E2E=PASS', 'T06 browser acceptance test exists');
@@ -2375,8 +2419,8 @@ expectIncludes(
 );
 expectIncludes(
   browserTest,
-  "attribute('tab-settings', 'aria-current')",
-  'T07 browser scenario verifies active tab semantics',
+  "attribute('header-settings', 'aria-current')",
+  'T07 browser scenario verifies active Settings header semantics',
 );
 expectIncludes(
   browserTest,
@@ -2655,7 +2699,7 @@ for (const scenario of [
   'week progress exposes',
   'today dashboard delegates full week browsing to schedule',
   'today is highlighted only in the actual current week',
-  'tab bar renders today and a fifth active chat tab with its unread badge',
+  'tab bar renders four client routes with trainer and its unread badge',
   'system back keeps the saving workout on its canonical history entry',
 ]) {
   expectIncludes(
@@ -3048,6 +3092,18 @@ for (const screenContract of [
 }
 
 const progressView = await readText('apps/frontend/src/features/progress/ProgressView.tsx');
+const achievementsPosition = progressView.indexOf('progress-achievements-section');
+const journeyPosition = progressView.indexOf('<ProgressJourney');
+const overviewPosition = progressView.indexOf('<ProgressWellbeingOverview');
+if (
+  achievementsPosition >= 0 &&
+  journeyPosition > achievementsPosition &&
+  overviewPosition > journeyPosition
+) {
+  pass('UX adds progress views after original achievements');
+} else {
+  fail('UX adds progress views after original achievements');
+}
 for (const viewContract of [
   'progress-goal-section',
   'progress-metrics-section',
@@ -3072,7 +3128,7 @@ for (const chartContract of [
   '<polyline',
   '<circle',
   'Заполните самооценку минимум за 2 недели, чтобы увидеть динамику',
-  '((10 - metricValue(point, metric.key)) / 9)',
+  '((10 - clampMetricScore(metricValue(point, metric.key))) / 9)',
 ]) {
   expectIncludes(progressChart, chartContract, `T09 lightweight SVG chart: ${chartContract}`);
 }
@@ -3131,7 +3187,7 @@ for (const testContract of [
   expectIncludes(progressPostgresTests, testContract, `T09 PostgreSQL test: ${testContract}`);
 }
 for (const testContract of [
-  'exactly four dashboard sections',
+  'all four original dashboard sections before the new views',
   'accessible SVG',
   'native controls with canonical bounds',
 ]) {
@@ -4386,12 +4442,13 @@ for (const runtimeContract of [
 }
 const notificationWorker = await readText('apps/backend/src/push/run-notifications.ts');
 for (const workerContract of [
-  'if (!runtime.configured)',
-  "throw new Error('Web Push is not configured.')",
-  'await runtime.schedulerService.run()',
+  'parseNotificationJobEnvironment()',
+  "createJobDatabasePool('kinetra-notifications', config.databaseUrl)",
+  'new NotificationSchedulerService(',
+  ').run()',
   "console.log('Kinetra notification run completed.', summary)",
   'exitCode = 1',
-  'await closeDatabasePool()',
+  'await databasePool?.end()',
   'process.exitCode = exitCode',
 ]) {
   expectIncludes(notificationWorker, workerContract, `T13 one-shot worker: ${workerContract}`);
@@ -5256,7 +5313,7 @@ expectIncludes(
 );
 expectIncludes(
   chatCleanupRunner,
-  'process.exitCode = 1',
+  'process.exitCode = exitCode',
   'T12 cleanup worker exposes failure to the scheduler',
 );
 

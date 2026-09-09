@@ -1,7 +1,8 @@
 import { z } from 'zod';
 
-import { closeDatabasePool, databasePool } from '../db/pool.js';
 import { PostgresVideoAdminRepository } from './postgres-video.repository.js';
+
+let closeDatabasePool: (() => Promise<void>) | undefined;
 
 const help = 'Usage: retry --upload-id <UUID>';
 
@@ -21,6 +22,9 @@ const run = async (): Promise<void> => {
   }
   if (command !== 'retry') throw new Error(help);
   const uploadId = uploadIdFrom(arguments_);
+  const database = await import('../db/pool.js');
+  closeDatabasePool = database.closeDatabasePool;
+  const { databasePool } = database;
   const result = await new PostgresVideoAdminRepository(
     databasePool,
   ).requeueQuarantinedVerification(uploadId, new Date());
@@ -34,4 +38,4 @@ void run()
     console.error(caught instanceof Error ? caught.message : 'Video upload recovery failed.');
     process.exitCode = 1;
   })
-  .finally(closeDatabasePool);
+  .finally(async () => closeDatabasePool?.());

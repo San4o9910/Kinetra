@@ -7,12 +7,14 @@ import { createProductionChatRuntime } from './chat/runtime.js';
 import { env } from './config/env.js';
 import { closeDatabasePool } from './db/pool.js';
 import { createSocketServer } from './realtime/socket.js';
+import { createShutdownHandler } from './shutdown.js';
 
 const authRuntime = createProductionAuthRuntime();
 const chatRuntime = createProductionChatRuntime({
   accessTokenVerifier: authRuntime.accessTokenVerifier,
 });
-const app = createApp({ authRuntime, chatRuntime });
+let shutdownStarted = false;
+const app = createApp({ authRuntime, chatRuntime, isDraining: () => shutdownStarted });
 const httpServer = createServer(app);
 httpServer.requestTimeout = env.chat.photoUploadTotalTimeoutMs + 5_000;
 const socketServer = createSocketServer(httpServer);
@@ -28,8 +30,6 @@ const detachChatRealtime = attachChatRealtime(socketServer, {
 httpServer.listen(env.port, env.host, () => {
   console.log(`Kinetra backend is listening on http://${env.host}:${env.port} (${env.nodeEnv}).`);
 });
-
-let shutdownStarted = false;
 
 const closeHttpServer = async (): Promise<void> => {
   if (!httpServer.listening) {
@@ -53,28 +53,34 @@ const closeSocketServer = async (): Promise<void> => {
   });
 };
 
-const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
-  if (shutdownStarted) {
-    return;
-  }
-
-  shutdownStarted = true;
-  console.log(`${signal} received. Closing Kinetra backend.`);
-
-  try {
-    detachChatRealtime();
-    await closeSocketServer();
-    await closeHttpServer();
-    await closeDatabasePool();
-  } catch (error) {
-    console.error('Failed to close Kinetra backend cleanly.', error);
+const shutdown = createShutdownHandler({
+  ...env.shutdown,
+  markDraining: () => {
+    shutdownStarted = true;
+    console.log('Kinetra backend is draining.');
+  },
+  closeRealtime: async () => {
+    try {
+      detachChatRealtime();
+    } finally {
+      await closeSocketServer();
+    }
+  },
+  closeHttp: closeHttpServer,
+  closeDatabase: closeDatabasePool,
+  reportFailure: (stage) => {
+    console.error('Kinetra backend shutdown failed.', { stage });
     process.exitCode = 1;
-  }
-};
-
-process.on('SIGINT', (signal) => {
-  void shutdown(signal);
+  },
+  forceExit: () => {
+    httpServer.closeAllConnections();
+    process.exit(1);
+  },
 });
-process.on('SIGTERM', (signal) => {
-  void shutdown(signal);
+
+process.on('SIGINT', () => {
+  void shutdown();
+});
+process.on('SIGTERM', () => {
+  void shutdown();
 });
