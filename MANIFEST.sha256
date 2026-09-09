@@ -5,6 +5,7 @@ ec504420e86b2daa65cdd174143afd12f4a7d0e0951aaf905382becdee037f6a  ./.github/work
 df04e6f357e774e7abdc2d31ce90543eb2910cb752bd685ea4c075444fcea63f  ./.github/workflows/timeweb-hourly-preflight.yml
 5759fab75ef133f64b0faac6c832c57d305464519cf7abf2e4388e34cb02b79b  ./.github/workflows/timeweb-hourly-provision.yml
 de701be574b475ab49565f84ca6de8debb136a97eefacc9fc0aca87307285afe  ./.github/workflows/timeweb-key-reconcile.yml
+fd6a104559b185e725e06004045074bbd1b9da50a8cb1898ea048341d9958e48  ./.github/workflows/timeweb-server-inspect.yml
 bf0b9f2976cc6caa82bd0268fc6c19b11d72a7bf17624cf1fb866462e3811e31  ./.gitignore
 177d20030d4dcc37eae9ef92865ec54dadce60e8f19e9a34a5d4f37502195a36  ./.nvmrc
 019a6ff828333978e4ecceae4a881852c6f850fbc6d86755f5e4c9c068727ec8  ./.prettierignore
@@ -331,6 +332,7 @@ ecd36ccd1cf2a79286138df32827ceb24d75458743c182e4aec6bf1a7440e44c  ./docs/T12_TRA
 a9b1c236d0feea9883c7d1e0b54d7260cd692d179fc65c6a99609392af213bba  ./docs/T14_VIDEO_UPLOADS.md
 cf715055ccd10f1098d83cf11facdb3278ea844b0e30c737e2ed9be7360f4ff2  ./docs/TRAINER_VERIFICATION.md
 42cb4e2ce5f3c1726688d1f5ecb4238b79ed9b97e5f80455cbfeeaf28b2821bf  ./eslint.config.mjs
+567d892221925bb438ece6a893360a891ffd4228f8af0a18252b8ba365a682c0  ./ops/timeweb/inspect-server.py
 e62a6130be5583bd2f0e287fec2b098012206d722311681aea7357508d7f2cc0  ./ops/timeweb/provision-hourly.py
 ca34313e3e69827306dc65884bd88ff99e91e35c6bb29db8d9e4c3e49fb3f9a6  ./package-lock.json
 67946edf50475090423548f35b8a2746f8c7f27d0b50ce2053ae2afd0700b9ae  ./package.json
