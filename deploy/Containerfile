@@ -43,8 +43,11 @@ USER root
 RUN . /etc/os-release && test "$ID" = alpine && case "$VERSION_ID" in 3.24.*) ;; *) exit 1 ;; esac
 COPY --from=media-build /media-output/kinetra-media.rsa.pub /etc/apk/keys/kinetra-media.rsa.pub
 COPY --from=media-build /media-output/*.apk /tmp/media-packages/
+# CVE-2026-14456: explicitly replace older OpenSSL libraries inherited from the
+# pinned base; installing unrelated packages does not upgrade them automatically.
 RUN apk verify /tmp/media-packages/*.apk \
-    && apk add --no-cache ca-certificates tini /tmp/media-packages/*.apk \
+    && apk add --no-cache ca-certificates tini 'libcrypto3>=3.5.8-r0' 'libssl3>=3.5.8-r0' /tmp/media-packages/*.apk \
+    && apk info --exists 'libcrypto3>=3.5.8-r0' 'libssl3>=3.5.8-r0' \
     && rm -rf /tmp/media-packages \
     && ln -s /sbin/tini /usr/bin/tini \
     && apk info -e ffmpeg imagemagick \
