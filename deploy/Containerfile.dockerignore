@@ -39,6 +39,12 @@
 !deploy/media/keys
 !deploy/media/keys/ffmpeg.asc
 !deploy/media/keys/imagemagick.asc
+!deploy/node
+!deploy/node/build.mjs
+!deploy/node/verify.mjs
+!deploy/node/source.json
+!deploy/node/keys
+!deploy/node/keys/node-release.asc
 **/.env*
 **/*.pem
 **/*.key

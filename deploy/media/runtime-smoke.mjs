@@ -2,7 +2,34 @@
 // Synthetic inputs only; no database, provider credentials or network.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
+
+// Verify the executable actually loaded by the final image. The base image's
+// bundled OpenSSL is replaced, so an APK-only version check is insufficient.
+const nodeBuild = JSON.parse(readFileSync('/usr/share/kinetra-node/runtime.json', 'utf8'));
+assert.equal(nodeBuild.schemaVersion, 1);
+assert.equal(process.versions.node, '22.23.2');
+assert.equal(process.config.variables.node_shared_openssl, true);
+assert.match(process.versions.openssl, /^3[.]5[.](8|9|[1-9][0-9]+)$/);
+assert.equal(nodeBuild.runtime.node_shared_openssl, true);
+assert.equal(nodeBuild.runtime.versions.node, process.versions.node);
+assert.equal(nodeBuild.runtime.versions.openssl, process.versions.openssl);
+assert.equal(
+  createHash('sha256').update(readFileSync(process.execPath)).digest('hex'),
+  nodeBuild.binarySha256,
+);
+const linkage = execFileSync('ldd', [process.execPath], { encoding: 'utf8', timeout: 10_000 });
+for (const library of ['libssl.so.3', 'libcrypto.so.3']) {
+  assert.ok(linkage.split('\n').some((line) => line.trim().startsWith(`${library} => /`)));
+}
+assert.equal(
+  createHash('sha256').update('abc').digest('hex'),
+  'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
+);
+console.log('KINETRA_FINAL_NODE_SHARED_PATCHED_OPENSSL=PASS');
+console.log(JSON.stringify({ nodeBuild, runtimeLinkage: linkage }));
 
 const application = pathToFileURL(`${process.cwd()}/apps/backend/dist/`);
 const { BcryptPasswordHasher } = await import(new URL('auth/password.js', application));

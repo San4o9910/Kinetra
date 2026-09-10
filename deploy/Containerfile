@@ -1,6 +1,14 @@
 # Supply reviewed Node 22 Alpine 3.24 and nginx-unprivileged Alpine 3.24 slim digests.
 ARG NODE_IMAGE
 ARG NGINX_IMAGE
+FROM ${NODE_IMAGE} AS node-build
+ARG NODE_IMAGE
+RUN node -e 'if (!/@sha256:[a-f0-9]{64}$/.test(process.argv[1]) || process.versions.node !== "22.23.2") process.exit(1)' "$NODE_IMAGE"
+RUN . /etc/os-release && test "$ID" = alpine && case "$VERSION_ID" in 3.24.*) ;; *) exit 1 ;; esac
+RUN apk add --no-cache build-base linux-headers python3 curl ca-certificates gnupg openssl xz 'openssl-dev>=3.5.8-r0'
+COPY deploy/node /node-recipe
+RUN node /node-recipe/build.mjs
+
 FROM ${NODE_IMAGE} AS media-build
 ARG NODE_IMAGE
 RUN node -e 'if (!/@sha256:[a-f0-9]{64}$/.test(process.argv[1]) || process.versions.node.split(".")[0] !== "22") process.exit(1)' "$NODE_IMAGE"
@@ -18,7 +26,9 @@ WORKDIR /app
 RUN node -e 'if (!/@sha256:[a-f0-9]{64}$/.test(process.argv[1]) || !/^[a-f0-9]{40}([a-f0-9]{24})?$/.test(process.argv[2])) process.exit(1)' "$NODE_IMAGE" "$VCS_REF"
 RUN . /etc/os-release && test "$ID" = alpine && case "$VERSION_ID" in 3.24.*) ;; *) exit 1 ;; esac
 # bcrypt and all native modules are installed on the same musl ABI as runtime.
-RUN apk add --no-cache python3 make g++
+RUN apk add --no-cache python3 make g++ 'libcrypto3>=3.5.8-r0' 'libssl3>=3.5.8-r0'
+COPY --from=node-build /node-output/bin/node /usr/local/bin/node
+RUN node -e 'if (process.config.variables.node_shared_openssl !== true || !/^3[.]5[.](8|9|[1-9][0-9]+)$/.test(process.versions.openssl)) process.exit(1)'
 COPY package.json package-lock.json tsconfig.base.json ./
 COPY packages/shared/package.json ./packages/shared/
 COPY apps/backend/package.json ./apps/backend/
@@ -41,6 +51,7 @@ LABEL org.opencontainers.image.revision=$VCS_REF
 # Final image packages must be scanned and the final image deployed by digest.
 USER root
 RUN . /etc/os-release && test "$ID" = alpine && case "$VERSION_ID" in 3.24.*) ;; *) exit 1 ;; esac
+COPY --from=node-build /node-output/evidence /usr/share/kinetra-node
 COPY --from=media-build /media-output/kinetra-media.rsa.pub /etc/apk/keys/kinetra-media.rsa.pub
 COPY --from=media-build /media-output/*.apk /tmp/media-packages/
 # CVE-2026-14456: explicitly replace older OpenSSL libraries inherited from the
@@ -52,8 +63,10 @@ RUN apk verify /tmp/media-packages/*.apk \
     && ln -s /sbin/tini /usr/bin/tini \
     && apk info -e ffmpeg imagemagick \
     && apk info --who-owns /usr/bin/ffmpeg /usr/bin/ffprobe /usr/bin/magick
+COPY --from=node-build /node-output/bin/node /usr/local/bin/node
 COPY --from=media-build /media-output/evidence /usr/share/kinetra-media
 RUN apk info -vv > /usr/share/kinetra-media/runtime-apk-inventory.txt
+RUN node -e 'if (process.config.variables.node_shared_openssl !== true || !/^3[.]5[.](8|9|[1-9][0-9]+)$/.test(process.versions.openssl)) process.exit(1)'
 RUN apk query --from installed --format json --fields name,version,origin,arch,depends,provides,contents ffmpeg imagemagick > /usr/share/kinetra-media/media-apk-inventory.json
 # API and worker entrypoints execute Node directly. Package managers are build
 # tools: remove their actual programs and vendored dependencies from the runtime.
