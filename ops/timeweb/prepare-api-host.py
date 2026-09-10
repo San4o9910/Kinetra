@@ -23,7 +23,7 @@ import tempfile
 import time
 
 PINS = {
-    "activate-application-host.py": "73e2a6c2389206c11712d96e3a4736da481e6ab4d0494dc088abc6f447f9ea72",
+    "activate-application-host.py": "6f80b6a42ef4cdde9744b1b5a2bba88fb65dc44fead2cdea045fca25abfa3497",
     "initialize-database-host.py": "041f415dedf6b0b6922484281926c8c98c87828506dcb2e1ac6fb324b00b05bb",
     "prepare-database-host.py": "4621b1c0153ab56ae535e245fdb2de4ef2aff4a30ba5b592343a26795f0655ae",
     "bootstrap-server.py": "a19aca3ea953feecdcb9be6e9dcabdfc8b0e2b4f3938184391cdfb2ff3e87c9e",
@@ -67,7 +67,7 @@ def require(condition, category):
 RESULT_VALIDATOR = r'''
 def validate_preparation(value):
     keys = {'result', 'phase', 'error', 'api_environment_installed', 'application_started',
-            'caddy_started', 'provider_requests', 'candidate_directory'}
+            'caddy_started', 'provider_requests', 'candidate_directory', 'handoff_hashes', 'configuration_hashes'}
     require(isinstance(value, dict) and set(value) == keys, 'API_RESULT_SCHEMA_INVALID')
     require(value['result'] in {'FAIL', 'API_ENVIRONMENT_PREPARED_ONLY'}, 'API_RESULT_INVALID')
     require(isinstance(value['phase'], str) and re.fullmatch(r'[A-Z_]{1,90}', value['phase']), 'API_RESULT_INVALID')
@@ -77,9 +77,18 @@ def validate_preparation(value):
             and value['provider_requests'] == 0, 'UNAUTHORIZED_API_PHASE_EFFECT')
     candidate = value['candidate_directory']
     require(candidate is None or isinstance(candidate, str) and re.fullmatch(r'api-preparation-[a-f0-9]{32}', candidate), 'API_RESULT_INVALID')
+    require((value['handoff_hashes'] is None) == (value['configuration_hashes'] is None), 'API_HASH_EVIDENCE_INCOMPLETE')
+    for field, names in (
+        ('handoff_hashes', {'stage.json', 'initialization.json', 'application-env-attempt.json', 'application-env.json'}),
+        ('configuration_hashes', {'env/production.env', 'env/single-server.env', 'env/api.env', 'env/jobs/migrate.env', 'edge/nginx-real-ip.conf'})):
+        hashes = value[field]
+        require(hashes is None or isinstance(hashes, dict) and set(hashes) == names
+                and all(isinstance(digest, str) and re.fullmatch(r'[a-f0-9]{64}', digest) for digest in hashes.values()),
+                'API_HASH_EVIDENCE_INVALID')
     if value['result'] == 'API_ENVIRONMENT_PREPARED_ONLY':
         require(value['phase'] == 'API_ENVIRONMENT_PREPARATION_COMPLETE' and value['error'] is None
-                and value['api_environment_installed'] is True and candidate is not None, 'API_PASS_EVIDENCE_INCOMPLETE')
+                and value['api_environment_installed'] is True and candidate is not None
+                and value['handoff_hashes'] is not None, 'API_PASS_EVIDENCE_INCOMPLETE')
     else:
         require(value['error'] is not None, 'API_FAILURE_EVIDENCE_INCOMPLETE')
     return value

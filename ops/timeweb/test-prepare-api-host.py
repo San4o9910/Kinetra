@@ -45,7 +45,9 @@ def approved():
 def successful_preparation():
     return {"result": "API_ENVIRONMENT_PREPARED_ONLY", "phase": "API_ENVIRONMENT_PREPARATION_COMPLETE", "error": None,
         "api_environment_installed": True, "application_started": False, "caddy_started": False,
-        "provider_requests": 0, "candidate_directory": "api-preparation-" + "c" * 32}
+        "provider_requests": 0, "candidate_directory": "api-preparation-" + "c" * 32,
+        "handoff_hashes": {name: "8" * 64 for name in prepare.activation.EVIDENCE_FILES},
+        "configuration_hashes": {name: "9" * 64 for name in prepare.activation.CONFIG_FILES}}
 
 
 def successful_remote():
@@ -281,6 +283,11 @@ class WrapperTests(unittest.TestCase):
             lambda d: d["preparation"].update(error=PROVIDERS["AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET"]),
             lambda d: d["preparation"].update(candidate_directory="../env/api.env"),
             lambda d: d["preparation"].update(api_environment_installed=False),
+            lambda d: d["preparation"].pop("handoff_hashes"),
+            lambda d: d["preparation"].update(handoff_hashes=None, configuration_hashes=None),
+            lambda d: d["preparation"]["handoff_hashes"].pop("stage.json"),
+            lambda d: d["preparation"]["configuration_hashes"].update({"../secret.env": "a" * 64}),
+            lambda d: d["preparation"]["configuration_hashes"].update({"env/api.env": PROVIDERS["AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET"]}),
         ):
             value = successful_remote()
             mutate(value)

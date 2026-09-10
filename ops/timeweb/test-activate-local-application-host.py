@@ -69,11 +69,13 @@ def request():
 def bind_request(data):
     values = data["approved"]
     db = dict(data["database_outer"]["initialization"], images=values["images"], migration_hashes=values["migration_hashes"])
-    api = dict(data["api_outer"]["preparation"]["preparation"], schema=1,
+    preparation = data["api_outer"]["preparation"]["preparation"]
+    api = dict({key: value for key, value in preparation.items() if key not in {"handoff_hashes", "configuration_hashes"}}, schema=1,
         **{key: values[key] for key in ("commit", "images", "source_hashes", "migration_hashes")},
         api_sha256=values["configuration_hashes"]["env/api.env"])
     for name, record in (("initialization.json", db), ("application-env.json", api)):
         values["handoff_hashes"][name] = hashlib.sha256((json.dumps(record, sort_keys=True) + "\n").encode()).hexdigest()
+    preparation.update(handoff_hashes=dict(values["handoff_hashes"]), configuration_hashes=dict(values["configuration_hashes"]))
     data["provenance"].update(approved_input_sha256=module.canonical_hash(data["approved"]),
         database_outer_sha256=module.canonical_hash(data["database_outer"]), api_outer_sha256=module.canonical_hash(data["api_outer"]))
     return data
@@ -241,6 +243,19 @@ class WrapperTests(unittest.TestCase):
                 self.environ["APPROVED_PROVENANCE_SHA256"] = module.canonical_hash(self.data["provenance"])
                 code, state, calls = self.run_wrapper()
                 self.assertEqual((code, state["error"]), (1, "SUCCESSFUL_OUTER_HANDOFF_HASH_MISMATCH"))
+                self.assertEqual(FakeApi.instances, [])
+                self.assertFalse(calls.nonce.called or calls.ssh.called)
+
+    def test_accepted_api_hash_maps_must_match_startup_input_even_when_provenance_is_rehashed(self):
+        for field, name in (("handoff_hashes", "stage.json"), ("configuration_hashes", "env/jobs/migrate.env")):
+            with self.subTest(field=field):
+                self.setUp()
+                self.data["api_outer"]["preparation"]["preparation"][field][name] = "f" * 64
+                self.data["provenance"]["api_outer_sha256"] = module.canonical_hash(self.data["api_outer"])
+                self.environ["APPROVED_API_OUTER_SHA256"] = self.data["provenance"]["api_outer_sha256"]
+                self.environ["APPROVED_PROVENANCE_SHA256"] = module.canonical_hash(self.data["provenance"])
+                code, state, calls = self.run_wrapper()
+                self.assertEqual((code, state["error"]), (1, "SUCCESSFUL_API_HASH_BINDING_MISMATCH"))
                 self.assertEqual(FakeApi.instances, [])
                 self.assertFalse(calls.nonce.called or calls.ssh.called)
 

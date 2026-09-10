@@ -36,14 +36,14 @@ import tempfile
 import time
 
 PINS = {
-    "start-application-host.py": "dafe6e3544b60c1ca94bf39f06c0522c89a0b7dd80ad19b489b28227da3a5747",
-    "activate-application-host.py": "73e2a6c2389206c11712d96e3a4736da481e6ab4d0494dc088abc6f447f9ea72",
+    "start-application-host.py": "e7363f6caf31384c5d57f52c665a5b64cef6996b7019ed82d4d2d9f382ff7874",
+    "activate-application-host.py": "6f80b6a42ef4cdde9744b1b5a2bba88fb65dc44fead2cdea045fca25abfa3497",
     "initialize-database-host.py": "041f415dedf6b0b6922484281926c8c98c87828506dcb2e1ac6fb324b00b05bb",
     "prepare-database-host.py": "4621b1c0153ab56ae535e245fdb2de4ef2aff4a30ba5b592343a26795f0655ae",
     "bootstrap-server.py": "a19aca3ea953feecdcb9be6e9dcabdfc8b0e2b4f3938184391cdfb2ff3e87c9e",
     "inspect-server.py": "567d892221925bb438ece6a893360a891ffd4228f8af0a18252b8ba365a682c0",
 }
-LOCAL_PINS = {**PINS, "prepare-api-host.py": "e82612acbe9a642d37da867ec2f9cd6cae3d511387d3f2bdecee0fdfddf426a1"}
+LOCAL_PINS = {**PINS, "prepare-api-host.py": "d7416e41104965321a55780b91ef54ece9f321867c428aa770bde674a0243bb4"}
 
 
 def public_helpers():
@@ -160,11 +160,14 @@ def validate_request(request, environ):
     api = request["api_outer"]
     result = prepare.validate_remote(json.dumps(api["preparation"]), data, api["remote_directory"].rsplit("-", 1)[1])
     require(result["result"] == "API_ENVIRONMENT_PREPARED_ONLY", "SUCCESSFUL_API_HANDOFF_REQUIRED")
+    for field in ("handoff_hashes", "configuration_hashes"):
+        require(result["preparation"][field] == data[field], "SUCCESSFUL_API_HASH_BINDING_MISMATCH")
     # Frozen writers use sorted JSON with default separators and a newline.
     # Reconstructing their exact bytes binds cleanup success to the actual DB
     # container and API candidate, not merely another attempt on the same SHA.
     db_record = dict(db, images=data["images"], migration_hashes=data["migration_hashes"])
-    api_record = dict(result["preparation"], schema=1, commit=data["commit"], images=data["images"],
+    api_record = dict({key: value for key, value in result["preparation"].items()
+                       if key not in {"handoff_hashes", "configuration_hashes"}}, schema=1, commit=data["commit"], images=data["images"],
                       source_hashes=data["source_hashes"], migration_hashes=data["migration_hashes"],
                       api_sha256=data["configuration_hashes"]["env/api.env"])
     for name, record in (("initialization.json", db_record), ("application-env.json", api_record)):

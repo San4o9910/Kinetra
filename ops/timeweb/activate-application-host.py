@@ -47,6 +47,9 @@ PAYMENT_PROVIDER_KEYS = ("YUKASSA_SHOP_ID", "YUKASSA_SECRET_KEY", "YUKASSA_RETUR
 # Keep legacy payment inputs in the scrub set even though this launch rejects them.
 PROVIDER_ENV_KEYS = (*PROVIDERS, *PAYMENT_PROVIDER_KEYS)
 PRIVATE_INPUT_KEYS = {"schema", "server_id", "public_ipv4", "commit", "images", "source_hashes", "migration_hashes", "providers"}
+EVIDENCE_FILES = ("stage.json", "initialization.json", "application-env-attempt.json", "application-env.json")
+CONFIG_FILES = ("env/production.env", "env/single-server.env", "env/api.env", "env/jobs/migrate.env", "edge/nginx-real-ip.conf")
+HASH_FIELDS = ("handoff_hashes", "configuration_hashes")
 BAD_VALUE = re.compile(r"replace|example|change[_-]?me|placeholder|dummy|fake|local.only", re.I)
 
 
@@ -135,12 +138,15 @@ def validate_input(data):
 def read_handoff(data):
     safe_parent(STAGE)
     require(stat.S_IMODE(STAGE.stat().st_mode) == 0o700, "STAGE_PRIVACY_INVALID")
-    staged = json.loads(private_read(STAGE / "evidence/stage.json"))
+    fixed_evidence = {name: private_read(STAGE / "evidence" / name) for name in EVIDENCE_FILES[:2]}
+    fixed_configuration = {name: public_source(STAGE / name) if name.startswith("edge/") else private_read(STAGE / name)
+                           for name in CONFIG_FILES if name != "env/api.env"}
+    staged = json.loads(fixed_evidence["stage.json"])
     stage_core = {key: value for key, value in staged.items() if key not in {"images", "source_hashes"}}
     stage.validate_stage_result(json.dumps(stage_core))
     require(staged["result"] == "STAGED_ONLY" and staged["images"] == data["images"]
             and staged["source_hashes"] == data["source_hashes"] and staged["commit"] == data["commit"], "STAGE_IDENTITY_MISMATCH")
-    initialized = json.loads(private_read(STAGE / "evidence/initialization.json"))
+    initialized = json.loads(fixed_evidence["initialization.json"])
     init_core = {key: value for key, value in initialized.items() if key not in {"images", "migration_hashes"}}
     initialization.validate_initialization_result(json.dumps(init_core))
     require(initialized["result"] == "DATABASE_INITIALIZED_ONLY" and initialized["images"] == data["images"]
@@ -149,7 +155,7 @@ def read_handoff(data):
         require(sha256(public_source(STAGE / "source" / name)) == digest, "STAGED_SOURCE_CHANGED")
     old_api = private_read(STAGE / "env/api.env")
     require(parse_env(old_api) == {"NODE_ENV": "production"}, "EXISTING_API_CREDENTIALS_PRESERVED")
-    main = parse_env(private_read(STAGE / "env/production.env"))
+    main = parse_env(fixed_configuration["env/production.env"])
     expected = {key: data["images"][key] for key in ("NODE_IMAGE", "NGINX_IMAGE", "BACKEND_IMAGE", "FRONTEND_IMAGE")}
     expected.update(VCS_REF=data["commit"], VITE_API_URL=ORIGIN, VITE_PRIVATE_MEDIA_ORIGIN="",
                     KINETRA_API_ENV_FILE=str(STAGE / "env/api.env"), KINETRA_VIDEO_SCRATCH_DIR="")
@@ -157,7 +163,26 @@ def read_handoff(data):
     for name in ("application-env-attempt.json", "application-env.json"):
         path = STAGE / "evidence" / name
         require(not path.exists() and not path.is_symlink(), "EXISTING_PREPARATION_PRESERVED")
-    return {"staged": staged, "initialized": initialized, "main": main, "old_api": old_api}
+    return {"staged": staged, "initialized": initialized, "main": main, "old_api": old_api,
+            "fixed_evidence": fixed_evidence, "fixed_configuration": fixed_configuration}
+
+
+def collect_handoff_hashes(expected_evidence, expected_configuration):
+    """Read the exact validated bytes again; return no private content or partial maps."""
+    require(isinstance(expected_evidence, dict) and set(expected_evidence) == set(EVIDENCE_FILES)
+            and isinstance(expected_configuration, dict) and set(expected_configuration) == set(CONFIG_FILES)
+            and all(isinstance(raw, bytes) for raw in (*expected_evidence.values(), *expected_configuration.values())),
+            "FIXED_HANDOFF_FILE_SET_REQUIRED")
+    evidence, configuration = {}, {}
+    for name in EVIDENCE_FILES:
+        raw = private_read(STAGE / "evidence" / name)
+        require(raw == expected_evidence[name], "PREPARED_HANDOFF_CHANGED")
+        evidence[name] = sha256(raw)
+    for name in CONFIG_FILES:
+        raw = public_source(STAGE / name) if name.startswith("edge/") else private_read(STAGE / name)
+        require(raw == expected_configuration[name], "PREPARED_CONFIGURATION_CHANGED")
+        configuration[name] = sha256(raw)
+    return {"handoff_hashes": evidence, "configuration_hashes": configuration}
 
 
 def check_live_identity(data, handoff):
@@ -275,10 +300,12 @@ def prepare(data, state):
     shared["new_directory"](folder)
     state.update(phase="GENERATE_CANDIDATE", candidate_directory=folder.name)
     attempt = {"schema": 1, "commit": data["commit"], "images": data["images"], "previous_api_sha256": sha256(handoff["old_api"]), "candidate_directory": folder.name}
-    write_new(STAGE / "evidence/application-env-attempt.json", (json.dumps(attempt, sort_keys=True) + "\n").encode())
+    attempt_bytes = (json.dumps(attempt, sort_keys=True) + "\n").encode()
+    write_new(STAGE / "evidence/application-env-attempt.json", attempt_bytes)
     sync_directory(STAGE / "evidence")
     candidate = folder / "api.env"
-    write_new(candidate, env_bytes(api_values(data, generate_vapid(data["images"]["BACKEND_IMAGE"]))))
+    candidate_bytes = env_bytes(api_values(data, generate_vapid(data["images"]["BACKEND_IMAGE"])))
+    write_new(candidate, candidate_bytes)
     candidate_main = folder / "production.env"
     main = dict(handoff["main"], KINETRA_API_ENV_FILE=str(candidate))
     write_new(candidate_main, env_bytes(main))
@@ -292,16 +319,24 @@ def prepare(data, state):
     validate_candidate(data["images"]["BACKEND_IMAGE"], STAGE / "env/production.env", STAGE / "env/api.env")
     check_live_identity(data, handoff)
     state.update(result="API_ENVIRONMENT_PREPARED_ONLY", phase="API_ENVIRONMENT_PREPARATION_COMPLETE")
-    record = dict(state, schema=1, commit=data["commit"], images=data["images"], source_hashes=data["source_hashes"],
-                  migration_hashes=data["migration_hashes"], api_sha256=sha256(private_read(candidate)))
-    write_new(STAGE / "evidence/application-env.json", (json.dumps(record, sort_keys=True) + "\n").encode())
+    # Preserve the existing durable record format: its own hash belongs only
+    # to the final sanitized result, never inside the record being hashed.
+    record = dict({key: value for key, value in state.items() if key not in HASH_FIELDS}, schema=1,
+                  commit=data["commit"], images=data["images"], source_hashes=data["source_hashes"],
+                  migration_hashes=data["migration_hashes"], api_sha256=sha256(candidate_bytes))
+    record_bytes = (json.dumps(record, sort_keys=True) + "\n").encode()
+    write_new(STAGE / "evidence/application-env.json", record_bytes)
     sync_directory(STAGE / "evidence")
+    state.update(collect_handoff_hashes(
+        dict(handoff["fixed_evidence"], **{"application-env-attempt.json": attempt_bytes, "application-env.json": record_bytes}),
+        dict(handoff["fixed_configuration"], **{"env/api.env": candidate_bytes})))
 
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     state = {"result": "FAIL", "phase": "VALIDATE_PRIVATE_INPUT", "error": None, "api_environment_installed": False,
-             "application_started": False, "caddy_started": False, "provider_requests": 0, "candidate_directory": None}
+             "application_started": False, "caddy_started": False, "provider_requests": 0, "candidate_directory": None,
+             "handoff_hashes": None, "configuration_hashes": None}
     lock = None
     try:
         require(len(argv) == 3 and argv[:2] == ["--prepare-validated-api-environment", "--private-input"], "EXPLICIT_PREPARATION_ARGUMENTS_REQUIRED")

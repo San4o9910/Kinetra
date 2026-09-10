@@ -18,11 +18,11 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  APPROVED_APP_COMMIT: fc55ef42169d2729f31a897d6b499d936004c756
+  APPROVED_APP_COMMIT: 5798289a21af4bc63a3dffbb0aaf76a9b2bac88b
   APPROVED_BASE_COMMIT: ea0412a20baa87b7a00c4ce466d204d12fb052cc
-  APPROVED_MERGE_COMMIT: 36ec682d203fc5335d00f4816f4dbb8a0fd7f9cf
-  APPROVED_HEAD_RUN: '34447345842'
-  APPROVED_MERGE_RUN: '34447349464'
+  APPROVED_MERGE_COMMIT: 0ade90585ecd33b39852a4a38eeb296cce63e893
+  APPROVED_HEAD_RUN: '34530850712'
+  APPROVED_MERGE_RUN: '34530854556'
   PUBLISH_TO_GHCR: 'true'
   PUBLIC_ORIGIN: https://80.68.156.131
   NODE_TAG: docker.io/library/node:22-alpine3.24
@@ -33,7 +33,7 @@ env:
 jobs:
   qualify:
     runs-on: ubuntu-24.04
-    timeout-minutes: 150
+    timeout-minutes: 300
     permissions:
       contents: read
       actions: read
@@ -161,7 +161,7 @@ jobs:
             /ops/timeweb/scan-upstream-media.py
             /ops/timeweb/test-scan-upstream-media.py
 
-      - name: Check actual upstream versions and build both final targets
+      - name: Verify upstream versions and build authenticated Node cache
         shell: bash
         run: |
           set -euo pipefail
@@ -185,6 +185,20 @@ jobs:
             > "$evidence/nginx-base-version.txt"
           docker run --rm --network none "$TRIVY_IMAGE" --version > "$evidence/trivy-version.txt"
           grep -Fx 'Version: 0.74.0' "$evidence/trivy-version.txt"
+          # Node -j4 and media -j2 previously competed for the same four CPUs.
+          # Complete the authenticated Node stage first; both final targets reuse
+          # this local cache. Runtime/signature/scan gates still run unchanged.
+          docker buildx build --platform linux/amd64 --output type=cacheonly --provenance=false --sbom=false \
+            --file deploy/Containerfile --target node-build \
+            --build-arg NODE_IMAGE="$NODE_IMAGE" --build-arg NGINX_IMAGE="$NGINX_IMAGE" \
+            --build-arg VCS_REF="$APPROVED_APP_COMMIT" --build-arg VITE_API_URL="$PUBLIC_ORIGIN" \
+            --build-arg VITE_PRIVATE_MEDIA_ORIGIN='' .
+
+      - name: Build both final application targets from the completed Node cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/kinetra-image-evidence"
           for target in backend frontend; do
             docker buildx build --platform linux/amd64 --load --provenance=false --sbom=false \
               --file deploy/Containerfile --target "$target" --tag "kinetra-$target:qualified" \

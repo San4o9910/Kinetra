@@ -123,6 +123,9 @@ class PreparationTests(unittest.TestCase):
             KINETRA_API_ENV_FILE=str(self.stage / "env/api.env"), KINETRA_VIDEO_SCRATCH_DIR="")
         self.write(self.stage / "env/api.env", OLD_API)
         self.write(self.stage / "env/production.env", activate.env_bytes(self.main))
+        self.write(self.stage / "env/single-server.env", b"KINETRA_POSTGRES_DATA_DIR=/private/data\n")
+        self.write(self.stage / "env/jobs/migrate.env", b"NODE_ENV=production\n")
+        self.write(self.stage / "edge/nginx-real-ip.conf", b"set_real_ip_from 172.19.0.1;\n", 0o644)
         self.write(self.stage / "postgres/secrets/api_password", (DB_PASSWORD + "\n").encode(), uid=999)
         self.write(self.stage / "postgres/data/preserve-sentinel", b"existing initialized database\n", uid=999)
         return staged, initialized
@@ -366,8 +369,67 @@ class PreparationTests(unittest.TestCase):
             self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
         record = json.loads((self.stage / "evidence/application-env.json").read_bytes())
         self.assertEqual(record["api_sha256"], activate.sha256((folder / "api.env").read_bytes()))
+        self.assertFalse(set(activate.HASH_FIELDS) & set(record))
+        self.assertEqual(state["handoff_hashes"], {name: activate.sha256((self.stage / "evidence" / name).read_bytes())
+                                                  for name in activate.EVIDENCE_FILES})
+        self.assertEqual(state["configuration_hashes"], {name: activate.sha256((self.stage / name).read_bytes())
+                                                        for name in activate.CONFIG_FILES})
         self.assertEqual((self.stage / "postgres/data/preserve-sentinel").read_bytes(), b"existing initialized database\n")
         self.assertFalse(self.host_command.called)
+
+    def test_hash_collection_refuses_each_changed_missing_symlink_owner_mode_or_oversized_file(self):
+        self.handoff()
+        code, state, *_ = self.run_main()
+        self.assertEqual(code, 0)
+        evidence = {name: (self.stage / "evidence" / name).read_bytes() for name in activate.EVIDENCE_FILES}
+        configuration = {name: (self.stage / name).read_bytes() for name in activate.CONFIG_FILES}
+        fixed = {**{"evidence/" + name: raw for name, raw in evidence.items()}, **configuration}
+        for name, original in fixed.items():
+            path = self.stage / name
+            mode = 0o644 if name.startswith("edge/") else 0o600
+            for failure in ("changed", "missing", "symlink", "owner", "mode", "oversized"):
+                with self.subTest(name=name, failure=failure):
+                    path.unlink()
+                    if failure == "symlink":
+                        path.symlink_to(self.stage / "env/production.env")
+                    elif failure != "missing":
+                        raw = original + b"corrupt" if failure == "changed" else b"x" * 262145 if failure == "oversized" else original
+                        self.write(path, raw, 0o666 if failure == "mode" else mode, uid=1000 if failure == "owner" else 0)
+                    with self.assertRaises((activate.Error, OSError)):
+                        activate.collect_handoff_hashes(evidence, configuration)
+                    if path.exists() or path.is_symlink():
+                        path.unlink()
+                    self.write(path, original, mode)
+        self.assertEqual(activate.collect_handoff_hashes(evidence, configuration),
+                         {field: state[field] for field in activate.HASH_FIELDS})
+        self.assertFalse(self.host_command.called)
+
+    def test_hash_collection_rejects_unlisted_and_partial_file_sets(self):
+        evidence = {name: b"fixture" for name in activate.EVIDENCE_FILES}
+        configuration = {name: b"fixture" for name in activate.CONFIG_FILES}
+        for field, name in ((evidence, "stage.json"), (configuration, "env/api.env")):
+            original = field.pop(name)
+            with self.assertRaisesRegex(activate.Error, "FIXED_HANDOFF_FILE_SET_REQUIRED"):
+                activate.collect_handoff_hashes(evidence, configuration)
+            field[name] = original
+            field["../unlisted.env"] = b"fixture"
+            with self.assertRaisesRegex(activate.Error, "FIXED_HANDOFF_FILE_SET_REQUIRED"):
+                activate.collect_handoff_hashes(evidence, configuration)
+            del field["../unlisted.env"]
+
+    def test_changed_configuration_after_validation_cannot_emit_successful_hashes(self):
+        self.handoff()
+        original = activate.collect_handoff_hashes
+        def changed(*args):
+            self.write(self.stage / "env/single-server.env", b"KINETRA_POSTGRES_DATA_DIR=/changed/data\n")
+            return original(*args)
+        with patch.object(activate, "collect_handoff_hashes", side_effect=changed):
+            code, state, *_ = self.run_main()
+        self.assertEqual((code, state["error"]), (1, "PREPARED_CONFIGURATION_CHANGED"))
+        self.assertTrue(state["api_environment_installed"])
+        self.assertTrue(all(state[field] is None for field in activate.HASH_FIELDS))
+        self.assertTrue((self.stage / "evidence/application-env.json").exists())
+        self.assertEqual((self.stage / "env" / state["candidate_directory"] / "previous-api.env").read_bytes(), OLD_API)
 
     def test_candidate_rejection_preserves_original_and_new_private_candidate(self):
         self.handoff()
