@@ -36,14 +36,14 @@ import tempfile
 import time
 
 PINS = {
-    "start-application-host.py": "e7363f6caf31384c5d57f52c665a5b64cef6996b7019ed82d4d2d9f382ff7874",
-    "activate-application-host.py": "6f80b6a42ef4cdde9744b1b5a2bba88fb65dc44fead2cdea045fca25abfa3497",
+    "start-application-host.py": "654ae707445717a96b04c1a7b1f9e428e22ff06ccb04f40c68a2bf6b2ae11524",
+    "activate-application-host.py": "16c9ed2fc47534f86f35e4aa215d824ffbec84fd3c684d5d02157a7e944322c4",
     "initialize-database-host.py": "041f415dedf6b0b6922484281926c8c98c87828506dcb2e1ac6fb324b00b05bb",
     "prepare-database-host.py": "4621b1c0153ab56ae535e245fdb2de4ef2aff4a30ba5b592343a26795f0655ae",
     "bootstrap-server.py": "a19aca3ea953feecdcb9be6e9dcabdfc8b0e2b4f3938184391cdfb2ff3e87c9e",
     "inspect-server.py": "567d892221925bb438ece6a893360a891ffd4228f8af0a18252b8ba365a682c0",
 }
-LOCAL_PINS = {**PINS, "prepare-api-host.py": "d7416e41104965321a55780b91ef54ece9f321867c428aa770bde674a0243bb4"}
+LOCAL_PINS = {**PINS, "prepare-api-host.py": "6b63573205b874c03d08e6147eec364928630ff094100848a7146382700740ea"}
 
 
 def public_helpers():

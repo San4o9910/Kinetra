@@ -30,6 +30,10 @@ IMAGES = {
 # Offline fixtures only; never sent to a provider or server.
 PROVIDERS = {"AUTH_TOKEN_DELIVERY_WEBHOOK_URL": "https://delivery.kinetra.ru/token",
     "AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET": "offline-delivery-key-" + "e" * 32}
+SMTP_PROVIDERS = {"AUTH_TOKEN_DELIVERY_MODE": "smtp", "AUTH_TOKEN_DELIVERY_SMTP_SERVICE": "yandex",
+    "AUTH_TOKEN_DELIVERY_SMTP_USERNAME": "kinetra.offline@yandex.ru",
+    "AUTH_TOKEN_DELIVERY_SMTP_PASSWORD": "aBcDefGhiJKLmNop",
+    "AUTH_TOKEN_DELIVERY_APP_ORIGIN": "https://80.68.156.131"}
 TIMEWEB_TOKEN = "offline-timeweb-token-do-not-print"
 REGISTRY_TOKEN = "offline-registry-token-do-not-forward"
 SOURCE = {name: {"sha256": "6" * 64, "base64": "c291cmNlCg=="} for name in prepare.stage.SOURCE_PATHS}
@@ -116,7 +120,8 @@ class WrapperTests(unittest.TestCase):
              patch.object(prepare.resource, "setrlimit"), contextlib.redirect_stdout(output):
             code = prepare.main(argv or ["--prepare-api-environment", "--provider-env"], self.environ, FakeApi)
         text = output.getvalue()
-        for secret in (TIMEWEB_TOKEN, REGISTRY_TOKEN, *PROVIDERS.values()):
+        for secret in (TIMEWEB_TOKEN, REGISTRY_TOKEN, *PROVIDERS.values(),
+                       SMTP_PROVIDERS["AUTH_TOKEN_DELIVERY_SMTP_USERNAME"], SMTP_PROVIDERS["AUTH_TOKEN_DELIVERY_SMTP_PASSWORD"]):
             self.assertNotIn(secret, text)
         states = [json.loads(line.split("=", 1)[1]) for line in text.splitlines()]
         return code, states[-1], SimpleNamespace(source=source, migrations=migrations, pin=pin, key=key, inspect=inspect, ssh=ssh, nonce=nonce)
@@ -144,6 +149,49 @@ class WrapperTests(unittest.TestCase):
                 self.assertEqual(code, 1)
                 self.assertEqual(FakeApi.instances, [])
                 self.assertFalse(calls.key.called or calls.ssh.called)
+
+    def test_smtp_inputs_reach_only_private_stdin_and_are_scrubbed(self):
+        for key in PROVIDERS:
+            self.environ.pop(key)
+        self.environ.update(SMTP_PROVIDERS)
+        code, state, calls = self.run_wrapper()
+        self.assertEqual((code, state["result"]), (0, "API_ENVIRONMENT_PREPARED_ONLY"))
+        args, wire, _ = calls.ssh.call_args.args
+        supplied = json.loads(wire)["approved"]["providers"]
+        self.assertEqual(supplied, SMTP_PROVIDERS)
+        for key in ("AUTH_TOKEN_DELIVERY_SMTP_USERNAME", "AUTH_TOKEN_DELIVERY_SMTP_PASSWORD"):
+            self.assertNotIn(SMTP_PROVIDERS[key], " ".join(args))
+            self.assertNotIn(SMTP_PROVIDERS[key], json.dumps(state))
+        for key in (*prepare.activation.PROVIDER_ENV_KEYS, "TIMEWEB_CLOUD_TOKEN", "GITHUB_TOKEN", "GH_TOKEN"):
+            self.assertNotIn(key, self.environ)
+
+    def test_missing_unsafe_or_mixed_smtp_inputs_stop_before_timeweb(self):
+        variants = []
+        for key in SMTP_PROVIDERS:
+            values = dict(SMTP_PROVIDERS)
+            del values[key]
+            variants.append(values)
+        for key, value in (("AUTH_TOKEN_DELIVERY_SMTP_USERNAME", "mail@yandex.ru\nBcc:other"),
+                           ("AUTH_TOKEN_DELIVERY_SMTP_PASSWORD", "a" * 16 + "\r\nOTHER=bad"),
+                           ("AUTH_TOKEN_DELIVERY_SMTP_PASSWORD", "a" * 16 + "$HOME"),
+                           ("AUTH_TOKEN_DELIVERY_WEBHOOK_URL", PROVIDERS["AUTH_TOKEN_DELIVERY_WEBHOOK_URL"]),
+                           ("AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET", PROVIDERS["AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET"]),
+                           ("AUTH_TOKEN_DELIVERY_SMTP_SERVICE", "smtp.attacker.ru"),
+                           ("AUTH_TOKEN_DELIVERY_APP_ORIGIN", "https://80.68.156.132")):
+            variants.append({**SMTP_PROVIDERS, key: value})
+        for values in variants:
+            with self.subTest(values=values):
+                self.setUp()
+                for key in PROVIDERS:
+                    self.environ.pop(key)
+                self.environ.update(values)
+                code, _, calls = self.run_wrapper()
+                self.assertEqual(code, 1)
+                self.assertEqual(FakeApi.instances, [])
+                self.assertFalse(any(call.called for call in (calls.pin, calls.key, calls.inspect, calls.ssh, calls.nonce)))
+                self.assertEqual(list(self.root.iterdir()), [])
+                for key in prepare.activation.PROVIDER_ENV_KEYS:
+                    self.assertNotIn(key, self.environ)
 
     def test_payment_environment_values_are_scrubbed_and_rejected_before_timeweb(self):
         for key in prepare.activation.PAYMENT_PROVIDER_KEYS:

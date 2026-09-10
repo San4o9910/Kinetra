@@ -15,14 +15,16 @@ permissions:
 
 concurrency:
   group: kinetra-qualified-images
-  cancel-in-progress: false
+  # A newly reviewed application candidate supersedes an obsolete image build.
+  # This group has no deployment jobs; cancelled evidence cannot pass launch gates.
+  cancel-in-progress: true
 
 env:
-  APPROVED_APP_COMMIT: 5798289a21af4bc63a3dffbb0aaf76a9b2bac88b
+  APPROVED_APP_COMMIT: 73b665065e00a5b375e90f701373b3e0856a0386
   APPROVED_BASE_COMMIT: ea0412a20baa87b7a00c4ce466d204d12fb052cc
-  APPROVED_MERGE_COMMIT: 0ade90585ecd33b39852a4a38eeb296cce63e893
-  APPROVED_HEAD_RUN: '34530850712'
-  APPROVED_MERGE_RUN: '34530854556'
+  APPROVED_MERGE_COMMIT: 2f5d388dea92ed4994131d0b5e77734189de026c
+  APPROVED_HEAD_RUN: '34535162371'
+  APPROVED_MERGE_RUN: '34535166746'
   PUBLISH_TO_GHCR: 'true'
   PUBLIC_ORIGIN: https://80.68.156.131
   NODE_TAG: docker.io/library/node:22-alpine3.24

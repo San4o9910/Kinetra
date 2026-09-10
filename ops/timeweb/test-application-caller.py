@@ -191,6 +191,28 @@ class CallerTests(unittest.TestCase):
             caller.start_local(self.env, local)
         start.assert_not_called()
 
+    def test_smtp_inputs_are_forbidden_in_database_local_and_authentication_phases(self):
+        self.assertTrue(set(local.prepare.activation.SMTP_PROVIDERS) <= set(local.prepare.activation.PROVIDER_ENV_KEYS))
+        for name in local.prepare.activation.SMTP_PROVIDERS:
+            with self.subTest(name=name):
+                environ = {**self.env, name: "private-smtp-input"}
+                with patch.object(local.initialization, "main") as initialize, patch.object(local, "main") as start:
+                    with self.assertRaisesRegex(caller.CallerError, "PROVIDER_OR_REGISTRY_TOKEN_NOT_ALLOWED"):
+                        caller.initialize_database(environ, local)
+                    with self.assertRaisesRegex(caller.CallerError, "PROVIDER_OR_GITHUB_TOKEN_NOT_ALLOWED"):
+                        caller.start_local(environ, local)
+                    initialize.assert_not_called()
+                    start.assert_not_called()
+                for phase in ("--authenticate-database", "--recheck-provenance"):
+                    with patch.object(caller, "load", return_value=local) as load, patch.object(caller.signal, "signal"), \
+                         contextlib.redirect_stderr(io.StringIO()) as error:
+                        code = caller.main([phase], dict(environ))
+                    self.assertEqual(code, 1)
+                    self.assertIn("AUTHENTICATION_STEP_MUST_HAVE_ONLY_GITHUB_TOKEN", error.getvalue())
+                    self.assertNotIn("private-smtp-input", error.getvalue())
+                    load.assert_called_once_with("activate-local-application-host.py")
+        self.assertEqual(list(self.root.iterdir()), [])
+
     def test_failed_wrapper_state_is_preserved_without_success_or_unvalidated_output(self):
         path = caller.folder(self.env, create=True)
         def failed():

@@ -65,9 +65,9 @@ jobs:
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test "$ACTIVATE_LOCAL_APPLICATION" = APPROVED
           sha256sum --check --strict <<'SHA256'
-          635042bf8f95dca8c26b0bb42445152b06385b3b09c35eca3e3b4d277c080dd3  ops/timeweb/application-caller.py
+          45c60a2baaa3ef0e787a175eba4c93361749e7432ebbe5d46a16de7382f388d9  ops/timeweb/application-caller.py
           465b7a22cf59d5b3a9e40fb203b45ffeee97e7780ba54a6e315f09f4cc9d3366  ops/timeweb/verify-launch-provenance.py
-          bb998e300856eb9392dd9bf16c0446d61dee48a9634861949762e4aa695839be  ops/timeweb/test-application-caller.py
+          c9572bcb46737188616d3449cf1eda6b21c6faa3123a109cd19ee68de62468be  ops/timeweb/test-application-caller.py
           SHA256
           env -i PATH="$PATH" python3 ops/timeweb/test-application-caller.py
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -98,8 +98,11 @@ jobs:
         env:
           APP_CHECKOUT: ${{ github.workspace }}/Kinetra
           TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
-          AUTH_TOKEN_DELIVERY_WEBHOOK_URL: ${{ secrets.AUTH_TOKEN_DELIVERY_WEBHOOK_URL }}
-          AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET: ${{ secrets.AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET }}
+          AUTH_TOKEN_DELIVERY_MODE: smtp
+          AUTH_TOKEN_DELIVERY_SMTP_SERVICE: yandex
+          AUTH_TOKEN_DELIVERY_SMTP_USERNAME: ${{ secrets.AUTH_TOKEN_DELIVERY_SMTP_USERNAME }}
+          AUTH_TOKEN_DELIVERY_SMTP_PASSWORD: ${{ secrets.AUTH_TOKEN_DELIVERY_SMTP_PASSWORD }}
+          AUTH_TOKEN_DELIVERY_APP_ORIGIN: https://80.68.156.131
         run: |
           set -euo pipefail
           python3 ops/timeweb/application-caller.py --prepare-api

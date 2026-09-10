@@ -28,7 +28,7 @@ import time
 
 # Load exactly the reviewed helpers, never their CLI entrypoints.
 HELPER_HASHES = {
-    "activate-application-host.py": "6f80b6a42ef4cdde9744b1b5a2bba88fb65dc44fead2cdea045fca25abfa3497",
+    "activate-application-host.py": "16c9ed2fc47534f86f35e4aa215d824ffbec84fd3c684d5d02157a7e944322c4",
     "initialize-database-host.py": "041f415dedf6b0b6922484281926c8c98c87828506dcb2e1ac6fb324b00b05bb",
     "prepare-database-host.py": "4621b1c0153ab56ae535e245fdb2de4ef2aff4a30ba5b592343a26795f0655ae",
     "bootstrap-server.py": "a19aca3ea953feecdcb9be6e9dcabdfc8b0e2b4f3938184391cdfb2ff3e87c9e",

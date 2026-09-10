@@ -35,6 +35,10 @@ IMAGES = {
 # Synthetic fixtures, never production inputs or a provider request.
 PROVIDERS = {"AUTH_TOKEN_DELIVERY_WEBHOOK_URL": "https://delivery.kinetra.ru/token",
     "AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET": "offline-delivery-key-" + "c" * 32}
+SMTP_PROVIDERS = {"AUTH_TOKEN_DELIVERY_MODE": "smtp", "AUTH_TOKEN_DELIVERY_SMTP_SERVICE": "yandex",
+    "AUTH_TOKEN_DELIVERY_SMTP_USERNAME": "kinetra.offline@yandex.ru",
+    "AUTH_TOKEN_DELIVERY_SMTP_PASSWORD": "aBcDefGhiJKLmNop",
+    "AUTH_TOKEN_DELIVERY_APP_ORIGIN": "https://80.68.156.131"}
 DB_PASSWORD = "d" * 64
 OLD_API = b"# Explicitly incomplete first-deployment state\nNODE_ENV=production\n"
 STRICT_MARKER = "KINETRA_SINGLE_SERVER_CONFIG=VALIDATED_LOCAL (no service or required infrastructure gate executed)"
@@ -139,7 +143,8 @@ class PreparationTests(unittest.TestCase):
              patch.object(activate, "validate_candidate", side_effect=validator) as validate, contextlib.redirect_stdout(output):
             code = activate.main(["--prepare-validated-api-environment", "--private-input", str(path)])
         text = output.getvalue()
-        for secret in (*PROVIDERS.values(), DB_PASSWORD, self.vapid["private"]):
+        for secret in (*PROVIDERS.values(), SMTP_PROVIDERS["AUTH_TOKEN_DELIVERY_SMTP_USERNAME"],
+                       SMTP_PROVIDERS["AUTH_TOKEN_DELIVERY_SMTP_PASSWORD"], DB_PASSWORD, self.vapid["private"]):
             self.assertNotIn(secret, text)
         return code, json.loads(text), identity, generate, validate
 
@@ -182,6 +187,77 @@ class PreparationTests(unittest.TestCase):
                     self.assertEqual((code, state["error"]), (1, "REQUIRED_PROVIDER_INPUTS_MISSING"))
                     self.assertFalse(any(mock.called for mock in (lock, write, identity, generate, validate, self.host_command)))
                     self.assertEqual(list(self.stage.iterdir()), [])
+
+    def test_missing_or_unsafe_smtp_is_rejected_before_any_host_action(self):
+        variants = []
+        for key in SMTP_PROVIDERS:
+            values = dict(SMTP_PROVIDERS)
+            del values[key]
+            variants.append(values)
+        for key, values in (
+            ("AUTH_TOKEN_DELIVERY_SMTP_SERVICE", ("other", "yandex\nHOST=evil", "Yandex", "smtp.yandex.ru")),
+            ("AUTH_TOKEN_DELIVERY_SMTP_USERNAME", ("local", "Name <mail@yandex.ru>", "a..b@yandex.ru", "a@-bad.ru",
+                "a@bad-.ru", "a@localhost", "a@@yandex.ru", "a@yandex.ru\r\nBcc:other", "a@yandex.ru ",
+                "a" * 65 + "@yandex.ru", "a@" + "x" * 64 + ".ru", "кинетра@yandex.ru")),
+            ("AUTH_TOKEN_DELIVERY_SMTP_PASSWORD", ("", "short", "x" * 257, "a" * 16 + "\nEXTRA=secret",
+                "a" * 16 + " ", "a" * 16 + "$HOME", "a" * 16 + "'", "a" * 16 + '"', "a" * 16 + "`id`",
+                "a" * 16 + "\x00", "a" * 16 + "Я")),
+            ("AUTH_TOKEN_DELIVERY_APP_ORIGIN", ("http://80.68.156.131", "https://80.68.156.132", "https://80.68.156.131/",
+                "https://80.68.156.131?token=secret")),
+            ("AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET", ("", "z" * 32)),
+            ("YUKASSA_SECRET_KEY", ("", "z" * 32)),
+        ):
+            variants.extend({**SMTP_PROVIDERS, key: value} for value in values)
+        for providers in variants:
+            with self.subTest(providers=providers):
+                data = payload()
+                data["providers"] = providers
+                with patch.object(activate.fcntl, "flock") as lock, patch.object(activate, "write_new") as write:
+                    code, _, identity, generate, validate = self.run_main(data)
+                self.assertEqual(code, 1)
+                self.assertFalse(any(mock.called for mock in (lock, write, identity, generate, validate, self.host_command)))
+                self.assertEqual(list(self.stage.iterdir()), [])
+
+    def test_smtp_configuration_preserves_exact_credentials_and_free_beta(self):
+        self.handoff()
+        for service, username in (("yandex", "kinetra.offline@yandex.ru"), ("gmail", "kinetra.offline@gmail.com"),
+                                  ("yandex", "mail+kinetra@custom-domain.ru")):
+            data = payload()
+            data["providers"] = {**SMTP_PROVIDERS, "AUTH_TOKEN_DELIVERY_SMTP_SERVICE": service,
+                                 "AUTH_TOKEN_DELIVERY_SMTP_USERNAME": username}
+            activate.validate_input(data)
+            values = activate.api_values(data, self.vapid)
+            self.assertEqual(activate.parse_env(activate.env_bytes(values)), values)
+            self.assertEqual({key: values[key] for key in SMTP_PROVIDERS}, data["providers"])
+            self.assertFalse(any(key in values for key in activate.PROVIDERS))
+            self.assertEqual((values["PAYMENTS_ENABLED"], values["FREE_BETA_ENABLED"]), ("false", "true"))
+            self.assertTrue(all(values[key] == "" for key in activate.PAYMENT_PROVIDER_KEYS))
+        for password in ("a" * 16, "b" * 256, "AbCdEfGhIjKlMnOp!#%&()*+-./:;<=>?@[\\]^_{|}~"):
+            data["providers"]["AUTH_TOKEN_DELIVERY_SMTP_PASSWORD"] = password
+            activate.validate_input(data)
+            values = activate.api_values(data, self.vapid)
+            self.assertEqual(activate.parse_env(activate.env_bytes(values))["AUTH_TOKEN_DELIVERY_SMTP_PASSWORD"], password)
+
+    def test_smtp_preparation_has_no_provider_request_or_secret_output(self):
+        self.handoff()
+        self.data["providers"] = dict(SMTP_PROVIDERS)
+        code, state, _, _, _ = self.run_main()
+        self.assertEqual((code, state["result"], state["provider_requests"]), (0, "API_ENVIRONMENT_PREPARED_ONLY", 0))
+        for key in ("AUTH_TOKEN_DELIVERY_SMTP_USERNAME", "AUTH_TOKEN_DELIVERY_SMTP_PASSWORD"):
+            self.assertNotIn(SMTP_PROVIDERS[key], json.dumps(state))
+
+    def test_smtp_environment_passes_actual_production_validator(self):
+        self.handoff()
+        checkout = Path(os.environ.get("KINETRA_APPROVED_APP_CHECKOUT", Path(__file__).resolve().parents[3] / "Kinetra"))
+        validator = checkout / "ops/validate-production-env.mjs"
+        program = "import {readFileSync} from 'node:fs';const v=await import(process.argv[1]);const d=JSON.parse(readFileSync(0,'utf8'));v.validateApi(d.api,d.main);console.log('VALID');"
+        for service in ("yandex", "gmail"):
+            data = payload()
+            data["providers"] = {**SMTP_PROVIDERS, "AUTH_TOKEN_DELIVERY_SMTP_SERVICE": service}
+            values = activate.api_values(data, self.vapid)
+            result = subprocess.run([self.node, "--input-type=module", "-e", program, validator.as_uri()],
+                input=json.dumps({"api": values, "main": self.main}), capture_output=True, text=True, timeout=10)
+            self.assertEqual((result.returncode, result.stdout.strip()), (0, "VALID"), result.stderr)
 
     def test_identity_scope_and_required_tagged_postgres_fail_closed(self):
         for mutate in (

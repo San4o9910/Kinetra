@@ -23,7 +23,7 @@ import tempfile
 import time
 
 PINS = {
-    "activate-application-host.py": "6f80b6a42ef4cdde9744b1b5a2bba88fb65dc44fead2cdea045fca25abfa3497",
+    "activate-application-host.py": "16c9ed2fc47534f86f35e4aa215d824ffbec84fd3c684d5d02157a7e944322c4",
     "initialize-database-host.py": "041f415dedf6b0b6922484281926c8c98c87828506dcb2e1ac6fb324b00b05bb",
     "prepare-database-host.py": "4621b1c0153ab56ae535e245fdb2de4ef2aff4a30ba5b592343a26795f0655ae",
     "bootstrap-server.py": "a19aca3ea953feecdcb9be6e9dcabdfc8b0e2b4f3938184391cdfb2ff3e87c9e",
@@ -269,7 +269,7 @@ def main(argv=None, environ=None, api_factory=inspection.Api):
         "application_started": False, "caddy_started": False}
     api, folder, data, payload = None, None, None, b""
     provider_environment = {key: environ.pop(key, "") for key in activation.PROVIDER_ENV_KEYS}
-    providers = {key: provider_environment[key] for key in activation.PROVIDERS}
+    providers = {key: provider_environment[key] for key in activation.AUTH_PROVIDER_KEYS}
     token = environ.pop("TIMEWEB_CLOUD_TOKEN", "")
     environ.pop("GITHUB_TOKEN", None)
     environ.pop("GH_TOKEN", None)
@@ -292,7 +292,7 @@ def main(argv=None, environ=None, api_factory=inspection.Api):
         data = {"schema": 1, "server_id": inspection.SERVER_ID, "public_ipv4": inspection.PUBLIC_IPV4,
             **metadata, "source_hashes": {name: entry["sha256"] for name, entry in files.items()},
             "migration_hashes": initialization.migration_hashes(environ.get("APP_CHECKOUT", ""), metadata["commit"]), "providers": providers}
-        # Frozen guest validation checks both required auth providers before any
+        # Guest validation checks every selected auth provider input before any
         # API call, nonce/key generation, local temp directory or host action.
         activation.validate_input(data)
         public = public_helpers()

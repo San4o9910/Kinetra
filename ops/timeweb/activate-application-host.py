@@ -43,9 +43,13 @@ SERVER_ID = 9069403
 PUBLIC_IP = "80.68.156.131"
 ORIGIN = "https://" + PUBLIC_IP
 PROVIDERS = ("AUTH_TOKEN_DELIVERY_WEBHOOK_URL", "AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET")
+SMTP_PROVIDERS = ("AUTH_TOKEN_DELIVERY_MODE", "AUTH_TOKEN_DELIVERY_SMTP_SERVICE",
+                  "AUTH_TOKEN_DELIVERY_SMTP_USERNAME", "AUTH_TOKEN_DELIVERY_SMTP_PASSWORD",
+                  "AUTH_TOKEN_DELIVERY_APP_ORIGIN")
+AUTH_PROVIDER_KEYS = (*PROVIDERS, *SMTP_PROVIDERS)
 PAYMENT_PROVIDER_KEYS = ("YUKASSA_SHOP_ID", "YUKASSA_SECRET_KEY", "YUKASSA_RETURN_URL")
 # Keep legacy payment inputs in the scrub set even though this launch rejects them.
-PROVIDER_ENV_KEYS = (*PROVIDERS, *PAYMENT_PROVIDER_KEYS)
+PROVIDER_ENV_KEYS = (*AUTH_PROVIDER_KEYS, *PAYMENT_PROVIDER_KEYS)
 PRIVATE_INPUT_KEYS = {"schema", "server_id", "public_ipv4", "commit", "images", "source_hashes", "migration_hashes", "providers"}
 EVIDENCE_FILES = ("stage.json", "initialization.json", "application-env-attempt.json", "application-env.json")
 CONFIG_FILES = ("env/production.env", "env/single-server.env", "env/api.env", "env/jobs/migrate.env", "edge/nginx-real-ip.conf")
@@ -97,18 +101,31 @@ def env_bytes(values):
     return value
 
 
-def validate_input(data):
-    require(isinstance(data, dict) and set(data) == PRIVATE_INPUT_KEYS, "PRIVATE_INPUT_SHAPE_INVALID")
-    require(type(data["schema"]) is int and data["schema"] == 1 and type(data["server_id"]) is int
-            and data["server_id"] == SERVER_ID and data["public_ipv4"] == PUBLIC_IP, "FIXED_SERVER_REQUIRED")
-    providers = data["providers"]
-    # Validate every missing/unsafe provider input before any host command,
-    # lock, key generation, temporary directory or file mutation.
-    require(isinstance(providers, dict) and set(providers) == set(PROVIDERS), "REQUIRED_PROVIDER_INPUTS_MISSING")
-    for key in PROVIDERS:
-        value = providers[key]
+def validate_providers(providers):
+    require(isinstance(providers, dict), "REQUIRED_PROVIDER_INPUTS_MISSING")
+    mode = providers.get("AUTH_TOKEN_DELIVERY_MODE", "webhook")
+    if mode == "smtp":
+        require(set(providers) == set(SMTP_PROVIDERS), "REQUIRED_PROVIDER_INPUTS_MISSING")
+    else:
+        require(mode == "webhook" and set(providers) in (set(PROVIDERS), set(PROVIDERS) | {"AUTH_TOKEN_DELIVERY_MODE"}),
+                "REQUIRED_PROVIDER_INPUTS_MISSING")
+    for value in providers.values():
         require(isinstance(value, str) and 1 <= len(value) <= 2048 and value == value.strip()
                 and not BAD_VALUE.search(value) and not re.search(r"[^!-~]|[$'\"`]", value), "PROVIDER_INPUT_INVALID")
+    if mode == "smtp":
+        require(providers["AUTH_TOKEN_DELIVERY_SMTP_SERVICE"] in {"yandex", "gmail"}, "SMTP_SERVICE_INVALID")
+        username = providers["AUTH_TOKEN_DELIVERY_SMTP_USERNAME"]
+        parts = username.split("@")
+        require(len(username) <= 254 and len(parts) == 2 and 1 <= len(parts[0]) <= 64
+                and re.fullmatch(r"[A-Za-z0-9_+\-]+(?:\.[A-Za-z0-9_+\-]+)*", parts[0]) is not None
+                and re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9\-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9\-]{0,61}[A-Za-z0-9])?)+", parts[1]) is not None,
+                "SMTP_USERNAME_INVALID")
+        # Preserve the existing raw-file interpolation guard above; never trim
+        # or quote credentials. Generated Yandex/Gmail app passwords fit it.
+        require(16 <= len(providers["AUTH_TOKEN_DELIVERY_SMTP_PASSWORD"]) <= 256,
+                "SMTP_APP_PASSWORD_INVALID")
+        require(providers["AUTH_TOKEN_DELIVERY_APP_ORIGIN"] == ORIGIN, "SMTP_APP_ORIGIN_INVALID")
+        return
     require(32 <= len(providers["AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET"]) <= 512, "DELIVERY_SECRET_INVALID")
     try:
         url = urlsplit(providers["AUTH_TOKEN_DELIVERY_WEBHOOK_URL"])
@@ -123,6 +140,15 @@ def validate_input(data):
         require(ipaddress.ip_address(url.hostname).is_global, "DELIVERY_URL_INVALID")
     except ValueError:
         pass  # Domain ownership/reachability is an operator/provider input, not an HTTP probe.
+
+
+def validate_input(data):
+    require(isinstance(data, dict) and set(data) == PRIVATE_INPUT_KEYS, "PRIVATE_INPUT_SHAPE_INVALID")
+    require(type(data["schema"]) is int and data["schema"] == 1 and type(data["server_id"]) is int
+            and data["server_id"] == SERVER_ID and data["public_ipv4"] == PUBLIC_IP, "FIXED_SERVER_REQUIRED")
+    # Validate every missing/unsafe provider input before any host command,
+    # lock, key generation, temporary directory or file mutation.
+    validate_providers(data["providers"])
     require(isinstance(data["images"], dict) and set(data["images"]) == set(stage.IMAGE_PATTERNS), "IMAGE_SET_INVALID")
     stage.metadata({"APPROVED_APP_COMMIT": data["commit"], **data["images"]})
     require(re.fullmatch(r"(?:docker\.io/library/)?postgres:17(?:\.[0-9]+)?-bookworm@sha256:[a-f0-9]{64}",
@@ -222,15 +248,15 @@ def generate_vapid(image):
 
 
 def api_values(data, vapid):
+    validate_providers(data["providers"])
+    delivery = {"AUTH_TOKEN_DELIVERY_MODE": "webhook", **data["providers"]}
     password = private_read(STAGE / "postgres/secrets/api_password", uid=999).decode("ascii").removesuffix("\n")
     require(re.fullmatch(r"[A-Za-z0-9_-]{43,128}", password), "EXISTING_API_ROLE_SECRET_INVALID")
     return {
         "NODE_ENV": "production", "HOST": "0.0.0.0", "PORT": "3000",
         "DATABASE_URL": "postgresql://kinetra_api:" + password + "@postgres:5432/kinetra?sslmode=verify-full",
         "CORS_ORIGIN": ORIGIN, "TRUST_PROXY_HOPS": "1", "JWT_ACCESS_SECRET": secrets.token_urlsafe(48),
-        "AUTH_REFRESH_COOKIE_SECURE": "true", "AUTH_TOKEN_DELIVERY_MODE": "webhook",
-        "AUTH_TOKEN_DELIVERY_WEBHOOK_URL": data["providers"]["AUTH_TOKEN_DELIVERY_WEBHOOK_URL"],
-        "AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET": data["providers"]["AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET"],
+        "AUTH_REFRESH_COOKIE_SECURE": "true", **delivery,
         "AUTH_TOKEN_DELIVERY_TIMEOUT_MS": "10000", "PAYMENTS_ENABLED": "false", "FREE_BETA_ENABLED": "true",
         "YUKASSA_SHOP_ID": "", "YUKASSA_SECRET_KEY": "", "YUKASSA_RETURN_URL": "",
         "YUKASSA_REQUEST_TIMEOUT_MS": "10000", "VAPID_PUBLIC_KEY": vapid["public"], "VAPID_PRIVATE_KEY": vapid["private"],
