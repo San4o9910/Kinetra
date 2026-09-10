@@ -21,6 +21,6 @@
     "--without-npm",
     "--without-corepack"
   ],
-  "parallelJobs": 2,
-  "compileTimeoutMs": 3600000
+  "parallelJobs": 4,
+  "compileTimeoutMs": 5400000
 }

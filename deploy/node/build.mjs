@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { chmodSync, cpSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { availableParallelism, totalmem } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertDigest, assertRuntime, assertSignedChecksum, sha256 } from './verify.mjs';
@@ -22,8 +23,8 @@ if (
   !/^VERSION_ID=3\.24\./m.test(osRelease) ||
   manifest.schemaVersion !== 1 ||
   manifest.version !== '22.23.2' ||
-  manifest.parallelJobs !== 2 ||
-  manifest.compileTimeoutMs !== 3_600_000
+  manifest.parallelJobs !== 4 ||
+  manifest.compileTimeoutMs !== 5_400_000
 ) {
   throw new Error('Node must be built in the reviewed Alpine 3.24 stage with the bounded recipe');
 }
@@ -37,6 +38,29 @@ run('apk', [
 mkdirSync(work);
 mkdirSync(join(output, 'bin'), { recursive: true });
 mkdirSync(evidence, { recursive: true });
+const totalMemoryBytes = totalmem();
+const constrainedMemoryBytes = process.constrainedMemory();
+const resources = {
+  schemaVersion: 1,
+  availableParallelism: availableParallelism(),
+  totalMemoryBytes,
+  constrainedMemoryBytes,
+  effectiveMemoryBytes:
+    constrainedMemoryBytes > 0
+      ? Math.min(totalMemoryBytes, constrainedMemoryBytes)
+      : totalMemoryBytes,
+  minimumMemoryBytes: 8 * 1024 ** 3,
+  parallelJobs: manifest.parallelJobs,
+  compileTimeoutMs: manifest.compileTimeoutMs,
+};
+save(join(evidence, 'build-resources.json'), resources);
+process.stdout.write(`KINETRA_NODE_BUILD_RESOURCES=${JSON.stringify(resources)}\n`);
+if (
+  resources.availableParallelism < manifest.parallelJobs ||
+  resources.effectiveMemoryBytes < resources.minimumMemoryBytes
+) {
+  throw new Error('The four-job Node build requires at least four available CPUs and 8 GiB memory');
+}
 mkdirSync(join(work, 'gnupg'), { mode: 0o700 });
 const buildEnv = { ...process.env, GNUPGHOME: join(work, 'gnupg') };
 const archive = join(work, manifest.sourceFile);
