@@ -1,9 +1,10 @@
+import { BlockList, isIP } from 'node:net';
 import { parseDatabaseUrl, parseNodeEnvironment, type NodeEnvironment } from './database.js';
 import { parseFreeBetaEnabled, parsePaymentsEnabled } from './payments.js';
 export { parseDatabaseUrl } from './database.js';
 
 type SameSiteMode = 'lax' | 'strict' | 'none';
-type TokenDeliveryMode = 'console' | 'disabled' | 'webhook';
+type TokenDeliveryMode = 'console' | 'disabled' | 'webhook' | 'smtp';
 
 export interface S3Environment {
   readonly endpoint: string | null;
@@ -483,9 +484,132 @@ export interface TokenDeliveryWebhookEnvironment {
   readonly timeoutMs: number;
 }
 
+export interface TokenDeliverySmtpEnvironment {
+  readonly service: 'yandex' | 'gmail';
+  readonly username: string;
+  readonly password: string;
+  readonly appOrigin: string;
+  readonly timeoutMs: number;
+}
+
+const smtpKeys = [
+  'AUTH_TOKEN_DELIVERY_SMTP_SERVICE',
+  'AUTH_TOKEN_DELIVERY_SMTP_USERNAME',
+  'AUTH_TOKEN_DELIVERY_SMTP_PASSWORD',
+  'AUTH_TOKEN_DELIVERY_APP_ORIGIN',
+] as const;
+
+const rejectUnusedDeliveryValues = (values: NodeJS.ProcessEnv, keys: readonly string[]) => {
+  if (keys.some((key) => values[key] !== undefined && values[key] !== '')) {
+    throw new Error('AUTH_TOKEN_DELIVERY_MODE must not mix webhook and SMTP configuration.');
+  }
+};
+
+const isPublicAppHost = (hostname: string): boolean => {
+  const host = hostname.replace(/^\[|\]$/gu, '');
+  const family = isIP(host);
+  if (family === 4) {
+    const blocked = new BlockList();
+    for (const [network, prefix] of [
+      ['0.0.0.0', 8],
+      ['10.0.0.0', 8],
+      ['100.64.0.0', 10],
+      ['127.0.0.0', 8],
+      ['169.254.0.0', 16],
+      ['172.16.0.0', 12],
+      ['192.0.0.0', 24],
+      ['192.0.2.0', 24],
+      ['192.168.0.0', 16],
+      ['198.51.100.0', 24],
+      ['203.0.113.0', 24],
+      ['198.18.0.0', 15],
+      ['224.0.0.0', 4],
+      ['240.0.0.0', 4],
+    ] as const)
+      blocked.addSubnet(network, prefix, 'ipv4');
+    return !blocked.check(host, 'ipv4');
+  }
+  if (family === 6) {
+    const global = new BlockList();
+    global.addSubnet('2000::', 3, 'ipv6');
+    return global.check(host, 'ipv6') && !/^2001:(?:db8|0):|^2002:|^3fff:/u.test(host);
+  }
+  return (
+    /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/u.test(host) &&
+    !/\.(?:localhost|local|internal|home|lan)$/u.test(host)
+  );
+};
+
+export const parseTokenDeliverySmtp = (
+  values: NodeJS.ProcessEnv,
+  corsOrigins: readonly string[],
+): Readonly<TokenDeliverySmtpEnvironment> => {
+  rejectUnusedDeliveryValues(values, [
+    'AUTH_TOKEN_DELIVERY_WEBHOOK_URL',
+    'AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET',
+  ]);
+  const service = values.AUTH_TOKEN_DELIVERY_SMTP_SERVICE;
+  if (service !== 'yandex' && service !== 'gmail') {
+    throw new Error('AUTH_TOKEN_DELIVERY_SMTP_SERVICE must be yandex or gmail.');
+  }
+  const username = values.AUTH_TOKEN_DELIVERY_SMTP_USERNAME ?? '';
+  const [localPart = '', domain = '', ...extra] = username.split('@');
+  if (
+    username.length > 254 ||
+    localPart.length > 64 ||
+    extra.length > 0 ||
+    !/^[A-Za-z0-9_+-]+(?:\.[A-Za-z0-9_+-]+)*$/u.test(localPart) ||
+    !/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/u.test(
+      domain,
+    )
+  ) {
+    throw new Error('AUTH_TOKEN_DELIVERY_SMTP_USERNAME must be one full email address.');
+  }
+  const password = values.AUTH_TOKEN_DELIVERY_SMTP_PASSWORD ?? '';
+  if (!/^[\x21-\x7e]{16,256}$/u.test(password)) {
+    throw new Error(
+      'AUTH_TOKEN_DELIVERY_SMTP_PASSWORD must contain 16-256 printable non-space ASCII characters.',
+    );
+  }
+  const appOrigin = values.AUTH_TOKEN_DELIVERY_APP_ORIGIN ?? '';
+  let url: URL;
+  try {
+    url = new URL(appOrigin);
+  } catch {
+    throw new Error(
+      'AUTH_TOKEN_DELIVERY_APP_ORIGIN must be an exact public HTTPS origin from CORS_ORIGIN.',
+    );
+  }
+  if (
+    appOrigin.length > 2048 ||
+    url.protocol !== 'https:' ||
+    appOrigin !== url.origin ||
+    !isPublicAppHost(url.hostname) ||
+    !corsOrigins.includes(appOrigin)
+  ) {
+    throw new Error(
+      'AUTH_TOKEN_DELIVERY_APP_ORIGIN must be an exact public HTTPS origin from CORS_ORIGIN.',
+    );
+  }
+  return Object.freeze({
+    service,
+    username,
+    password,
+    appOrigin,
+    timeoutMs: parseInteger(
+      'AUTH_TOKEN_DELIVERY_TIMEOUT_MS',
+      values.AUTH_TOKEN_DELIVERY_TIMEOUT_MS,
+      10000,
+      1000,
+      30000,
+    ),
+  });
+};
+
 export const parseTokenDeliveryWebhook = (
   values: NodeJS.ProcessEnv,
 ): Readonly<TokenDeliveryWebhookEnvironment> => {
+  rejectUnusedDeliveryValues(values, smtpKeys);
   const rawUrl = values.AUTH_TOKEN_DELIVERY_WEBHOOK_URL ?? '';
   let url: URL;
   try {
@@ -581,7 +705,7 @@ const tokenDeliveryMode = parseEnum<TokenDeliveryMode>(
   'AUTH_TOKEN_DELIVERY_MODE',
   process.env.AUTH_TOKEN_DELIVERY_MODE,
   nodeEnv === 'production' ? 'webhook' : 'console',
-  ['console', 'disabled', 'webhook'],
+  ['console', 'disabled', 'webhook', 'smtp'],
 );
 const phoneLoginEnabled = parseBoolean(
   'AUTH_PHONE_LOGIN_ENABLED',
@@ -616,21 +740,24 @@ if (nodeEnv === 'production' && jwtAccessSecret === DEVELOPMENT_ACCESS_SECRET) {
   throw new Error('JWT_ACCESS_SECRET must be replaced before production startup.');
 }
 
-if (nodeEnv === 'production' && tokenDeliveryMode !== 'webhook') {
-  throw new Error('AUTH_TOKEN_DELIVERY_MODE=webhook is required in production.');
+if (nodeEnv === 'production' && !['webhook', 'smtp'].includes(tokenDeliveryMode)) {
+  throw new Error('AUTH_TOKEN_DELIVERY_MODE=webhook or smtp is required in production.');
 }
 if (nodeEnv === 'production' && !refreshCookieSecure) {
   throw new Error('AUTH_REFRESH_COOKIE_SECURE=true is required in production.');
 }
 const tokenDeliveryWebhook =
   tokenDeliveryMode === 'webhook' ? parseTokenDeliveryWebhook(process.env) : null;
+const corsOrigins = parseCorsOrigins(process.env.CORS_ORIGIN, nodeEnv);
+const tokenDeliverySmtp =
+  tokenDeliveryMode === 'smtp' ? parseTokenDeliverySmtp(process.env, corsOrigins) : null;
 const shutdown = parseShutdownEnvironment(process.env);
 
 export const env = Object.freeze({
   nodeEnv,
   host: process.env.HOST ?? '0.0.0.0',
   port: parseInteger('PORT', process.env.PORT, 3000, 1, 65_535),
-  corsOrigins: parseCorsOrigins(process.env.CORS_ORIGIN, nodeEnv),
+  corsOrigins,
   trustProxyHops: parseInteger('TRUST_PROXY_HOPS', process.env.TRUST_PROXY_HOPS, 0, 0, 10),
   databaseUrl: parseDatabaseUrl(nodeEnv, process.env.DATABASE_URL),
   readinessTimeoutMs: parseInteger(
@@ -726,5 +853,6 @@ export const env = Object.freeze({
     ),
     tokenDeliveryMode,
     tokenDeliveryWebhook,
+    tokenDeliverySmtp,
   }),
 });

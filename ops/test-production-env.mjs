@@ -279,3 +279,114 @@ test('raw file loader rejects interpolation, duplicates, symlink-prone paths and
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('SMTP production API validates fixed providers, app-origin binding and isolated secrets', () => {
+  const smtp = {
+    ...api,
+    AUTH_TOKEN_DELIVERY_MODE: 'smtp',
+    AUTH_TOKEN_DELIVERY_WEBHOOK_URL: '',
+    AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET: '',
+    AUTH_TOKEN_DELIVERY_SMTP_SERVICE: 'yandex',
+    AUTH_TOKEN_DELIVERY_SMTP_USERNAME: 'kinetra.auth+test@custom-domain.test',
+    AUTH_TOKEN_DELIVERY_SMTP_PASSWORD: 'syntheticAppPassword123',
+    AUTH_TOKEN_DELIVERY_APP_ORIGIN: 'https://app.kinetra.test',
+  };
+  for (const service of ['yandex', 'gmail'])
+    validateApi({ ...smtp, AUTH_TOKEN_DELIVERY_SMTP_SERVICE: service }, main);
+  validateApi(
+    {
+      ...smtp,
+      AUTH_TOKEN_DELIVERY_APP_ORIGIN: 'https://80.68.156.131',
+      CORS_ORIGIN: 'https://80.68.156.131',
+    },
+    main,
+  );
+  for (const overrides of [
+    { AUTH_TOKEN_DELIVERY_MODE: 'console' },
+    { AUTH_TOKEN_DELIVERY_MODE: 'disabled' },
+    { AUTH_TOKEN_DELIVERY_SMTP_SERVICE: 'custom.smtp.test' },
+    { AUTH_TOKEN_DELIVERY_SMTP_SERVICE: ' yandex ' },
+    { AUTH_TOKEN_DELIVERY_SMTP_USERNAME: 'sender' },
+    { AUTH_TOKEN_DELIVERY_SMTP_USERNAME: 'sender@localhost' },
+    { AUTH_TOKEN_DELIVERY_SMTP_USERNAME: 'Name <sender@yandex.ru>' },
+    { AUTH_TOKEN_DELIVERY_SMTP_USERNAME: 'sender@yandex.ru,other@gmail.com' },
+    { AUTH_TOKEN_DELIVERY_SMTP_USERNAME: 'sender@yandex.ru\r\nBcc: other@gmail.com' },
+    { AUTH_TOKEN_DELIVERY_SMTP_USERNAME: `${'a'.repeat(65)}@yandex.ru` },
+    { AUTH_TOKEN_DELIVERY_SMTP_USERNAME: 'a..b@yandex.ru' },
+    { AUTH_TOKEN_DELIVERY_SMTP_USERNAME: 'user@-yandex.ru' },
+    { AUTH_TOKEN_DELIVERY_SMTP_PASSWORD: '' },
+    { AUTH_TOKEN_DELIVERY_SMTP_PASSWORD: 'a'.repeat(15) },
+    { AUTH_TOKEN_DELIVERY_SMTP_PASSWORD: 'a'.repeat(257) },
+    { AUTH_TOKEN_DELIVERY_SMTP_PASSWORD: 'a'.repeat(16) + '\n' },
+    { AUTH_TOKEN_DELIVERY_SMTP_PASSWORD: 'aaaa bbbb cccc dddd' },
+    { AUTH_TOKEN_DELIVERY_SMTP_PASSWORD: 'a'.repeat(16) + '$' },
+    { AUTH_TOKEN_DELIVERY_SMTP_PASSWORD: 'a'.repeat(16) + "'" },
+    { AUTH_TOKEN_DELIVERY_SMTP_PASSWORD: 'a'.repeat(16) + '"' },
+    { AUTH_TOKEN_DELIVERY_SMTP_PASSWORD: 'a'.repeat(16) + '`' },
+    { AUTH_TOKEN_DELIVERY_APP_ORIGIN: 'https://other.kinetra.test' },
+    { AUTH_TOKEN_DELIVERY_APP_ORIGIN: 'https://app.kinetra.test/' },
+    { AUTH_TOKEN_DELIVERY_APP_ORIGIN: 'https://app.kinetra.test/path' },
+    { AUTH_TOKEN_DELIVERY_APP_ORIGIN: 'https://app.kinetra.test?next=evil' },
+    { AUTH_TOKEN_DELIVERY_APP_ORIGIN: 'https://app.kinetra.test#token' },
+    { AUTH_TOKEN_DELIVERY_APP_ORIGIN: 'https://user:secret@app.kinetra.test' },
+    { AUTH_TOKEN_DELIVERY_APP_ORIGIN: 'https://app.kinetra.test\n' },
+    { AUTH_TOKEN_DELIVERY_APP_ORIGIN: 'http://app.kinetra.test' },
+    { AUTH_TOKEN_DELIVERY_TIMEOUT_MS: '999' },
+    { AUTH_TOKEN_DELIVERY_TIMEOUT_MS: '30001' },
+    { AUTH_TOKEN_DELIVERY_WEBHOOK_URL: api.AUTH_TOKEN_DELIVERY_WEBHOOK_URL },
+    { AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET: api.AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET },
+    { AUTH_REFRESH_COOKIE_SECURE: 'false' },
+  ])
+    assert.throws(
+      () => validateApi({ ...smtp, ...overrides }, main),
+      /Invalid production configuration:/,
+    );
+  for (const origin of [
+    'https://localhost',
+    'https://127.1',
+    'https://10.0.0.1',
+    'https://172.16.0.1',
+    'https://192.168.1.1',
+    'https://169.254.169.254',
+    'https://server.internal',
+    'https://[::1]',
+    'https://[::ffff:7f00:1]',
+    'https://[fc00::1]',
+    'https://[2001:db8::1]',
+  ]) {
+    assert.throws(() =>
+      validateApi({ ...smtp, AUTH_TOKEN_DELIVERY_APP_ORIGIN: origin, CORS_ORIGIN: origin }, main),
+    );
+  }
+  for (const key of [
+    'AUTH_TOKEN_DELIVERY_SMTP_SERVICE',
+    'AUTH_TOKEN_DELIVERY_SMTP_USERNAME',
+    'AUTH_TOKEN_DELIVERY_SMTP_PASSWORD',
+    'AUTH_TOKEN_DELIVERY_APP_ORIGIN',
+  ]) {
+    assert.throws(() => validateApi({ ...api, [key]: smtp[key] }, main), /mixed webhook and SMTP/);
+  }
+});
+
+test('all purpose-separated job profiles reject every SMTP key including blank values', () => {
+  const profiles = {
+    migrate: common,
+    notifications: { ...common, ...vapid },
+    renewals: { ...common, ...renewals },
+    'chat-cleanup': { ...common, ...s3 },
+    'video-cleanup': { ...common, ...s3 },
+    'video-verify': video,
+  };
+  for (const [name, values] of Object.entries(profiles)) {
+    for (const key of [
+      'AUTH_TOKEN_DELIVERY_SMTP_SERVICE',
+      'AUTH_TOKEN_DELIVERY_SMTP_USERNAME',
+      'AUTH_TOKEN_DELIVERY_SMTP_PASSWORD',
+      'AUTH_TOKEN_DELIVERY_APP_ORIGIN',
+    ]) {
+      for (const value of ['', 'synthetic-leaked-value']) {
+        assert.throws(() => validateJob({ ...values, [key]: value }, name), /unexpected key/);
+      }
+    }
+  }
+});

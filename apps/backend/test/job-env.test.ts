@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
+import { parse as parseDotenv } from 'dotenv';
 
 import {
   parseMediaCleanupJobEnvironment,
@@ -136,4 +137,88 @@ test('job entrypoints have no API runtime/global environment imports and always 
   }
   const parser = await readFile(new URL('../src/config/job-env.ts', import.meta.url), 'utf8');
   assert.match(parser, /import type \{[^}]+\} from '\.\/env\.js'/u);
+});
+
+test('production worker parsers reject SMTP configuration even when a leaked credential is empty', () => {
+  const profiles = [
+    () => ({
+      ...base,
+      VAPID_PUBLIC_KEY: 'a'.repeat(87),
+      VAPID_PRIVATE_KEY: 'a'.repeat(43),
+      VAPID_SUBJECT: 'mailto:test@example.test',
+    }),
+    () => ({ ...base, YUKASSA_SHOP_ID: 'test-shop', YUKASSA_SECRET_KEY: 'synthetic-secret' }),
+    () => media,
+    () => ({ ...media, TRAINER_VIDEO_UPLOADS_ENABLED: 'true' }),
+  ];
+  const parsers = [
+    parseNotificationJobEnvironment,
+    parseRenewalJobEnvironment,
+    parseMediaCleanupJobEnvironment,
+    parseVideoVerificationJobEnvironment,
+  ];
+  for (const [index, parser] of parsers.entries()) {
+    const values = profiles[index]?.();
+    assert.ok(values);
+    for (const key of [
+      'AUTH_TOKEN_DELIVERY_SMTP_SERVICE',
+      'AUTH_TOKEN_DELIVERY_SMTP_USERNAME',
+      'AUTH_TOKEN_DELIVERY_SMTP_PASSWORD',
+      'AUTH_TOKEN_DELIVERY_APP_ORIGIN',
+    ]) {
+      for (const value of ['', 'synthetic-leaked-value']) {
+        assert.throws(
+          () => parser({ ...values, [key]: value }),
+          /SMTP delivery configuration is forbidden/u,
+        );
+      }
+    }
+  }
+});
+
+test('local workers accept only blank SMTP fields from the example environment', async () => {
+  const example = parseDotenv(await readFile(new URL('../../../.env.example', import.meta.url)));
+  const smtpKeys = [
+    'AUTH_TOKEN_DELIVERY_SMTP_SERVICE',
+    'AUTH_TOKEN_DELIVERY_SMTP_USERNAME',
+    'AUTH_TOKEN_DELIVERY_SMTP_PASSWORD',
+    'AUTH_TOKEN_DELIVERY_APP_ORIGIN',
+  ];
+  const blanks = Object.fromEntries(
+    smtpKeys.map((key) => {
+      assert.equal(example[key], '', `${key} must be blank in the local template`);
+      return [key, example[key]];
+    }),
+  );
+  const profiles = [
+    {
+      ...base,
+      VAPID_PUBLIC_KEY: 'a'.repeat(87),
+      VAPID_PRIVATE_KEY: 'a'.repeat(43),
+      VAPID_SUBJECT: 'mailto:test@example.test',
+    },
+    { ...base, YUKASSA_SHOP_ID: 'test-shop', YUKASSA_SECRET_KEY: 'synthetic-secret' },
+    media,
+    { ...media, TRAINER_VIDEO_UPLOADS_ENABLED: 'true' },
+  ];
+  const parsers = [
+    parseNotificationJobEnvironment,
+    parseRenewalJobEnvironment,
+    parseMediaCleanupJobEnvironment,
+    parseVideoVerificationJobEnvironment,
+  ];
+  for (const [index, parser] of parsers.entries()) {
+    for (const nodeEnv of [undefined, 'development', 'test']) {
+      const values = { ...profiles[index], ...blanks, NODE_ENV: nodeEnv };
+      assert.equal(parser(values).nodeEnv, nodeEnv ?? 'development');
+      for (const key of smtpKeys) {
+        for (const value of ['synthetic-leaked-value', ' ', '\n']) {
+          assert.throws(
+            () => parser({ ...values, [key]: value }),
+            /SMTP delivery configuration is forbidden/u,
+          );
+        }
+      }
+    }
+  }
 });

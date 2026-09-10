@@ -52,6 +52,9 @@ const expectMatches = (text, pattern, message) => {
 };
 
 const requiredFiles = [
+  'apps/backend/src/auth/smtp-delivery.ts',
+  'apps/backend/test/smtp-delivery.test.ts',
+  'docs/YANDEX_MAIL_SETUP.md',
   'apps/frontend/src/features/trainer-videos/preview-dialog-lifecycle.ts',
   'apps/backend/test/platform.test.ts',
   'apps/backend/test/job-env.test.ts',

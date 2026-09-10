@@ -8,6 +8,7 @@ import {
   parseS3Environment,
   parseVideoUploadsEnvironment,
   parseTokenDeliveryWebhook,
+  parseTokenDeliverySmtp,
   parseShutdownEnvironment,
   parseDatabaseUrl,
   parseYooKassaEnvironment,
@@ -317,7 +318,166 @@ test('delivery webhook rejects credentials, redirects via URL, weak secrets and 
   );
 });
 
-test('actual production startup requires secure cookie and configured webhook without networking', () => {
+test('SMTP delivery accepts fixed providers and binds the exact public app origin to CORS', () => {
+  const values = {
+    AUTH_TOKEN_DELIVERY_SMTP_SERVICE: 'yandex',
+    AUTH_TOKEN_DELIVERY_SMTP_USERNAME: 'support.kinetra+auth@custom-domain.test',
+    AUTH_TOKEN_DELIVERY_SMTP_PASSWORD: 'syntheticAppPassword123',
+    AUTH_TOKEN_DELIVERY_APP_ORIGIN: 'https://80.68.156.131',
+  };
+  const origins = ['https://80.68.156.131', 'https://app.kinetra.test'];
+  for (const service of ['yandex', 'gmail']) {
+    const config = parseTokenDeliverySmtp(
+      { ...values, AUTH_TOKEN_DELIVERY_SMTP_SERVICE: service },
+      origins,
+    );
+    assert.equal(config.service, service);
+    assert.equal(config.username, values.AUTH_TOKEN_DELIVERY_SMTP_USERNAME);
+    assert.equal(config.password, values.AUTH_TOKEN_DELIVERY_SMTP_PASSWORD);
+    assert.equal(config.appOrigin, values.AUTH_TOKEN_DELIVERY_APP_ORIGIN);
+    assert.equal(config.timeoutMs, 10000);
+    assert.ok(Object.isFrozen(config));
+  }
+  for (const origin of ['https://app.kinetra.test', 'https://[2606:4700:4700::1111]']) {
+    assert.equal(
+      parseTokenDeliverySmtp({ ...values, AUTH_TOKEN_DELIVERY_APP_ORIGIN: origin }, [origin])
+        .appOrigin,
+      origin,
+    );
+  }
+  for (const service of ['', 'Yandex', ' yandex ', 'custom', 'smtp.attacker.test']) {
+    assert.throws(
+      () =>
+        parseTokenDeliverySmtp({ ...values, AUTH_TOKEN_DELIVERY_SMTP_SERVICE: service }, origins),
+      /SMTP_SERVICE/u,
+    );
+  }
+  for (const username of [
+    '',
+    'user',
+    'user@localhost',
+    'user@gmail.com,attacker@gmail.com',
+    'Name <user@gmail.com>',
+    'user@gmail.com\r\nBcc: attacker@gmail.com',
+    ' user@gmail.com',
+    'a..b@gmail.com',
+    'user@-gmail.com',
+    `${'a'.repeat(65)}@gmail.com`,
+    '"user"@gmail.com',
+    'пользователь@yandex.ru',
+  ]) {
+    assert.throws(
+      () =>
+        parseTokenDeliverySmtp({ ...values, AUTH_TOKEN_DELIVERY_SMTP_USERNAME: username }, origins),
+      /SMTP_USERNAME/u,
+    );
+  }
+  for (const password of [
+    '',
+    'short',
+    'a'.repeat(15),
+    'a'.repeat(257),
+    'abcd efgh ijkl mnop',
+    'a'.repeat(16) + '\n',
+    'a'.repeat(16) + '\u007f',
+    'парольдостаточнодлинный',
+  ]) {
+    assert.throws(
+      () =>
+        parseTokenDeliverySmtp({ ...values, AUTH_TOKEN_DELIVERY_SMTP_PASSWORD: password }, origins),
+      /SMTP_PASSWORD/u,
+    );
+  }
+  for (const origin of [
+    '',
+    'http://app.kinetra.test',
+    'https://app.kinetra.test/',
+    'https://app.kinetra.test/path',
+    'https://app.kinetra.test?next=evil',
+    'https://app.kinetra.test#token',
+    'https://user:pass@app.kinetra.test',
+    'https://evil.test',
+    'https://localhost',
+    'https://sub.localhost',
+    'https://server.internal',
+    'https://127.0.0.1',
+    'https://127.1',
+    'https://10.0.0.1',
+    'https://172.16.0.1',
+    'https://192.168.1.1',
+    'https://169.254.169.254',
+    'https://0.0.0.0',
+    'https://[::1]',
+    'https://[::ffff:7f00:1]',
+    'https://[fc00::1]',
+    'https://[2001:db8::1]',
+    'https://app.kinetra.test\n',
+  ]) {
+    assert.throws(
+      () =>
+        parseTokenDeliverySmtp(
+          { ...values, AUTH_TOKEN_DELIVERY_APP_ORIGIN: origin },
+          origin === 'https://evil.test' ? origins : [...origins, origin],
+        ),
+      /APP_ORIGIN/u,
+      origin,
+    );
+  }
+  for (const timeout of ['0', '999', '30001', 'NaN', '1000.5']) {
+    assert.throws(
+      () => parseTokenDeliverySmtp({ ...values, AUTH_TOKEN_DELIVERY_TIMEOUT_MS: timeout }, origins),
+      /TIMEOUT/u,
+    );
+  }
+  for (const timeout of ['1000', '30000']) {
+    assert.equal(
+      parseTokenDeliverySmtp({ ...values, AUTH_TOKEN_DELIVERY_TIMEOUT_MS: timeout }, origins)
+        .timeoutMs,
+      Number(timeout),
+    );
+  }
+});
+
+test('delivery mode refuses mixed provider configuration without exposing credentials', () => {
+  const smtp = {
+    AUTH_TOKEN_DELIVERY_SMTP_SERVICE: 'yandex',
+    AUTH_TOKEN_DELIVERY_SMTP_USERNAME: 'sender@yandex.ru',
+    AUTH_TOKEN_DELIVERY_SMTP_PASSWORD: 'syntheticAppPassword123',
+    AUTH_TOKEN_DELIVERY_APP_ORIGIN: 'https://app.kinetra.test',
+  };
+  const webhook = {
+    AUTH_TOKEN_DELIVERY_WEBHOOK_URL: 'https://delivery.kinetra.test/tokens',
+    AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET: 'synthetic-test-only-delivery-secret-32plus',
+  };
+  for (const key of Object.keys(webhook)) {
+    assert.throws(
+      () =>
+        parseTokenDeliverySmtp({ ...smtp, [key]: webhook[key as keyof typeof webhook] }, [
+          smtp.AUTH_TOKEN_DELIVERY_APP_ORIGIN,
+        ]),
+      /must not mix webhook and SMTP/u,
+    );
+  }
+  for (const key of Object.keys(smtp)) {
+    assert.throws(
+      () => parseTokenDeliveryWebhook({ ...webhook, [key]: smtp[key as keyof typeof smtp] }),
+      /must not mix webhook and SMTP/u,
+    );
+  }
+  assert.equal(
+    parseTokenDeliverySmtp(
+      { ...smtp, AUTH_TOKEN_DELIVERY_WEBHOOK_URL: '', AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET: '' },
+      [smtp.AUTH_TOKEN_DELIVERY_APP_ORIGIN],
+    ).service,
+    'yandex',
+  );
+  assert.equal(
+    parseTokenDeliveryWebhook({ ...webhook, AUTH_TOKEN_DELIVERY_SMTP_PASSWORD: '' }).url,
+    webhook.AUTH_TOKEN_DELIVERY_WEBHOOK_URL,
+  );
+});
+
+test('actual production startup requires secure cookie and configured delivery without networking', () => {
   const values = {
     NODE_ENV: 'production',
     DATABASE_URL: 'postgresql://api:synthetic-password@db.example.test/kinetra?sslmode=verify-full',
@@ -356,6 +516,31 @@ test('actual production startup requires secure cookie and configured webhook wi
     const invalid = run({ AUTH_TOKEN_DELIVERY_MODE: mode });
     assert.equal(invalid.status, 1);
     assert.match(invalid.stderr, /AUTH_TOKEN_DELIVERY_MODE=webhook/u);
+  }
+  const smtp = {
+    AUTH_TOKEN_DELIVERY_MODE: 'smtp',
+    AUTH_TOKEN_DELIVERY_SMTP_SERVICE: 'yandex',
+    AUTH_TOKEN_DELIVERY_SMTP_USERNAME: 'sender@yandex.ru',
+    AUTH_TOKEN_DELIVERY_SMTP_PASSWORD: 'syntheticAppPassword123',
+    AUTH_TOKEN_DELIVERY_APP_ORIGIN: 'https://app.example.test',
+    AUTH_TOKEN_DELIVERY_WEBHOOK_URL: '',
+    AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET: '',
+  };
+  for (const service of ['yandex', 'gmail']) {
+    const smtpStartup = run({ ...smtp, AUTH_TOKEN_DELIVERY_SMTP_SERVICE: service });
+    assert.equal(smtpStartup.status, 0, smtpStartup.stderr);
+    assert.equal(smtpStartup.stdout, 'STARTUP_VALID');
+  }
+  for (const overrides of [
+    { AUTH_TOKEN_DELIVERY_SMTP_PASSWORD: '' },
+    { AUTH_TOKEN_DELIVERY_APP_ORIGIN: 'https://evil.test' },
+    { AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET: values.AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET },
+    { AUTH_REFRESH_COOKIE_SECURE: 'false' },
+  ]) {
+    const invalid = run({ ...smtp, ...overrides });
+    assert.equal(invalid.status, 1);
+    assert.match(invalid.stderr, /AUTH_/u);
+    assert.doesNotMatch(invalid.stderr, /synthetic/u);
   }
   const deferred = {
     PAYMENTS_ENABLED: 'false',

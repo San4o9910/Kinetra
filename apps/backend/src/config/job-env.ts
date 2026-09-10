@@ -33,6 +33,16 @@ const integer = (
 };
 const common = (values: NodeJS.ProcessEnv) => {
   const nodeEnv = parseNodeEnvironment(values.NODE_ENV);
+  for (const key of [
+    'AUTH_TOKEN_DELIVERY_SMTP_SERVICE',
+    'AUTH_TOKEN_DELIVERY_SMTP_USERNAME',
+    'AUTH_TOKEN_DELIVERY_SMTP_PASSWORD',
+    'AUTH_TOKEN_DELIVERY_APP_ORIGIN',
+  ]) {
+    if (values[key] !== undefined && (nodeEnv === 'production' || values[key] !== '')) {
+      throw new Error('SMTP delivery configuration is forbidden in worker environments.');
+    }
+  }
   return { nodeEnv, databaseUrl: parseDatabaseUrl(nodeEnv, values.DATABASE_URL) };
 };
 const s3 = (values: NodeJS.ProcessEnv): Readonly<JobS3Environment> => {

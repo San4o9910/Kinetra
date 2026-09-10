@@ -1,3 +1,4 @@
+import { BlockList, isIP } from 'node:net';
 import { readFileSync, statSync, lstatSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -44,6 +45,10 @@ const apiKeys = [
   'AUTH_TOKEN_DELIVERY_WEBHOOK_URL',
   'AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET',
   'AUTH_TOKEN_DELIVERY_TIMEOUT_MS',
+  'AUTH_TOKEN_DELIVERY_SMTP_SERVICE',
+  'AUTH_TOKEN_DELIVERY_SMTP_USERNAME',
+  'AUTH_TOKEN_DELIVERY_SMTP_PASSWORD',
+  'AUTH_TOKEN_DELIVERY_APP_ORIGIN',
   'S3_ENDPOINT',
   'S3_REGION',
   'S3_BUCKET',
@@ -180,6 +185,88 @@ function https(value, name, origin = false) {
     fail(name);
   return url;
 }
+const isPublicAppHost = (hostname) => {
+  const host = hostname.replace(/^\[|\]$/gu, '');
+  const family = isIP(host);
+  if (family === 4) {
+    const blocked = new BlockList();
+    for (const [network, prefix] of [
+      ['0.0.0.0', 8],
+      ['10.0.0.0', 8],
+      ['100.64.0.0', 10],
+      ['127.0.0.0', 8],
+      ['169.254.0.0', 16],
+      ['172.16.0.0', 12],
+      ['192.0.0.0', 24],
+      ['192.0.2.0', 24],
+      ['192.168.0.0', 16],
+      ['198.51.100.0', 24],
+      ['203.0.113.0', 24],
+      ['198.18.0.0', 15],
+      ['224.0.0.0', 4],
+      ['240.0.0.0', 4],
+    ])
+      blocked.addSubnet(network, prefix, 'ipv4');
+    return !blocked.check(host, 'ipv4');
+  }
+  if (family === 6) {
+    const global = new BlockList();
+    global.addSubnet('2000::', 3, 'ipv6');
+    return global.check(host, 'ipv6') && !/^2001:(?:db8|0):|^2002:|^3fff:/u.test(host);
+  }
+  return (
+    /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/u.test(host) &&
+    !/\.(?:localhost|local|internal|home|lan)$/u.test(host)
+  );
+};
+
+function tokenDelivery(values, corsOrigins) {
+  const smtpKeys = [
+    'AUTH_TOKEN_DELIVERY_SMTP_SERVICE',
+    'AUTH_TOKEN_DELIVERY_SMTP_USERNAME',
+    'AUTH_TOKEN_DELIVERY_SMTP_PASSWORD',
+    'AUTH_TOKEN_DELIVERY_APP_ORIGIN',
+  ];
+  const webhookKeys = ['AUTH_TOKEN_DELIVERY_WEBHOOK_URL', 'AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET'];
+  const mode = values.AUTH_TOKEN_DELIVERY_MODE;
+  if (!['webhook', 'smtp'].includes(mode)) fail('AUTH_TOKEN_DELIVERY_MODE');
+  for (const key of mode === 'smtp' ? webhookKeys : smtpKeys)
+    if (values[key] !== undefined && values[key] !== '')
+      fail('mixed webhook and SMTP configuration');
+  integer(values, 'AUTH_TOKEN_DELIVERY_TIMEOUT_MS', 1000, 30000);
+  if (mode === 'webhook') {
+    if (!/^[!-~]{32,512}$/.test(required(values, 'AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET')))
+      fail('AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET');
+    https(required(values, 'AUTH_TOKEN_DELIVERY_WEBHOOK_URL'), 'AUTH_TOKEN_DELIVERY_WEBHOOK_URL');
+    return;
+  }
+  if (!['yandex', 'gmail'].includes(values.AUTH_TOKEN_DELIVERY_SMTP_SERVICE))
+    fail('AUTH_TOKEN_DELIVERY_SMTP_SERVICE');
+  const username = required(values, 'AUTH_TOKEN_DELIVERY_SMTP_USERNAME');
+  const [localPart = '', domain = '', ...extra] = username.split('@');
+  if (
+    username.length > 254 ||
+    localPart.length > 64 ||
+    extra.length > 0 ||
+    !/^[A-Za-z0-9_+-]+(?:\.[A-Za-z0-9_+-]+)*$/.test(localPart) ||
+    !/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/.test(
+      domain,
+    )
+  )
+    fail('AUTH_TOKEN_DELIVERY_SMTP_USERNAME');
+  const password = required(values, 'AUTH_TOKEN_DELIVERY_SMTP_PASSWORD');
+  if (!/^[!-~]{16,256}$/.test(password) || /[$'"`]/.test(password))
+    fail('AUTH_TOKEN_DELIVERY_SMTP_PASSWORD');
+  const appOrigin = required(values, 'AUTH_TOKEN_DELIVERY_APP_ORIGIN');
+  const url = https(appOrigin, 'AUTH_TOKEN_DELIVERY_APP_ORIGIN', true);
+  if (
+    appOrigin.length > 2048 ||
+    appOrigin !== url.origin ||
+    !isPublicAppHost(url.hostname) ||
+    !corsOrigins.includes(appOrigin)
+  )
+    fail('AUTH_TOKEN_DELIVERY_APP_ORIGIN');
+}
 function integer(values, name, min, max) {
   const raw = required(values, name);
   if (!/^\d+$/.test(raw) || Number(raw) < min || Number(raw) > max) fail(name);
@@ -264,14 +351,12 @@ export function validateApi(values, main) {
   database(values);
   if (values.HOST !== '0.0.0.0' || values.PORT !== '3000' || values.TRUST_PROXY_HOPS !== '1')
     fail('compose HOST/PORT/TRUST_PROXY_HOPS');
-  for (const origin of required(values, 'CORS_ORIGIN').split(','))
-    https(origin, 'CORS_ORIGIN', true);
-  for (const key of ['JWT_ACCESS_SECRET', 'AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET'])
-    if (!/^[!-~]{32,512}$/.test(required(values, key))) fail(key);
-  if (values.AUTH_REFRESH_COOKIE_SECURE !== 'true' || values.AUTH_TOKEN_DELIVERY_MODE !== 'webhook')
-    fail('auth delivery/cookie');
-  https(required(values, 'AUTH_TOKEN_DELIVERY_WEBHOOK_URL'), 'AUTH_TOKEN_DELIVERY_WEBHOOK_URL');
-  integer(values, 'AUTH_TOKEN_DELIVERY_TIMEOUT_MS', 1000, 30000);
+  const corsOrigins = required(values, 'CORS_ORIGIN')
+    .split(',')
+    .map((origin) => https(origin, 'CORS_ORIGIN', true).origin);
+  if (!/^[!-~]{32,512}$/.test(required(values, 'JWT_ACCESS_SECRET'))) fail('JWT_ACCESS_SECRET');
+  if (values.AUTH_REFRESH_COOKIE_SECURE !== 'true') fail('AUTH_REFRESH_COOKIE_SECURE');
+  tokenDelivery(values, corsOrigins);
   const enabledPayments = paymentsEnabled(values);
   freeBetaEnabled(values, enabledPayments);
   if (enabledPayments) {
