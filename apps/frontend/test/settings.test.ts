@@ -104,6 +104,27 @@ const renderSettings = (
     }),
   );
 
+test('disabled checkout hides purchases while retaining subscription status and cancellation', () => {
+  for (const status of ['none', 'expired', 'cancelled'] as const) {
+    const disabled = { ...subscription, status, payments_enabled: false };
+    const markup = renderSettings(disabled);
+    const presentation = subscriptionPresentation(disabled);
+    assert.ok(markup.includes('Оплата появится позже'));
+    assert.ok(markup.includes(`data-status="${status}"`));
+    assert.equal(markup.includes('data-testid="settings-renew-subscription"'), false);
+    assert.equal(presentation.showRenew, false);
+    assert.equal(presentation.primaryActionLabel, null);
+  }
+
+  const activeWithDisabledPayments = { ...subscription, payments_enabled: false };
+  const active = renderSettings(activeWithDisabledPayments);
+  assert.ok(active.includes('data-status="active"'));
+  assert.ok(active.includes('Активна до'));
+  assert.ok(active.includes('data-testid="settings-cancel-auto-renew"'));
+  assert.ok(active.includes('Оплата появится позже'));
+  assert.equal(active.includes('data-testid="settings-renew-subscription"'), false);
+});
+
 test('T10 settings view renders all six sections and canonical controls', () => {
   const markup = renderSettings();
 

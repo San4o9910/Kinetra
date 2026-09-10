@@ -49,6 +49,7 @@ const closeServer = async (server: Server): Promise<void> => {
 
 const startHarness = async (
   subscription: SettingsSubscriptionSnapshot | null = null,
+  paymentsEnabled = true,
 ): Promise<TestHarness> => {
   const userId = randomUUID();
   const accessTokens = new HmacJwtAccessTokenService(
@@ -59,7 +60,11 @@ const startHarness = async (
   );
   const repository = new InMemorySettingsRepository(userId, subscription);
   const settingsRuntime: SettingsRuntime = {
-    service: new SettingsService(repository, new FixedClock(new Date('2026-01-21T00:00:00.000Z'))),
+    service: new SettingsService(
+      repository,
+      new FixedClock(new Date('2026-01-21T00:00:00.000Z')),
+      paymentsEnabled,
+    ),
     authMiddleware: createAuthMiddleware(accessTokens),
   };
   const server = createServer(createApp({ settingsRuntime }));
@@ -215,6 +220,40 @@ test('subscription response converts minor units and computes remaining days', a
     });
   } finally {
     await harness.close();
+  }
+});
+
+test('disabled payment metadata preserves absent, active and expired subscription facts', async () => {
+  const subscriptions: (SettingsSubscriptionSnapshot | null)[] = [
+    null,
+    ...(['active', 'expired'] as const).map((status) => ({
+      provider: 'yukassa' as const,
+      status,
+      startsAt: new Date('2026-01-01T00:00:00.000Z'),
+      expiresAt: new Date(
+        status === 'active' ? '2026-02-01T00:00:00.000Z' : '2026-01-15T00:00:00.000Z',
+      ),
+      amountMinor: 79_900,
+      currency: 'RUB' as const,
+      autoRenew: status === 'active',
+    })),
+  ];
+  for (const subscription of subscriptions) {
+    const enabled = await startHarness(subscription);
+    const disabled = await startHarness(subscription, false);
+    try {
+      const original = await requestJson(enabled, '/api/v1/settings/subscription');
+      const response = await requestJson(disabled, '/api/v1/settings/subscription');
+      assert.equal(response.status, 200);
+      assert.equal(response.cacheControl, 'no-store');
+      assert.deepEqual(response.body, { ...asObject(original.body), payments_enabled: false });
+      const unauthorized = await requestJson(disabled, '/api/v1/settings/subscription', {
+        token: null,
+      });
+      assert.equal(unauthorized.status, 401);
+    } finally {
+      await Promise.all([enabled.close(), disabled.close()]);
+    }
   }
 });
 

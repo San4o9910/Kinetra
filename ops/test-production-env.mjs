@@ -97,6 +97,68 @@ test('minimal purpose environments pass and unrelated API credentials are reject
     );
   }
 });
+test('deferred payment API accepts no YooKassa credentials while keeping auth and TLS guards', () => {
+  const deferred = {
+    ...api,
+    PAYMENTS_ENABLED: 'false',
+    YUKASSA_SHOP_ID: '',
+    YUKASSA_SECRET_KEY: '',
+    YUKASSA_RETURN_URL: '',
+  };
+  validateApi(deferred, main);
+  const absent = { ...deferred };
+  delete absent.YUKASSA_SHOP_ID;
+  delete absent.YUKASSA_SECRET_KEY;
+  delete absent.YUKASSA_RETURN_URL;
+  validateApi(absent, main);
+  for (const credentials of [
+    { YUKASSA_SHOP_ID: 'synthetic-shop' },
+    { YUKASSA_SECRET_KEY: 'synthetic-secret' },
+    { YUKASSA_SHOP_ID: 'synthetic-shop', YUKASSA_SECRET_KEY: 'synthetic-secret' },
+  ]) {
+    assert.throws(
+      () => validateApi({ ...deferred, ...credentials }, main),
+      /credentials must be empty/,
+    );
+  }
+  for (const overrides of [
+    { AUTH_TOKEN_DELIVERY_WEBHOOK_URL: '' },
+    { AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET: '' },
+    { AUTH_TOKEN_DELIVERY_MODE: 'disabled' },
+    { AUTH_REFRESH_COOKIE_SECURE: 'false' },
+    { CORS_ORIGIN: 'http://app.kinetra.test' },
+    { DATABASE_URL: common.DATABASE_URL.replace('?sslmode=verify-full', '') },
+  ]) {
+    assert.throws(() => validateApi({ ...deferred, ...overrides }, main));
+  }
+});
+test('payment validation retains enabled defaults and rejects invalid flag values', () => {
+  validateApi({ ...api, PAYMENTS_ENABLED: 'true' }, main);
+  validateJob({ ...common, ...renewals, PAYMENTS_ENABLED: 'true' }, 'renewals');
+  for (const values of [{}, { PAYMENTS_ENABLED: 'true' }]) {
+    assert.throws(
+      () => validateApi({ ...api, ...values, YUKASSA_SECRET_KEY: '' }, main),
+      /YUKASSA_SECRET_KEY/,
+    );
+    assert.throws(
+      () => validateApi({ ...api, ...values, YUKASSA_RETURN_URL: 'http://app.kinetra.test' }, main),
+      /YUKASSA_RETURN_URL/,
+    );
+  }
+  for (const value of ['', '0', 'yes', 'FALSE', ' false ']) {
+    assert.throws(() => validateApi({ ...api, PAYMENTS_ENABLED: value }, main), /PAYMENTS_ENABLED/);
+    assert.throws(
+      () => validateJob({ ...common, ...renewals, PAYMENTS_ENABLED: value }, 'renewals'),
+      /PAYMENTS_ENABLED/,
+    );
+  }
+  for (const credentials of [{}, renewals]) {
+    assert.throws(
+      () => validateJob({ ...common, ...credentials, PAYMENTS_ENABLED: 'false' }, 'renewals'),
+      /renewals are disabled/,
+    );
+  }
+});
 test('local hosts, blank encoded credentials, TLS overrides and template values fail', () => {
   for (const host of [
     'localhost',

@@ -62,7 +62,7 @@ const closeServer = async (server: Server): Promise<void> => {
   });
 };
 
-const startHarness = async (): Promise<TestHarness> => {
+const startHarness = async (enabled = true): Promise<TestHarness> => {
   const userId = randomUUID();
   const clock = new MutableClock(new Date('2026-08-21T12:00:00.000Z'));
   const accessTokens = new HmacJwtAccessTokenService(
@@ -75,9 +75,10 @@ const startHarness = async (): Promise<TestHarness> => {
   const client = new FakeYooKassaClient();
   const sourceVerifier = new FixedWebhookSourceVerifier(true);
   const notifier = new FakeRenewalFailureNotifier();
-  const renewalService = new RenewalService(repository, client, clock, notifier);
-  const service = new PaymentsService(repository, client, clock, [RETURN_URL]);
+  const renewalService = new RenewalService(repository, client, clock, notifier, enabled);
+  const service = new PaymentsService(repository, client, clock, [RETURN_URL], enabled);
   const paymentsRuntime: PaymentsRuntime = {
+    enabled,
     service,
     renewalService,
     authMiddleware: createAuthMiddleware(accessTokens),
@@ -169,6 +170,103 @@ const succeededPaymentFor = (harness: TestHarness, paymentId: string): YooKassaP
     payment_method: { id: `method-${paymentId}`, saved: true },
   };
 };
+
+test('disabled payments refuse checkout and webhooks without provider calls or payment writes', async () => {
+  const harness = await startHarness(false);
+  let providerCalls = 0;
+  const unexpectedProviderCall = async (): Promise<never> => {
+    providerCalls += 1;
+    throw new Error('Disabled payments must not contact YooKassa.');
+  };
+  harness.client.createPayment = unexpectedProviderCall;
+  harness.client.getPayment = unexpectedProviderCall;
+  harness.client.getRefund = unexpectedProviderCall;
+
+  try {
+    const unauthorized = await requestJson(harness, '/api/v1/payments/create', { token: null });
+    assert.equal(unauthorized.status, 401);
+    for (const path of ['/api/v1/payments/create', '/api/v1/payments/webhook']) {
+      const response = await requestJson(harness, path, { body: { return_url: RETURN_URL } });
+      assert.equal(response.status, 503);
+      assert.equal(errorCode(response.body), 'PAYMENTS_DISABLED');
+      assert.equal(response.cacheControl, 'no-store');
+    }
+    await assert.rejects(
+      harness.service.createPayment(harness.userId, { return_url: RETURN_URL }),
+      {
+        statusCode: 503,
+        code: 'PAYMENTS_DISABLED',
+      },
+    );
+    await assert.rejects(harness.service.handleWebhook({}), {
+      statusCode: 503,
+      code: 'PAYMENTS_DISABLED',
+    });
+    assert.equal(providerCalls, 0);
+    assert.deepEqual(harness.repository.peekAttempts(), []);
+    assert.equal(harness.repository.peekSubscription(), null);
+    assert.equal(harness.repository.eventCount(), 0);
+  } finally {
+    await harness.close();
+  }
+});
+
+test('disabled renewals fail before touching the repository, provider or notifications', async () => {
+  const harness = await startHarness(false);
+  let dependencyCalls = 0;
+  const unexpectedCall = async (): Promise<never> => {
+    dependencyCalls += 1;
+    throw new Error('Disabled renewal must not call dependencies.');
+  };
+  harness.repository.expireElapsedSubscriptions = unexpectedCall;
+  harness.repository.claimDueRenewals = unexpectedCall;
+  harness.client.createPayment = unexpectedCall;
+  harness.notifier.notifyRenewalFailure = unexpectedCall;
+  try {
+    await assert.rejects(harness.renewalService.run(), {
+      statusCode: 503,
+      code: 'PAYMENTS_DISABLED',
+    });
+    assert.equal(dependencyCalls, 0);
+  } finally {
+    await harness.close();
+  }
+});
+
+test('disabled payments preserve the paid period and still allow cancellation of renewal', async () => {
+  const harness = await startHarness(false);
+  harness.repository.seedSubscription({
+    id: randomUUID(),
+    userId: harness.userId,
+    provider: 'yukassa',
+    status: 'active',
+    startsAt: new Date('2026-08-01T00:00:00.000Z'),
+    expiresAt: new Date('2026-09-01T00:00:00.000Z'),
+    amountMinor: 79_900,
+    currency: 'RUB',
+    autoRenew: true,
+    paymentMethodId: 'existing-method',
+  });
+  try {
+    const unauthorized = await requestJson(harness, '/api/v1/payments/cancel-subscription', {
+      token: null,
+    });
+    assert.equal(unauthorized.status, 401);
+    const response = await requestJson(harness, '/api/v1/payments/cancel-subscription');
+    assert.equal(response.status, 200);
+    assert.equal(response.cacheControl, 'no-store');
+    const subscription = asObject(response.body);
+    assert.equal(subscription.status, 'active');
+    assert.equal(subscription.auto_renew, false);
+    assert.equal(subscription.expires_at, '2026-09-01T00:00:00.000Z');
+    assert.equal(subscription.payments_enabled, false);
+    assert.equal(harness.repository.peekSubscription()?.autoRenew, false);
+    assert.equal(harness.repository.peekSubscription()?.status, 'active');
+    assert.equal(harness.client.created.length, 0);
+  } finally {
+    await harness.close();
+  }
+});
 
 test('official YooKassa CIDR verifier accepts documented sources and fails closed', () => {
   const verifier = new YooKassaWebhookSourceVerifier();

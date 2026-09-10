@@ -1,4 +1,5 @@
 import { parseDatabaseUrl, parseNodeEnvironment, type NodeEnvironment } from './database.js';
+import { parsePaymentsEnabled } from './payments.js';
 export { parseDatabaseUrl } from './database.js';
 
 type SameSiteMode = 'lax' | 'strict' | 'none';
@@ -359,11 +360,19 @@ export const parseS3Environment = (
   });
 };
 
-const parseYooKassaEnvironment = (
+export const parseYooKassaEnvironment = (
   nodeEnvironment: NodeEnvironment,
+  values: NodeJS.ProcessEnv = process.env,
 ): Readonly<YooKassaEnvironment> | null => {
-  const shopId = trimmedOrNull(process.env.YUKASSA_SHOP_ID);
-  const secretKey = trimmedOrNull(process.env.YUKASSA_SECRET_KEY);
+  const shopId = trimmedOrNull(values.YUKASSA_SHOP_ID);
+  const secretKey = trimmedOrNull(values.YUKASSA_SECRET_KEY);
+
+  if (!parsePaymentsEnabled(values.PAYMENTS_ENABLED)) {
+    if (shopId !== null || secretKey !== null) {
+      throw new Error('YooKassa credentials must be empty when PAYMENTS_ENABLED=false.');
+    }
+    return null;
+  }
 
   if (shopId === null && secretKey === null) {
     if (nodeEnvironment === 'production') {
@@ -377,7 +386,7 @@ const parseYooKassaEnvironment = (
     throw new Error('YooKassa configuration is incomplete. Set both shop ID and secret key.');
   }
 
-  const rawReturnUrls = process.env.YUKASSA_RETURN_URL ?? 'http://localhost:5173/payment/success';
+  const rawReturnUrls = values.YUKASSA_RETURN_URL ?? 'http://localhost:5173/payment/success';
   const returnUrls = rawReturnUrls
     .split(',')
     .map((value) => value.trim())
@@ -414,7 +423,7 @@ const parseYooKassaEnvironment = (
     returnUrls: Object.freeze(returnUrls),
     requestTimeoutMs: parseInteger(
       'YUKASSA_REQUEST_TIMEOUT_MS',
-      process.env.YUKASSA_REQUEST_TIMEOUT_MS,
+      values.YUKASSA_REQUEST_TIMEOUT_MS,
       10_000,
       1_000,
       30_000,
@@ -632,6 +641,7 @@ export const env = Object.freeze({
   shutdown,
   s3,
   videoUploads,
+  paymentsEnabled: parsePaymentsEnabled(process.env.PAYMENTS_ENABLED),
   yookassa: parseYooKassaEnvironment(nodeEnv),
   vapid: parseVapidEnvironment(nodeEnv),
   chat: Object.freeze({

@@ -22,7 +22,11 @@ export const createProductionSettingsRuntime = (): SettingsRuntime => {
   );
 
   return {
-    service: new SettingsService(new PostgresSettingsRepository(databasePool), new SystemClock()),
+    service: new SettingsService(
+      new PostgresSettingsRepository(databasePool),
+      new SystemClock(),
+      env.paymentsEnabled,
+    ),
     authMiddleware: createAuthMiddleware(verifier),
   };
 };

@@ -20,6 +20,7 @@ import {
 import { YooKassaWebhookSourceVerifier, type WebhookSourceVerifier } from './webhook-source.js';
 
 export interface PaymentsRuntime {
+  readonly enabled?: boolean;
   readonly service: PaymentsService;
   readonly renewalService: RenewalService;
   readonly authMiddleware: RequestHandler;
@@ -55,12 +56,14 @@ export const createProductionPaymentsRuntime = (
   const allowedReturnUrls = env.yookassa?.returnUrls ?? ['http://localhost:5173/payment/success'];
 
   return {
-    service: new PaymentsService(repository, client, clock, allowedReturnUrls),
+    enabled: env.paymentsEnabled,
+    service: new PaymentsService(repository, client, clock, allowedReturnUrls, env.paymentsEnabled),
     renewalService: new RenewalService(
       repository,
       client,
       clock,
       options.renewalFailureNotifier ?? new ConsoleRenewalFailureNotifier(),
+      env.paymentsEnabled,
     ),
     authMiddleware: createAuthMiddleware(verifier),
     webhookSourceVerifier: options.webhookSourceVerifier ?? new YooKassaWebhookSourceVerifier(),

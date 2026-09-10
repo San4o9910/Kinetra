@@ -3447,7 +3447,9 @@ for (const modelContract of [
   '{ length: 33 }',
   '6 * 60 + index * 30',
   'SETTINGS_NOTIFICATION_DEBOUNCE_MS = 450',
-  "primaryActionLabel: 'Продлить подписку'",
+  "primaryActionLabel: paymentsEnabled ? 'Продлить подписку' : null",
+  'showRenew: paymentsEnabled',
+  'const paymentsEnabled = arePaymentsEnabled(subscription)',
   'showCancelAutoRenew: subscription.auto_renew === true',
 ]) {
   expectIncludes(settingsModel, modelContract, `T10 settings model contract: ${modelContract}`);

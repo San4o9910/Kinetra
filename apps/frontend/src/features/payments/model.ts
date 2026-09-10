@@ -8,6 +8,26 @@ export const PAYMENT_PRICE_MINOR = 79_900;
 export const PAYMENT_PRICE_LABEL = '799 ₽ / месяц';
 export const PAYMENT_POLL_INTERVAL_MS = 2_000;
 export const PAYMENT_POLL_TIMEOUT_MS = 30_000;
+export const PAYMENTS_UNAVAILABLE_TITLE = 'Оплата появится позже';
+export const PAYMENTS_UNAVAILABLE_DESCRIPTION = 'Оформление и продление подписки пока недоступны.';
+
+export const arePaymentsEnabled = (subscription: SubscriptionResponse | null): boolean =>
+  subscription === null ||
+  !('payments_enabled' in subscription) ||
+  subscription.payments_enabled !== false;
+
+// Retain disabled availability if an older cancellation response omits the metadata.
+export const preservePaymentAvailability = (
+  updated: SubscriptionResponse,
+  previous: SubscriptionResponse | null,
+): SubscriptionResponse => {
+  if (arePaymentsEnabled(previous)) {
+    return updated;
+  }
+
+  const subscription = { ...updated, payments_enabled: false };
+  return subscription;
+};
 
 export const paymentBenefits = [
   '84 видео-тренировки (12 недель)',

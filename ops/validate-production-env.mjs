@@ -71,6 +71,7 @@ const apiKeys = [
   'CHAT_PHOTO_UPLOAD_TOTAL_TIMEOUT_SECONDS',
   'CHAT_MEDIA_URL_TTL_SECONDS',
   'YUKASSA_SHOP_ID',
+  'PAYMENTS_ENABLED',
   'YUKASSA_SECRET_KEY',
   'YUKASSA_RETURN_URL',
   'YUKASSA_REQUEST_TIMEOUT_MS',
@@ -99,7 +100,12 @@ const videoKeys = [
 export const jobKeys = {
   migrate: [],
   notifications: ['VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY', 'VAPID_SUBJECT'],
-  renewals: ['YUKASSA_SHOP_ID', 'YUKASSA_SECRET_KEY', 'YUKASSA_REQUEST_TIMEOUT_MS'],
+  renewals: [
+    'PAYMENTS_ENABLED',
+    'YUKASSA_SHOP_ID',
+    'YUKASSA_SECRET_KEY',
+    'YUKASSA_REQUEST_TIMEOUT_MS',
+  ],
   'chat-cleanup': s3Keys,
   'video-cleanup': s3Keys,
   'video-verify': [...s3Keys, ...videoKeys],
@@ -228,6 +234,11 @@ function payments(values) {
   required(values, 'YUKASSA_SECRET_KEY');
   integer(values, 'YUKASSA_REQUEST_TIMEOUT_MS', 1000, 30000);
 }
+function paymentsEnabled(values) {
+  const value = values.PAYMENTS_ENABLED ?? 'true';
+  if (!['true', 'false'].includes(value)) fail('PAYMENTS_ENABLED');
+  return value === 'true';
+}
 export function validateMain(values) {
   exactKeys(values, mainKeys);
   for (const key of ['NODE_IMAGE', 'NGINX_IMAGE', 'BACKEND_IMAGE', 'FRONTEND_IMAGE']) {
@@ -253,9 +264,14 @@ export function validateApi(values, main) {
     fail('auth delivery/cookie');
   https(required(values, 'AUTH_TOKEN_DELIVERY_WEBHOOK_URL'), 'AUTH_TOKEN_DELIVERY_WEBHOOK_URL');
   integer(values, 'AUTH_TOKEN_DELIVERY_TIMEOUT_MS', 1000, 30000);
-  payments(values);
-  for (const url of required(values, 'YUKASSA_RETURN_URL').split(','))
-    https(url, 'YUKASSA_RETURN_URL');
+  if (paymentsEnabled(values)) {
+    payments(values);
+    for (const url of required(values, 'YUKASSA_RETURN_URL').split(','))
+      https(url, 'YUKASSA_RETURN_URL');
+  } else {
+    for (const key of ['YUKASSA_SHOP_ID', 'YUKASSA_SECRET_KEY'])
+      if (values[key]) fail('YooKassa credentials must be empty when payments are disabled');
+  }
   vapid(values);
   for (const name of [
     'CHAT_ENABLED',
@@ -284,7 +300,10 @@ export function validateJob(values, name) {
   exactKeys(values, ['NODE_ENV', 'DATABASE_URL', ...jobKeys[name]]);
   database(values);
   if (name === 'notifications') vapid(values);
-  if (name === 'renewals') payments(values);
+  if (name === 'renewals') {
+    if (!paymentsEnabled(values)) fail('renewals are disabled');
+    payments(values);
+  }
   if (name.includes('cleanup') || name === 'video-verify') s3(values);
   if (name === 'video-verify') {
     if (

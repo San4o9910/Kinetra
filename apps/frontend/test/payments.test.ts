@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import type { CreatePaymentResponse, SubscriptionResponse } from '@kinetra/shared';
 
 import { PaymentCancelScreen } from '../src/features/payments/PaymentCancelScreen.js';
+import { PaymentAvailabilityGate } from '../src/features/payments/PaymentAvailabilityGate.js';
 import { PaymentSuccessScreen } from '../src/features/payments/PaymentSuccessScreen.js';
 import { PaymentView } from '../src/features/payments/PaymentView.js';
 import { SubscriptionPaywallDialog } from '../src/features/payments/SubscriptionPaywallDialog.js';
@@ -13,9 +14,11 @@ import {
   PAYMENT_POLL_TIMEOUT_MS,
   PAYMENT_PRICE_LABEL,
   beginPayment,
+  arePaymentsEnabled,
   isSubscriptionActive,
   paymentBenefits,
   pollForActiveSubscription,
+  preservePaymentAvailability,
 } from '../src/features/payments/model.js';
 import { withoutWorkoutHistorySentinel } from '../src/features/program/history.js';
 import { ProgramScreen } from '../src/features/program/ProgramScreen.js';
@@ -46,6 +49,124 @@ const expiredSubscription: SubscriptionResponse = {
   auto_renew: false,
   days_remaining: 0,
 };
+
+test('explicit payment disablement preserves real subscription entitlement and legacy behavior', () => {
+  const disabled = { ...expiredSubscription, payments_enabled: false };
+  assert.equal(arePaymentsEnabled(disabled), false);
+  assert.equal(isSubscriptionActive(disabled), false);
+  assert.equal(arePaymentsEnabled(expiredSubscription), true);
+  assert.equal(arePaymentsEnabled(null), true);
+  const enabled = { ...expiredSubscription, payments_enabled: true };
+  const malformed = { ...expiredSubscription, payments_enabled: 'false' };
+  const activeWithDisabledPayments = { ...activeSubscription, payments_enabled: false };
+  assert.equal(arePaymentsEnabled(enabled), true);
+  assert.equal(arePaymentsEnabled(malformed), true);
+  assert.equal(
+    isSubscriptionActive(activeWithDisabledPayments, Date.parse('2026-08-21T12:00:00Z')),
+    true,
+  );
+});
+
+test('checkout and result screens stay unmounted until availability is known and enabled', () => {
+  let mounted = 0;
+  const PaymentContent = () => {
+    mounted += 1;
+    return createElement('div', { 'data-testid': 'payment-content' });
+  };
+  const renderGate = (subscription: SubscriptionResponse | null, loading: boolean) =>
+    renderToStaticMarkup(
+      createElement(PaymentAvailabilityGate, {
+        subscription,
+        loading,
+        onRetry: () => undefined,
+        onBack: () => undefined,
+        children: createElement(PaymentContent),
+      }),
+    );
+
+  assert.ok(renderGate(null, true).includes('data-testid="subscription-verification"'));
+  assert.ok(renderGate(null, false).includes('Не удалось проверить подписку'));
+  const disabled = { ...expiredSubscription, payments_enabled: false };
+  const unavailable = renderGate(disabled, false);
+  assert.ok(unavailable.includes('Оплата появится позже'));
+  assert.ok(unavailable.includes('data-testid="payments-unavailable-back"'));
+  assert.equal(unavailable.includes('data-testid="payment-content"'), false);
+  assert.equal(mounted, 0);
+  assert.ok(renderGate(expiredSubscription, false).includes('data-testid="payment-content"'));
+  assert.equal(mounted, 1);
+});
+
+test('disabled payment routes cannot render checkout, success polling, or retry-payment UI', () => {
+  const disabled = { ...expiredSubscription, payments_enabled: false };
+  const screens = [
+    createElement(PaymentView, {
+      busy: false,
+      error: null,
+      onBack: () => undefined,
+      onSubmit: () => assert.fail('Disabled checkout cannot submit.'),
+    }),
+    createElement(PaymentSuccessScreen, {
+      onActivated: () => assert.fail('Disabled checkout cannot activate a subscription.'),
+      onContinue: () => undefined,
+      onSessionExpired: () => undefined,
+    }),
+    createElement(PaymentCancelScreen, {
+      onRetry: () => assert.fail('Disabled checkout cannot retry.'),
+      onLater: () => undefined,
+    }),
+  ];
+
+  for (const screen of screens) {
+    const markup = renderToStaticMarkup(
+      createElement(PaymentAvailabilityGate, {
+        subscription: disabled,
+        loading: false,
+        onRetry: () => undefined,
+        onBack: () => undefined,
+        children: screen,
+      }),
+    );
+    assert.ok(markup.includes('data-testid="payments-unavailable-screen"'));
+    assert.equal(markup.includes('data-testid="create-payment"'), false);
+    assert.equal(markup.includes('data-testid="payment-success-status"'), false);
+    assert.equal(markup.includes('data-testid="retry-payment"'), false);
+    assert.equal(markup.includes('Оплата прошла успешно'), false);
+  }
+});
+
+test('disabled checkout keeps the program locked and removes paywall purchase actions', () => {
+  const disabled = { ...expiredSubscription, payments_enabled: false };
+  const markup = renderToStaticMarkup(
+    createElement(ProgramScreen, {
+      timezone: 'Europe/Moscow',
+      subscription: disabled,
+      trainingLocked: true,
+      onOpenBaseLessons: () => undefined,
+      onOpenPayment: () => assert.fail('Disabled paywall cannot start checkout.'),
+      onSubscriptionRequired: () => undefined,
+      onWorkoutCompletionBusyChange: () => undefined,
+      onSessionExpired: () => undefined,
+    }),
+  );
+
+  assert.ok(markup.includes('data-testid="program-subscription-locked"'));
+  assert.ok(markup.includes('Оплата появится позже'));
+  assert.ok(markup.includes('data-testid="paywall-close"'));
+  assert.equal(markup.includes('data-testid="paywall-renew"'), false);
+  assert.equal(markup.includes('data-testid="open-subscription-paywall"'), false);
+  assert.equal(markup.includes('data-testid="workout-player"'), false);
+});
+
+test('cancelling auto-renewal retains known disabled checkout without changing paid-period data', () => {
+  const disabled = { ...activeSubscription, payments_enabled: false };
+  const cancelledRenewal = { ...activeSubscription, auto_renew: false };
+  const updated = preservePaymentAvailability(cancelledRenewal, disabled);
+  assert.deepEqual(updated, { ...cancelledRenewal, payments_enabled: false });
+  assert.equal(arePaymentsEnabled(updated), false);
+  assert.equal(isSubscriptionActive(updated, Date.parse('2026-08-21T12:00:00Z')), true);
+  assert.equal(preservePaymentAvailability(cancelledRenewal, activeSubscription), cancelledRenewal);
+  assert.equal(preservePaymentAvailability(cancelledRenewal, null), cancelledRenewal);
+});
 
 test('T11 payment page renders the exact price, benefits and renewal disclosure', () => {
   const markup = renderToStaticMarkup(

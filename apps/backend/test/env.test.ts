@@ -10,7 +10,76 @@ import {
   parseTokenDeliveryWebhook,
   parseShutdownEnvironment,
   parseDatabaseUrl,
+  parseYooKassaEnvironment,
 } from '../src/config/env.js';
+import { parsePaymentsEnabled } from '../src/config/payments.js';
+
+test('payments default on and accept only explicit boolean strings', () => {
+  assert.equal(parsePaymentsEnabled(undefined), true);
+  assert.equal(parsePaymentsEnabled('true'), true);
+  assert.equal(parsePaymentsEnabled('false'), false);
+  for (const value of ['', '0', '1', 'yes', 'FALSE', ' false ', 'true\n']) {
+    assert.throws(() => parsePaymentsEnabled(value), /PAYMENTS_ENABLED/u);
+    assert.throws(
+      () => parseYooKassaEnvironment('production', { PAYMENTS_ENABLED: value }),
+      /PAYMENTS_ENABLED/u,
+    );
+  }
+});
+
+test('deferred payments allow absent credentials and reject retained provider credentials', () => {
+  assert.equal(parseYooKassaEnvironment('production', { PAYMENTS_ENABLED: 'false' }), null);
+  assert.equal(
+    parseYooKassaEnvironment('production', {
+      PAYMENTS_ENABLED: 'false',
+      YUKASSA_SHOP_ID: '',
+      YUKASSA_SECRET_KEY: '',
+      YUKASSA_RETURN_URL: '',
+    }),
+    null,
+  );
+  for (const credentials of [
+    { YUKASSA_SHOP_ID: 'synthetic-shop' },
+    { YUKASSA_SECRET_KEY: 'synthetic-secret' },
+    { YUKASSA_SHOP_ID: 'synthetic-shop', YUKASSA_SECRET_KEY: 'synthetic-secret' },
+  ]) {
+    assert.throws(
+      () => parseYooKassaEnvironment('production', { PAYMENTS_ENABLED: 'false', ...credentials }),
+      /credentials must be empty/u,
+    );
+  }
+});
+
+test('enabled and default payment configuration preserve production requirements', () => {
+  const credentials = {
+    YUKASSA_SHOP_ID: 'synthetic-shop',
+    YUKASSA_SECRET_KEY: 'synthetic-secret',
+    YUKASSA_RETURN_URL: 'https://app.example.test/payment/success',
+  };
+  for (const values of [{}, { PAYMENTS_ENABLED: 'true' }]) {
+    assert.throws(() => parseYooKassaEnvironment('production', values), /required in production/u);
+    assert.throws(
+      () =>
+        parseYooKassaEnvironment('production', { ...values, YUKASSA_SHOP_ID: 'synthetic-shop' }),
+      /configuration is incomplete/u,
+    );
+    assert.equal(
+      parseYooKassaEnvironment('production', { ...values, ...credentials })?.requestTimeoutMs,
+      10000,
+    );
+    for (const overrides of [
+      { YUKASSA_RETURN_URL: 'http://app.example.test/payment/success' },
+      { YUKASSA_RETURN_URL: '' },
+      { YUKASSA_REQUEST_TIMEOUT_MS: '0' },
+      { YUKASSA_REQUEST_TIMEOUT_MS: '30001' },
+    ]) {
+      assert.throws(
+        () => parseYooKassaEnvironment('production', { ...values, ...credentials, ...overrides }),
+        /YUKASSA_/u,
+      );
+    }
+  }
+});
 
 test('CORS allowlist normalizes and deduplicates exact HTTP(S) origins', () => {
   assert.deepEqual(
@@ -272,5 +341,25 @@ test('actual production startup requires secure cookie and configured webhook wi
     const invalid = run({ AUTH_TOKEN_DELIVERY_MODE: mode });
     assert.equal(invalid.status, 1);
     assert.match(invalid.stderr, /AUTH_TOKEN_DELIVERY_MODE=webhook/u);
+  }
+  const deferred = {
+    PAYMENTS_ENABLED: 'false',
+    YUKASSA_SHOP_ID: '',
+    YUKASSA_SECRET_KEY: '',
+    YUKASSA_RETURN_URL: '',
+  };
+  const noPayments = run(deferred);
+  assert.equal(noPayments.status, 0, noPayments.stderr);
+  assert.equal(noPayments.stdout, 'STARTUP_VALID');
+  for (const [overrides, expected] of [
+    [{ AUTH_REFRESH_COOKIE_SECURE: 'false' }, /AUTH_REFRESH_COOKIE_SECURE/u],
+    [{ AUTH_TOKEN_DELIVERY_MODE: 'disabled' }, /AUTH_TOKEN_DELIVERY_MODE=webhook/u],
+    [{ AUTH_TOKEN_DELIVERY_WEBHOOK_URL: '' }, /AUTH_TOKEN_DELIVERY_WEBHOOK_URL/u],
+    [{ AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET: '' }, /AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET/u],
+    [{ DATABASE_URL: values.DATABASE_URL.replace('?sslmode=verify-full', '') }, /DATABASE_URL/u],
+  ] as const) {
+    const invalid = run({ ...deferred, ...overrides });
+    assert.equal(invalid.status, 1);
+    assert.match(invalid.stderr, expected);
   }
 });

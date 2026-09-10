@@ -12,6 +12,10 @@ import { deleteAccountSchema, notificationPreferencesSchema } from './schema.js'
 
 const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
 
+export type SettingsSubscriptionResponse = SubscriptionResponse & {
+  readonly payments_enabled?: false;
+};
+
 const profileNotFound = (): HttpError =>
   new HttpError(404, 'PROFILE_NOT_FOUND', 'The authenticated user profile was not found.');
 
@@ -48,6 +52,7 @@ export class SettingsService {
   public constructor(
     private readonly repository: SettingsRepository,
     private readonly clock: Clock,
+    private readonly paymentsEnabled = true,
   ) {}
 
   public async getProfile(userId: string): Promise<SettingsProfileResponse> {
@@ -66,7 +71,11 @@ export class SettingsService {
     };
   }
 
-  public async getSubscription(userId: string): Promise<SubscriptionResponse> {
+  private subscriptionResponse(value: SubscriptionResponse): SettingsSubscriptionResponse {
+    return this.paymentsEnabled ? value : { ...value, payments_enabled: false };
+  }
+
+  public async getSubscription(userId: string): Promise<SettingsSubscriptionResponse> {
     const now = this.clock.now();
     const lookup = await this.repository.findSubscriptionByUserId(userId, now);
 
@@ -77,7 +86,7 @@ export class SettingsService {
     const subscription = lookup.subscription;
 
     if (subscription === null) {
-      return {
+      return this.subscriptionResponse({
         status: 'none',
         provider: null,
         starts_at: null,
@@ -86,10 +95,10 @@ export class SettingsService {
         currency: null,
         auto_renew: null,
         days_remaining: null,
-      };
+      });
     }
 
-    return {
+    return this.subscriptionResponse({
       status: effectiveSubscriptionStatus(subscription, now),
       provider: subscription.provider,
       starts_at: subscription.startsAt?.toISOString() ?? null,
@@ -98,7 +107,7 @@ export class SettingsService {
       currency: subscription.currency,
       auto_renew: subscription.autoRenew,
       days_remaining: daysRemaining(subscription.expiresAt, now),
-    };
+    });
   }
 
   public async updateNotifications(userId: string, body: unknown): Promise<void> {

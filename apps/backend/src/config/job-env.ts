@@ -1,4 +1,5 @@
 import { parseDatabaseUrl, parseNodeEnvironment } from './database.js';
+import { parsePaymentsEnabled } from './payments.js';
 import type { S3Environment, VapidEnvironment, VideoUploadsEnvironment } from './env.js';
 
 export type JobS3Environment = Omit<S3Environment, 'presignedUrlTtlSeconds'>;
@@ -97,8 +98,11 @@ export const parseNotificationJobEnvironment = (values: NodeJS.ProcessEnv = proc
   return Object.freeze({ ...base, vapid });
 };
 
-export const parseRenewalJobEnvironment = (values: NodeJS.ProcessEnv = process.env) =>
-  Object.freeze({
+export const parseRenewalJobEnvironment = (values: NodeJS.ProcessEnv = process.env) => {
+  if (!parsePaymentsEnabled(values.PAYMENTS_ENABLED)) {
+    throw new Error('Renewals are disabled by PAYMENTS_ENABLED=false.');
+  }
+  return Object.freeze({
     ...common(values),
     yookassa: Object.freeze({
       shopId: required(values, 'YUKASSA_SHOP_ID'),
@@ -106,6 +110,7 @@ export const parseRenewalJobEnvironment = (values: NodeJS.ProcessEnv = process.e
       requestTimeoutMs: integer(values, 'YUKASSA_REQUEST_TIMEOUT_MS', 10000, 1000, 30000),
     }),
   });
+};
 
 export const parseMediaCleanupJobEnvironment = (values: NodeJS.ProcessEnv = process.env) =>
   Object.freeze({ ...common(values), s3: s3(values) });

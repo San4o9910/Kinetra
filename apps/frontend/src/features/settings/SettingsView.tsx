@@ -6,6 +6,7 @@ import type {
 import React, { type ReactNode } from 'react';
 
 import type { PushBackendRegistrationStatus, PushPermission } from '../../pwa/pushNotifications';
+import { PAYMENTS_UNAVAILABLE_TITLE, arePaymentsEnabled } from '../payments/model';
 import { themeOptions, type ResolvedTheme, type ThemePreference } from '../theme/model';
 import { ChevronIcon, SettingsIcon, ThemeModeIcon } from './SettingsIcons';
 import {
@@ -302,6 +303,10 @@ const SubscriptionCard = ({
           Автопродление отключено
         </p>
       ) : null}
+
+      {arePaymentsEnabled(subscription) ? null : (
+        <p data-testid="settings-payments-unavailable">{PAYMENTS_UNAVAILABLE_TITLE}</p>
+      )}
 
       {presentation.showRenew || presentation.showCancelAutoRenew ? (
         <div className="settings-subscription-actions">

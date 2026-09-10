@@ -21,6 +21,48 @@ const media = {
   S3_SECRET_ACCESS_KEY: 'synthetic-secret',
 };
 
+test('deferred renewal job refuses execution before reading database or provider configuration', () => {
+  const values = {
+    PAYMENTS_ENABLED: 'false',
+    get DATABASE_URL(): string {
+      throw new Error('database configuration must not be read');
+    },
+    get YUKASSA_SHOP_ID(): string {
+      throw new Error('provider configuration must not be read');
+    },
+  };
+  assert.throws(() => parseRenewalJobEnvironment(values), /Renewals are disabled/u);
+  assert.throws(
+    () =>
+      parseRenewalJobEnvironment({
+        ...base,
+        PAYMENTS_ENABLED: 'false',
+        YUKASSA_SHOP_ID: 'test-shop',
+        YUKASSA_SECRET_KEY: 'synthetic-secret',
+      }),
+    /Renewals are disabled/u,
+  );
+  for (const value of ['', '0', 'yes', 'FALSE', ' false ']) {
+    assert.throws(
+      () => parseRenewalJobEnvironment({ ...base, PAYMENTS_ENABLED: value }),
+      /PAYMENTS_ENABLED/u,
+    );
+  }
+  assert.equal(
+    parseRenewalJobEnvironment({
+      ...base,
+      PAYMENTS_ENABLED: 'true',
+      YUKASSA_SHOP_ID: 'test-shop',
+      YUKASSA_SECRET_KEY: 'synthetic-secret',
+    }).yookassa.shopId,
+    'test-shop',
+  );
+  assert.throws(
+    () => parseRenewalJobEnvironment({ ...base, PAYMENTS_ENABLED: 'true' }),
+    /YUKASSA/u,
+  );
+});
+
 test('each job validates only its purpose credentials and refuses missing required ones', () => {
   const notification = parseNotificationJobEnvironment({
     ...base,

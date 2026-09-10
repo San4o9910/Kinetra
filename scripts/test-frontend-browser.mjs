@@ -503,6 +503,10 @@ let subscriptionPayload = {
   days_remaining: 30,
 };
 let pendingSubscriptionPollsRemaining = 0;
+let paymentsEnabled = true;
+let lastSubscriptionCancellationResponse = null;
+const subscriptionResponsePayload = () =>
+  paymentsEnabled ? subscriptionPayload : { ...subscriptionPayload, payments_enabled: false };
 
 const baseLessonsPayload = () => {
   const totalCompleted = baseLessons.filter(
@@ -788,7 +792,8 @@ const createMockApiServer = () =>
       }
 
       counters.subscriptionGet += 1;
-      if (subscriptionPayload.status === 'pending') {
+      if (!paymentsEnabled) await sleep(150);
+      if (paymentsEnabled && subscriptionPayload.status === 'pending') {
         if (pendingSubscriptionPollsRemaining > 0) {
           pendingSubscriptionPollsRemaining -= 1;
         } else {
@@ -804,7 +809,7 @@ const createMockApiServer = () =>
           };
         }
       }
-      json(response, 200, subscriptionPayload);
+      json(response, 200, subscriptionResponsePayload());
       return;
     }
 
@@ -869,6 +874,12 @@ const createMockApiServer = () =>
       const body = await readJsonBody(request);
       assert.deepEqual(body, { return_url: `${frontendOrigin}/payment/success` });
       counters.paymentCreate += 1;
+      if (!paymentsEnabled) {
+        json(response, 503, {
+          error: { code: 'PAYMENTS_DISABLED', message: 'Payments are not available yet.' },
+        });
+        return;
+      }
       subscriptionPayload = {
         status: 'pending',
         provider: 'yukassa',
@@ -900,7 +911,8 @@ const createMockApiServer = () =>
 
       counters.subscriptionCancel += 1;
       subscriptionPayload = { ...subscriptionPayload, auto_renew: false };
-      json(response, 200, subscriptionPayload);
+      lastSubscriptionCancellationResponse = subscriptionResponsePayload();
+      json(response, 200, lastSubscriptionCancellationResponse);
       return;
     }
 
@@ -4425,6 +4437,149 @@ const runBrowserScenario = async () => {
     console.log('KINETRA_T10_BROWSER_E2E=PASS');
     console.log('KINETRA_T11_BROWSER_E2E=PASS');
     console.log('KINETRA_T13_BROWSER_E2E=PASS');
+
+    // Run independently after every existing paid-flow counter assertion has passed.
+    const paidFixture = {
+      subscription: subscriptionPayload,
+      pendingPolls: pendingSubscriptionPollsRemaining,
+      paymentsEnabled,
+      cancellationResponse: lastSubscriptionCancellationResponse,
+    };
+    const paymentCreatesBeforeDisabledScenario = counters.paymentCreate;
+    const subscriptionCancelsBeforeDisabledScenario = counters.subscriptionCancel;
+    const disabledRouteObserver = await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
+      source: `(() => {
+        window.__kinetraDisabledPaymentScreens = [];
+        const observeScreens = () => {
+          for (const testId of ['payment-screen', 'payment-success-screen', 'payment-cancel-screen']) {
+            if (document.querySelector('[data-testid="' + testId + '"]') &&
+                !window.__kinetraDisabledPaymentScreens.includes(testId)) {
+              window.__kinetraDisabledPaymentScreens.push(testId);
+            }
+          }
+        };
+        new MutationObserver(observeScreens).observe(document, { childList: true, subtree: true });
+        observeScreens();
+      })();`,
+    });
+
+    try {
+      paymentsEnabled = false;
+      pendingSubscriptionPollsRemaining = 0;
+      const existingPaidPeriod = { ...subscriptionPayload };
+      assert.equal(existingPaidPeriod.status, 'active');
+      assert.equal(existingPaidPeriod.auto_renew, true);
+      await submitLogin();
+      await waitFor('disabled checkout preserves the existing paid program', () =>
+        exists('main-screen'),
+      );
+      await click('header-settings');
+      await waitFor(
+        'disabled checkout preserves paid status and cancellation in settings',
+        async () =>
+          (await exists('settings-payments-unavailable')) &&
+          (await exists('settings-cancel-auto-renew')) &&
+          (await attribute('settings-subscription-card', 'data-status')) === 'active',
+      );
+      assert.equal(await exists('settings-renew-subscription'), false);
+      assert.equal(await text('settings-payments-unavailable'), 'Оплата появится позже');
+      const paidStatusBeforeDisabledCancellation = await text('settings-subscription-status');
+      await click('settings-cancel-auto-renew');
+      await waitFor('disabled checkout still permits cancellation confirmation', () =>
+        dialogIsOpen('settings-renewal-dialog'),
+      );
+      await click('settings-cancel-auto-renew-confirm');
+      await waitFor(
+        'disabled checkout cancellation preserves the paid term and unavailable metadata',
+        async () =>
+          counters.subscriptionCancel === subscriptionCancelsBeforeDisabledScenario + 1 &&
+          !(await dialogIsOpen('settings-renewal-dialog')) &&
+          (await exists('settings-payments-unavailable')) &&
+          (await text('settings-auto-renew-state')) === 'Автопродление отключено' &&
+          !(await exists('settings-cancel-auto-renew')),
+      );
+      assert.equal(
+        await text('settings-subscription-status'),
+        paidStatusBeforeDisabledCancellation,
+      );
+      assert.equal(await attribute('settings-subscription-card', 'data-status'), 'active');
+      assert.deepEqual(subscriptionPayload, { ...existingPaidPeriod, auto_renew: false });
+      assert.deepEqual(lastSubscriptionCancellationResponse, {
+        ...existingPaidPeriod,
+        auto_renew: false,
+        payments_enabled: false,
+      });
+      assert.equal(counters.paymentCreate, paymentCreatesBeforeDisabledScenario);
+
+      subscriptionPayload = {
+        status: 'none',
+        provider: null,
+        starts_at: null,
+        expires_at: null,
+        amount: null,
+        currency: null,
+        auto_renew: null,
+        days_remaining: null,
+      };
+      const currentWeekRequestsBeforeDisabledPaywall = counters.currentWeekGet;
+      await cdp.send('Page.navigate', { url: `${frontendOrigin}/` });
+      await waitFor(
+        'disabled checkout keeps an unpaid account behind the program paywall',
+        async () =>
+          (await exists('program-subscription-locked')) &&
+          (await dialogIsOpen('subscription-paywall-dialog')),
+      );
+      assert.ok((await text('subscription-paywall-dialog'))?.includes('Оплата появится позже'));
+      assert.equal(await exists('paywall-renew'), false);
+      assert.equal(await exists('open-subscription-paywall'), false);
+      assert.equal(await exists('workout-player'), false);
+      assert.equal(counters.currentWeekGet, currentWeekRequestsBeforeDisabledPaywall);
+      await click('paywall-close');
+      await click('header-settings');
+      await waitFor(
+        'disabled checkout hides purchase actions for an unpaid account in settings',
+        async () =>
+          (await exists('settings-payments-unavailable')) &&
+          (await attribute('settings-subscription-card', 'data-status')) === 'none',
+      );
+      assert.equal(await text('settings-subscription-status'), 'Нет подписки');
+      assert.equal(await exists('settings-renew-subscription'), false);
+      assert.equal(await exists('settings-cancel-auto-renew'), false);
+      assert.equal(await exists('settings-subscription-provider'), false);
+
+      for (const route of ['/payment', '/payment/success', '/payment/cancel']) {
+        await cdp.send('Page.navigate', { url: `${frontendOrigin}${route}` });
+        await waitFor(
+          `disabled checkout deep link ${route} shows unavailable`,
+          async () => (await pathname()) === route && (await exists('payments-unavailable-screen')),
+        );
+        assert.ok((await text('payments-unavailable-screen'))?.includes('Оплата появится позже'));
+        assert.equal(await exists('create-payment'), false);
+        assert.equal(await exists('retry-payment'), false);
+        assert.equal(await exists('payment-success-status'), false);
+        assert.equal(await exists('payments-unavailable-back'), true);
+        assert.deepEqual(
+          await cdp.evaluate('window.__kinetraDisabledPaymentScreens'),
+          [],
+          `${route} must never mount payment screens while subscription settings load.`,
+        );
+        assert.equal(counters.paymentCreate, paymentCreatesBeforeDisabledScenario);
+      }
+      assert.equal(subscriptionPayload.status, 'none');
+      assert.equal(subscriptionPayload.provider, null);
+      assert.equal(subscriptionPayload.starts_at, null);
+      assert.equal(subscriptionPayload.expires_at, null);
+      assert.equal(counters.subscriptionCancel, subscriptionCancelsBeforeDisabledScenario + 1);
+      console.log('KINETRA_PAYMENTS_DISABLED_BROWSER_E2E=PASS');
+    } finally {
+      subscriptionPayload = paidFixture.subscription;
+      pendingSubscriptionPollsRemaining = paidFixture.pendingPolls;
+      paymentsEnabled = paidFixture.paymentsEnabled;
+      lastSubscriptionCancellationResponse = paidFixture.cancellationResponse;
+      await cdp.send('Page.removeScriptToEvaluateOnNewDocument', {
+        identifier: disabledRouteObserver.identifier,
+      });
+    }
   } catch (error) {
     if (cdp !== null) {
       try {

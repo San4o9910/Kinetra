@@ -16,6 +16,7 @@ import { TabBar } from './features/navigation/TabBar';
 import { ActiveAppHeader } from './features/navigation/ActiveAppHeader';
 import { OnboardingCarousel } from './features/onboarding/OnboardingCarousel';
 import { PaymentCancelScreen } from './features/payments/PaymentCancelScreen';
+import { PaymentAvailabilityGate } from './features/payments/PaymentAvailabilityGate';
 import { PaymentScreen } from './features/payments/PaymentScreen';
 import { PaymentSuccessScreen } from './features/payments/PaymentSuccessScreen';
 import { isSubscriptionActive } from './features/payments/model';
@@ -893,50 +894,49 @@ export const App = (): ReactNode => {
 
   const defaultAuthenticatedRoute = routeForOnboardingStatus(profile.user.onboardingStatus);
 
+  const withPaymentAvailability = (content: ReactNode): ReactNode => (
+    <PaymentAvailabilityGate
+      subscription={subscriptionState.kind === 'ready' ? subscriptionState.subscription : null}
+      loading={subscriptionState.kind === 'loading' || subscriptionState.kind === 'idle'}
+      {...(subscriptionState.kind === 'error' ? { message: subscriptionState.message } : {})}
+      onRetry={() => loadSubscription()}
+      onBack={() => navigate(defaultAuthenticatedRoute, true)}
+    >
+      {content}
+    </PaymentAvailabilityGate>
+  );
+
   if (route === appRoutes.paymentSuccess) {
-    return (
+    return withPaymentAvailability(
       <PaymentSuccessScreen
         onActivated={handleSubscriptionUpdated}
         onContinue={() => navigate(defaultAuthenticatedRoute, true)}
         onSessionExpired={handleActiveSessionExpired}
-      />
+      />,
     );
   }
 
   if (route === appRoutes.paymentCancel) {
-    return (
+    return withPaymentAvailability(
       <PaymentCancelScreen
         onRetry={() => navigate(appRoutes.payment, true)}
         onLater={() => navigate(defaultAuthenticatedRoute, true)}
-      />
+      />,
     );
   }
 
   if (route === appRoutes.payment) {
-    if (subscriptionState.kind === 'loading' || subscriptionState.kind === 'idle') {
-      return <SubscriptionVerificationState loading onRetry={() => loadSubscription()} />;
-    }
-
-    if (subscriptionState.kind === 'error') {
-      return (
-        <SubscriptionVerificationState
-          loading={false}
-          message={subscriptionState.message}
-          onRetry={() => loadSubscription()}
-        />
-      );
-    }
-
-    if (!isSubscriptionActive(subscriptionState.subscription)) {
-      return (
+    return withPaymentAvailability(
+      subscriptionState.kind === 'ready' &&
+        !isSubscriptionActive(subscriptionState.subscription) ? (
         <PaymentScreen
           onBack={() => navigate(defaultAuthenticatedRoute)}
           onSessionExpired={handleActiveSessionExpired}
         />
-      );
-    }
-
-    return <SubscriptionVerificationState loading onRetry={() => loadSubscription()} />;
+      ) : (
+        <SubscriptionVerificationState loading onRetry={() => loadSubscription()} />
+      ),
+    );
   }
 
   const chatControlledUnavailable = chatRuntime.state.kind === 'unavailable';
