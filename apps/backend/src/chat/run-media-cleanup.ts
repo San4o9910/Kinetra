@@ -1,11 +1,22 @@
-import { createProductionChatRuntime } from './runtime.js';
-import { closeDatabasePool } from '../db/pool.js';
+import type pg from 'pg';
+import { SystemClock } from '../auth/service.js';
+import { parseMediaCleanupJobEnvironment } from '../config/job-env.js';
+import { createJobDatabasePool } from '../db/job-pool.js';
+import { ChatMediaCleanupService } from './cleanup-service.js';
+import { PostgresChatRepository } from './postgres-chat.repository.js';
+import { S3ChatMediaStore } from './s3-chat-media.store.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-
-const run = async (): Promise<void> => {
-  const runtime = createProductionChatRuntime();
-  const summary = await runtime.cleanupService.runOnce();
+let exitCode = 0;
+let databasePool: pg.Pool | null = null;
+try {
+  const config = parseMediaCleanupJobEnvironment();
+  databasePool = createJobDatabasePool('kinetra-chat-cleanup', config.databaseUrl);
+  const summary = await new ChatMediaCleanupService(
+    new PostgresChatRepository(databasePool),
+    new S3ChatMediaStore(config.s3),
+    new SystemClock(),
+  ).runOnce();
   console.log('Kinetra chat media cleanup completed.', {
     stalePhotosRemoved: summary.stalePhotosRemoved,
     deletionsCompleted: summary.deletionsCompleted,
@@ -15,7 +26,6 @@ const run = async (): Promise<void> => {
     oldestDeletionRequestedAt: summary.oldestDeletionRequestedAt,
     oldestDeletionAgeMs: summary.oldestDeletionAgeMs,
   });
-
   if ((summary.oldestDeletionAgeMs ?? 0) > DAY_MS) {
     console.error('Kinetra chat media cleanup alert: durable deletion backlog exceeds 24 hours.', {
       pendingDeletionJobs: summary.pendingDeletionJobs,
@@ -24,15 +34,16 @@ const run = async (): Promise<void> => {
       oldestDeletionAgeMs: summary.oldestDeletionAgeMs,
     });
   }
-
-  if (summary.deletionsFailed > 0 || (summary.oldestDeletionAgeMs ?? 0) > DAY_MS) {
-    process.exitCode = 1;
+  if (summary.deletionsFailed > 0 || (summary.oldestDeletionAgeMs ?? 0) > DAY_MS) exitCode = 1;
+} catch {
+  exitCode = 1;
+  console.error('Kinetra chat media cleanup failed.');
+} finally {
+  try {
+    await databasePool?.end();
+  } catch {
+    exitCode = 1;
+    console.error('Kinetra chat cleanup database cleanup failed.');
   }
-};
-
-void run()
-  .catch(() => {
-    console.error('Kinetra chat media cleanup failed.');
-    process.exitCode = 1;
-  })
-  .finally(async () => closeDatabasePool());
+}
+process.exitCode = exitCode;

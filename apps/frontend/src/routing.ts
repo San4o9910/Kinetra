@@ -32,7 +32,7 @@ export const routeForOnboardingStatus = (status: OnboardingStatus): AppRoute => 
     case 'onboarding_pending':
       return appRoutes.onboarding;
     case 'base_lessons':
-      return appRoutes.baseLessons;
+      return appRoutes.home;
     case 'active':
       return appRoutes.home;
   }
@@ -91,3 +91,6 @@ export const isActiveAppRoute = (route: AppRoute): boolean =>
   route === appRoutes.schedule ||
   route === appRoutes.progress ||
   isSettingsRoute(route);
+
+export const isExplorationAppRoute = (route: AppRoute): boolean =>
+  route === appRoutes.baseLessons || isActiveAppRoute(route);

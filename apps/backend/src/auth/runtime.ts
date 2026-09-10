@@ -6,12 +6,14 @@ import type { RefreshCookieConfig } from './cookies.js';
 import {
   ConsoleAuthTokenDelivery,
   DisabledAuthTokenDelivery,
+  WebhookAuthTokenDelivery,
   type AuthTokenDelivery,
 } from './delivery.js';
 import { BcryptPasswordHasher } from './password.js';
 import { PostgresAuthRepository } from './postgres-auth.repository.js';
 import { createFixedWindowRateLimiter } from './rate-limit.js';
 import { AuthService, SystemClock } from './service.js';
+import { SmtpAuthTokenDelivery } from './smtp-delivery.js';
 import { HmacJwtAccessTokenService, OpaqueTokenService } from './tokens.js';
 
 const DAY_IN_MILLISECONDS = 24 * 60 * 60 * 1000;
@@ -25,9 +27,13 @@ export interface AuthRuntime {
 }
 
 const createTokenDelivery = (): AuthTokenDelivery =>
-  env.auth.tokenDeliveryMode === 'console'
-    ? new ConsoleAuthTokenDelivery()
-    : new DisabledAuthTokenDelivery();
+  env.auth.tokenDeliverySmtp !== null
+    ? new SmtpAuthTokenDelivery(env.auth.tokenDeliverySmtp)
+    : env.auth.tokenDeliveryWebhook !== null
+      ? new WebhookAuthTokenDelivery(env.auth.tokenDeliveryWebhook)
+      : env.auth.tokenDeliveryMode === 'console'
+        ? new ConsoleAuthTokenDelivery()
+        : new DisabledAuthTokenDelivery();
 
 export const createProductionAuthRuntime = (): AuthRuntime => {
   const refreshTtlMs = env.auth.refreshTtlDays * DAY_IN_MILLISECONDS;

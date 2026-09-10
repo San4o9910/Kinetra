@@ -1,4 +1,4 @@
-import type { ProgramDirection } from '@kinetra/shared';
+import type { OnboardingStatus, ProgramDirection } from '@kinetra/shared';
 
 export const PROGRAM_WEEK_COUNT = 12;
 export const PROGRAM_DAYS_PER_WEEK = 7;
@@ -34,9 +34,11 @@ export interface ProgramWeekSnapshot {
 
 export type CompleteWorkoutResult =
   | { readonly kind: 'completed'; readonly inserted: boolean }
+  | { readonly kind: 'onboarding_required' }
   | { readonly kind: 'workout_not_found' };
 
 export interface ProgramRepository {
+  getOnboardingStatus(userId: string): Promise<OnboardingStatus | null>;
   getProgress(userId: string): Promise<ProgramProgressSnapshot>;
   getWeek(userId: string, weekNumber: number): Promise<ProgramWeekSnapshot | null>;
   completeWorkout(

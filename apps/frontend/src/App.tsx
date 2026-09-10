@@ -10,14 +10,17 @@ import React, {
 import type { MeResponse, SubscriptionResponse } from '@kinetra/shared';
 
 import { LoginScreen } from './features/auth/LoginScreen';
+import { ForgotPasswordScreen } from './features/auth/ForgotPasswordScreen';
 import { RegisterScreen } from './features/auth/RegisterScreen';
 import { BaseLessonsScreen } from './features/base-lessons/BaseLessonsScreen';
 import { TabBar } from './features/navigation/TabBar';
+import { ActiveAppHeader } from './features/navigation/ActiveAppHeader';
 import { OnboardingCarousel } from './features/onboarding/OnboardingCarousel';
 import { PaymentCancelScreen } from './features/payments/PaymentCancelScreen';
+import { PaymentAvailabilityGate } from './features/payments/PaymentAvailabilityGate';
 import { PaymentScreen } from './features/payments/PaymentScreen';
 import { PaymentSuccessScreen } from './features/payments/PaymentSuccessScreen';
-import { isSubscriptionActive } from './features/payments/model';
+import { hasTrainingAccess, isSubscriptionActive } from './features/payments/model';
 import { SubscriptionLockedScreen } from './features/payments/SubscriptionLockedScreen';
 import { SubscriptionVerificationState } from './features/payments/SubscriptionVerificationState';
 import { ProgressScreen } from './features/progress/ProgressScreen';
@@ -27,7 +30,7 @@ import { ScheduleScreen } from './features/schedule/ScheduleScreen';
 import { SettingsScreen } from './features/settings/SettingsScreen';
 import { settleBestEffortWithin } from './features/settings/accountLifecycle';
 import { SurveyWizard } from './features/survey/SurveyWizard';
-import { ChatFloatingButton, ClientChatScreen, useChatRuntime } from './features/chat';
+import { ClientChatScreen, useChatRuntime } from './features/chat';
 import { TrainerChatsScreen } from './features/trainer-chat';
 import { TrainerAdminShell } from './features/trainer-shell/TrainerAdminShell';
 import { TrainerVerificationScreen } from './features/trainer-verification/TrainerVerificationScreen';
@@ -52,7 +55,7 @@ import { createFeatureChatRealtimeClient } from './realtime/socket';
 import {
   appRoutes,
   isActiveAppRoute,
-  isChatFabRoute,
+  isExplorationAppRoute,
   isPaymentRoute,
   isSettingsRoute,
   isTrainerRoute,
@@ -117,28 +120,39 @@ const SystemState = ({ kind, message, onRetry }: SystemStateProps): ReactNode =>
 );
 
 interface ActiveAppShellProps {
+  readonly displayName: string;
   readonly route: AppRoute;
   readonly navigationDisabled: boolean;
-  readonly chatFabHidden: boolean;
+  readonly showChat: boolean;
   readonly chatUnreadCount: number;
-  readonly onOpenChat: () => void;
   readonly onNavigate: (route: AppRoute) => void;
   readonly children: ReactNode;
 }
 
 const ActiveAppShell = ({
+  displayName,
   route,
   navigationDisabled,
-  chatFabHidden,
+  showChat,
   chatUnreadCount,
-  onOpenChat,
   onNavigate,
   children,
 }: ActiveAppShellProps): ReactNode => (
   <div className="active-app-shell">
+    <ActiveAppHeader
+      displayName={displayName}
+      settingsActive={isSettingsRoute(route)}
+      disabled={navigationDisabled}
+      onOpenSettings={() => onNavigate(appRoutes.settings)}
+    />
     <div className="active-app-content">{children}</div>
-    <ChatFloatingButton unreadCount={chatUnreadCount} hidden={chatFabHidden} onOpen={onOpenChat} />
-    <TabBar route={route} disabled={navigationDisabled} onNavigate={onNavigate} />
+    <TabBar
+      route={route}
+      disabled={navigationDisabled}
+      showChat={showChat}
+      chatUnreadCount={chatUnreadCount}
+      onNavigate={onNavigate}
+    />
   </div>
 );
 
@@ -223,7 +237,7 @@ type SessionState =
   | { readonly kind: 'server'; readonly message: string }
   | { readonly kind: 'authenticated'; readonly profile: MeResponse };
 
-type AuthView = 'login' | 'register';
+type AuthView = 'login' | 'register' | 'forgot-password';
 
 type SubscriptionLoadState =
   | { readonly kind: 'idle' }
@@ -239,14 +253,26 @@ interface TrainerSignOutAttempt {
 const routeAtStartup = (): AppRoute =>
   typeof window === 'undefined' ? appRoutes.login : normalizeAppRoute(window.location.pathname);
 
-const useBrowserRoute = (): readonly [AppRoute, (route: AppRoute, replace?: boolean) => void] => {
+interface BrowserRouteHistoryFence {
+  readonly current: boolean;
+}
+
+const useBrowserRoute = (
+  historyFenceRef: BrowserRouteHistoryFence,
+): readonly [AppRoute, (route: AppRoute, replace?: boolean) => void] => {
   const [route, setRoute] = useState<AppRoute>(routeAtStartup);
 
   useEffect(() => {
-    const handlePopState = (): void => setRoute(normalizeAppRoute(window.location.pathname));
+    const handlePopState = (): void => {
+      if (historyFenceRef.current) {
+        return;
+      }
+
+      setRoute(normalizeAppRoute(window.location.pathname));
+    };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
+  }, [historyFenceRef]);
 
   const navigate = useCallback((nextRoute: AppRoute, replace = false): void => {
     if (typeof window !== 'undefined' && window.location.pathname !== nextRoute) {
@@ -267,9 +293,10 @@ const useBrowserRoute = (): readonly [AppRoute, (route: AppRoute, replace?: bool
 export const App = (): ReactNode => {
   const [session, setSession] = useState<SessionState>({ kind: 'booting' });
   const [authView, setAuthView] = useState<AuthView>('login');
-  const [route, navigate] = useBrowserRoute();
+  const workoutCompletionBusyRef = useRef(false);
+  const [route, navigate] = useBrowserRoute(workoutCompletionBusyRef);
   const [workoutCompletionBusy, setWorkoutCompletionBusy] = useState(false);
-  const [blockingDialogOpen, setBlockingDialogOpen] = useState(false);
+  const [, setBlockingDialogOpen] = useState(false);
   const [trainerSignOutState, setTrainerSignOutState] = useState<'idle' | TrainerSignOutUiState>(
     'idle',
   );
@@ -289,6 +316,11 @@ export const App = (): ReactNode => {
     [],
   );
 
+  const handleWorkoutCompletionBusyChange = useCallback((busy: boolean): void => {
+    workoutCompletionBusyRef.current = busy;
+    setWorkoutCompletionBusy(busy);
+  }, []);
+
   const navigateActiveTab = useCallback(
     (nextRoute: AppRoute): void => {
       if (workoutCompletionBusy) {
@@ -296,8 +328,15 @@ export const App = (): ReactNode => {
       }
 
       const workoutVideoId = window.history.state?.kinetraWorkoutVideoId;
+      const workoutDayOfWeek = window.history.state?.kinetraWorkoutDayOfWeek;
+      const workoutSelected =
+        typeof workoutVideoId === 'string' ||
+        (typeof workoutDayOfWeek === 'number' &&
+          Number.isInteger(workoutDayOfWeek) &&
+          workoutDayOfWeek >= 1 &&
+          workoutDayOfWeek <= 7);
 
-      if (typeof workoutVideoId === 'string') {
+      if (workoutSelected) {
         if (window.location.pathname === nextRoute) {
           window.history.back();
           return;
@@ -321,6 +360,34 @@ export const App = (): ReactNode => {
     setSession({ kind: 'unauthenticated' });
     navigate(appRoutes.login, true);
   }, [navigate]);
+
+  const openScheduledWorkout = useCallback(
+    (programWeek: number, dayOfWeek: number): void => {
+      if (
+        workoutCompletionBusy ||
+        !Number.isInteger(programWeek) ||
+        programWeek < 1 ||
+        programWeek > 12 ||
+        !Number.isInteger(dayOfWeek) ||
+        dayOfWeek < 1 ||
+        dayOfWeek > 7
+      ) {
+        return;
+      }
+
+      window.history.pushState(
+        {
+          kinetraWorkoutDayOfWeek: dayOfWeek,
+          kinetraProgramWeek: programWeek,
+        },
+        '',
+        appRoutes.home,
+      );
+      window.scrollTo({ top: 0, behavior: 'auto' });
+      navigate(appRoutes.home);
+    },
+    [navigate, workoutCompletionBusy],
+  );
 
   const handleTrainerVerificationProfileUpdated = useCallback(
     (updated: MeResponse): void => {
@@ -582,10 +649,7 @@ export const App = (): ReactNode => {
   }, [authenticatedRole, authenticatedUserId, loadSubscription, trainerVerificationRequired]);
 
   useLayoutEffect(() => {
-    if (
-      subscriptionState.kind === 'ready' &&
-      !isSubscriptionActive(subscriptionState.subscription)
-    ) {
+    if (subscriptionState.kind === 'ready' && !hasTrainingAccess(subscriptionState.subscription)) {
       clearWorkoutHistorySentinel();
     }
   }, [subscriptionState]);
@@ -650,6 +714,18 @@ export const App = (): ReactNode => {
       return;
     }
 
+    if (session.profile.user.onboardingStatus === 'base_lessons') {
+      if (route === appRoutes.editSurvey && session.profile.survey === null) {
+        navigate(appRoutes.settings, true);
+        return;
+      }
+
+      if (!isExplorationAppRoute(route)) {
+        navigate(appRoutes.home, true);
+      }
+      return;
+    }
+
     if (isSettingsRoute(route)) {
       if (route === appRoutes.editSurvey && session.profile.survey === null) {
         navigate(appRoutes.settings, true);
@@ -687,6 +763,10 @@ export const App = (): ReactNode => {
       );
     };
 
+    if (authView === 'forgot-password') {
+      return <ForgotPasswordScreen onBack={() => setAuthView('login')} />;
+    }
+
     if (authView === 'register') {
       return (
         <RegisterScreen onAuthenticated={handleAuthenticated} onBack={() => setAuthView('login')} />
@@ -697,6 +777,7 @@ export const App = (): ReactNode => {
       <LoginScreen
         onAuthenticated={handleAuthenticated}
         onRegister={() => setAuthView('register')}
+        onForgotPassword={() => setAuthView('forgot-password')}
       />
     );
   }
@@ -816,64 +897,62 @@ export const App = (): ReactNode => {
 
   const defaultAuthenticatedRoute = routeForOnboardingStatus(profile.user.onboardingStatus);
 
+  const withPaymentAvailability = (content: ReactNode): ReactNode => (
+    <PaymentAvailabilityGate
+      subscription={subscriptionState.kind === 'ready' ? subscriptionState.subscription : null}
+      loading={subscriptionState.kind === 'loading' || subscriptionState.kind === 'idle'}
+      {...(subscriptionState.kind === 'error' ? { message: subscriptionState.message } : {})}
+      onRetry={() => loadSubscription()}
+      onBack={() => navigate(defaultAuthenticatedRoute, true)}
+    >
+      {content}
+    </PaymentAvailabilityGate>
+  );
+
   if (route === appRoutes.paymentSuccess) {
-    return (
+    return withPaymentAvailability(
       <PaymentSuccessScreen
         onActivated={handleSubscriptionUpdated}
         onContinue={() => navigate(defaultAuthenticatedRoute, true)}
         onSessionExpired={handleActiveSessionExpired}
-      />
+      />,
     );
   }
 
   if (route === appRoutes.paymentCancel) {
-    return (
+    return withPaymentAvailability(
       <PaymentCancelScreen
         onRetry={() => navigate(appRoutes.payment, true)}
         onLater={() => navigate(defaultAuthenticatedRoute, true)}
-      />
+      />,
     );
   }
 
   if (route === appRoutes.payment) {
-    if (subscriptionState.kind === 'loading' || subscriptionState.kind === 'idle') {
-      return <SubscriptionVerificationState loading onRetry={() => loadSubscription()} />;
-    }
-
-    if (subscriptionState.kind === 'error') {
-      return (
-        <SubscriptionVerificationState
-          loading={false}
-          message={subscriptionState.message}
-          onRetry={() => loadSubscription()}
-        />
-      );
-    }
-
-    if (!isSubscriptionActive(subscriptionState.subscription)) {
-      return (
+    return withPaymentAvailability(
+      subscriptionState.kind === 'ready' &&
+        !isSubscriptionActive(subscriptionState.subscription) ? (
         <PaymentScreen
           onBack={() => navigate(defaultAuthenticatedRoute)}
           onSessionExpired={handleActiveSessionExpired}
         />
-      );
-    }
-
-    return <SubscriptionVerificationState loading onRetry={() => loadSubscription()} />;
+      ) : (
+        <SubscriptionVerificationState loading onRetry={() => loadSubscription()} />
+      ),
+    );
   }
 
   const chatControlledUnavailable = chatRuntime.state.kind === 'unavailable';
-  const chatFabHidden =
-    blockingDialogOpen || !isChatFabRoute(route) || chatControlledUnavailable || !chatEnabled;
 
   const withActiveNavigation = (content: ReactNode): ReactNode =>
-    profile.user.onboardingStatus === 'active' ? (
+    profile.user.onboardingStatus === 'active' ||
+    profile.user.onboardingStatus === 'base_lessons' ? (
       <ActiveAppShell
+        displayName={clientDisplayName(profile)}
         route={route}
         navigationDisabled={workoutCompletionBusy}
-        chatFabHidden={chatFabHidden}
+        showChat={profile.user.onboardingStatus === 'active'}
         chatUnreadCount={chatRuntime.unreadCount}
-        onOpenChat={() => navigate(appRoutes.chat)}
         onNavigate={navigateActiveTab}
       >
         {content}
@@ -945,7 +1024,7 @@ export const App = (): ReactNode => {
     );
   }
 
-  if (profile.user.onboardingStatus === 'base_lessons') {
+  if (profile.user.onboardingStatus === 'base_lessons' && route === appRoutes.baseLessons) {
     return (
       <BaseLessonsScreen
         key={profile.user.id}
@@ -953,6 +1032,7 @@ export const App = (): ReactNode => {
           setSession({ kind: 'authenticated', profile: updated });
           navigate(routeForOnboardingStatus(updated.user.onboardingStatus), true);
         }}
+        onBackToApp={() => navigate(appRoutes.home)}
         onOpenSettings={() => navigate(appRoutes.settings)}
         onSessionExpired={() => {
           setSession({ kind: 'unauthenticated' });
@@ -966,29 +1046,29 @@ export const App = (): ReactNode => {
     const backToActiveApp = (): void => navigate(appRoutes.home);
 
     if (chatRuntime.state.kind === 'idle' || chatRuntime.state.kind === 'loading') {
-      return (
+      return withActiveNavigation(
         <ChatRouteState
           kind="loading"
           message="Загружаем диалог и проверяем защищённую сессию…"
           onBack={backToActiveApp}
-        />
+        />,
       );
     }
 
     if (chatRuntime.state.kind === 'unavailable') {
-      return (
+      return withActiveNavigation(
         <ChatRouteState
           kind="unavailable"
           message={chatUnavailableMessage(chatRuntime.state.reason)}
           showEmailFallback
           onBack={backToActiveApp}
           onRetry={chatRuntime.refresh}
-        />
+        />,
       );
     }
 
     if (chatRuntime.state.kind === 'error' || chatRuntime.state.session.role !== 'client') {
-      return (
+      return withActiveNavigation(
         <ChatRouteState
           kind="error"
           message={
@@ -998,11 +1078,11 @@ export const App = (): ReactNode => {
           }
           onBack={backToActiveApp}
           onRetry={chatRuntime.refresh}
-        />
+        />,
       );
     }
 
-    return (
+    return withActiveNavigation(
       <ClientChatScreen
         accountId={profile.user.id}
         ownDisplayName={clientDisplayName(profile)}
@@ -1016,16 +1096,16 @@ export const App = (): ReactNode => {
         onSessionExpired={handleActiveSessionExpired}
         onConversationStateChange={chatRuntime.updateClientConversationState}
         registerObjectUrl={chatRuntime.registerObjectUrl}
-      />
+      />,
     );
   }
 
   const activeContent =
     route === appRoutes.schedule ? (
       subscriptionState.kind === 'ready' ? (
-        isSubscriptionActive(subscriptionState.subscription) ? (
+        hasTrainingAccess(subscriptionState.subscription) ? (
           <ScheduleScreen
-            onOpenHome={() => navigate(appRoutes.home)}
+            onOpenWorkout={openScheduledWorkout}
             onSessionExpired={handleActiveSessionExpired}
             onSubscriptionRequired={loadSubscription}
           />
@@ -1062,13 +1142,16 @@ export const App = (): ReactNode => {
         onSessionExpired={handleActiveSessionExpired}
       />
     ) : subscriptionState.kind === 'ready' ? (
-      isSubscriptionActive(subscriptionState.subscription) ? (
+      hasTrainingAccess(subscriptionState.subscription) ? (
         <ProgramScreen
           timezone={profile.user.timezone}
           subscription={subscriptionState.subscription}
+          trainingLocked={profile.user.onboardingStatus === 'base_lessons'}
+          onOpenBaseLessons={() => navigate(appRoutes.baseLessons)}
+          onOpenSchedule={() => navigateActiveTab(appRoutes.schedule)}
           onOpenPayment={() => navigate(appRoutes.payment)}
           onSubscriptionRequired={loadSubscription}
-          onWorkoutCompletionBusyChange={setWorkoutCompletionBusy}
+          onWorkoutCompletionBusyChange={handleWorkoutCompletionBusyChange}
           onSessionExpired={handleActiveSessionExpired}
         />
       ) : (
@@ -1087,11 +1170,11 @@ export const App = (): ReactNode => {
 
   return (
     <ActiveAppShell
+      displayName={clientDisplayName(profile)}
       route={route}
       navigationDisabled={workoutCompletionBusy}
-      chatFabHidden={chatFabHidden}
+      showChat={profile.user.onboardingStatus === 'active'}
       chatUnreadCount={chatRuntime.unreadCount}
-      onOpenChat={() => navigate(appRoutes.chat)}
       onNavigate={navigateActiveTab}
     >
       {activeContent}

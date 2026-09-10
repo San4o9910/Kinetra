@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -9,14 +10,15 @@ import type {
   WeekResponse,
 } from '@kinetra/shared';
 
+import { BaseLessonsRequiredDialog } from '../src/features/base-lessons/BaseLessonsRequiredDialog.js';
 import { TabBar } from '../src/features/navigation/TabBar.js';
+import { ActiveAppHeader } from '../src/features/navigation/ActiveAppHeader.js';
 import { ProgramWeekView } from '../src/features/program/ProgramWeekView.js';
 import { WorkoutPlayer } from '../src/features/program/WorkoutPlayer.js';
 import {
   WORKOUT_COMPLETION_THRESHOLD,
   WORKOUT_PROGRESS_CHECK_INTERVAL_MS,
   dayOfWeekInTimeZone,
-  directionPresentation,
   optimisticallyCompleteWorkout,
 } from '../src/features/program/model.js';
 import { appRoutes } from '../src/routing.js';
@@ -75,6 +77,7 @@ const renderWeek = (
   response: WeekResponse,
   currentWeekNumber: number,
   todayDayOfWeek = 3,
+  trainingLocked = false,
 ): string =>
   renderToStaticMarkup(
     createElement(ProgramWeekView, {
@@ -83,8 +86,11 @@ const renderWeek = (
       todayDayOfWeek,
       isNavigating: false,
       navigationError: null,
-      onPreviousWeek: () => undefined,
-      onNextWeek: () => undefined,
+      trainingLocked,
+      completedBaseLessons: trainingLocked ? 1 : null,
+      baseLessonUnlockThreshold: trainingLocked ? 4 : null,
+      onOpenBaseLessons: () => undefined,
+      onOpenSchedule: () => undefined,
       onSelectWorkout: () => undefined,
     }),
   );
@@ -95,25 +101,28 @@ const buttonTag = (markup: string, testId: string): string => {
   return match?.[0] ?? '';
 };
 
-test('main screen renders seven canonical workout cards with exact icons and durations', () => {
+test('Today dashboard renders only the current and next workout', () => {
   const markup = renderWeek(weekResponse(), 1);
   const cards = markup.match(/data-testid="workout-card-\d+"/gu) ?? [];
 
-  assert.equal(cards.length, 7);
-  directions.forEach((direction, index) => {
-    const presentation = directionPresentation[direction];
-    assert.ok(markup.includes(presentation.label));
-    assert.ok(markup.includes(presentation.icon));
-    assert.ok(markup.includes(`${durations[index]} мин`));
-  });
-  assert.equal(markup.includes('Телесная терапия'), false);
-  assert.equal(markup.includes('heart-pulse'), false);
+  assert.equal(cards.length, 2);
+  assert.ok(markup.includes('data-testid="today-heading"'));
+  assert.ok(markup.includes('Сегодня'));
+  assert.ok(markup.includes('data-testid="workout-card-3"'));
+  assert.ok(markup.includes('Телесная терапия'));
+  assert.ok(markup.includes('30 мин'));
+  assert.ok(markup.includes('data-testid="next-workout"'));
+  assert.ok(markup.includes('data-testid="workout-card-4"'));
+  assert.ok(markup.includes('Seed title 4'));
+  assert.ok(markup.includes('35 мин'));
+  assert.equal(markup.includes('data-testid="workout-card-1"'), false);
+  assert.equal(markup.includes('data-testid="workout-card-7"'), false);
 });
 
-test('week progress exposes X/7 copy and accessible progressbar values', () => {
+test('week progress exposes completed count and accessible progressbar values', () => {
   const markup = renderWeek(weekResponse(1, 'active', 3), 1);
 
-  assert.ok(markup.includes('3/7'));
+  assert.ok(markup.includes('3 из 7'));
   assert.match(
     markup,
     /data-testid="week-progress"[^>]*aria-valuenow="3"[^>]*aria-valuetext="Пройдено 3 из 7"/u,
@@ -121,66 +130,162 @@ test('week progress exposes X/7 copy and accessible progressbar values', () => {
   assert.ok(markup.includes('style="width:42.857142857142854%"'));
 });
 
-test('week arrows stop at week one and at the current-plus-one preview boundary', () => {
-  const firstWeek = renderWeek(weekResponse(1, 'active'), 1);
-  assert.ok(buttonTag(firstWeek, 'week-previous').includes('disabled'));
-  assert.equal(buttonTag(firstWeek, 'week-next').includes('disabled'), false);
+test('Today dashboard delegates full week browsing to Schedule', () => {
+  const markup = renderWeek(weekResponse(1, 'active'), 1);
 
-  const preview = renderWeek(weekResponse(2, 'locked'), 1);
-  assert.equal(buttonTag(preview, 'week-previous').includes('disabled'), false);
-  assert.ok(buttonTag(preview, 'week-next').includes('disabled'));
-  assert.equal((preview.match(/data-state="locked"/gu) ?? []).length, 7);
-  assert.ok(buttonTag(preview, 'workout-card-1').includes('disabled'));
-
-  const finalWeek = renderWeek(weekResponse(12, 'active'), 12);
-  assert.ok(buttonTag(finalWeek, 'week-next').includes('disabled'));
+  assert.equal(markup.includes('data-testid="week-previous"'), false);
+  assert.equal(markup.includes('data-testid="week-next"'), false);
+  assert.ok(markup.includes('data-testid="today-open-schedule"'));
+  assert.ok(markup.includes('Открыть полное расписание'));
 });
 
 test('today is highlighted only in the actual current week', () => {
-  const current = renderWeek(weekResponse(1, 'active', 1), 1, 3);
+  const current = renderWeek(weekResponse(1, 'active', 3), 1, 3);
 
   assert.match(
     current,
     /data-testid="workout-card-3"[^>]*data-today="true"|data-today="true"[^>]*data-testid="workout-card-3"/u,
   );
   assert.ok(current.includes('data-testid="today-workout"'));
-  assert.match(current, /data-testid="workout-status-1"[^>]*data-state="completed"/u);
-  assert.match(current, /data-testid="workout-status-2"[^>]*data-state="available"/u);
+  assert.match(current, /data-testid="workout-status-3"[^>]*data-state="completed"/u);
+  assert.match(current, /data-testid="workout-status-4"[^>]*data-state="available"/u);
 
   const futurePreview = renderWeek(weekResponse(2, 'locked'), 1, 3);
   assert.equal(futurePreview.includes('data-today="true"'), false);
   assert.equal(futurePreview.includes('data-testid="today-workout"'), false);
+  assert.ok(futurePreview.includes('data-testid="today-rest-day"'));
 });
 
-test('tab bar renders four routes and highlights only the active tab', () => {
+test('training preparation keeps the program explorable without opening current workouts', () => {
+  const markup = renderWeek(weekResponse(), 1, 3, true);
+
+  assert.ok(markup.includes('data-testid="training-preparation-card"'));
+  assert.ok(markup.includes('Пройдено 1 из 4 необходимых'));
+  assert.ok(markup.includes('data-testid="preparation-open-base-lessons"'));
+  assert.equal((markup.match(/data-training-access="base-lessons-required"/gu) ?? []).length, 2);
+  assert.equal((markup.match(/data-state="preparation-required"/gu) ?? []).length, 2);
+  assert.equal(buttonTag(markup, 'workout-card-3').includes('disabled'), false);
+
+  const future = renderWeek(weekResponse(2, 'locked'), 1, 3, true);
+  assert.equal(future.includes('data-training-access="base-lessons-required"'), false);
+  assert.equal(future.includes('data-testid="workout-card-'), false);
+});
+
+test('base-lessons gate offers preparation and a return to app exploration', () => {
+  const markup = renderToStaticMarkup(
+    createElement(BaseLessonsRequiredDialog, {
+      open: true,
+      completedLessons: 1,
+      unlockThreshold: 4,
+      onClose: () => undefined,
+      onOpenBaseLessons: () => undefined,
+    }),
+  );
+
+  assert.ok(markup.includes('data-testid="base-lessons-required-dialog"'));
+  assert.ok(markup.includes('Сначала подготовимся к тренировке'));
+  assert.ok(markup.includes('data-testid="open-base-lessons"'));
+  assert.ok(markup.includes('Пройти базовые уроки'));
+  assert.ok(markup.includes('data-testid="continue-exploring-app"'));
+  assert.ok(markup.includes('Вернуться к изучению приложения'));
+});
+
+test('tab bar renders four client routes with Trainer and its unread badge', () => {
   const markup = renderToStaticMarkup(
     createElement(TabBar, {
-      route: appRoutes.progress,
+      route: appRoutes.chat,
+      showChat: true,
+      chatUnreadCount: 125,
       onNavigate: () => undefined,
     }),
   );
 
   assert.equal(
-    (markup.match(/data-testid="tab-(?:home|schedule|progress|settings)"/gu) ?? []).length,
+    (markup.match(/data-testid="tab-(?:home|schedule|progress|chat|settings)"/gu) ?? []).length,
     4,
   );
   assert.equal((markup.match(/aria-current="page"/gu) ?? []).length, 1);
-  assert.match(markup, /data-testid="tab-progress"[^>]*aria-current="page"/u);
-  assert.ok(markup.includes('Главная'));
-  assert.ok(markup.includes('Расписание'));
+  assert.match(markup, /data-testid="tab-chat"[^>]*aria-current="page"/u);
+  assert.match(
+    markup,
+    /data-testid="tab-chat"[^>]*aria-label="Чат с тренером, 99\+ непрочитанных сообщений"/u,
+  );
+  assert.ok(markup.includes('data-testid="tab-chat-badge"'));
+  assert.ok(markup.includes('99+'));
+  assert.ok(markup.includes('Сегодня'));
+  assert.ok(markup.includes('План'));
   assert.ok(markup.includes('Прогресс'));
-  assert.ok(markup.includes('Настройки'));
+  assert.ok(markup.includes('Чат'));
+  assert.ok(markup.includes('Тренер'));
+  assert.equal(markup.includes('data-testid="tab-settings"'), false);
 
   const savingMarkup = renderToStaticMarkup(
     createElement(TabBar, {
       route: appRoutes.home,
       disabled: true,
+      showChat: false,
+      chatUnreadCount: 0,
       onNavigate: () => undefined,
     }),
   );
   assert.match(savingMarkup, /data-testid="tab-bar"[^>]*aria-busy="true"/u);
-  assert.equal((savingMarkup.match(/aria-disabled="true"/gu) ?? []).length, 4);
-  assert.equal((savingMarkup.match(/tabindex="-1"/gu) ?? []).length, 4);
+  assert.equal(savingMarkup.includes('data-testid="tab-chat"'), false);
+  assert.equal((savingMarkup.match(/aria-disabled="true"/gu) ?? []).length, 3);
+  assert.equal((savingMarkup.match(/tabindex="-1"/gu) ?? []).length, 3);
+});
+
+test('system Back keeps the saving workout on its canonical history entry', async () => {
+  const [appSource, programScreenSource] = await Promise.all([
+    readFile(new URL('../src/App.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../src/features/program/ProgramScreen.tsx', import.meta.url), 'utf8'),
+  ]);
+
+  const appPopStateStart = appSource.indexOf('const handlePopState = (): void => {');
+  const appPopStateEnd = appSource.indexOf(
+    "window.addEventListener('popstate', handlePopState)",
+    appPopStateStart,
+  );
+  assert.notEqual(appPopStateStart, -1);
+  assert.notEqual(appPopStateEnd, -1);
+  const appPopStateHandler = appSource.slice(appPopStateStart, appPopStateEnd);
+  const appHistoryFence = appPopStateHandler.indexOf('if (historyFenceRef.current)');
+  const appRouteWrite = appPopStateHandler.indexOf(
+    'setRoute(normalizeAppRoute(window.location.pathname))',
+  );
+  assert.notEqual(appHistoryFence, -1);
+  assert.notEqual(appRouteWrite, -1);
+  assert.ok(appHistoryFence < appRouteWrite);
+  assert.ok(appPopStateHandler.slice(appHistoryFence, appRouteWrite).includes('return;'));
+
+  const busyCallbackStart = appSource.indexOf(
+    'const handleWorkoutCompletionBusyChange = useCallback(',
+  );
+  const busyCallbackEnd = appSource.indexOf(
+    'const navigateActiveTab = useCallback(',
+    busyCallbackStart,
+  );
+  assert.notEqual(busyCallbackStart, -1);
+  assert.notEqual(busyCallbackEnd, -1);
+  const busyCallback = appSource.slice(busyCallbackStart, busyCallbackEnd);
+  const busyRefWrite = busyCallback.indexOf('workoutCompletionBusyRef.current = busy');
+  const busyStateWrite = busyCallback.indexOf('setWorkoutCompletionBusy(busy)');
+  assert.notEqual(busyRefWrite, -1);
+  assert.notEqual(busyStateWrite, -1);
+  assert.ok(busyRefWrite < busyStateWrite);
+  assert.ok(
+    appSource.includes('onWorkoutCompletionBusyChange={handleWorkoutCompletionBusyChange}'),
+  );
+
+  const programFenceStart = programScreenSource.indexOf('completionBusyRef.current &&');
+  const programFenceEnd = programScreenSource.indexOf('\n\n      if (', programFenceStart);
+  assert.notEqual(programFenceStart, -1);
+  assert.notEqual(programFenceEnd, -1);
+  const programFence = programScreenSource.slice(programFenceStart, programFenceEnd);
+  assert.ok(programFence.includes('window.history.pushState('));
+  assert.ok(programFence.includes('kinetraWorkoutVideoId: selectedVideoIdRef.current'));
+  assert.ok(programFence.includes('kinetraProgramWeek: selectedProgramWeekRef.current'));
+  assert.ok(programFence.includes('appRoutes.home'));
+  assert.equal(programFence.includes('window.location.href'), false);
 });
 
 test('workout player renders the prescribed placeholder for a null video URL', () => {
@@ -221,4 +326,14 @@ test('timezone weekday and optimistic boundary completion are deterministic', ()
   assert.equal(completed.overall_progress.total_workouts_done, 7);
   assert.equal(WORKOUT_COMPLETION_THRESHOLD, 90);
   assert.equal(WORKOUT_PROGRESS_CHECK_INTERVAL_MS, 10_000);
+});
+
+test('profile settings stays reachable at the top and disabled while a workout saves', () => {
+  const props = { displayName: 'Санжар', settingsActive: true, onOpenSettings: () => undefined };
+  const ready = renderToStaticMarkup(createElement(ActiveAppHeader, { ...props, disabled: false }));
+  assert.match(ready, /data-testid="header-settings"[^>]*aria-current="page"/u);
+  assert.match(ready, /aria-label="Открыть настройки"/u);
+  assert.match(ready, /class="active-app-avatar"[^>]*>С</u);
+  const busy = renderToStaticMarkup(createElement(ActiveAppHeader, { ...props, disabled: true }));
+  assert.match(busy, /data-testid="header-settings"[^>]*disabled/u);
 });

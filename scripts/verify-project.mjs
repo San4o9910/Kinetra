@@ -52,6 +52,51 @@ const expectMatches = (text, pattern, message) => {
 };
 
 const requiredFiles = [
+  'apps/backend/src/auth/smtp-delivery.ts',
+  'apps/backend/test/smtp-delivery.test.ts',
+  'docs/YANDEX_MAIL_SETUP.md',
+  'apps/frontend/src/features/trainer-videos/preview-dialog-lifecycle.ts',
+  'apps/backend/test/platform.test.ts',
+  'apps/backend/test/job-env.test.ts',
+  'ops/test-production-env.mjs',
+  'ops/monitoring/alerts.example.yml',
+  'deploy/.gitignore',
+  'docs/PRODUCTION_READINESS_REVIEW.md',
+
+  'apps/frontend/src/features/navigation/ActiveAppHeader.tsx',
+  'apps/frontend/src/features/progress/ProgressJourney.tsx',
+  'apps/frontend/src/features/progress/ProgressWellbeingOverview.tsx',
+  'apps/frontend/src/features/progress/ProgressBalanceRadar.tsx',
+  'apps/frontend/src/features/progress/journey.ts',
+  'apps/frontend/src/features/progress/radar.ts',
+  'apps/backend/src/config/database.ts',
+  'apps/backend/src/config/job-env.ts',
+  'apps/backend/src/db/job-pool.ts',
+  'apps/backend/src/shutdown.ts',
+  'apps/backend/test/migration-runner.test.ts',
+  'deploy/Containerfile',
+  'deploy/Containerfile.dockerignore',
+  'deploy/compose.production.yml',
+  'deploy/nginx.conf',
+  'deploy/production.env.example',
+  'deploy/api.env.example',
+  'deploy/jobs/migrate.env.example',
+  'deploy/jobs/notifications.env.example',
+  'deploy/jobs/renewals.env.example',
+  'deploy/jobs/chat-cleanup.env.example',
+  'deploy/jobs/video-cleanup.env.example',
+  'deploy/jobs/video-verify.env.example',
+  'deploy/jobs/disabled.env.example',
+  'ops/backup-postgres.sh',
+  'ops/restore-drill-postgres.sh',
+  'ops/run-production-job.sh',
+  'ops/validate-production-env.mjs',
+  'docs/PRODUCT_DIRECTION.md',
+  'docs/PRODUCTION_DELIVERY.md',
+  'docs/PRODUCTION_MONITORING.md',
+  'docs/PRODUCTION_LAUNCH_RUNBOOK.md',
+  'docs/DISASTER_RECOVERY.md',
+
   '.env.example',
   '.github/workflows/ci.yml',
   'docker-compose.yml',
@@ -79,6 +124,7 @@ const requiredFiles = [
   'apps/frontend/src/features/onboarding/model.ts',
   'apps/frontend/src/features/base-lessons/BaseLessonsScreen.tsx',
   'apps/frontend/src/features/base-lessons/BaseLessonsView.tsx',
+  'apps/frontend/src/features/base-lessons/BaseLessonsRequiredDialog.tsx',
   'apps/frontend/src/features/base-lessons/LessonPlayer.tsx',
   'apps/frontend/src/features/base-lessons/model.ts',
   'apps/frontend/src/features/navigation/TabBar.tsx',
@@ -1432,6 +1478,11 @@ expectIncludes(
   'ON CONFLICT (user_id, video_id, program_week) DO NOTHING',
   'T07 workout completion is idempotent',
 );
+expectIncludes(
+  programRepository,
+  "authenticated_user.onboarding_status = 'active'",
+  'exploration mode keeps the workout completion mutation gated by active onboarding',
+);
 
 const programService = await readText('apps/backend/src/program/service.ts');
 expectIncludes(
@@ -1461,14 +1512,24 @@ expectIncludes(programService, "'PROGRAM_WEEK_LOCKED'", 'T07 rejects locked week
 expectIncludes(programService, "'WORKOUT_NOT_FOUND'", 'T07 rejects mismatched workout IDs');
 expectIncludes(
   programService,
+  "'BASE_LESSONS_REQUIRED'",
+  'exploration mode rejects workout completion before base lessons are complete',
+);
+expectIncludes(
+  programService,
+  "'ONBOARDING_REQUIRED'",
+  'program preview stays closed before onboarding reaches base lessons',
+);
+expectIncludes(
+  programService,
   'snapshot.days.length !== PROGRAM_DAYS_PER_WEEK',
   'T07 fails closed if a program week is not seven days',
 );
 expectIncludes(programService, "return 'locked'", 'T07 marks the preview week as locked');
 expectIncludes(
   programService,
-  "status !== 'locked' && day.mediaAvailable",
-  'T07 signs media only after upload confirmation and never for a locked week',
+  "workoutMediaUnlocked && status !== 'locked' && day.mediaAvailable",
+  'T07 signs media only for active onboarding after upload confirmation and never for a locked week',
 );
 
 const programDocumentation = await readText('docs/T07_MAIN_SCREEN.md');
@@ -1623,6 +1684,11 @@ expectIncludes(
   'program_unlocked',
   'T06 screen respects the server unlock decision',
 );
+expectIncludes(
+  baseLessonsScreen,
+  'base-lessons-loading-back-to-app',
+  'T06 loading state keeps an explicit exit to app exploration',
+);
 
 const baseLessonsView = await readText(
   'apps/frontend/src/features/base-lessons/BaseLessonsView.tsx',
@@ -1632,6 +1698,7 @@ for (const testId of [
   'base-lessons-progress',
   'base-lesson-card-',
   'base-lessons-complete',
+  'base-lessons-back-to-app',
 ]) {
   expectIncludes(baseLessonsView, testId, `T06 lesson list test hook: ${testId}`);
 }
@@ -1702,11 +1769,26 @@ expectIncludes(
 );
 
 const tabBar = await readText('apps/frontend/src/features/navigation/TabBar.tsx');
-for (const testId of ['tab-bar', 'tab-home', 'tab-schedule', 'tab-progress', 'tab-settings']) {
+const activeAppHeader = await readText('apps/frontend/src/features/navigation/ActiveAppHeader.tsx');
+for (const contract of ['header-settings', 'disabled={disabled}', 'settingsActive', 'Настройки']) {
+  expectIncludes(activeAppHeader, contract, `UX settings header contract: ${contract}`);
+}
+for (const testId of ['tab-bar', 'tab-home', 'tab-schedule', 'tab-progress', 'tab-chat']) {
   expectIncludes(tabBar, testId, `T07 tab bar test hook: ${testId}`);
 }
-for (const label of ['Главная', 'Расписание', 'Прогресс', 'Настройки']) {
+for (const label of ['Сегодня', 'План', 'Прогресс', 'Тренер']) {
   expectIncludes(tabBar, label, `T07 tab bar label: ${label}`);
+}
+for (const chatTabContract of [
+  "{ route: appRoutes.chat, label: 'Тренер', testId: 'tab-chat', icon: 'chat' }",
+  'readonly showChat: boolean',
+  'readonly chatUnreadCount: number',
+  'tabItems.filter((item) => item.route !== appRoutes.chat)',
+  'chatUnreadBadge(chatUnreadCount)',
+  'chatFabAccessibleName(chatUnreadCount)',
+  'data-testid="tab-chat-badge"',
+]) {
+  expectIncludes(tabBar, chatTabContract, `T12 client chat tab contract: ${chatTabContract}`);
 }
 expectIncludes(
   tabBar,
@@ -1722,15 +1804,40 @@ expectIncludes(
 const programWeekView = await readText('apps/frontend/src/features/program/ProgramWeekView.tsx');
 for (const testId of [
   'main-screen',
-  'week-heading',
+  'today-heading',
   'week-progress',
-  'week-previous',
-  'week-next',
+  'week-progress-copy',
   'workout-card-',
   'workout-status-',
   'today-workout',
+  'today-rest-day',
+  'next-workout',
+  'today-open-schedule',
 ]) {
   expectIncludes(programWeekView, testId, `T07 main-screen test hook: ${testId}`);
+}
+for (const todayContract of [
+  'aria-labelledby="program-today-heading"',
+  'const TodayHeading = (): ReactNode =>',
+  "{ id: 'program-today-heading', 'data-testid': 'today-heading' }",
+  'Тренировка на сегодня',
+  'Следующая тренировка',
+  'Прогресс недели',
+  'Сегодня по плану отдых',
+  'Открыть полное расписание',
+  'week.week_number === currentWeekNumber',
+  'week.days.find(({ day_of_week: dayOfWeek }) => dayOfWeek === todayDayOfWeek)',
+  'onClick={onOpenSchedule}',
+]) {
+  expectIncludes(programWeekView, todayContract, `T07 Today dashboard contract: ${todayContract}`);
+}
+if (
+  programWeekView.includes('data-testid="week-previous"') ||
+  programWeekView.includes('data-testid="week-next"')
+) {
+  fail('T07 Today dashboard does not duplicate week navigation from Schedule');
+} else {
+  pass('T07 Today dashboard does not duplicate week navigation from Schedule');
 }
 expectIncludes(programWeekView, 'role="progressbar"', 'T07 exposes week progress semantics');
 expectIncludes(
@@ -1782,9 +1889,18 @@ expectIncludes(
 
 const programScreen = await readText('apps/frontend/src/features/program/ProgramScreen.tsx');
 expectIncludes(programScreen, 'getCurrentWeek(controller.signal)', 'T07 restores the current week');
-expectIncludes(programScreen, 'getWeek(weekNumber, controller.signal)', 'T07 navigates by week');
-expectIncludes(programScreen, '<ProgramWeekView', 'T07 renders the seven-day week view');
+expectIncludes(
+  programScreen,
+  'getWeek(programWeek, controller.signal)',
+  'T07 resolves a workout selected from another program week',
+);
+expectIncludes(programScreen, '<ProgramWeekView', 'T07 renders the Today dashboard');
 expectIncludes(programScreen, '<WorkoutPlayer', 'T07 opens the workout player');
+expectIncludes(
+  programScreen,
+  'onOpenSchedule={onOpenSchedule}',
+  'T07 Today dashboard opens the full schedule',
+);
 expectIncludes(
   programScreen,
   'dayOfWeekInTimeZone(new Date(), timezone)',
@@ -1800,6 +1916,111 @@ expectIncludes(
   'requestVersion.current',
   'T07 prevents stale week responses from replacing newer navigation',
 );
+expectIncludes(
+  programScreen,
+  '<BaseLessonsRequiredDialog',
+  'exploration mode explains the preparation gate instead of opening a workout player',
+);
+expectIncludes(
+  programScreen,
+  'trainingLocked',
+  'exploration mode keeps the workout player locked until onboarding becomes active',
+);
+
+const appWorkoutHistoryPopStateStart = frontendApp.indexOf('const handlePopState = (): void => {');
+const appWorkoutHistoryPopStateEnd = frontendApp.indexOf(
+  "window.addEventListener('popstate', handlePopState)",
+  appWorkoutHistoryPopStateStart,
+);
+const appWorkoutHistoryPopState =
+  appWorkoutHistoryPopStateStart >= 0 &&
+  appWorkoutHistoryPopStateEnd > appWorkoutHistoryPopStateStart
+    ? frontendApp.slice(appWorkoutHistoryPopStateStart, appWorkoutHistoryPopStateEnd)
+    : '';
+const appWorkoutHistoryFence = appWorkoutHistoryPopState.indexOf('if (historyFenceRef.current)');
+const appWorkoutHistoryRouteWrite = appWorkoutHistoryPopState.indexOf(
+  'setRoute(normalizeAppRoute(window.location.pathname))',
+);
+if (
+  appWorkoutHistoryFence >= 0 &&
+  appWorkoutHistoryRouteWrite > appWorkoutHistoryFence &&
+  appWorkoutHistoryPopState
+    .slice(appWorkoutHistoryFence, appWorkoutHistoryRouteWrite)
+    .includes('return;')
+) {
+  pass('T07 saving-time history fence blocks App route reconciliation before its route write');
+} else {
+  fail('T07 saving-time history fence blocks App route reconciliation before its route write');
+}
+
+const appWorkoutBusyCallbackStart = frontendApp.indexOf(
+  'const handleWorkoutCompletionBusyChange = useCallback(',
+);
+const appWorkoutBusyCallbackEnd = frontendApp.indexOf(
+  'const navigateActiveTab = useCallback(',
+  appWorkoutBusyCallbackStart,
+);
+const appWorkoutBusyCallback =
+  appWorkoutBusyCallbackStart >= 0 && appWorkoutBusyCallbackEnd > appWorkoutBusyCallbackStart
+    ? frontendApp.slice(appWorkoutBusyCallbackStart, appWorkoutBusyCallbackEnd)
+    : '';
+const appWorkoutBusyRefWrite = appWorkoutBusyCallback.indexOf(
+  'workoutCompletionBusyRef.current = busy',
+);
+const appWorkoutBusyStateWrite = appWorkoutBusyCallback.indexOf('setWorkoutCompletionBusy(busy)');
+if (appWorkoutBusyRefWrite >= 0 && appWorkoutBusyStateWrite > appWorkoutBusyRefWrite) {
+  pass('T07 completion callback closes the popstate race before the React state update');
+} else {
+  fail('T07 completion callback closes the popstate race before the React state update');
+}
+expectIncludes(
+  frontendApp,
+  'onWorkoutCompletionBusyChange={handleWorkoutCompletionBusyChange}',
+  'T07 ProgramScreen uses the synchronous App history-fence callback',
+);
+
+const programWorkoutHistoryFenceStart = programScreen.indexOf('completionBusyRef.current &&');
+const programWorkoutHistoryFenceEnd = programScreen.indexOf(
+  '\n\n      if (',
+  programWorkoutHistoryFenceStart,
+);
+const programWorkoutHistoryFence =
+  programWorkoutHistoryFenceStart >= 0 &&
+  programWorkoutHistoryFenceEnd > programWorkoutHistoryFenceStart
+    ? programScreen.slice(programWorkoutHistoryFenceStart, programWorkoutHistoryFenceEnd)
+    : '';
+for (const historyFenceContract of [
+  'window.history.pushState(',
+  'kinetraWorkoutVideoId: selectedVideoIdRef.current',
+  'kinetraProgramWeek: selectedProgramWeekRef.current',
+  'appRoutes.home',
+]) {
+  expectIncludes(
+    programWorkoutHistoryFence,
+    historyFenceContract,
+    `T07 saving-time workout history fence: ${historyFenceContract}`,
+  );
+}
+if (programWorkoutHistoryFence.includes('window.location.href')) {
+  fail('T07 saving-time workout history fence never adopts the popped destination pathname');
+} else {
+  pass('T07 saving-time workout history fence never adopts the popped destination pathname');
+}
+
+const baseLessonsRequiredDialog = await readText(
+  'apps/frontend/src/features/base-lessons/BaseLessonsRequiredDialog.tsx',
+);
+for (const contract of [
+  'base-lessons-required-dialog',
+  'Пройти базовые уроки',
+  'Вернуться к изучению приложения',
+]) {
+  expectIncludes(
+    baseLessonsRequiredDialog,
+    contract,
+    `exploration preparation dialog contract: ${contract}`,
+  );
+}
 
 const onboardingModel = await readText('apps/frontend/src/features/onboarding/model.ts');
 expectIncludes(
@@ -1821,7 +2042,7 @@ expectIncludes(onboardingModel, "title: 'Готовы начать?'", 'T05 has 
 expectIncludes(onboardingModel, "label: 'Нейрогимнастика'", 'T05 lists all weekly rhythms');
 expectIncludes(
   onboardingModel,
-  "ONBOARDING_COMPLETE_LABEL = 'К базовым урокам'",
+  "ONBOARDING_COMPLETE_LABEL = 'Открыть Kinetra'",
   'T05 defines the final completion action',
 );
 
@@ -1860,7 +2081,7 @@ const routes = await readText('apps/frontend/src/routing.ts');
 for (const [status, route] of [
   ['survey_pending', 'survey'],
   ['onboarding_pending', 'onboarding'],
-  ['base_lessons', 'baseLessons'],
+  ['base_lessons', 'home'],
   ['active', 'home'],
 ]) {
   expectIncludes(routes, `case '${status}'`, `T04 route status: ${status}`);
@@ -1872,6 +2093,11 @@ expectIncludes(
   routes,
   'isActiveAppRoute',
   'T07 active-profile route guard includes all tab routes',
+);
+expectIncludes(
+  routes,
+  'isExplorationAppRoute',
+  'exploration route guard includes the app tabs and explicit base-lessons page',
 );
 
 const frontendStyles = await readText('apps/frontend/src/styles.css');
@@ -1917,6 +2143,8 @@ for (const selectorFragment of [
   '.workout-card.is-completed',
   '.workout-card.is-today',
   '.workout-card.is-locked',
+  '.training-preparation-card',
+  '.base-lessons-required-dialog',
   '.tab-bar',
   '.tab-bar-link',
   '.workout-video-placeholder',
@@ -1965,6 +2193,11 @@ expectIncludes(indexHtml, 'fonts.googleapis.com', 'Inter stylesheet is connected
 expectIncludes(indexHtml, 'family=Inter', 'Inter font family is requested');
 
 const browserTest = await readText('scripts/test-frontend-browser.mjs');
+expectIncludes(
+  browserTest,
+  "disabled('header-settings')",
+  'UX browser checks top Settings while saving',
+);
 expectIncludes(browserTest, 'KINETRA_T04_BROWSER_E2E=PASS', 'T04 browser acceptance test exists');
 expectIncludes(browserTest, 'KINETRA_T05_BROWSER_E2E=PASS', 'T05 browser acceptance test exists');
 expectIncludes(browserTest, 'KINETRA_T06_BROWSER_E2E=PASS', 'T06 browser acceptance test exists');
@@ -2032,7 +2265,31 @@ expectIncludes(
   'server progress restored after reload',
   'browser test checks session restore',
 );
-expectIncludes(browserTest, 'base lessons route', 'browser test checks base-lessons routing');
+expectIncludes(
+  browserTest,
+  'KINETRA_ONBOARDING_EXPLORATION_NAVIGATION=PASS',
+  'browser test checks free tab navigation before base lessons are complete',
+);
+expectIncludes(
+  browserTest,
+  'KINETRA_BASE_LESSONS_OPTIONAL_ROUTE=PASS',
+  'browser test checks voluntary entry to and return from base lessons',
+);
+expectIncludes(
+  browserTest,
+  'KINETRA_EXPLORATION_CHAT_LOCK=PASS',
+  'browser test proves chat remains inaccessible during exploration',
+);
+expectIncludes(
+  browserTest,
+  'KINETRA_EXPLORATION_PAYWALL_PRECEDENCE=PASS',
+  'browser test proves subscription gating precedes the lesson gate',
+);
+expectIncludes(
+  browserTest,
+  'KINETRA_BASE_LESSONS_STANDALONE=PASS',
+  'browser test proves the explicit base-lessons route has no app shell',
+);
 expectIncludes(
   browserTest,
   'T07 main screen after base lesson completion',
@@ -2080,8 +2337,8 @@ expectIncludes(
 );
 expectIncludes(
   browserTest,
-  'KINETRA_T07_WEEK_NAVIGATION=PASS',
-  'T07 browser scenario proves week arrow navigation',
+  'KINETRA_T07_TODAY_DASHBOARD=PASS',
+  'T07 browser scenario proves the focused Today dashboard',
 );
 expectIncludes(
   browserTest,
@@ -2093,6 +2350,41 @@ expectIncludes(
   'KINETRA_T07_SYSTEM_BACK=PASS',
   'T07 browser scenario proves standalone-PWA system Back from a workout',
 );
+const savingWorkoutBackAssertionAnchor = browserTest.indexOf(
+  'system Back is held on the single player entry while completion is saving',
+);
+const savingWorkoutBackAssertionStart = browserTest.lastIndexOf(
+  "await cdp.evaluate('window.history.back()')",
+  savingWorkoutBackAssertionAnchor,
+);
+const savingWorkoutBackAssertionEnd = browserTest.indexOf(
+  'releaseWorkoutCompletionResponse();',
+  savingWorkoutBackAssertionAnchor,
+);
+const savingWorkoutBackAssertion =
+  savingWorkoutBackAssertionAnchor >= 0 &&
+  savingWorkoutBackAssertionStart >= 0 &&
+  savingWorkoutBackAssertionEnd > savingWorkoutBackAssertionAnchor
+    ? browserTest.slice(savingWorkoutBackAssertionStart, savingWorkoutBackAssertionEnd)
+    : '';
+for (const browserHistoryFenceContract of [
+  'system Back is held on the single player entry while completion is saving',
+  "exists('workout-player')",
+  "attribute('workout-player', 'aria-busy')",
+  'window.history.state?.kinetraWorkoutVideoId === ${JSON.stringify(workoutVideoId(1, 1))}',
+  "await cdp.evaluate('window.history.forward()')",
+  'assert.deepEqual(playerAfterBlockedForward, {',
+  'visible: true',
+  "busy: 'true'",
+  'videoId: workoutVideoId(1, 1)',
+  'programWeek: 1',
+]) {
+  expectIncludes(
+    savingWorkoutBackAssertion,
+    browserHistoryFenceContract,
+    `T07 browser saving-time history assertion remains strict: ${browserHistoryFenceContract}`,
+  );
+}
 expectIncludes(
   browserTest,
   'KINETRA_T07_PLAYER_TAB_HISTORY=PASS',
@@ -2130,8 +2422,8 @@ expectIncludes(
 );
 expectIncludes(
   browserTest,
-  "attribute('tab-settings', 'aria-current')",
-  'T07 browser scenario verifies active tab semantics',
+  "attribute('header-settings', 'aria-current')",
+  'T07 browser scenario verifies active Settings header semantics',
 );
 expectIncludes(
   browserTest,
@@ -2351,6 +2643,8 @@ expectIncludes(
 const programBackendTests = await readText('apps/backend/test/program.e2e.test.ts');
 for (const scenario of [
   'program endpoints require an access token',
+  'base-lessons users can explore metadata but cannot start or complete workouts',
+  'program preview remains closed until onboarding reaches base lessons',
   'current week defaults to week one and exposes seven ordered workout days',
   'specific week access allows only the current week and the next locked week',
   'workout media URLs require both availability and an unlocked week',
@@ -2393,12 +2687,24 @@ expectIncludes(
 );
 expectIncludes(
   programPostgresTests,
+  "{ kind: 'onboarding_required' }",
+  'PostgreSQL test proves the workout mutation is gated before active onboarding',
+);
+expectIncludes(
+  programPostgresTests,
   'KINETRA_T07_POSTGRES_INTEGRATION=PASS',
   'T07 PostgreSQL test emits an execution marker',
 );
 
 const mainScreenFrontendTests = await readText('apps/frontend/test/main-screen.test.ts');
-for (const scenario of ['seven', 'progress', 'arrow', 'tab', 'today']) {
+for (const scenario of [
+  'today dashboard renders only the current and next workout',
+  'week progress exposes',
+  'today dashboard delegates full week browsing to schedule',
+  'today is highlighted only in the actual current week',
+  'tab bar renders four client routes with trainer and its unread badge',
+  'system back keeps the saving workout on its canonical history entry',
+]) {
   expectIncludes(
     mainScreenFrontendTests.toLowerCase(),
     scenario,
@@ -2494,6 +2800,8 @@ for (const contract of [
   "error.kind === 'auth'",
   'requestControllerRef.current?.abort()',
   'schedule-retry',
+  'readonly onOpenWorkout: (programWeek: number, dayOfWeek: number) => void',
+  'onOpenWorkout={onOpenWorkout}',
 ]) {
   expectIncludes(scheduleScreen, contract, `T08 schedule loader contract: ${contract}`);
 }
@@ -2521,8 +2829,49 @@ for (const contract of [
   'ArrowLeft',
   'ArrowRight',
   '✅',
+  'readonly onOpenWorkout: (programWeek: number, dayOfWeek: number) => void',
+  'onOpenWorkout(week.week_number, selectedDay.day_of_week)',
+  'type="button"',
+  'Открыть тренировку',
+  'onClick={() => onOpen(day)}',
 ]) {
   expectIncludes(scheduleView, contract, `T08 schedule view contract: ${contract}`);
+}
+for (const appScheduleContract of [
+  'const openScheduledWorkout = useCallback(',
+  'kinetraWorkoutDayOfWeek: dayOfWeek',
+  'kinetraProgramWeek: programWeek',
+  'onOpenWorkout={openScheduledWorkout}',
+]) {
+  expectIncludes(
+    frontendApp,
+    appScheduleContract,
+    `T08 selected workout routing contract: ${appScheduleContract}`,
+  );
+}
+const scheduledWorkoutHandlerStart = frontendApp.indexOf(
+  'const openScheduledWorkout = useCallback(',
+);
+const scheduledWorkoutHandler = frontendApp.slice(
+  scheduledWorkoutHandlerStart,
+  frontendApp.indexOf(
+    'const handleTrainerVerificationProfileUpdated',
+    scheduledWorkoutHandlerStart,
+  ),
+);
+for (const failClosedInputContract of [
+  '!Number.isInteger(programWeek)',
+  'programWeek < 1',
+  'programWeek > 12',
+  '!Number.isInteger(dayOfWeek)',
+  'dayOfWeek < 1',
+  'dayOfWeek > 7',
+]) {
+  expectIncludes(
+    scheduledWorkoutHandler,
+    failClosedInputContract,
+    `T08 selected workout input gate: ${failClosedInputContract}`,
+  );
 }
 for (const selector of [
   '.schedule-shell',
@@ -2588,6 +2937,18 @@ for (const marker of [
   'KINETRA_T08_BROWSER_E2E=PASS',
 ]) {
   expectIncludes(browserTest, marker, `T08 browser marker: ${marker}`);
+}
+for (const selectedWorkoutBrowserContract of [
+  'T08 schedule card opens the exact current-week workout',
+  'window.history.state?.kinetraWorkoutVideoId === ${JSON.stringify(workoutVideoId(1, 4))}',
+  'window.history.state?.kinetraProgramWeek === 1',
+  'window.history.state?.kinetraWorkoutDayOfWeek === undefined',
+]) {
+  expectIncludes(
+    browserTest,
+    selectedWorkoutBrowserContract,
+    `T08 browser selected-workout contract: ${selectedWorkoutBrowserContract}`,
+  );
 }
 
 // T09 — protected progress dashboard, data contract, lightweight charts and acceptance.
@@ -2734,6 +3095,18 @@ for (const screenContract of [
 }
 
 const progressView = await readText('apps/frontend/src/features/progress/ProgressView.tsx');
+const achievementsPosition = progressView.indexOf('progress-achievements-section');
+const journeyPosition = progressView.indexOf('<ProgressJourney');
+const overviewPosition = progressView.indexOf('<ProgressWellbeingOverview');
+if (
+  achievementsPosition >= 0 &&
+  journeyPosition > achievementsPosition &&
+  overviewPosition > journeyPosition
+) {
+  pass('UX adds progress views after original achievements');
+} else {
+  fail('UX adds progress views after original achievements');
+}
 for (const viewContract of [
   'progress-goal-section',
   'progress-metrics-section',
@@ -2758,7 +3131,7 @@ for (const chartContract of [
   '<polyline',
   '<circle',
   'Заполните самооценку минимум за 2 недели, чтобы увидеть динамику',
-  '((10 - metricValue(point, metric.key)) / 9)',
+  '((10 - clampMetricScore(metricValue(point, metric.key))) / 9)',
 ]) {
   expectIncludes(progressChart, chartContract, `T09 lightweight SVG chart: ${chartContract}`);
 }
@@ -2817,7 +3190,7 @@ for (const testContract of [
   expectIncludes(progressPostgresTests, testContract, `T09 PostgreSQL test: ${testContract}`);
 }
 for (const testContract of [
-  'exactly four dashboard sections',
+  'all four original dashboard sections before the new views',
   'accessible SVG',
   'native controls with canonical bounds',
 ]) {
@@ -3077,7 +3450,9 @@ for (const modelContract of [
   '{ length: 33 }',
   '6 * 60 + index * 30',
   'SETTINGS_NOTIFICATION_DEBOUNCE_MS = 450',
-  "primaryActionLabel: 'Продлить подписку'",
+  "primaryActionLabel: paymentsEnabled ? 'Продлить подписку' : null",
+  'showRenew: paymentsEnabled',
+  'const paymentsEnabled = arePaymentsEnabled(subscription)',
   'showCancelAutoRenew: subscription.auto_renew === true',
 ]) {
   expectIncludes(settingsModel, modelContract, `T10 settings model contract: ${modelContract}`);
@@ -3590,7 +3965,9 @@ for (const appPaymentContract of [
 
 const programHistory = await readText('apps/frontend/src/features/program/history.ts');
 for (const historyContract of [
-  "['kinetraWorkoutVideoId', 'kinetraProgramWeek']",
+  "'kinetraWorkoutVideoId'",
+  "'kinetraWorkoutDayOfWeek'",
+  "'kinetraProgramWeek'",
   'delete nextState[key]',
   "window.history.replaceState(nextState, '', window.location.href)",
 ]) {
@@ -3599,6 +3976,66 @@ for (const historyContract of [
     historyContract,
     `T11 expired entitlement clears only workout history: ${historyContract}`,
   );
+}
+for (const selectedWorkoutContract of [
+  'const programDayFromHistory = (value: unknown): number | null =>',
+  'dayOfWeek: programDayFromHistory(dayOfWeek)',
+  'const canonicalizeWorkoutHistorySelection = (videoId: string, programWeek: number): void =>',
+  'delete nextState.kinetraWorkoutDayOfWeek',
+  'nextState.kinetraWorkoutVideoId = videoId',
+  'selectedVideoIdRef.current === null && selectedDayOfWeekRef.current !== null',
+  'canonicalizeWorkoutHistorySelection(selectedDay.video.id, response.week.week_number)',
+  'isProgramWeekLocked(response, currentResponse.week.week_number)',
+  'isProgramWeekLocked(response, currentWeekNumber)',
+  'Эта тренировка откроется, когда начнётся выбранная неделя.',
+]) {
+  expectIncludes(
+    programScreen,
+    selectedWorkoutContract,
+    `T08 selected workout history contract: ${selectedWorkoutContract}`,
+  );
+}
+const canonicalSelectionStart = programScreen.indexOf(
+  'const canonicalizeWorkoutHistorySelection = (videoId: string, programWeek: number): void =>',
+);
+const canonicalSelection = programScreen.slice(
+  canonicalSelectionStart,
+  programScreen.indexOf('const workoutSelectionFromHistory', canonicalSelectionStart),
+);
+const daySentinelRemoval = canonicalSelection.indexOf('delete nextState.kinetraWorkoutDayOfWeek');
+const videoSentinelWrite = canonicalSelection.indexOf('nextState.kinetraWorkoutVideoId = videoId');
+const canonicalStateWrite = canonicalSelection.indexOf('window.history.replaceState');
+if (
+  daySentinelRemoval >= 0 &&
+  videoSentinelWrite > daySentinelRemoval &&
+  canonicalStateWrite > videoSentinelWrite
+) {
+  pass('T08 selected workout history is canonicalized from day to exact video before rendering');
+} else {
+  fail('T08 selected workout history is canonicalized from day to exact video before rendering');
+}
+for (const lockedWeekExpression of [
+  'isProgramWeekLocked(response, currentResponse.week.week_number)',
+  'isProgramWeekLocked(response, currentWeekNumber)',
+]) {
+  const lockedWeekStart = programScreen.indexOf(lockedWeekExpression);
+  const lockedWeekGuard = programScreen.slice(lockedWeekStart, lockedWeekStart + 1_800);
+
+  for (const failClosedContract of [
+    'clearWorkoutHistorySentinel();',
+    'selectedVideoIdRef.current = null',
+    'selectedDayOfWeekRef.current = null',
+    'selectedProgramWeekRef.current = null',
+    'setSelectedVideoId(null)',
+    'Эта тренировка откроется, когда начнётся выбранная неделя.',
+    'return;',
+  ]) {
+    expectIncludes(
+      lockedWeekGuard,
+      failClosedContract,
+      `T08 locked-week selection fails closed: ${lockedWeekExpression} -> ${failClosedContract}`,
+    );
+  }
 }
 
 for (const settingsPaymentContract of [
@@ -3640,7 +4077,7 @@ for (const frontendTestContract of [
   'T11 payment page renders the exact price, benefits and renewal disclosure',
   'success polling is non-overlapping and stops on active or at 30 seconds',
   'inactive subscription renders a locked T07 surface without rendering a player',
-  'inactive entitlement removes both workout sentinels while preserving unrelated history',
+  'inactive entitlement removes every workout sentinel while preserving unrelated history',
 ]) {
   expectIncludes(
     paymentsFrontendTests,
@@ -4010,12 +4447,13 @@ for (const runtimeContract of [
 }
 const notificationWorker = await readText('apps/backend/src/push/run-notifications.ts');
 for (const workerContract of [
-  'if (!runtime.configured)',
-  "throw new Error('Web Push is not configured.')",
-  'await runtime.schedulerService.run()',
+  'parseNotificationJobEnvironment()',
+  "createJobDatabasePool('kinetra-notifications', config.databaseUrl)",
+  'new NotificationSchedulerService(',
+  ').run()',
   "console.log('Kinetra notification run completed.', summary)",
   'exitCode = 1',
-  'await closeDatabasePool()',
+  'await databasePool?.end()',
   'process.exitCode = exitCode',
 ]) {
   expectIncludes(notificationWorker, workerContract, `T13 one-shot worker: ${workerContract}`);
@@ -4880,7 +5318,7 @@ expectIncludes(
 );
 expectIncludes(
   chatCleanupRunner,
-  'process.exitCode = 1',
+  'process.exitCode = exitCode',
   'T12 cleanup worker exposes failure to the scheduler',
 );
 
@@ -4954,7 +5392,6 @@ for (const apiContract of [
 }
 for (const appContract of [
   'useChatRuntime',
-  'ChatFloatingButton',
   'ClientChatScreen',
   'TrainerChatsScreen',
   'isTrainerRoute',
@@ -4963,6 +5400,35 @@ for (const appContract of [
   'onChatSessionEnd',
 ]) {
   expectIncludes(frontendApp, appContract, `T12 client/trainer app integration: ${appContract}`);
+}
+for (const appChatTabContract of [
+  "showChat={profile.user.onboardingStatus === 'active'}",
+  'chatUnreadCount={chatRuntime.unreadCount}',
+  'route === appRoutes.chat',
+  'return withActiveNavigation(',
+]) {
+  expectIncludes(
+    frontendApp,
+    appChatTabContract,
+    `T12 client chat tab integration: ${appChatTabContract}`,
+  );
+}
+const clientChatRouteStart = frontendApp.indexOf('if (route === appRoutes.chat)');
+const clientChatRoute = frontendApp.slice(
+  clientChatRouteStart,
+  frontendApp.indexOf('const activeContent =', clientChatRouteStart),
+);
+for (const chatRouteShellContract of ['return withActiveNavigation(', '<ClientChatScreen']) {
+  expectIncludes(
+    clientChatRoute,
+    chatRouteShellContract,
+    `T12 dedicated Chat tab retains active navigation: ${chatRouteShellContract}`,
+  );
+}
+if (frontendApp.includes('ChatFloatingButton')) {
+  fail('T12 App exposes client chat through the dedicated tab, not a floating button');
+} else {
+  pass('T12 App exposes client chat through the dedicated tab, not a floating button');
 }
 
 const frontendChatSources = (
@@ -5943,7 +6409,8 @@ for (const correctionCiContract of [
   'fix/t12-merge-readiness',
   'feature/t14-video-upload-s3',
   'feature/registration-roles-verification',
-  'branches: [main, develop, feature/t12-trainer-chat]',
+  'feature/onboarding-exploration-mode',
+  '[main, develop, feature/t12-trainer-chat, feature/registration-roles-verification]',
   'EXPECTED_BASE_SHA: ${{ github.event.pull_request.base.sha }}',
   'EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}',
   'test "$(git rev-parse HEAD^1)" = "$EXPECTED_BASE_SHA"',

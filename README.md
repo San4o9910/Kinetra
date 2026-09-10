@@ -48,7 +48,7 @@ kinetra/
 
 ```bash
 cp .env.example .env
-npm install
+npm ci
 docker compose up -d postgres
 npm run db:migrate
 npm run dev
@@ -76,14 +76,19 @@ npm run dev:backend
 
 ## Onboarding и базовые уроки
 
-Серверный `onboarding_status` задаёт единственный допустимый frontend-маршрут:
+Серверный `onboarding_status` задаёт доступные разделы приложения:
 
 ```text
 survey_pending -> /survey
 onboarding_pending -> /onboarding
-base_lessons -> /base-lessons
+base_lessons -> / (знакомство с приложением), /base-lessons (добровольная подготовка)
 active -> /
 ```
+
+После онбординга можно изучить «Сегодня», «План», «Прогресс» и верхнюю кнопку «Настройки».
+Тренировки остаются защищены серверной проверкой подписки и подготовки. Нижняя кнопка
+«Тренер» появляется после завершения подготовки. На «Сегодня» показаны текущее и следующее
+занятия; полное расписание остаётся в «Плане».
 
 T06 добавляет защищённые endpoints:
 
@@ -376,10 +381,15 @@ Reset token:
 - после смены пароля отзывает все refresh-сессии пользователя;
 - endpoint запроса ограничен по IP через fixed-window rate limiter.
 
-В T02 нет привязки к конкретному почтовому или SMS-провайдеру. Есть интерфейс доставки токенов.
+Доставка токенов поддерживает Яндекс/Gmail по SMTP и собственный HTTPS webhook.
 В local development режим `AUTH_TOKEN_DELIVERY_MODE=console` печатает одноразовый token в лог.
-В production console-режим запрещён. Перед реальным запуском нужно подключить почтовый/SMS
-адаптер.
+В production выберите `AUTH_TOKEN_DELIVERY_MODE=smtp` с паролем приложения почты
+либо `webhook` с HTTPS endpoint и отдельным секретом. Оба варианта ограничивают
+время доставки и скрывают токены и ошибки провайдера от журналов. SMTP отправляет
+письма от подключённого ящика; SMS требует отдельного webhook. Настройки двух способов
+нельзя смешивать. Реальную доставку нужно проверить отдельно перед запуском.
+Инструкция: [Яндекс Почта для Kinetra](docs/YANDEX_MAIL_SETUP.md).
+Контракт окружения описан в `deploy/api.env.example`.
 
 Fixed-window limiters password reset и push mutations хранят счётчики в памяти одного процесса:
 каждая replica считает запросы независимо. Перед горизонтальным масштабированием нужен общий
@@ -423,6 +433,14 @@ SQL-файл.
 
 ## Проверки
 
+Production-сборка требует явный `VITE_API_URL` с HTTPS origin. Адрес задаётся при сборке,
+без пути `/api/v1`; для локальной разработки используются `npm run dev` и loopback URL
+из `.env.example`. `VITE_PRIVATE_MEDIA_ORIGIN` — точный origin приватного media endpoint;
+он ограничивает загрузку фото и видео через CSP. Source maps в production bundle отключены.
+
+В Linux пример сборки: `VITE_API_URL=https://api.kinetra.example npm run build`.
+Это пример адреса, его нужно заменить адресом своего API.
+
 ```bash
 npm run verify:structure
 npm run typecheck
@@ -449,6 +467,22 @@ Service Worker push/click, scheduler occurrence claims, logout и двухэта
 сравнивает `MANIFEST.sha256` со всеми tracked-файлами и запрещает bootstrap/payload artifacts.
 
 ## Границы текущего этапа
+
+Восстановленное UX-обновление сохраняет цель, самооценку, статистику и достижения.
+Ниже добавлены путь на 12 недель, обзор четырёх самооценок и их динамика. Это данные
+ответов пользователя, а не оценка здоровья. В чате исправлено поле ввода при включённых
+и отключённых фото; короткие видео в переписке остаются отдельной задачей T15.
+
+Подготовлены шаблоны контейнеров, отдельное окружение воркеров, `/ready`, ограниченное
+по времени завершение сервера, backup/restore и инструкции оператора. Шаблоны не означают,
+что инфраструктура развёрнута или приложение допущено к production:
+
+- [Production delivery](docs/PRODUCTION_DELIVERY.md)
+- [Launch runbook](docs/PRODUCTION_LAUNCH_RUNBOOK.md)
+- [Monitoring](docs/PRODUCTION_MONITORING.md)
+- [Disaster recovery](docs/DISASTER_RECOVERY.md)
+- [Текущие результаты проверки](docs/PRODUCTION_READINESS_REVIEW.md)
+- [Направление продукта и официальные источники](docs/PRODUCT_DIRECTION.md)
 
 Перед production нужно активировать рекуррентные платежи у ЮKassa, зафиксировать согласие
 пользователя, настроить ежедневный scheduler, HTTPS/webhook ingress и кассовые чеки по применимым

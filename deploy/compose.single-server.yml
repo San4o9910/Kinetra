@@ -1,0 +1,176 @@
+# Merge after compose.production.yml. Requires separately reviewed public metadata
+# from postgres/single-server.env.example; never use the development Compose file.
+x-single-server-client: &database-client
+  networks: [backend, database]
+  environment:
+    NODE_EXTRA_CA_CERTS: /run/kinetra/postgres-ca.crt
+    NODE_OPTIONS: --max-old-space-size=128
+  volumes:
+    - type: bind
+      source: ${KINETRA_POSTGRES_CA_FILE:?Set the absolute public PostgreSQL CA certificate path}
+      target: /run/kinetra/postgres-ca.crt
+      read_only: true
+      bind:
+        create_host_path: false
+  depends_on:
+    postgres:
+      condition: service_healthy
+  mem_limit: 512m
+  memswap_limit: 512m
+  cpus: '0.40'
+  pids_limit: 96
+
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:?Set the reviewed official PostgreSQL 17 bookworm image digest}
+    entrypoint: [/bin/sh, /etc/kinetra-postgres/start-postgres.sh]
+    command: [postgres, -c, config_file=/etc/kinetra-postgres/postgresql.conf]
+    environment:
+      KINETRA_POSTGRES_IMAGE: ${POSTGRES_IMAGE:?Set the reviewed official PostgreSQL 17 bookworm image digest}
+      POSTGRES_DB: kinetra
+      POSTGRES_USER: kinetra_bootstrap
+      POSTGRES_PASSWORD_FILE: /run/secrets/bootstrap_password
+      POSTGRES_INITDB_ARGS: --auth-local=peer --auth-host=scram-sha-256 --data-checksums
+      PGDATA: /var/lib/postgresql/data/pgdata
+    read_only: true
+    cap_drop: [ALL]
+    # The official entrypoint initializes/chowns the volume, then uses gosu to
+    # run PostgreSQL as UID/GID 999. Application containers receive no such caps.
+    cap_add: [CHOWN, FOWNER, DAC_OVERRIDE, SETGID, SETUID]
+    security_opt: [no-new-privileges:true]
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m,mode=1777
+      - /var/run/postgresql:rw,noexec,nosuid,size=8m,uid=999,gid=999,mode=0775
+    shm_size: 128m
+    networks: [database]
+    volumes:
+      - postgres17_data:/var/lib/postgresql/data
+      - type: bind
+        source: ./postgres
+        target: /etc/kinetra-postgres
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./postgres/initdb
+        target: /docker-entrypoint-initdb.d
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${KINETRA_POSTGRES_CERT_FILE:?Set the absolute PostgreSQL server certificate path}
+        target: /run/kinetra-postgres/server.crt
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${KINETRA_POSTGRES_KEY_FILE:?Set the absolute PostgreSQL server private key path}
+        target: /run/kinetra-postgres/server.key
+        read_only: true
+        bind:
+          create_host_path: false
+    secrets:
+      - bootstrap_password
+      - migrate_password
+      - api_password
+      - notifications_password
+      - renewals_password
+      - chat_cleanup_password
+      - video_cleanup_password
+      - video_verify_password
+    healthcheck:
+      # TCP is disabled in the official entrypoint's temporary init server.
+      # pg_isready checks acceptance only; real credential/TLS/schema gates follow.
+      test:
+        [
+          CMD-SHELL,
+          'test -f "$$PGDATA/.kinetra-bootstrap-complete" && pg_isready -q -h 127.0.0.1 -U kinetra_api -d kinetra',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    # An initialization failure requires inspection; never repeatedly initialize
+    # a partial database. Choose a restart policy only after launch acceptance.
+    restart: 'no'
+    stop_grace_period: 60s
+    mem_limit: 1152m
+    memswap_limit: 1152m
+    cpus: '0.75'
+    pids_limit: 128
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: '3'
+
+  backend:
+    <<: *database-client
+    environment:
+      NODE_EXTRA_CA_CERTS: /run/kinetra/postgres-ca.crt
+      NODE_OPTIONS: --max-old-space-size=256
+    mem_limit: 768m
+    memswap_limit: 768m
+    cpus: '0.75'
+    pids_limit: 128
+
+  frontend:
+    volumes:
+      - type: bind
+        source: ${KINETRA_EDGE_CONFIG_DIR:?Set the validated operator-created edge config directory}
+        target: /etc/nginx/kinetra-edge
+        read_only: true
+        bind:
+          create_host_path: false
+    mem_limit: 128m
+    memswap_limit: 128m
+    cpus: '0.10'
+    pids_limit: 32
+
+  migrate:
+    <<: *database-client
+  notifications:
+    <<: *database-client
+  renewals:
+    <<: *database-client
+  chat-cleanup:
+    <<: *database-client
+  video-cleanup:
+    <<: *database-client
+  video-verify:
+    <<: *database-client
+    # Base Compose retains the separate encrypted /video-scratch bind and TMPDIR.
+    mem_limit: 768m
+    memswap_limit: 768m
+    pids_limit: 128
+
+networks:
+  database:
+    driver: bridge
+    internal: true
+
+volumes:
+  postgres17_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${KINETRA_POSTGRES_DATA_DIR:?Set the absolute pre-created PostgreSQL persistent data directory}
+
+secrets:
+  bootstrap_password:
+    file: ${KINETRA_POSTGRES_SECRETS_DIR:?Set the absolute private PostgreSQL secrets directory}/bootstrap_password
+  migrate_password:
+    file: ${KINETRA_POSTGRES_SECRETS_DIR:?Set the absolute private PostgreSQL secrets directory}/migrate_password
+  api_password:
+    file: ${KINETRA_POSTGRES_SECRETS_DIR:?Set the absolute private PostgreSQL secrets directory}/api_password
+  notifications_password:
+    file: ${KINETRA_POSTGRES_SECRETS_DIR:?Set the absolute private PostgreSQL secrets directory}/notifications_password
+  renewals_password:
+    file: ${KINETRA_POSTGRES_SECRETS_DIR:?Set the absolute private PostgreSQL secrets directory}/renewals_password
+  chat_cleanup_password:
+    file: ${KINETRA_POSTGRES_SECRETS_DIR:?Set the absolute private PostgreSQL secrets directory}/chat_cleanup_password
+  video_cleanup_password:
+    file: ${KINETRA_POSTGRES_SECRETS_DIR:?Set the absolute private PostgreSQL secrets directory}/video_cleanup_password
+  video_verify_password:
+    file: ${KINETRA_POSTGRES_SECRETS_DIR:?Set the absolute private PostgreSQL secrets directory}/video_verify_password

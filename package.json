@@ -20,6 +20,8 @@
     "db:migrate": "npm run db:migrate -w @kinetra/backend",
     "db:seed": "npm run db:seed -w @kinetra/backend",
     "db:verify-content": "npm run db:verify-content -w @kinetra/backend",
+    "demo:prepare": "node scripts/prepare-local-demo.mjs",
+    "demo:start": "node scripts/run-local-demo.mjs",
     "build": "npm run build -w @kinetra/shared && npm run build -w @kinetra/backend && npm run build -w @kinetra/frontend",
     "typecheck": "npm run typecheck -w @kinetra/shared && npm run typecheck -w @kinetra/backend && npm run typecheck -w @kinetra/frontend",
     "test:backend": "npm run build -w @kinetra/shared && npm run test -w @kinetra/backend",

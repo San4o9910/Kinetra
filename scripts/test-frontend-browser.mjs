@@ -22,6 +22,30 @@ const profileCleanupStabilityMs = 1_000;
 const profileCleanupPollMs = 100;
 const millisecondsPerDay = 24 * 60 * 60 * 1_000;
 const browserFixtureNow = Date.now();
+const browserTimeZone = 'Europe/Moscow';
+const browserTodayDayOfWeek = (() => {
+  const weekday = new Intl.DateTimeFormat('en-US', {
+    timeZone: browserTimeZone,
+    weekday: 'short',
+  }).format(new Date(browserFixtureNow));
+  const weekdayNumber = {
+    Mon: 1,
+    Tue: 2,
+    Wed: 3,
+    Thu: 4,
+    Fri: 5,
+    Sat: 6,
+    Sun: 7,
+  }[weekday];
+
+  assert.notEqual(weekdayNumber, undefined, `Unsupported browser fixture weekday ${weekday}.`);
+  return weekdayNumber;
+})();
+const browserNextWorkoutDayOfWeek = browserTodayDayOfWeek < 7 ? browserTodayDayOfWeek + 1 : null;
+const browserTodayDashboardDayNumbers = [
+  browserTodayDayOfWeek,
+  ...(browserNextWorkoutDayOfWeek === null ? [] : [browserNextWorkoutDayOfWeek]),
+];
 const fixtureTimestamp = (daysFromNow) =>
   new Date(browserFixtureNow + daysFromNow * millisecondsPerDay).toISOString();
 const initialSubscriptionStartsAt = fixtureTimestamp(-30);
@@ -91,9 +115,13 @@ const buildFrontendForBrowserTest = async () => {
 
   const assetDirectory = path.join(frontendDist, 'assets');
   const builtAssets = await readdir(assetDirectory);
-  const javascriptAsset = builtAssets.find((fileName) => fileName.endsWith('.js'));
-  assert.notEqual(javascriptAsset, undefined, 'Vite did not produce a JavaScript asset.');
-  const javascript = await readFile(path.join(assetDirectory, javascriptAsset), 'utf8');
+  const javascriptAssets = builtAssets.filter((fileName) => fileName.endsWith('.js'));
+  assert.ok(javascriptAssets.length > 0, 'Vite did not produce a JavaScript asset.');
+  const javascript = (
+    await Promise.all(
+      javascriptAssets.map((fileName) => readFile(path.join(assetDirectory, fileName), 'utf8')),
+    )
+  ).join('\n');
   assert.ok(
     javascript.includes(browserApiOrigin),
     `Browser build does not contain the expected API origin ${browserApiOrigin}.`,
@@ -116,6 +144,7 @@ const counters = {
   weeklyMetricsPut: 0,
   goalPut: 0,
   settingsProfileGet: 0,
+  chatSessionGet: 0,
   subscriptionGet: 0,
   paymentCreate: 0,
   subscriptionCancel: 0,
@@ -127,6 +156,21 @@ const counters = {
   weekGet: 0,
   workoutComplete: 0,
   logout: 0,
+};
+
+// Independent auth-link fixtures never invoke a delivery service or affect paid-flow counters.
+const browserResetToken = `browser-reset-token-${'a'.repeat(48)}`;
+const browserExpiredResetToken = `browser-expired-reset-${'b'.repeat(48)}`;
+const browserVerificationToken = `browser-verification-${'c'.repeat(48)}`;
+const browserNewPassword = 'New-correct-password-2026!';
+const authLinkFixture = {
+  enabled: false,
+  resetRequests: [],
+  resetConfirmations: [],
+  verificationTokens: [],
+  loginCount: 0,
+  passwordChanged: false,
+  bootstrapRequests: 0,
 };
 
 const baseLessonTitles = [
@@ -283,7 +327,7 @@ let releaseWorkoutCompletionResponse = null;
 const workoutVideoId = (weekNumber, dayOfWeek) =>
   `20000000-0000-4000-8${String(weekNumber).padStart(3, '0')}-${String(dayOfWeek).padStart(12, '0')}`;
 
-const programWeekPayload = (weekNumber) => {
+const programWeekPayload = (weekNumber, includeWorkoutMedia = true) => {
   const days = workoutSchedule.map((workout, index) => {
     const dayOfWeek = index + 1;
     const videoId = workoutVideoId(weekNumber, dayOfWeek);
@@ -296,7 +340,7 @@ const programWeekPayload = (weekNumber) => {
       video: {
         id: videoId,
         video_url:
-          weekNumber === 1 && dayOfWeek === 1
+          includeWorkoutMedia && weekNumber === 1 && dayOfWeek === 1
             ? `${frontendOrigin}/browser-test-video.mp4?workout=${dayOfWeek}`
             : null,
         poster_url: null,
@@ -474,6 +518,10 @@ let subscriptionPayload = {
   days_remaining: 30,
 };
 let pendingSubscriptionPollsRemaining = 0;
+let paymentsEnabled = true;
+let lastSubscriptionCancellationResponse = null;
+const subscriptionResponsePayload = () =>
+  paymentsEnabled ? subscriptionPayload : { ...subscriptionPayload, payments_enabled: false };
 
 const baseLessonsPayload = () => {
   const totalCompleted = baseLessons.filter(
@@ -602,6 +650,23 @@ const createMockApiServer = () =>
       return;
     }
 
+    if (request.method === 'POST' && request.url === '/__browser-test/subscription/activate') {
+      subscriptionPayload = {
+        status: 'active',
+        provider: 'yukassa',
+        starts_at: initialSubscriptionStartsAt,
+        expires_at: initialSubscriptionExpiresAt,
+        amount: 799,
+        currency: 'RUB',
+        auto_renew: true,
+        days_remaining: 30,
+      };
+      pendingSubscriptionPollsRemaining = 0;
+      response.writeHead(204, { 'Cache-Control': 'no-store' });
+      response.end();
+      return;
+    }
+
     if (request.method === 'GET' && (request.url ?? '').startsWith('/browser-test-video.mp4')) {
       response.writeHead(204, {
         'Content-Type': 'video/mp4',
@@ -609,6 +674,91 @@ const createMockApiServer = () =>
       });
       response.end();
       return;
+    }
+
+    if (authLinkFixture.enabled && ['/api/v1/auth/refresh', '/api/v1/me'].includes(request.url)) {
+      authLinkFixture.bootstrapRequests += 1;
+    }
+
+    if (authLinkFixture.enabled && request.method === 'POST') {
+      if (request.url === '/api/v1/auth/password-reset/request') {
+        const body = await readJsonBody(request);
+        assert.deepEqual(Object.keys(body), ['identifier']);
+        assert.ok(
+          ['reset-browser@example.test', 'unknown-browser@example.test'].includes(body.identifier),
+        );
+        assert.equal(request.headers.authorization, undefined);
+        authLinkFixture.resetRequests.push(body.identifier);
+        json(response, 202, {
+          message: 'If the account exists, password-reset instructions have been sent.',
+        });
+        return;
+      }
+
+      if (request.url === '/api/v1/auth/password-reset/confirm') {
+        const body = await readJsonBody(request);
+        assert.deepEqual(Object.keys(body).sort(), ['newPassword', 'token']);
+        assert.equal(body.newPassword, browserNewPassword);
+        assert.equal(request.headers.authorization, undefined);
+        assert.ok([browserResetToken, browserExpiredResetToken].includes(body.token));
+        authLinkFixture.resetConfirmations.push(body.token);
+        if (body.token === browserExpiredResetToken || authLinkFixture.passwordChanged) {
+          json(response, 400, {
+            error: {
+              code: 'INVALID_OR_EXPIRED_RESET_TOKEN',
+              message: 'Password-reset token is invalid, expired, or already used.',
+            },
+          });
+          return;
+        }
+        authLinkFixture.passwordChanged = true;
+        json(
+          response,
+          200,
+          { message: 'Password has been reset.' },
+          {
+            'Set-Cookie': 'kinetra_refresh=; HttpOnly; Path=/api/v1/auth; Max-Age=0; SameSite=Lax',
+          },
+        );
+        return;
+      }
+
+      if (request.url === '/api/v1/auth/verify-email' || request.url === '/api/v1/auth/login') {
+        const body = await readJsonBody(request);
+        assert.equal(request.headers.authorization, undefined);
+        if (request.url === '/api/v1/auth/verify-email') {
+          assert.deepEqual(body, { token: browserVerificationToken });
+          authLinkFixture.verificationTokens.push(body.token);
+        } else {
+          assert.deepEqual(body, {
+            identifier: 'reset-browser@example.test',
+            password: browserNewPassword,
+          });
+          assert.equal(authLinkFixture.passwordChanged, true);
+          authLinkFixture.loginCount += 1;
+        }
+        json(
+          response,
+          200,
+          {
+            user: {
+              id: profile.user.id,
+              email: profile.user.email,
+              phone: null,
+              emailVerified: true,
+              createdAt: profile.user.createdAt,
+            },
+            accessToken: 'access-refresh-auth-link',
+            tokenType: 'Bearer',
+            expiresIn: 900,
+          },
+          {
+            'Set-Cookie':
+              'kinetra_refresh=auth-link-session; HttpOnly; Path=/api/v1/auth; SameSite=Lax',
+          },
+        );
+        return;
+      }
     }
 
     if (request.method === 'POST' && request.url === '/api/v1/auth/login') {
@@ -709,6 +859,7 @@ const createMockApiServer = () =>
         return;
       }
 
+      counters.chatSessionGet += 1;
       json(response, 200, {
         role: 'client',
         enabled: false,
@@ -741,7 +892,8 @@ const createMockApiServer = () =>
       }
 
       counters.subscriptionGet += 1;
-      if (subscriptionPayload.status === 'pending') {
+      if (!paymentsEnabled) await sleep(150);
+      if (paymentsEnabled && subscriptionPayload.status === 'pending') {
         if (pendingSubscriptionPollsRemaining > 0) {
           pendingSubscriptionPollsRemaining -= 1;
         } else {
@@ -757,7 +909,7 @@ const createMockApiServer = () =>
           };
         }
       }
-      json(response, 200, subscriptionPayload);
+      json(response, 200, subscriptionResponsePayload());
       return;
     }
 
@@ -822,6 +974,12 @@ const createMockApiServer = () =>
       const body = await readJsonBody(request);
       assert.deepEqual(body, { return_url: `${frontendOrigin}/payment/success` });
       counters.paymentCreate += 1;
+      if (!paymentsEnabled) {
+        json(response, 503, {
+          error: { code: 'PAYMENTS_DISABLED', message: 'Payments are not available yet.' },
+        });
+        return;
+      }
       subscriptionPayload = {
         status: 'pending',
         provider: 'yukassa',
@@ -853,7 +1011,8 @@ const createMockApiServer = () =>
 
       counters.subscriptionCancel += 1;
       subscriptionPayload = { ...subscriptionPayload, auto_renew: false };
-      json(response, 200, subscriptionPayload);
+      lastSubscriptionCancellationResponse = subscriptionResponsePayload();
+      json(response, 200, lastSubscriptionCancellationResponse);
       return;
     }
 
@@ -1117,7 +1276,7 @@ const createMockApiServer = () =>
       }
 
       counters.currentWeekGet += 1;
-      json(response, 200, programWeekPayload(1));
+      json(response, 200, programWeekPayload(1, profile.user.onboardingStatus === 'active'));
       return;
     }
 
@@ -1237,7 +1396,11 @@ const createMockApiServer = () =>
         return;
       }
 
-      json(response, 200, programWeekPayload(weekNumber));
+      json(
+        response,
+        200,
+        programWeekPayload(weekNumber, profile.user.onboardingStatus === 'active'),
+      );
       return;
     }
 
@@ -1245,6 +1408,16 @@ const createMockApiServer = () =>
       if (!hasValidAccessToken(request)) {
         json(response, 401, {
           error: { code: 'AUTHENTICATION_REQUIRED', message: 'A valid access token is required.' },
+        });
+        return;
+      }
+
+      if (profile.user.onboardingStatus !== 'active') {
+        json(response, 403, {
+          error: {
+            code: 'BASE_LESSONS_REQUIRED',
+            message: 'Complete at least four base lessons before starting a workout.',
+          },
         });
         return;
       }
@@ -1801,6 +1974,8 @@ const runBrowserScenario = async () => {
 
     const exists = (testId) =>
       cdp.evaluate(`document.querySelector(${JSON.stringify(selector(testId))}) !== null`);
+    const dialogIsOpen = (testId) =>
+      cdp.evaluate(`document.querySelector(${JSON.stringify(selector(testId))})?.open === true`);
     const pathname = () => cdp.evaluate('window.location.pathname');
     const text = (testId) =>
       cdp.evaluate(
@@ -2020,9 +2195,11 @@ const runBrowserScenario = async () => {
         const tabs = [
           ...document.querySelectorAll(${JSON.stringify('[data-testid^="tab-"]')})
         ].filter((tab) => tab.getAttribute('data-testid') !== 'tab-bar');
-        const lastCard = cards.at(-1);
+        const scheduleAction = document.querySelector(
+          ${JSON.stringify(selector('today-open-schedule'))}
+        );
         const tabBarRect = tabBar?.getBoundingClientRect();
-        const lastCardRect = lastCard?.getBoundingClientRect();
+        const scheduleActionRect = scheduleAction?.getBoundingClientRect();
         return {
           innerWidth: window.innerWidth,
           innerHeight: window.innerHeight,
@@ -2040,12 +2217,12 @@ const runBrowserScenario = async () => {
           tabBarBottom: tabBarRect?.bottom ?? -1,
           tabBarTop: tabBarRect?.top ?? -1,
           tabBarHeight: tabBarRect?.height ?? 0,
-          lastCardBottom: lastCardRect?.bottom ?? window.innerHeight + 1,
+          scheduleActionBottom: scheduleActionRect?.bottom ?? window.innerHeight + 1,
         };
       })()`);
       assert.equal(metrics.innerWidth, width);
       assert.ok(metrics.scrollWidth <= width, `Main screen horizontal overflow at ${width}px.`);
-      assert.equal(metrics.cardCount, 7);
+      assert.equal(metrics.cardCount, browserTodayDashboardDayNumbers.length);
       assert.equal(metrics.cardsInsideViewport, true, `Workout card overflow at ${width}px.`);
       assert.equal(metrics.tabCount, 4);
       assert.equal(metrics.tabTargetsAreLargeEnough, true, `Tab target below 44px at ${width}px.`);
@@ -2055,8 +2232,8 @@ const runBrowserScenario = async () => {
       );
       assert.ok(metrics.tabBarHeight >= 56, `Tab bar is below 56px at ${width}px.`);
       assert.ok(
-        metrics.lastCardBottom <= metrics.tabBarTop,
-        `Tab bar overlaps the final workout at ${width}px.`,
+        metrics.scheduleActionBottom <= metrics.tabBarTop,
+        `Tab bar overlaps the Today schedule action at ${width}px.`,
       );
       await cdp.evaluate("window.scrollTo({ top: 0, behavior: 'auto' })");
     };
@@ -2191,11 +2368,31 @@ const runBrowserScenario = async () => {
           tabBarBottom: tabBarRect?.bottom ?? -1,
           tabBarTop: tabBarRect?.top ?? -1,
           lastAchievementBottom: lastAchievementRect?.bottom ?? window.innerHeight + 1,
+          sectionOrder: [...document.querySelectorAll('.progress-panel > section')].map(
+            (section) => section.getAttribute('data-testid'),
+          ),
+          extraSectionsInsideViewport: ['progress-journey', 'progress-wellbeing-overview'].every((id) => {
+            const rect = document.querySelector('[data-testid="' + id + '"]')?.getBoundingClientRect();
+            return rect !== undefined && rect.left >= 0 && rect.right <= window.innerWidth;
+          }),
         };
       })()`);
       assert.equal(metrics.innerWidth, width);
       assert.ok(metrics.scrollWidth <= width, `Progress horizontal overflow at ${width}px.`);
       assert.equal(metrics.sectionCount, 4);
+      assert.deepEqual(metrics.sectionOrder, [
+        'progress-goal-section',
+        'progress-metrics-section',
+        'progress-stats-section',
+        'progress-achievements-section',
+        'progress-journey',
+        'progress-wellbeing-overview',
+      ]);
+      assert.equal(
+        metrics.extraSectionsInsideViewport,
+        true,
+        `New progress views overflow at ${width}px.`,
+      );
       assert.equal(
         metrics.sectionsInsideViewport,
         true,
@@ -2589,7 +2786,7 @@ const runBrowserScenario = async () => {
     await waitOnboardingSlide(5);
     await click('onboarding-next');
     await waitOnboardingSlide(6);
-    assert.equal(await text('onboarding-complete'), 'К базовым урокам');
+    assert.equal(await text('onboarding-complete'), 'Открыть Kinetra');
 
     await doubleClick('onboarding-complete');
     await waitFor('login after expired onboarding session', () => exists('login-screen'));
@@ -2613,12 +2810,135 @@ const runBrowserScenario = async () => {
     assert.equal(await cdp.evaluate("sessionStorage.getItem('kinetra.onboarding.slide')"), '5');
 
     await click('onboarding-complete');
-    await waitFor('base lessons route after onboarding completion', () =>
+    await waitFor(
+      'exploration home after onboarding completion',
+      async () =>
+        (await pathname()) === '/' &&
+        (await exists('main-screen')) &&
+        (await exists('training-preparation-card')),
+    );
+    assert.equal(await cdp.evaluate("sessionStorage.getItem('kinetra.onboarding.slide')"), null);
+    assert.equal(await cdp.evaluate("sessionStorage.getItem('kinetra.onboarding.user')"), null);
+
+    await waitFor(
+      'exploration preparation progress and protected Today workout cards',
+      async () =>
+        (await text('training-preparation-progress')) === 'Пройдено 0 из 4 необходимых' &&
+        (await cdp.evaluate(
+          `document.querySelectorAll(${JSON.stringify('[data-training-access="base-lessons-required"]')}).length`,
+        )) === browserTodayDashboardDayNumbers.length,
+    );
+    const workoutCompletionsBeforeExploration = counters.workoutComplete;
+    await click(`workout-card-${browserTodayDayOfWeek}`);
+    await waitFor('base lessons explanation instead of workout player', () =>
+      dialogIsOpen('base-lessons-required-dialog'),
+    );
+    assert.equal(await exists('workout-player'), false);
+    assert.equal(counters.workoutComplete, workoutCompletionsBeforeExploration);
+    assert.ok((await text('base-lessons-required-dialog'))?.includes('свободно изучать'));
+    await click('continue-exploring-app');
+    await waitFor(
+      'exploration dialog closed',
+      async () => !(await dialogIsOpen('base-lessons-required-dialog')),
+    );
+
+    assert.equal(await exists('chat-fab'), false);
+    assert.equal(await exists('tab-chat'), false);
+    assert.equal(
+      await cdp.evaluate(
+        `document.querySelectorAll(${JSON.stringify('[data-testid^="tab-"]')}).length - 1`,
+      ),
+      3,
+    );
+    assert.equal(await exists('header-settings'), true);
+    const chatSessionRequestsBeforeExplorationProbe = counters.chatSessionGet;
+    await cdp.evaluate(`
+      window.history.pushState(null, '', '/chat');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    `);
+    await waitFor(
+      'chat route is rejected during exploration',
+      async () =>
+        (await pathname()) === '/' &&
+        (await exists('training-preparation-card')) &&
+        !(await exists('chat-fab')) &&
+        !(await exists('tab-chat')),
+    );
+    assert.equal(counters.chatSessionGet, chatSessionRequestsBeforeExplorationProbe);
+    console.log('KINETRA_EXPLORATION_CHAT_LOCK=PASS');
+
+    await click('tab-schedule');
+    await waitFor(
+      'schedule is available during exploration',
+      async () => (await pathname()) === '/schedule' && (await exists('schedule-panel-current')),
+    );
+    await click('tab-progress');
+    await waitFor(
+      'progress is available during exploration',
+      async () => (await pathname()) === '/progress' && (await exists('progress-goal-section')),
+    );
+    await click('header-settings');
+    await waitFor(
+      'settings are available during exploration',
+      async () => (await pathname()) === '/settings' && (await exists('settings-screen')),
+    );
+    await click('tab-home');
+    await waitFor(
+      'exploration home restored from tab bar',
+      async () => (await pathname()) === '/' && (await exists('training-preparation-card')),
+    );
+    console.log('KINETRA_ONBOARDING_EXPLORATION_NAVIGATION=PASS');
+
+    const currentWeekRequestsBeforeExplorationPaywall = counters.currentWeekGet;
+    const explorationExpireStatus = await cdp.evaluate(`fetch(
+      ${JSON.stringify(`${frontendOrigin}/__browser-test/subscription/expire`)},
+      { method: 'POST' }
+    ).then((response) => response.status)`);
+    assert.equal(explorationExpireStatus, 204);
+    await cdp.send('Page.reload', { ignoreCache: true });
+    await waitFor(
+      'subscription gate precedes base-lessons workout gate',
+      async () =>
+        (await pathname()) === '/' &&
+        (await exists('program-subscription-locked')) &&
+        (await dialogIsOpen('subscription-paywall-dialog')) &&
+        !(await dialogIsOpen('base-lessons-required-dialog')),
+    );
+    assert.equal(counters.currentWeekGet, currentWeekRequestsBeforeExplorationPaywall);
+    console.log('KINETRA_EXPLORATION_PAYWALL_PRECEDENCE=PASS');
+
+    const explorationActivateStatus = await cdp.evaluate(`fetch(
+      ${JSON.stringify(`${frontendOrigin}/__browser-test/subscription/activate`)},
+      { method: 'POST' }
+    ).then((response) => response.status)`);
+    assert.equal(explorationActivateStatus, 204);
+    await cdp.send('Page.reload', { ignoreCache: true });
+    await waitFor(
+      'exploration home restored after subscription activation',
+      async () => (await pathname()) === '/' && (await exists('training-preparation-card')),
+    );
+
+    await click('preparation-open-base-lessons');
+    await waitFor('explicit base lessons route from exploration home', () =>
       exists('base-lessons-screen'),
     );
     assert.equal(await pathname(), '/base-lessons');
-    assert.equal(await cdp.evaluate("sessionStorage.getItem('kinetra.onboarding.slide')"), null);
-    assert.equal(await cdp.evaluate("sessionStorage.getItem('kinetra.onboarding.user')"), null);
+    assert.equal(await exists('tab-bar'), false);
+    assert.equal(await exists('chat-fab'), false);
+    assert.equal(await exists('tab-chat'), false);
+    console.log('KINETRA_BASE_LESSONS_STANDALONE=PASS');
+
+    await click('base-lessons-back-to-app');
+    await waitFor(
+      'base lessons can return to exploration home',
+      async () => (await pathname()) === '/' && (await exists('training-preparation-card')),
+    );
+    await click('preparation-open-base-lessons');
+    await waitFor('base lessons reopened after voluntary return', () =>
+      exists('base-lessons-screen'),
+    );
+    assert.equal(await pathname(), '/base-lessons');
+    console.log('KINETRA_BASE_LESSONS_OPTIONAL_ROUTE=PASS');
 
     await waitFor(
       'seven base lessons with initial progress',
@@ -2827,26 +3147,36 @@ const runBrowserScenario = async () => {
     assert.equal(await pathname(), '/');
 
     await waitFor(
-      'current program week with seven workouts',
+      'Today dashboard with current and next workout context',
       async () =>
-        (await text('week-heading')) === 'Неделя 1' &&
+        (await text('today-heading')) === 'Сегодня' &&
         (await attribute('week-progress', 'aria-valuenow')) === '0' &&
         (await attribute('week-progress', 'aria-valuemax')) === '7' &&
+        (await text('week-progress-copy')) === '0 из 7' &&
+        (await exists('next-workout')) &&
+        (await exists('today-open-schedule')) &&
         (await cdp.evaluate(
           `document.querySelectorAll(${JSON.stringify('[data-testid^="workout-card-"]')}).length`,
-        )) === 7,
+        )) === browserTodayDashboardDayNumbers.length,
     );
     const renderedWorkoutCards = await cdp.evaluate(`[
       ...document.querySelectorAll(${JSON.stringify('[data-testid^="workout-card-"]')})
-    ].map((card) => card.textContent?.replace(/\\s+/gu, ' ').trim() ?? '')`);
-    assert.equal(renderedWorkoutCards.length, 7);
-    for (const [index, workout] of workoutSchedule.entries()) {
-      const cardText = renderedWorkoutCards[index] ?? '';
-      assert.ok(cardText.includes(workout.title), `Workout ${index + 1} title is missing.`);
-      assert.ok(cardText.includes(workout.icon), `Workout ${index + 1} icon is missing.`);
+    ].map((card) => ({
+      testId: card.getAttribute('data-testid'),
+      text: card.textContent?.replace(/\\s+/gu, ' ').trim() ?? '',
+    }))`);
+    assert.equal(renderedWorkoutCards.length, browserTodayDashboardDayNumbers.length);
+    for (const [index, dayOfWeek] of browserTodayDashboardDayNumbers.entries()) {
+      const workout = workoutSchedule[dayOfWeek - 1];
+      assert.notEqual(workout, undefined, `Fixture workout ${dayOfWeek} is missing.`);
+      const renderedCard = renderedWorkoutCards[index];
+      assert.equal(renderedCard?.testId, `workout-card-${dayOfWeek}`);
+      const cardText = renderedCard?.text ?? '';
+      assert.ok(cardText.includes(workout.title), `Workout ${dayOfWeek} title is missing.`);
+      assert.ok(cardText.includes(workout.icon), `Workout ${dayOfWeek} icon is missing.`);
       assert.ok(
         cardText.includes(String(workout.duration_minutes)),
-        `Workout ${index + 1} duration is missing.`,
+        `Workout ${dayOfWeek} duration is missing.`,
       );
     }
     const initialWorkoutStates = await cdp.evaluate(`[
@@ -2854,13 +3184,13 @@ const runBrowserScenario = async () => {
     ].map((status) => status.getAttribute('data-state'))`);
     assert.deepEqual(
       initialWorkoutStates,
-      Array.from({ length: 7 }, () => 'available'),
+      Array.from({ length: browserTodayDashboardDayNumbers.length }, () => 'available'),
     );
-    assert.equal(await disabled('week-previous'), true);
-    assert.equal(await disabled('week-next'), false);
+    assert.equal(await exists('week-previous'), false);
+    assert.equal(await exists('week-next'), false);
 
     const tabState = await cdp.evaluate(`(() => {
-      const ids = ['tab-home', 'tab-schedule', 'tab-progress', 'tab-settings'];
+      const ids = ['tab-home', 'tab-schedule', 'tab-progress', 'tab-chat', 'header-settings'];
       return {
         count: ids.filter((id) => document.querySelector('[data-testid="' + id + '"]')).length,
         active: ids.filter((id) =>
@@ -2868,7 +3198,8 @@ const runBrowserScenario = async () => {
         ),
       };
     })()`);
-    assert.deepEqual(tabState, { count: 4, active: ['tab-home'] });
+    assert.deepEqual(tabState, { count: 5, active: ['tab-home'] });
+    assert.equal(await exists('chat-fab'), false);
 
     const todayState = await cdp.evaluate(`(() => {
       const cards = [
@@ -2882,6 +3213,11 @@ const runBrowserScenario = async () => {
     })()`);
     assert.deepEqual(todayState, { count: 1, highlighted: true });
     assert.equal(await exists('today-workout'), true);
+    if (browserNextWorkoutDayOfWeek === null) {
+      assert.ok((await text('next-workout'))?.includes('больше тренировок нет'));
+    } else {
+      assert.equal(await exists(`workout-card-${browserNextWorkoutDayOfWeek}`), true);
+    }
     await assertMainScreenLayout(320);
     await assertMainScreenLayout(428);
 
@@ -2964,16 +3300,46 @@ const runBrowserScenario = async () => {
     await assertScheduleLayout(320);
     await assertScheduleLayout(428);
 
-    await click('schedule-segment-current');
+    await click('schedule-next-day-4');
+    await waitFor(
+      'T08 locked next-week workout fails closed on Today',
+      async () =>
+        (await pathname()) === '/' &&
+        (await exists('main-screen')) &&
+        !(await exists('workout-player')) &&
+        (await text('main-screen'))?.includes('когда начнётся выбранная неделя') === true &&
+        (await cdp.evaluate(
+          `window.history.state?.kinetraWorkoutVideoId === undefined &&
+            window.history.state?.kinetraWorkoutDayOfWeek === undefined &&
+            window.history.state?.kinetraProgramWeek === undefined`,
+        )),
+    );
+    await click('tab-schedule');
     await waitFor('T08 current segment restored', () => exists('schedule-panel-current'));
     console.log('KINETRA_T08_SCHEDULE_CONTENT=PASS');
 
     await click('schedule-current-day-4');
     await waitFor(
-      'T08 schedule card opens Home',
-      async () => (await pathname()) === '/' && (await exists('main-screen')),
+      'T08 schedule card opens the exact current-week workout',
+      async () =>
+        (await pathname()) === '/' &&
+        (await exists('workout-player')) &&
+        (await cdp.evaluate(
+          `window.history.state?.kinetraWorkoutVideoId === ${JSON.stringify(workoutVideoId(1, 4))} &&
+            window.history.state?.kinetraProgramWeek === 1 &&
+            window.history.state?.kinetraWorkoutDayOfWeek === undefined`,
+        )),
     );
     assert.equal(await attribute('tab-home', 'aria-current'), 'page');
+    assert.equal(await exists('workout-video-placeholder'), true);
+    await click('workout-back');
+    await waitFor(
+      'Schedule restored after selected workout',
+      async () =>
+        (await pathname()) === '/schedule' &&
+        (await exists('schedule-panel-current')) &&
+        (await cdp.evaluate('window.history.state?.kinetraWorkoutVideoId === undefined')),
+    );
     console.log('KINETRA_T08_CARD_NAVIGATION=PASS');
 
     await click('tab-schedule');
@@ -3185,38 +3551,35 @@ const runBrowserScenario = async () => {
     );
     await cdp.evaluate('window.history.back()');
     await waitFor(
-      'week list after today workout system Back',
+      'Today dashboard after workout system Back',
       async () =>
         (await exists('main-screen')) &&
+        (await text('today-heading')) === 'Сегодня' &&
         (await cdp.evaluate('window.history.state?.kinetraWorkoutVideoId === undefined')),
     );
     console.log('KINETRA_T07_SYSTEM_BACK=PASS');
 
-    await click('workout-card-7');
-    await waitFor('placeholder before Home tab reselection', () =>
-      exists('workout-video-placeholder'),
-    );
+    await click(`workout-card-${browserTodayDayOfWeek}`);
+    await waitFor('workout before Today tab reselection', () => exists('workout-player'));
     await click('tab-home');
     await waitFor(
-      'Home tab closes the current workout without a hidden history entry',
+      'Today tab closes the current workout without a hidden history entry',
       async () =>
         (await pathname()) === '/' &&
         (await exists('main-screen')) &&
         (await cdp.evaluate('window.history.state?.kinetraWorkoutVideoId === undefined')),
     );
-    await click('week-next');
-    await waitFor(
-      'preview week before Forward restores a workout from another week',
-      async () => (await text('week-heading')) === 'Неделя 2',
-    );
     await cdp.evaluate('window.history.forward()');
     await waitFor(
-      'Forward restores the workout and week represented by its history entry',
+      'Forward restores the workout represented by its canonical history entry',
       async () =>
-        (await exists('workout-video-placeholder')) &&
+        (await exists('workout-player')) &&
         (await cdp.evaluate(`
-          typeof window.history.state?.kinetraWorkoutVideoId === 'string' &&
-          window.history.state?.kinetraProgramWeek === 1
+          window.history.state?.kinetraWorkoutVideoId === ${JSON.stringify(
+            workoutVideoId(1, browserTodayDayOfWeek),
+          )} &&
+          window.history.state?.kinetraProgramWeek === 1 &&
+          window.history.state?.kinetraWorkoutDayOfWeek === undefined
         `)),
     );
     await cdp.evaluate('window.history.back()');
@@ -3224,34 +3587,35 @@ const runBrowserScenario = async () => {
       'Back closes the Forward-restored workout',
       async () =>
         (await exists('main-screen')) &&
-        (await text('week-heading')) === 'Неделя 1' &&
+        (await text('today-heading')) === 'Сегодня' &&
         (await cdp.evaluate('window.history.state?.kinetraWorkoutVideoId === undefined')),
     );
 
-    await click('workout-card-7');
-    await waitFor('placeholder before player reload', () => exists('workout-video-placeholder'));
+    await click(`workout-card-${browserTodayDayOfWeek}`);
+    await waitFor('workout before player reload', () => exists('workout-player'));
     await cdp.send('Page.reload', { ignoreCache: true });
     await waitFor(
       'reload restores the workout from history state',
       async () =>
-        (await exists('workout-video-placeholder')) &&
+        (await exists('workout-player')) &&
         (await cdp.evaluate(`
-          typeof window.history.state?.kinetraWorkoutVideoId === 'string' &&
-          window.history.state?.kinetraProgramWeek === 1
+          window.history.state?.kinetraWorkoutVideoId === ${JSON.stringify(
+            workoutVideoId(1, browserTodayDayOfWeek),
+          )} &&
+          window.history.state?.kinetraProgramWeek === 1 &&
+          window.history.state?.kinetraWorkoutDayOfWeek === undefined
         `)),
     );
     await cdp.evaluate('window.history.back()');
     await waitFor(
-      'Back after player reload returns to the week',
+      'Back after player reload returns to Today',
       async () =>
         (await exists('main-screen')) &&
         (await cdp.evaluate('window.history.state?.kinetraWorkoutVideoId === undefined')),
     );
 
-    await click('workout-card-7');
-    await waitFor('placeholder before cross-tab navigation', () =>
-      exists('workout-video-placeholder'),
-    );
+    await click(`workout-card-${browserTodayDayOfWeek}`);
+    await waitFor('workout before cross-tab navigation', () => exists('workout-player'));
     await click('tab-schedule');
     await waitFor(
       'Schedule tab replaces the workout history sentinel',
@@ -3270,43 +3634,39 @@ const runBrowserScenario = async () => {
     );
     console.log('KINETRA_T07_PLAYER_TAB_HISTORY=PASS');
 
-    await click('week-next');
+    assert.equal(await exists('week-previous'), false);
+    assert.equal(await exists('week-next'), false);
+    await click('today-open-schedule');
     await waitFor(
-      'future week preview',
+      'Today schedule action opens the full current/next-week schedule',
       async () =>
-        (await text('week-heading')) === 'Неделя 2' &&
-        (await cdp.evaluate(`(() => {
-          const statuses = [
-            ...document.querySelectorAll(${JSON.stringify('[data-testid^="workout-status-"]')})
-          ];
-          return statuses.length === 7 &&
-            statuses.every((status) => status.getAttribute('data-state') === 'locked');
-        })()`)),
+        (await pathname()) === '/schedule' &&
+        (await exists('schedule-panel-current')) &&
+        (await exists('schedule-segment-next')),
     );
-    assert.equal(await disabled('week-previous'), false);
-    assert.equal(await disabled('week-next'), true);
-    assert.equal(await exists('today-workout'), false);
-    await click('week-previous');
+    await click('tab-home');
     await waitFor(
-      'current week after previous arrow',
-      async () => (await text('week-heading')) === 'Неделя 1',
+      'Today dashboard restored after full schedule',
+      async () => (await pathname()) === '/' && (await text('today-heading')) === 'Сегодня',
     );
-    console.log('KINETRA_T07_WEEK_NAVIGATION=PASS');
+    console.log('KINETRA_T07_TODAY_DASHBOARD=PASS');
 
-    await click('workout-card-7');
+    await click('tab-schedule');
+    await waitFor('schedule before missing-video selection', () =>
+      exists('schedule-panel-current'),
+    );
+    await click('schedule-current-day-7');
     await waitFor('T07 missing workout video placeholder', () =>
       exists('workout-video-placeholder'),
     );
     assert.ok((await text('workout-video-placeholder'))?.includes('Видео скоро будет доступно'));
     await click('workout-back');
     await waitFor(
-      'week list after workout placeholder',
-      async () =>
-        (await exists('main-screen')) &&
-        (await cdp.evaluate('window.history.state?.kinetraWorkoutVideoId === undefined')),
+      'schedule after workout placeholder',
+      async () => (await pathname()) === '/schedule' && (await exists('schedule-panel-current')),
     );
 
-    await click('workout-card-1');
+    await click('schedule-current-day-1');
     await waitFor('T07 workout video player', () => exists('workout-video'));
     const belowThresholdProgress = await cdp.evaluate(`(() => {
       const video = document.querySelector(${JSON.stringify(selector('workout-video'))});
@@ -3356,7 +3716,9 @@ const runBrowserScenario = async () => {
     );
     assert.equal(await attribute('tab-bar', 'aria-busy'), 'true');
     assert.equal(await attribute('tab-schedule', 'aria-disabled'), 'true');
+    assert.equal(await disabled('header-settings'), true);
     await click('tab-schedule');
+    await click('header-settings');
     const routeWhileSaving = await cdp.evaluate(`new Promise((resolve) => {
       requestAnimationFrame(() => resolve({
         pathname: window.location.pathname,
@@ -3409,13 +3771,24 @@ const runBrowserScenario = async () => {
       await click('workout-back');
     }
     await waitFor(
-      'completed workout card after returning to week',
+      'completed workout after returning to Schedule',
       async () =>
-        (await attribute('workout-status-1', 'data-state')) === 'completed' &&
-        (await attribute('week-progress', 'aria-valuenow')) === '1' &&
+        (await pathname()) === '/schedule' &&
+        (await attribute('schedule-current-day-1', 'data-completed')) === 'true' &&
         (await cdp.evaluate('window.history.state?.kinetraWorkoutVideoId === undefined')),
     );
-    assert.ok((await text('workout-status-1'))?.includes('Пройдено'));
+    await click('tab-home');
+    await waitFor(
+      'Today weekly progress reflects the completed workout',
+      async () =>
+        (await pathname()) === '/' &&
+        (await attribute('week-progress', 'aria-valuenow')) === '1' &&
+        (await text('week-progress-copy')) === '1 из 7',
+    );
+    if (browserTodayDashboardDayNumbers.includes(1)) {
+      assert.equal(await attribute('workout-status-1', 'data-state'), 'completed');
+      assert.ok((await text('workout-status-1'))?.includes('Пройдено'));
+    }
     console.log('KINETRA_T07_WORKOUT_COMPLETION=PASS');
 
     await click('tab-schedule');
@@ -3459,9 +3832,13 @@ const runBrowserScenario = async () => {
     await cdp.send('Page.reload', { ignoreCache: true });
     await waitFor('T07 main route restored after reload', () => exists('main-screen'));
     assert.equal(await pathname(), '/');
-    assert.equal(await attribute('workout-status-1', 'data-state'), 'completed');
+    assert.equal(await attribute('week-progress', 'aria-valuenow'), '1');
+    assert.equal(await text('week-progress-copy'), '1 из 7');
+    if (browserTodayDashboardDayNumbers.includes(1)) {
+      assert.equal(await attribute('workout-status-1', 'data-state'), 'completed');
+    }
 
-    await click('tab-settings');
+    await click('header-settings');
     await waitFor(
       'T10 settings content',
       async () =>
@@ -3474,7 +3851,7 @@ const runBrowserScenario = async () => {
         (await exists('settings-account-section')),
     );
     assert.equal(await pathname(), '/settings');
-    assert.equal(await attribute('tab-settings', 'aria-current'), 'page');
+    assert.equal(await attribute('header-settings', 'aria-current'), 'page');
     assert.ok((await text('settings-screen'))?.includes('Подписка'));
     assert.ok((await text('settings-screen'))?.includes('Уведомления'));
     assert.ok((await text('settings-screen'))?.includes('Профиль'));
@@ -3613,7 +3990,7 @@ const runBrowserScenario = async () => {
         weekly_survey_reminder: true,
       },
     ]);
-    await click('tab-settings');
+    await click('header-settings');
     await waitFor('T10 settings restored after unmount notification flush', () =>
       exists('settings-appearance-section'),
     );
@@ -3732,7 +4109,7 @@ const runBrowserScenario = async () => {
     assert.deepEqual(
       await cdp.evaluate(`(() => {
         const main = document.querySelector(${JSON.stringify(selector('main-screen'))});
-        const heading = document.querySelector(${JSON.stringify(selector('week-heading'))});
+        const heading = document.querySelector(${JSON.stringify(selector('today-heading'))});
         return {
           preference: document.documentElement.dataset.themePreference ?? null,
           resolved: document.documentElement.dataset.theme ?? null,
@@ -3748,7 +4125,7 @@ const runBrowserScenario = async () => {
         headingColor: 'rgb(17, 20, 20)',
       },
     );
-    await click('tab-settings');
+    await click('header-settings');
     await waitFor(
       'T10 light preference remains selected after returning to settings',
       async () =>
@@ -3832,8 +4209,6 @@ const runBrowserScenario = async () => {
     });
     console.log('KINETRA_T10_THEME_MODES=PASS');
 
-    const dialogIsOpen = (testId) =>
-      cdp.evaluate(`document.querySelector(${JSON.stringify(selector(testId))})?.open === true`);
     const closeDialogFromBackdrop = async (testId) => {
       await click(testId);
       await waitFor(`${testId} closed from backdrop`, async () => !(await dialogIsOpen(testId)));
@@ -3886,6 +4261,7 @@ const runBrowserScenario = async () => {
       window.history.replaceState(
         {
           kinetraWorkoutVideoId: ${JSON.stringify(workoutVideoId(1, 2))},
+          kinetraWorkoutDayOfWeek: 2,
           kinetraProgramWeek: 1,
           browserAcceptanceState: 'preserved',
         },
@@ -3907,7 +4283,7 @@ const runBrowserScenario = async () => {
     assert.equal(await exists('workout-player'), false);
     assert.equal(
       await cdp.evaluate(
-        'window.history.state?.kinetraWorkoutVideoId === undefined && window.history.state?.kinetraProgramWeek === undefined',
+        'window.history.state?.kinetraWorkoutVideoId === undefined && window.history.state?.kinetraWorkoutDayOfWeek === undefined && window.history.state?.kinetraProgramWeek === undefined',
       ),
       true,
     );
@@ -3960,9 +4336,9 @@ const runBrowserScenario = async () => {
       async () =>
         (await pathname()) === '/' &&
         (await exists('main-screen')) &&
-        (await exists('workout-card-2')),
+        (await exists(`workout-card-${browserTodayDayOfWeek}`)),
     );
-    await click('workout-card-2');
+    await click(`workout-card-${browserTodayDayOfWeek}`);
     await waitFor('T11 activated subscription opens a workout player', () =>
       exists('workout-player'),
     );
@@ -3996,7 +4372,7 @@ const runBrowserScenario = async () => {
       async () => (await pathname()) === '/' && (await exists('main-screen')),
     );
 
-    await click('tab-settings');
+    await click('header-settings');
     await waitFor('T11 settings restored before destructive T10 flows', () =>
       exists('settings-account-section'),
     );
@@ -4063,7 +4439,7 @@ const runBrowserScenario = async () => {
       'T10 active app after reauthentication following deletion mock',
       async () => (await pathname()) === '/' && (await exists('main-screen')),
     );
-    await click('tab-settings');
+    await click('header-settings');
     await waitFor('T10 settings before confirmed logout', () => exists('settings-account-section'));
     await waitFor(
       'T13 device is unsubscribed after account deletion',
@@ -4148,7 +4524,7 @@ const runBrowserScenario = async () => {
       },
     );
     assert.equal(counters.accountDelete, 1);
-    assert.equal(counters.weekGet, 4);
+    assert.equal(counters.weekGet, 1);
     assert.equal(counters.workoutComplete, 1);
     assert.equal(counters.logout, 1);
 
@@ -4161,6 +4537,527 @@ const runBrowserScenario = async () => {
     console.log('KINETRA_T10_BROWSER_E2E=PASS');
     console.log('KINETRA_T11_BROWSER_E2E=PASS');
     console.log('KINETRA_T13_BROWSER_E2E=PASS');
+
+    // Run independently after every existing paid-flow counter assertion has passed.
+    const paidFixture = {
+      subscription: subscriptionPayload,
+      pendingPolls: pendingSubscriptionPollsRemaining,
+      paymentsEnabled,
+      cancellationResponse: lastSubscriptionCancellationResponse,
+    };
+    const paymentCreatesBeforeDisabledScenario = counters.paymentCreate;
+    const subscriptionCancelsBeforeDisabledScenario = counters.subscriptionCancel;
+    const disabledRouteObserver = await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
+      source: `(() => {
+        window.__kinetraDisabledPaymentScreens = [];
+        const observeScreens = () => {
+          for (const testId of ['payment-screen', 'payment-success-screen', 'payment-cancel-screen']) {
+            if (document.querySelector('[data-testid="' + testId + '"]') &&
+                !window.__kinetraDisabledPaymentScreens.includes(testId)) {
+              window.__kinetraDisabledPaymentScreens.push(testId);
+            }
+          }
+        };
+        new MutationObserver(observeScreens).observe(document, { childList: true, subtree: true });
+        observeScreens();
+      })();`,
+    });
+
+    try {
+      paymentsEnabled = false;
+      pendingSubscriptionPollsRemaining = 0;
+      const existingPaidPeriod = { ...subscriptionPayload };
+      assert.equal(existingPaidPeriod.status, 'active');
+      assert.equal(existingPaidPeriod.auto_renew, true);
+      await submitLogin();
+      await waitFor('disabled checkout preserves the existing paid program', () =>
+        exists('main-screen'),
+      );
+      await click('header-settings');
+      await waitFor(
+        'disabled checkout preserves paid status and cancellation in settings',
+        async () =>
+          (await exists('settings-payments-unavailable')) &&
+          (await exists('settings-cancel-auto-renew')) &&
+          (await attribute('settings-subscription-card', 'data-status')) === 'active',
+      );
+      assert.equal(await exists('settings-renew-subscription'), false);
+      assert.equal(await text('settings-payments-unavailable'), 'Оплата появится позже');
+      const paidStatusBeforeDisabledCancellation = await text('settings-subscription-status');
+      await click('settings-cancel-auto-renew');
+      await waitFor('disabled checkout still permits cancellation confirmation', () =>
+        dialogIsOpen('settings-renewal-dialog'),
+      );
+      await click('settings-cancel-auto-renew-confirm');
+      await waitFor(
+        'disabled checkout cancellation preserves the paid term and unavailable metadata',
+        async () =>
+          counters.subscriptionCancel === subscriptionCancelsBeforeDisabledScenario + 1 &&
+          !(await dialogIsOpen('settings-renewal-dialog')) &&
+          (await exists('settings-payments-unavailable')) &&
+          (await text('settings-auto-renew-state')) === 'Автопродление отключено' &&
+          !(await exists('settings-cancel-auto-renew')),
+      );
+      assert.equal(
+        await text('settings-subscription-status'),
+        paidStatusBeforeDisabledCancellation,
+      );
+      assert.equal(await attribute('settings-subscription-card', 'data-status'), 'active');
+      assert.deepEqual(subscriptionPayload, { ...existingPaidPeriod, auto_renew: false });
+      assert.deepEqual(lastSubscriptionCancellationResponse, {
+        ...existingPaidPeriod,
+        auto_renew: false,
+        payments_enabled: false,
+      });
+      assert.equal(counters.paymentCreate, paymentCreatesBeforeDisabledScenario);
+
+      subscriptionPayload = {
+        status: 'none',
+        provider: null,
+        starts_at: null,
+        expires_at: null,
+        amount: null,
+        currency: null,
+        auto_renew: null,
+        days_remaining: null,
+      };
+      const currentWeekRequestsBeforeDisabledPaywall = counters.currentWeekGet;
+      await cdp.send('Page.navigate', { url: `${frontendOrigin}/` });
+      await waitFor(
+        'disabled checkout keeps an unpaid account behind the program paywall',
+        async () =>
+          (await exists('program-subscription-locked')) &&
+          (await dialogIsOpen('subscription-paywall-dialog')),
+      );
+      assert.ok((await text('subscription-paywall-dialog'))?.includes('Оплата появится позже'));
+      assert.equal(await exists('paywall-renew'), false);
+      assert.equal(await exists('open-subscription-paywall'), false);
+      assert.equal(await exists('workout-player'), false);
+      assert.equal(counters.currentWeekGet, currentWeekRequestsBeforeDisabledPaywall);
+      await click('paywall-close');
+      await click('header-settings');
+      await waitFor(
+        'disabled checkout hides purchase actions for an unpaid account in settings',
+        async () =>
+          (await exists('settings-payments-unavailable')) &&
+          (await attribute('settings-subscription-card', 'data-status')) === 'none',
+      );
+      assert.equal(await text('settings-subscription-status'), 'Нет подписки');
+      assert.equal(await exists('settings-renew-subscription'), false);
+      assert.equal(await exists('settings-cancel-auto-renew'), false);
+      assert.equal(await exists('settings-subscription-provider'), false);
+
+      for (const route of ['/payment', '/payment/success', '/payment/cancel']) {
+        await cdp.send('Page.navigate', { url: `${frontendOrigin}${route}` });
+        await waitFor(
+          `disabled checkout deep link ${route} shows unavailable`,
+          async () => (await pathname()) === route && (await exists('payments-unavailable-screen')),
+        );
+        assert.ok((await text('payments-unavailable-screen'))?.includes('Оплата появится позже'));
+        assert.equal(await exists('create-payment'), false);
+        assert.equal(await exists('retry-payment'), false);
+        assert.equal(await exists('payment-success-status'), false);
+        assert.equal(await exists('payments-unavailable-back'), true);
+        assert.deepEqual(
+          await cdp.evaluate('window.__kinetraDisabledPaymentScreens'),
+          [],
+          `${route} must never mount payment screens while subscription settings load.`,
+        );
+        assert.equal(counters.paymentCreate, paymentCreatesBeforeDisabledScenario);
+      }
+      assert.equal(subscriptionPayload.status, 'none');
+      assert.equal(subscriptionPayload.provider, null);
+      assert.equal(subscriptionPayload.starts_at, null);
+      assert.equal(subscriptionPayload.expires_at, null);
+      assert.equal(counters.subscriptionCancel, subscriptionCancelsBeforeDisabledScenario + 1);
+      console.log('KINETRA_PAYMENTS_DISABLED_BROWSER_E2E=PASS');
+    } finally {
+      subscriptionPayload = paidFixture.subscription;
+      pendingSubscriptionPollsRemaining = paidFixture.pendingPolls;
+      paymentsEnabled = paidFixture.paymentsEnabled;
+      lastSubscriptionCancellationResponse = paidFixture.cancellationResponse;
+      await cdp.send('Page.removeScriptToEvaluateOnNewDocument', {
+        identifier: disabledRouteObserver.identifier,
+      });
+    }
+
+    // Free beta is a separate entitlement; disabling payments alone stays locked above.
+    const freeBetaFixture = {
+      subscription: subscriptionPayload,
+      profile,
+      pendingPolls: pendingSubscriptionPollsRemaining,
+      paymentsEnabled,
+    };
+    const freeBetaSubscription = {
+      status: 'none',
+      provider: null,
+      starts_at: null,
+      expires_at: null,
+      amount: null,
+      currency: null,
+      auto_renew: null,
+      days_remaining: null,
+      training_access: 'free_beta',
+    };
+    const paymentCreatesBeforeFreeBeta = counters.paymentCreate;
+    const subscriptionCancelsBeforeFreeBeta = counters.subscriptionCancel;
+    const workoutCompletionsBeforeFreeBeta = counters.workoutComplete;
+    const freeBetaRouteObserver = await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
+      source: `(() => {
+        window.__kinetraFreeBetaPaymentScreens = [];
+        const observeScreens = () => {
+          for (const testId of ['payment-screen', 'payment-success-screen', 'payment-cancel-screen']) {
+            if (document.querySelector('[data-testid="' + testId + '"]') &&
+                !window.__kinetraFreeBetaPaymentScreens.includes(testId)) {
+              window.__kinetraFreeBetaPaymentScreens.push(testId);
+            }
+          }
+        };
+        new MutationObserver(observeScreens).observe(document, { childList: true, subtree: true });
+        observeScreens();
+      })();`,
+    });
+
+    try {
+      paymentsEnabled = false;
+      pendingSubscriptionPollsRemaining = 0;
+      subscriptionPayload = { ...freeBetaSubscription };
+      assert.equal(profile.user.onboardingStatus, 'active');
+      const currentWeekRequestsBeforeFreeBeta = counters.currentWeekGet;
+      await cdp.send('Page.navigate', { url: `${frontendOrigin}/` });
+      await waitFor(
+        'free beta opens Today for an unpaid account',
+        async () =>
+          (await pathname()) === '/' &&
+          (await exists('main-screen')) &&
+          (await text('today-heading')) === 'Сегодня' &&
+          counters.currentWeekGet > currentWeekRequestsBeforeFreeBeta,
+      );
+      assert.equal(await exists('program-subscription-locked'), false);
+      assert.equal(await dialogIsOpen('subscription-paywall-dialog'), false);
+      assert.equal(await exists('open-subscription-paywall'), false);
+
+      await click('tab-schedule');
+      await waitFor(
+        'free beta opens the current schedule',
+        async () => (await pathname()) === '/schedule' && (await exists('schedule-panel-current')),
+      );
+      await click('schedule-current-day-1');
+      await waitFor(
+        'free beta opens the selected current-week workout video',
+        async () =>
+          (await exists('workout-player')) &&
+          (await exists('workout-video')) &&
+          (await cdp.evaluate(
+            `window.history.state?.kinetraWorkoutVideoId === ${JSON.stringify(workoutVideoId(1, 1))} &&
+              window.history.state?.kinetraProgramWeek === 1`,
+          )),
+      );
+      await click('workout-back');
+      await waitFor('free beta returns to the selected schedule', () =>
+        exists('schedule-panel-current'),
+      );
+      await click('schedule-current-day-7');
+      await waitFor('free beta retains the missing-media placeholder', () =>
+        exists('workout-video-placeholder'),
+      );
+      assert.equal(await exists('workout-video'), false);
+      assert.ok((await text('workout-video-placeholder'))?.includes('Видео скоро будет доступно'));
+      await click('workout-back');
+      await waitFor('free beta schedule before checking a locked week', () =>
+        exists('schedule-panel-current'),
+      );
+      await click('schedule-segment-next');
+      await waitFor('free beta displays the next-week schedule', () =>
+        exists('schedule-panel-next'),
+      );
+      await click('schedule-next-day-4');
+      await waitFor(
+        'free beta does not bypass a locked program week',
+        async () =>
+          (await pathname()) === '/' &&
+          (await exists('main-screen')) &&
+          !(await exists('workout-player')) &&
+          (await text('main-screen'))?.includes('когда начнётся выбранная неделя') === true &&
+          (await cdp.evaluate(
+            `window.history.state?.kinetraWorkoutVideoId === undefined &&
+              window.history.state?.kinetraWorkoutDayOfWeek === undefined &&
+              window.history.state?.kinetraProgramWeek === undefined`,
+          )),
+      );
+
+      profile = {
+        ...profile,
+        user: { ...profile.user, onboardingStatus: 'base_lessons' },
+      };
+      await cdp.send('Page.navigate', { url: `${frontendOrigin}/` });
+      await waitFor('free beta retains required training preparation', () =>
+        exists('training-preparation-card'),
+      );
+      await click(`workout-card-${browserTodayDayOfWeek}`);
+      await waitFor('free beta retains the base-lessons workout guard', () =>
+        dialogIsOpen('base-lessons-required-dialog'),
+      );
+      assert.equal(await exists('workout-player'), false);
+      assert.equal(counters.workoutComplete, workoutCompletionsBeforeFreeBeta);
+
+      profile = freeBetaFixture.profile;
+      await cdp.send('Page.navigate', { url: `${frontendOrigin}/settings` });
+      await waitFor(
+        'free beta settings explain access without inventing a paid subscription',
+        async () =>
+          (await exists('settings-free-beta-access')) &&
+          (await exists('settings-payments-unavailable')) &&
+          (await attribute('settings-subscription-card', 'data-status')) === 'none',
+      );
+      assert.equal(await text('settings-free-beta-access'), 'Бесплатный тестовый доступ');
+      assert.equal(await text('settings-subscription-status'), 'Нет подписки');
+      assert.equal(await exists('settings-renew-subscription'), false);
+      assert.equal(await exists('settings-cancel-auto-renew'), false);
+      assert.equal(await exists('settings-subscription-provider'), false);
+
+      for (const route of ['/payment', '/payment/success', '/payment/cancel']) {
+        await cdp.send('Page.navigate', { url: `${frontendOrigin}${route}` });
+        await waitFor(
+          `free beta keeps checkout deep link ${route} disabled`,
+          async () => (await pathname()) === route && (await exists('payments-unavailable-screen')),
+        );
+        assert.ok((await text('payments-unavailable-screen'))?.includes('Оплата появится позже'));
+        assert.equal(await exists('create-payment'), false);
+        assert.equal(await exists('retry-payment'), false);
+        assert.equal(await exists('payment-success-status'), false);
+        assert.equal(await exists('payments-unavailable-back'), true);
+        assert.deepEqual(
+          await cdp.evaluate('window.__kinetraFreeBetaPaymentScreens'),
+          [],
+          `${route} must never mount payment screens for free-beta access.`,
+        );
+        assert.equal(counters.paymentCreate, paymentCreatesBeforeFreeBeta);
+      }
+      assert.deepEqual(subscriptionPayload, freeBetaSubscription);
+      assert.equal(counters.subscriptionCancel, subscriptionCancelsBeforeFreeBeta);
+      assert.equal(counters.workoutComplete, workoutCompletionsBeforeFreeBeta);
+      console.log('KINETRA_FREE_BETA_BROWSER_E2E=PASS');
+    } finally {
+      subscriptionPayload = freeBetaFixture.subscription;
+      profile = freeBetaFixture.profile;
+      pendingSubscriptionPollsRemaining = freeBetaFixture.pendingPolls;
+      paymentsEnabled = freeBetaFixture.paymentsEnabled;
+      await cdp.send('Page.removeScriptToEvaluateOnNewDocument', {
+        identifier: freeBetaRouteObserver.identifier,
+      });
+    }
+
+    // Auth links run only after all prior scenarios and their assertions have completed.
+    authLinkFixture.enabled = true;
+    const authTokenObserver = await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
+      source: `(() => {
+        const tokens = ${JSON.stringify([browserResetToken, browserExpiredResetToken, browserVerificationToken])};
+        window.__kinetraAuthTokenWrites = [];
+        const setItem = Storage.prototype.setItem;
+        Storage.prototype.setItem = function (key, value) {
+          if (tokens.some((token) => String(key).includes(token) || String(value).includes(token))) {
+            window.__kinetraAuthTokenWrites.push(String(key));
+          }
+          return setItem.call(this, key, value);
+        };
+      })();`,
+    });
+    const assertAuthTokenCleared = async () => {
+      assert.equal(await cdp.evaluate('window.location.search + window.location.hash'), '');
+      assert.deepEqual(await cdp.evaluate('window.__kinetraAuthTokenWrites'), []);
+      assert.equal(
+        await cdp.evaluate(`(() => {
+        const tokens = ${JSON.stringify([browserResetToken, browserExpiredResetToken, browserVerificationToken])};
+        const persisted = JSON.stringify({
+          local: { ...localStorage },
+          session: { ...sessionStorage },
+          history: window.history.state,
+          cookie: document.cookie,
+        });
+        return tokens.some((token) => persisted.includes(token));
+      })()`),
+        false,
+        'Auth-link tokens must not be persisted in browser storage or history state.',
+      );
+    };
+    const authLinkUrlIsCleared = () =>
+      cdp.evaluate('window.location.search === "" && window.location.hash === ""');
+    const waitForResetPasswordForm = (label) =>
+      waitFor(
+        label,
+        async () =>
+          (await exists('password-reset-screen')) &&
+          (await exists('reset-new-password')) &&
+          (await exists('reset-confirm-submit')) &&
+          (await authLinkUrlIsCleared()),
+      );
+    const fillResetPassword = async () => {
+      await setValue('reset-new-password', browserNewPassword);
+      await setValue('reset-confirm-password', browserNewPassword);
+      await waitFor(
+        'matching reset password enables submit',
+        async () => !(await disabled('reset-confirm-submit')),
+      );
+    };
+
+    try {
+      await cdp.send('Network.clearBrowserCookies');
+      await cdp.send('Page.navigate', { url: `${frontendOrigin}/login` });
+      await waitFor('login before password recovery', () => exists('login-screen'));
+      await click('login-forgot-password');
+      await waitFor('password recovery request form', () =>
+        exists('password-reset-request-screen'),
+      );
+      await setValue('reset-email', 'reset-browser@example.test');
+      await waitFor(
+        'password recovery request can submit',
+        async () => !(await disabled('reset-request-submit')),
+      );
+      await click('reset-request-submit');
+      await waitFor('neutral password recovery confirmation', () => exists('reset-request-sent'));
+      const knownAccountConfirmation = await text('reset-request-sent');
+      assert.ok(knownAccountConfirmation?.trim().length > 0);
+      assert.equal(knownAccountConfirmation.includes('reset-browser@example.test'), false);
+      await click('reset-request-back');
+      await waitFor('login after password recovery request', () => exists('login-screen'));
+      await click('login-forgot-password');
+      await waitFor('second recovery request form', () => exists('password-reset-request-screen'));
+      await setValue('reset-email', 'unknown-browser@example.test');
+      await waitFor(
+        'unknown account request can submit',
+        async () => !(await disabled('reset-request-submit')),
+      );
+      await click('reset-request-submit');
+      await waitFor('unknown account receives neutral confirmation', () =>
+        exists('reset-request-sent'),
+      );
+      assert.equal(await text('reset-request-sent'), knownAccountConfirmation);
+      assert.deepEqual(authLinkFixture.resetRequests, [
+        'reset-browser@example.test',
+        'unknown-browser@example.test',
+      ]);
+
+      for (const suffix of [
+        '',
+        `?token=${browserResetToken}`,
+        `#token=${browserResetToken}&token=${browserResetToken}`,
+      ]) {
+        const bootstrapBeforeLink = authLinkFixture.bootstrapRequests;
+        await cdp.send('Page.navigate', { url: `${frontendOrigin}/auth/reset-password${suffix}` });
+        await waitFor(
+          'invalid recovery link is explained after its URL is consumed',
+          async () => (await exists('auth-link-invalid')) && (await authLinkUrlIsCleared()),
+        );
+        assert.equal(await exists('reset-confirm-submit'), false);
+        assert.equal(authLinkFixture.resetConfirmations.length, 0);
+        assert.equal(authLinkFixture.bootstrapRequests, bootstrapBeforeLink);
+        await assertAuthTokenCleared();
+      }
+      await click('auth-link-request-new');
+      await waitFor('invalid link offers another recovery request', () =>
+        exists('password-reset-request-screen'),
+      );
+
+      await cdp.send('Page.navigate', {
+        url: `${frontendOrigin}/auth/reset-password#token=${browserExpiredResetToken}`,
+      });
+      await waitForResetPasswordForm('expired token is validated only after password entry');
+      await fillResetPassword();
+      await click('reset-confirm-submit');
+      await waitFor('server rejects expired recovery link', () => exists('auth-link-invalid'));
+      assert.equal(authLinkFixture.passwordChanged, false);
+      assert.deepEqual(authLinkFixture.resetConfirmations, [browserExpiredResetToken]);
+      await assertAuthTokenCleared();
+
+      const bootstrapBeforeReset = authLinkFixture.bootstrapRequests;
+      const documentBeforeResetLink = await cdp.evaluate('performance.timeOrigin');
+      await cdp.send('Page.navigate', {
+        url: `${frontendOrigin}/auth/reset-password#token=${browserResetToken}`,
+      });
+      await waitForResetPasswordForm('valid password reset link opens the new password form');
+      assert.equal(
+        await cdp.evaluate('performance.timeOrigin'),
+        documentBeforeResetLink,
+        'A valid reset link must replace the invalid screen without reloading the document.',
+      );
+      assert.equal(authLinkFixture.bootstrapRequests, bootstrapBeforeReset);
+      assert.equal(authLinkFixture.resetConfirmations.length, 1);
+      await assertAuthTokenCleared();
+      await setValue('reset-new-password', browserNewPassword);
+      await setValue('reset-confirm-password', 'Different-password-2026!');
+      assert.equal(await disabled('reset-confirm-submit'), true);
+      assert.equal(authLinkFixture.resetConfirmations.length, 1);
+      await fillResetPassword();
+      await click('reset-confirm-submit');
+      await waitFor('new password is saved successfully', () => exists('reset-success'));
+      assert.deepEqual(authLinkFixture.resetConfirmations, [
+        browserExpiredResetToken,
+        browserResetToken,
+      ]);
+      assert.equal(authLinkFixture.loginCount, 0, 'Reset completion must not silently sign in.');
+      assert.equal(await exists('reset-new-password'), false);
+      assert.equal(await exists('reset-confirm-password'), false);
+      await assertAuthTokenCleared();
+      await click('auth-link-continue');
+      await waitFor('successful reset returns to login', () => exists('login-screen'));
+      await setValue('login-identifier', 'reset-browser@example.test');
+      await setValue('login-password', browserNewPassword);
+      await waitFor('new password login can submit', async () => !(await disabled('login-submit')));
+      await click('login-submit');
+      await waitFor('the new password opens the application', () => exists('main-screen'));
+      assert.equal(authLinkFixture.loginCount, 1);
+      assert.equal(await cdp.evaluate("localStorage.getItem('kinetra.accessToken')"), null);
+
+      await cdp.send('Network.clearBrowserCookies');
+      await cdp.send('Page.navigate', {
+        url: `${frontendOrigin}/auth/reset-password#token=${browserResetToken}`,
+      });
+      await waitForResetPasswordForm('reopening a link does not automatically submit its token');
+      await assertAuthTokenCleared();
+      await cdp.send('Page.reload');
+      await waitFor(
+        'reload cannot recover the consumed URL fragment from storage',
+        async () => (await exists('auth-link-invalid')) && (await authLinkUrlIsCleared()),
+      );
+      assert.deepEqual(authLinkFixture.resetConfirmations, [
+        browserExpiredResetToken,
+        browserResetToken,
+      ]);
+      await assertAuthTokenCleared();
+      console.log('KINETRA_PASSWORD_RECOVERY_BROWSER_E2E=PASS');
+
+      const bootstrapBeforeVerification = authLinkFixture.bootstrapRequests;
+      await cdp.send('Page.navigate', {
+        url: `${frontendOrigin}/auth/verify-email#token=${browserVerificationToken}`,
+      });
+      await waitFor(
+        'email verification waits for an explicit confirmation after its URL is consumed',
+        async () =>
+          (await exists('email-verification-screen')) &&
+          (await exists('email-verification-submit')) &&
+          (await authLinkUrlIsCleared()),
+      );
+      assert.equal(authLinkFixture.bootstrapRequests, bootstrapBeforeVerification);
+      assert.deepEqual(authLinkFixture.verificationTokens, []);
+      assert.equal(await exists('email-verification-submit'), true);
+      await assertAuthTokenCleared();
+      await click('email-verification-submit');
+      await waitFor('email verification succeeds after the explicit click', () =>
+        exists('email-verification-success'),
+      );
+      assert.deepEqual(authLinkFixture.verificationTokens, [browserVerificationToken]);
+      await assertAuthTokenCleared();
+      await click('auth-link-continue');
+      await waitFor('verified email session opens the application', () => exists('main-screen'));
+      assert.equal(await cdp.evaluate("localStorage.getItem('kinetra.accessToken')"), null);
+      console.log('KINETRA_EMAIL_VERIFICATION_BROWSER_E2E=PASS');
+    } finally {
+      authLinkFixture.enabled = false;
+      await cdp.send('Page.removeScriptToEvaluateOnNewDocument', {
+        identifier: authTokenObserver.identifier,
+      });
+    }
   } catch (error) {
     if (cdp !== null) {
       try {
@@ -6053,9 +6950,13 @@ const launchT12BrowserContext = async (profileDirectory, width, height) => {
   const layoutMetrics = () =>
     cdp.evaluate(`(() => {
       const root = document.documentElement;
-      const fab = document.querySelector(${JSON.stringify(selector('chat-fab'))});
+      const chatTab = document.querySelector(${JSON.stringify(selector('tab-chat'))});
+      const composer = document.querySelector(${JSON.stringify(selector('chat-composer'))});
+      const input = document.querySelector(${JSON.stringify(selector('chat-message-input'))});
       const tabBar = document.querySelector('nav');
-      const fabRect = fab?.getBoundingClientRect() ?? null;
+      const chatTabRect = chatTab?.getBoundingClientRect() ?? null;
+      const composerRect = composer?.getBoundingClientRect() ?? null;
+      const inputRect = input?.getBoundingClientRect() ?? null;
       const tabRect = tabBar?.getBoundingClientRect() ?? null;
       return {
         innerWidth: window.innerWidth,
@@ -6063,12 +6964,18 @@ const launchT12BrowserContext = async (profileDirectory, width, height) => {
         scrollWidth: root.scrollWidth,
         theme: root.dataset.theme ?? null,
         themePreference: root.dataset.themePreference ?? null,
-        fab: fabRect === null ? null : {
-          width: fabRect.width,
-          height: fabRect.height,
-          right: fabRect.right,
-          bottom: fabRect.bottom,
+        chatTab: chatTabRect === null ? null : {
+          width: chatTabRect.width,
+          height: chatTabRect.height,
+          left: chatTabRect.left,
+          right: chatTabRect.right,
+          bottom: chatTabRect.bottom,
         },
+        composer: composerRect === null ? null : {
+          top: composerRect.top,
+          bottom: composerRect.bottom,
+        },
+        input: inputRect === null ? null : { width: inputRect.width, height: inputRect.height },
         tab: tabRect === null ? null : {
           top: tabRect.top,
           bottom: tabRect.bottom,
@@ -6365,15 +7272,24 @@ const runT12BrowserScenario = async () => {
             metrics.scrollWidth <= width,
             `${surface} horizontally overflows at ${width}x${height} in ${theme}.`,
           );
+          if (metrics.composer !== null) {
+            assert.notEqual(metrics.input, null, `${surface} composer must have a text input.`);
+            assert.ok(
+              metrics.input.width >= 120,
+              `${surface} chat text input is squeezed at ${width}px.`,
+            );
+            assert.ok(metrics.input.height >= 44, `${surface} chat text input is below 44px.`);
+          }
         }
-        assert.notEqual(clientMetrics.fab, null, 'Client home must expose the chat FAB.');
-        assert.equal(clientMetrics.fab.width, 56);
-        assert.equal(clientMetrics.fab.height, 56);
-        assert.ok(clientMetrics.fab.right <= width);
-        if (clientMetrics.tab !== null) {
+        assert.notEqual(clientMetrics.chatTab, null, 'Active client must expose the Chat tab.');
+        assert.ok(clientMetrics.chatTab.width >= 44);
+        assert.ok(clientMetrics.chatTab.height >= 44);
+        assert.ok(clientMetrics.chatTab.left >= 0);
+        assert.ok(clientMetrics.chatTab.right <= width);
+        if (clientMetrics.composer !== null && clientMetrics.tab !== null) {
           assert.ok(
-            clientMetrics.fab.bottom <= clientMetrics.tab.top,
-            `FAB overlaps bottom navigation at ${width}x${height} in ${theme}.`,
+            clientMetrics.composer.bottom <= clientMetrics.tab.top + 1,
+            `Chat composer overlaps bottom navigation at ${width}x${height} in ${theme}.`,
           );
         }
       }
@@ -6850,7 +7766,8 @@ const runT12BrowserScenario = async () => {
       async () =>
         (await client.pathname()) === '/' &&
         (await client.exists('main-screen')) &&
-        (await client.exists('chat-fab')),
+        (await client.exists('tab-chat')) &&
+        !(await client.exists('chat-fab')),
       20_000,
     );
 
@@ -6876,10 +7793,17 @@ const runT12BrowserScenario = async () => {
     );
     await assertResponsiveThemeMatrix();
 
-    await client.click('chat-fab');
+    await client.click('tab-chat');
     await waitFor('client chat route', async () => (await client.pathname()) === '/chat');
     await waitFor('client empty conversation', () => client.exists('chat-empty-state'), 20_000);
     assert.equal(fixture.state.conversationCreated, true);
+    const chatLayout = await client.layoutMetrics();
+    assert.notEqual(chatLayout.composer, null, 'Client chat must expose the composer.');
+    assert.notEqual(chatLayout.tab, null, 'Client chat must retain bottom navigation.');
+    assert.ok(
+      chatLayout.composer.bottom <= chatLayout.tab.top + 1,
+      'Client chat composer must not overlap the persistent bottom navigation.',
+    );
 
     await waitFor(
       'trainer realtime-created conversation without navigation',
@@ -6979,7 +7903,8 @@ const runT12BrowserScenario = async () => {
       async () =>
         (await client.pathname()) === '/' &&
         (await client.exists('main-screen')) &&
-        (await client.exists('chat-fab')),
+        (await client.exists('tab-chat')) &&
+        !(await client.exists('chat-fab')),
       20_000,
     );
     await waitFor(
@@ -6987,7 +7912,7 @@ const runT12BrowserScenario = async () => {
       () => fixture.state.socketConnections.client.size === 1,
       20_000,
     );
-    await trainer.setValue('chat-message-input', 'Ответ тренера для FAB');
+    await trainer.setValue('chat-message-input', 'Ответ тренера для вкладки Чат');
     await waitFor(
       'enabled trainer chat send',
       async () => !(await trainer.disabled('chat-send-button')),
@@ -7001,17 +7926,17 @@ const runT12BrowserScenario = async () => {
       20_000,
     );
     await waitFor(
-      'client FAB realtime unread badge',
-      async () => (await client.text('chat-fab-badge')) === '1',
+      'client Chat-tab realtime unread badge',
+      async () => (await client.text('tab-chat-badge')) === '1',
       20_000,
     );
 
-    await client.click('chat-fab');
+    await client.click('tab-chat');
     await waitFor(
       'client realtime answer history',
       async () =>
         (await client.pathname()) === '/chat' &&
-        (await client.bodyText()).includes('Ответ тренера для FAB'),
+        (await client.bodyText()).includes('Ответ тренера для вкладки Чат'),
       20_000,
     );
     await waitFor(
@@ -7054,13 +7979,13 @@ const runT12BrowserScenario = async () => {
     assert.equal(fixture.state.duplicateMessageId, duplicatePayload.message_id);
     await client.click('chat-back');
     await waitFor(
-      'duplicate event keeps server-authoritative FAB unread at one',
+      'duplicate event keeps server-authoritative Chat-tab unread at one',
       async () =>
-        (await client.exists('main-screen')) && (await client.text('chat-fab-badge')) === '1',
+        (await client.exists('main-screen')) && (await client.text('tab-chat-badge')) === '1',
       20_000,
     );
     assert.equal(fixture.state.clientReadSequence, readBeforeHiddenMessage);
-    await client.click('chat-fab');
+    await client.click('tab-chat');
     await waitFor(
       'hidden chat history deduplicates the realtime message',
       async () =>
@@ -7077,11 +8002,11 @@ const runT12BrowserScenario = async () => {
     );
     await client.click('chat-back');
     await waitFor(
-      'read acknowledgement resets server-authoritative FAB badge',
+      'read acknowledgement resets server-authoritative Chat-tab badge',
       async () =>
         (await client.exists('main-screen')) &&
-        (await client.exists('chat-fab')) &&
-        !(await client.exists('chat-fab-badge')),
+        (await client.exists('tab-chat')) &&
+        !(await client.exists('tab-chat-badge')),
       20_000,
     );
 
@@ -7131,9 +8056,9 @@ const runT12BrowserScenario = async () => {
       trainer_unread: 1,
     });
     await waitFor(
-      'newer conversation event updates FAB and trainer inbox before stale REST release',
+      'newer conversation event updates Chat tab and trainer inbox before stale REST release',
       async () =>
-        (await client.text('chat-fab-badge')) === '1' &&
+        (await client.text('tab-chat-badge')) === '1' &&
         (await trainer.cdp.evaluate(
           "document.querySelector('.trainer-conversation-badge')?.getAttribute('aria-label') ?? null",
         )) === '1 непрочитанных',
@@ -7153,7 +8078,7 @@ const runT12BrowserScenario = async () => {
       20_000,
     );
     await sleep(650);
-    assert.equal(await client.text('chat-fab-badge'), '1');
+    assert.equal(await client.text('tab-chat-badge'), '1');
     assert.equal(
       await trainer.cdp.evaluate(
         "document.querySelector('.trainer-conversation-badge')?.getAttribute('aria-label') ?? null",
@@ -7163,7 +8088,7 @@ const runT12BrowserScenario = async () => {
     );
     assert.equal(fixture.state.staleSessionRace?.eventMessageIds.length, 2);
 
-    await client.click('chat-fab');
+    await client.click('tab-chat');
     await waitFor('client chat reopened for photo flow', () =>
       client.exists('chat-conversation-screen'),
     );
@@ -7301,7 +8226,7 @@ const runT12BrowserScenario = async () => {
       async () =>
         (await client.exists('chat-conversation-screen')) &&
         (await client.bodyText()).includes('Сообщение клиента через realtime') &&
-        (await client.bodyText()).includes('Ответ тренера для FAB') &&
+        (await client.bodyText()).includes('Ответ тренера для вкладки Чат') &&
         (await client.bodyText()).includes('Подпись к безопасной фотографии') &&
         fixture.state.socketConnections.client.size === 1 &&
         fixture.state.socketConnectionCount.client > socketConnectionsBeforeHistoryReload &&
@@ -7494,7 +8419,7 @@ const runT12BrowserScenario = async () => {
     assert.deepEqual(await client.draftKeys(), [], 'Client logout must clear T12 chat drafts.');
 
     await loginContext(client, 'chat-client@example.test', 'client-password', '/', 'main-screen');
-    await client.click('chat-fab');
+    await client.click('tab-chat');
     await waitFor('client chat restored before account deletion', () =>
       client.exists('chat-conversation-screen'),
     );
@@ -7517,7 +8442,7 @@ const runT12BrowserScenario = async () => {
         )),
       20_000,
     );
-    await client.click('tab-settings');
+    await client.click('header-settings');
     await waitFor('settings account deletion surface', () =>
       client.exists('settings-account-section'),
     );

@@ -7,6 +7,7 @@ import { env } from '../config/env.js';
 import { databasePool } from '../db/pool.js';
 import { PostgresSettingsRepository } from './postgres-settings.repository.js';
 import { SettingsService } from './service.js';
+import { PostgresFreeBetaAccessChecker } from '../program/free-beta-access.js';
 
 export interface SettingsRuntime {
   readonly service: SettingsService;
@@ -22,7 +23,12 @@ export const createProductionSettingsRuntime = (): SettingsRuntime => {
   );
 
   return {
-    service: new SettingsService(new PostgresSettingsRepository(databasePool), new SystemClock()),
+    service: new SettingsService(
+      new PostgresSettingsRepository(databasePool),
+      new SystemClock(),
+      env.paymentsEnabled,
+      new PostgresFreeBetaAccessChecker(databasePool, env.freeBetaEnabled),
+    ),
     authMiddleware: createAuthMiddleware(verifier),
   };
 };

@@ -294,6 +294,50 @@ export class ApiClient {
     return (await this.refreshAccessToken()) !== null;
   }
 
+  public async requestPasswordReset(email: string): Promise<void> {
+    const response = await this.safeFetch('/api/v1/auth/password-reset/request', {
+      method: 'POST',
+      credentials: 'omit',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier: email.trim() }),
+    });
+    await this.readJsonOrThrow<unknown>(response);
+  }
+
+  public async confirmPasswordReset(token: string, newPassword: string): Promise<void> {
+    const epoch = this.invalidateInMemorySession();
+    await this.enqueueAuthMutation(async () => {
+      if (this.authEpoch !== epoch) throw this.authSessionChangedError();
+      const response = await this.safeFetch('/api/v1/auth/password-reset/confirm', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, newPassword }),
+      });
+      await this.readJsonOrThrow<unknown>(response);
+      if (this.authEpoch !== epoch) throw this.authSessionChangedError();
+    });
+  }
+
+  public async verifyEmail(token: string): Promise<void> {
+    this.terminalSubjectMismatch = false;
+    const epoch = this.invalidateInMemorySession();
+    await this.enqueueAuthMutation(async () => {
+      if (this.authEpoch !== epoch) throw this.authSessionChangedError();
+      const response = await this.safeFetch('/api/v1/auth/verify-email', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token }),
+      });
+      const session = await this.readJsonOrThrow<AuthSessionResponse>(response);
+      if (this.authEpoch !== epoch) throw this.authSessionChangedError();
+      this.authSubjectId = session.user.id;
+      this.accessToken = session.accessToken;
+      this.logoutAccessToken = session.accessToken;
+    });
+  }
+
   public prepareLogout(): PreparedLogoutAttempt {
     const subjectId = this.authSubjectId;
     const accessToken = this.logoutAccessToken;
@@ -1360,6 +1404,11 @@ export const register = (input: RegisterRequest): Promise<RegisterResponse> =>
   apiClient.register(input);
 export const login = (identifier: string, password: string): Promise<AuthSessionResponse> =>
   apiClient.login(identifier, password);
+export const requestPasswordReset = (email: string): Promise<void> =>
+  apiClient.requestPasswordReset(email);
+export const confirmPasswordReset = (token: string, newPassword: string): Promise<void> =>
+  apiClient.confirmPasswordReset(token, newPassword);
+export const verifyEmail = (token: string): Promise<void> => apiClient.verifyEmail(token);
 export const bootstrapSession = (): Promise<boolean> => apiClient.bootstrapSession();
 export const prepareLogout = (): PreparedLogoutAttempt => apiClient.prepareLogout();
 export const logout = (): Promise<void> => apiClient.logout();

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { openPreviewDialog } from '../src/features/trainer-videos/preview-dialog-lifecycle.js';
 import { test } from 'node:test';
 
 import type {
@@ -372,4 +373,41 @@ test('T14 background verification polling stops at its bounded deadline', async 
   assert.equal(deadlines, 1);
   assert.equal(timers.size, 0);
   controller.dispose();
+});
+
+test('preview opens a native modal, focuses its close control, and restores the live trigger', () => {
+  const events: string[] = [];
+  const dialog = {
+    open: false,
+    showModal: () => {
+      dialog.open = true;
+      events.push('modal');
+    },
+    close: () => {
+      dialog.open = false;
+      events.push('close');
+    },
+  };
+  const trigger = {
+    isConnected: true,
+    focus: () => {
+      events.push('trigger');
+    },
+  };
+  const close = openPreviewDialog(
+    dialog,
+    {
+      focus: () => {
+        events.push('button');
+      },
+    },
+    trigger,
+  );
+  assert.deepEqual(events, ['modal', 'button']);
+  close();
+  assert.deepEqual(events, ['modal', 'button', 'close', 'trigger']);
+  const cleanup = openPreviewDialog(dialog, null, trigger);
+  trigger.isConnected = false;
+  cleanup();
+  assert.equal(events.at(-1), 'close');
 });

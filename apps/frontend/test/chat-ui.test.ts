@@ -173,6 +173,8 @@ const assertClientConversationAcceptance = (): void => {
   assert.ok(markup.includes('data-testid="chat-composer"'));
   assert.ok(markup.includes('aria-label="Новое сообщение"'));
   assert.equal(markup.includes('data-testid="chat-attachment-button"'), false);
+  assert.ok(markup.includes('class="chat-composer-row"'));
+  assert.equal(markup.includes('has-attachment'), false);
   assert.equal(markup.includes('Тренер онлайн'), false);
 
   const photoEnabled = renderToStaticMarkup(
@@ -191,6 +193,8 @@ const assertClientConversationAcceptance = (): void => {
     }),
   );
   assert.ok(photoEnabled.includes('data-testid="chat-attachment-button"'));
+  assert.ok(photoEnabled.includes('class="chat-composer-row has-attachment"'));
+  assert.ok(photoEnabled.includes('accept="image/jpeg,image/png,image/webp"'));
 };
 
 const assertTrainerAdminAcceptance = (): void => {

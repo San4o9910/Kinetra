@@ -14,6 +14,7 @@ import {
 import { createChatRouter } from './chat/router.js';
 import { createProductionChatRuntime, type ChatRuntime } from './chat/runtime.js';
 import { env } from './config/env.js';
+import { createDatabaseReadinessCheck, databasePool } from './db/pool.js';
 import { createPaymentsRouter } from './payments/router.js';
 import { createProductionPaymentsRuntime, type PaymentsRuntime } from './payments/runtime.js';
 import { createProfileRouter } from './profile/router.js';
@@ -41,6 +42,8 @@ import {
 } from './video-admin/runtime.js';
 
 export interface CreateAppOptions {
+  readonly readinessCheck?: () => Promise<boolean>;
+  readonly isDraining?: () => boolean;
   readonly authRuntime?: AuthRuntime;
   readonly profileRuntime?: ProfileRuntime;
   readonly baseLessonsRuntime?: BaseLessonsRuntime;
@@ -74,6 +77,10 @@ const safeUnhandledErrorCode = (error: unknown): string => {
 
 export const createApp = (options: CreateAppOptions = {}) => {
   const app = express();
+  const readinessCheck =
+    options.readinessCheck ??
+    createDatabaseReadinessCheck(() => databasePool.query('SELECT 1'), env.readinessTimeoutMs);
+  const isDraining = options.isDraining ?? (() => false);
   const authRuntime = options.authRuntime ?? createProductionAuthRuntime();
   const profileRuntime = options.profileRuntime ?? createProductionProfileRuntime();
   const baseLessonsRuntime = options.baseLessonsRuntime ?? createProductionBaseLessonsRuntime();
@@ -101,6 +108,16 @@ export const createApp = (options: CreateAppOptions = {}) => {
     response.setHeader('X-Request-Id', requestIdFrom(response));
     response.setHeader('Referrer-Policy', 'no-referrer');
     response.setHeader('X-Content-Type-Options', 'nosniff');
+    response.setHeader('Cache-Control', 'no-store');
+    response.setHeader(
+      'Content-Security-Policy',
+      "default-src 'none'; frame-ancestors 'none'; base-uri 'none'",
+    );
+    response.setHeader('X-Frame-Options', 'DENY');
+    response.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+    response.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    if (env.nodeEnv === 'production')
+      response.setHeader('Strict-Transport-Security', 'max-age=86400');
     next();
   });
   app.use(
@@ -118,6 +135,19 @@ export const createApp = (options: CreateAppOptions = {}) => {
       version: '0.4.0',
       timestamp: new Date().toISOString(),
     });
+  });
+
+  // Private infrastructure endpoint. This checks connectivity, not migration version.
+  app.get('/ready', async (_request: Request, response: Response) => {
+    if (isDraining()) {
+      response.status(503).json({ status: 'not_ready' });
+      return;
+    }
+    const connected = await Promise.resolve()
+      .then(readinessCheck)
+      .catch(() => false);
+    const ready = connected && !isDraining();
+    response.status(ready ? 200 : 503).json({ status: ready ? 'ready' : 'not_ready' });
   });
 
   app.use(

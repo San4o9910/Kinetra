@@ -1,4 +1,8 @@
-const workoutHistoryKeys = ['kinetraWorkoutVideoId', 'kinetraProgramWeek'] as const;
+const workoutHistoryKeys = [
+  'kinetraWorkoutVideoId',
+  'kinetraWorkoutDayOfWeek',
+  'kinetraProgramWeek',
+] as const;
 
 const isHistoryRecord = (state: unknown): state is Record<string, unknown> =>
   typeof state === 'object' && state !== null && !Array.isArray(state);

@@ -1,0 +1,24 @@
+# Host Caddy 2.11.4. PUBLIC_IPV4 must be the assigned, retained public IPv4.
+# Starting this configuration requests/renews public certificates; prep is offline.
+{
+	default_sni {$PUBLIC_IPV4}
+	servers {
+		protocols h1 h2
+	}
+}
+
+https://{$PUBLIC_IPV4} {
+	tls {
+		issuer acme https://acme-v02.api.letsencrypt.org/directory {
+			profile shortlived
+			disable_tlsalpn_challenge
+		}
+	}
+
+	# Caddy overwrites X-Forwarded-* by default; no upstream proxies are trusted.
+	# nginx must trust only this edge's observed socket peer, never a broad subnet.
+	reverse_proxy 127.0.0.1:8080 {
+		header_up -Forwarded
+		header_up -X-Real-IP
+	}
+}

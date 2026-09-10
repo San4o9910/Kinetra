@@ -13,6 +13,7 @@ import { HttpError } from '../auth/errors.js';
 import type { Clock } from '../auth/service.js';
 import type { ObjectUrlSigner } from '../base-lessons/storage.js';
 import type { SubscriptionAccessChecker } from '../payments/subscription-access.js';
+import type { FreeBetaAccessChecker } from './free-beta-access.js';
 import {
   PROGRAM_DAYS_PER_WEEK,
   PROGRAM_WEEK_COUNT,
@@ -62,17 +63,26 @@ export class ProgramService {
     private readonly objectUrlSigner: ObjectUrlSigner,
     private readonly subscriptionAccess: SubscriptionAccessChecker,
     private readonly clock: Clock,
+    private readonly freeBetaAccess: FreeBetaAccessChecker | null = null,
   ) {}
 
   public async getCurrentWeek(userId: string): Promise<WeekResponse> {
     await this.requireActiveSubscription(userId);
-    const progress = await this.repository.getProgress(userId);
-    return this.getWeekResponse(userId, progress.currentWeekNumber, progress);
+    const [progress, onboardingStatus] = await Promise.all([
+      this.repository.getProgress(userId),
+      this.repository.getOnboardingStatus(userId),
+    ]);
+    const workoutMediaUnlocked = this.workoutMediaUnlockedFor(onboardingStatus);
+    return this.getWeekResponse(userId, progress.currentWeekNumber, progress, workoutMediaUnlocked);
   }
 
   public async getSchedule(userId: string): Promise<ScheduleResponse> {
     await this.requireActiveSubscription(userId);
-    const progress = await this.repository.getProgress(userId);
+    const [progress, onboardingStatus] = await Promise.all([
+      this.repository.getProgress(userId),
+      this.repository.getOnboardingStatus(userId),
+    ]);
+    this.workoutMediaUnlockedFor(onboardingStatus);
     const nextWeekNumber =
       progress.currentWeekNumber < PROGRAM_WEEK_COUNT ? progress.currentWeekNumber + 1 : null;
     const [currentWeek, nextWeek] = await Promise.all([
@@ -100,17 +110,22 @@ export class ProgramService {
       );
     }
 
-    const progress = await this.repository.getProgress(userId);
+    const [progress, onboardingStatus] = await Promise.all([
+      this.repository.getProgress(userId),
+      this.repository.getOnboardingStatus(userId),
+    ]);
+    const workoutMediaUnlocked = this.workoutMediaUnlockedFor(onboardingStatus);
 
     if (parsedWeekNumber.data > progress.currentWeekNumber + 1) {
       throw new HttpError(403, 'PROGRAM_WEEK_LOCKED', 'This program week is not available yet.');
     }
 
-    return this.getWeekResponse(userId, parsedWeekNumber.data, progress);
+    return this.getWeekResponse(userId, parsedWeekNumber.data, progress, workoutMediaUnlocked);
   }
 
   public async completeWorkout(userId: string, body: unknown): Promise<WeekResponse> {
     await this.requireActiveSubscription(userId);
+    await this.requireCompletedBaseLessons(userId);
     const parsedBody = workoutCompletionSchema.safeParse(body);
 
     if (!parsedBody.success) {
@@ -131,7 +146,7 @@ export class ProgramService {
         );
 
         if (existingCompletion !== undefined && existingCompletion.completedAt !== null) {
-          return this.getWeekResponse(userId, progress.currentWeekNumber, progress);
+          return this.getWeekResponse(userId, progress.currentWeekNumber, progress, true);
         }
       }
 
@@ -156,29 +171,73 @@ export class ProgramService {
       );
     }
 
+    if (completion.kind === 'onboarding_required') {
+      throw this.baseLessonsRequiredError();
+    }
+
     return this.getCurrentWeek(userId);
   }
 
   private async requireActiveSubscription(userId: string): Promise<void> {
-    if (!(await this.subscriptionAccess.hasActiveSubscription(userId, this.clock.now()))) {
+    const paid = await this.subscriptionAccess.hasActiveSubscription(userId, this.clock.now());
+    const beta =
+      !paid &&
+      this.freeBetaAccess !== null &&
+      (await this.freeBetaAccess.hasFreeBetaAccess(userId));
+    if (!paid && !beta) {
       throw new HttpError(
         403,
         'SUBSCRIPTION_REQUIRED',
-        'An active subscription is required to access the training program.',
+        'Training access is required to open the program.',
       );
     }
+  }
+
+  private async requireCompletedBaseLessons(userId: string): Promise<void> {
+    if ((await this.repository.getOnboardingStatus(userId)) !== 'active') {
+      throw this.baseLessonsRequiredError();
+    }
+  }
+
+  private workoutMediaUnlockedFor(
+    onboardingStatus: Awaited<ReturnType<ProgramRepository['getOnboardingStatus']>>,
+  ): boolean {
+    if (onboardingStatus === 'active') {
+      return true;
+    }
+
+    if (onboardingStatus === 'base_lessons') {
+      return false;
+    }
+
+    throw new HttpError(
+      403,
+      'ONBOARDING_REQUIRED',
+      'Complete onboarding before exploring the training program.',
+    );
+  }
+
+  private baseLessonsRequiredError(): HttpError {
+    return new HttpError(
+      403,
+      'BASE_LESSONS_REQUIRED',
+      'Complete at least four base lessons before starting a workout.',
+    );
   }
 
   private async getWeekResponse(
     userId: string,
     weekNumber: number,
     progress: ProgramProgressSnapshot,
+    workoutMediaUnlocked: boolean,
   ): Promise<WeekResponse> {
     const snapshot = await this.getRequiredWeekSnapshot(userId, weekNumber);
 
     const status = this.statusFor(snapshot, progress.currentWeekNumber);
     const days = await Promise.all(
-      snapshot.days.map((day) => this.dayResponse(day, status !== 'locked' && day.mediaAvailable)),
+      snapshot.days.map((day) =>
+        this.dayResponse(day, workoutMediaUnlocked && status !== 'locked' && day.mediaAvailable),
+      ),
     );
 
     return {

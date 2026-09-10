@@ -14,6 +14,7 @@ type BaseLessonsLoadState =
 
 export interface BaseLessonsScreenProps {
   readonly onCompleted: (profile: MeResponse) => void;
+  readonly onBackToApp: () => void;
   readonly onOpenSettings: () => void;
   readonly onSessionExpired: () => void;
 }
@@ -25,6 +26,7 @@ const messageForLoadError = (error: unknown): string =>
 
 export const BaseLessonsScreen = ({
   onCompleted,
+  onBackToApp,
   onOpenSettings,
   onSessionExpired,
 }: BaseLessonsScreenProps): ReactNode => {
@@ -111,10 +113,20 @@ export const BaseLessonsScreen = ({
   if (loadState.kind === 'loading') {
     return (
       <main className="base-lessons-state-shell" data-testid="base-lessons-loading">
-        <div className="loading-state" role="status" aria-live="polite">
-          <span aria-hidden="true" />
-          Загружаем базовые уроки…
-        </div>
+        <section className="base-lessons-state-card">
+          <div className="loading-state" role="status" aria-live="polite">
+            <span aria-hidden="true" />
+            Загружаем базовые уроки…
+          </div>
+          <button
+            className="ghost-button base-lessons-state-back"
+            data-testid="base-lessons-loading-back-to-app"
+            type="button"
+            onClick={onBackToApp}
+          >
+            Вернуться в приложение
+          </button>
+        </section>
       </main>
     );
   }
@@ -137,6 +149,14 @@ export const BaseLessonsScreen = ({
             onClick={() => void restoreLessons()}
           >
             Повторить
+          </button>
+          <button
+            className="ghost-button base-lessons-state-back"
+            data-testid="base-lessons-back-to-app"
+            type="button"
+            onClick={onBackToApp}
+          >
+            Вернуться в приложение
           </button>
         </section>
       </main>
@@ -225,6 +245,7 @@ export const BaseLessonsScreen = ({
         setSelectedLessonId(lessonId);
       }}
       onComplete={() => void completeProgram()}
+      onBackToApp={onBackToApp}
       onOpenSettings={onOpenSettings}
     />
   );
