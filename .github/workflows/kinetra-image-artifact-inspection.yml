@@ -1,0 +1,55 @@
+name: Inspect failed Kinetra upstream scanner evidence
+on:
+  push:
+    branches: [ops/timeweb-hourly-preflight-20260909]
+    paths: [.github/workflows/kinetra-image-artifact-inspection.yml]
+permissions:
+  actions: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Read only public scanner diagnostics from the exact failed image artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, io, json, os, urllib.error, urllib.parse, urllib.request, zipfile
+          assert os.environ['GITHUB_REPOSITORY'] == 'San4o9910/Kinetra'
+          assert os.environ['GITHUB_REF'] == 'refs/heads/ops/timeweb-hourly-preflight-20260909'
+          assert os.environ['GITHUB_RUN_ATTEMPT'] == '1'
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, request, file, code, message, headers, new_url): return None
+          opener = urllib.request.build_opener(NoRedirect)
+          def fetch(path, archive=False):
+              request = urllib.request.Request('https://api.github.com/repos/San4o9910/Kinetra' + path,
+                  headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json'})
+              try:
+                  response = opener.open(request, timeout=30)
+              except urllib.error.HTTPError as error:
+                  if not archive or error.code != 302: raise RuntimeError('Artifact API read failed') from None
+                  location = error.headers['Location']; url = urllib.parse.urlsplit(location)
+                  assert url.scheme == 'https' and not url.username and not url.password and url.port in (None, 443)
+                  assert url.hostname and url.hostname.endswith(('.blob.core.windows.net', '.actions.githubusercontent.com'))
+                  response = opener.open(urllib.request.Request(location), timeout=30)
+              with response: data = response.read(8 * 1024 * 1024 + 1)
+              assert len(data) <= 8 * 1024 * 1024
+              return data if archive else json.loads(data)
+          metadata = fetch('/actions/artifacts/10137613199')
+          assert metadata['name'] == 'kinetra-image-evidence-34439133755-1' and not metadata['expired']
+          assert metadata['workflow_run']['id'] == 34439133755
+          assert metadata['workflow_run']['head_sha'] == '39522fa88d6125fa0788b0df3950bb846f35ab00'
+          archive = fetch('/actions/artifacts/10137613199/zip', archive=True)
+          assert 'sha256:' + hashlib.sha256(archive).hexdigest() == metadata['digest']
+          with zipfile.ZipFile(io.BytesIO(archive)) as zipped:
+              for name in ('upstream-media/db-update.stdout', 'upstream-media/db-update.stderr', 'upstream-media/summary.json'):
+                  info = zipped.getinfo(name)
+                  assert info.file_size <= 32 * 1024 and not info.is_dir()
+                  # This isolated scanner received only public source identities and no credentials.
+                  # Never print the artifact's other files, GitHub token or signed download URL.
+                  print('KINETRA_PUBLIC_SCANNER_DIAGNOSTIC ' + json.dumps({'file': name, 'text': zipped.read(info).decode('utf-8')}))
+          print('KINETRA_FAILED_IMAGE_EVIDENCE_INSPECTION=PASS')
+          PY
