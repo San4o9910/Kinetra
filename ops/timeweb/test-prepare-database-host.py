@@ -200,6 +200,43 @@ class OrchestrationTests(unittest.TestCase):
 
 
 class ContractTests(unittest.TestCase):
+    def test_canonical_repo_digests_preserve_exact_reference_on_both_sides(self):
+        references = {
+            "NODE_IMAGE": ("node", "docker.io/library/node"),
+            "NGINX_IMAGE": ("nginxinc/nginx-unprivileged", "docker.io/nginxinc/nginx-unprivileged"),
+            "POSTGRES_IMAGE": ("postgres", "docker.io/library/postgres", "postgres:17.6-bookworm"),
+        }
+        for key, repositories in references.items():
+            for repository in repositories:
+                with self.subTest(image=repository):
+                    data = payload()
+                    data["images"][key] = repository + "@sha256:" + "6" * 64
+                    self.assertEqual(stage.metadata({"APPROVED_APP_COMMIT": COMMIT, **data["images"]})["images"], data["images"])
+                    guest["validate_payload"](data)
+
+    def test_repo_digest_allowlist_rejects_wrong_repository_tag_and_digest(self):
+        references = {
+            "NODE_IMAGE": ("node:latest", "node:24-alpine3.24", "node:22-alpine3.23", "someone/node", "dockerXio/library/node", "docker.io/other/node"),
+            "NGINX_IMAGE": ("nginx", "someone/nginx-unprivileged", "nginxinc/nginx-unprivileged:latest", "nginxinc/nginx-unprivileged:1.30.4-alpine", "dockerXio/nginxinc/nginx-unprivileged"),
+            "POSTGRES_IMAGE": ("postgres:16-bookworm", "postgres:17-alpine", "postgres:latest", "someone/postgres", "dockerXio/library/postgres"),
+            "BACKEND_IMAGE": ("ghcrXio/san4o9910/kinetra-backend", "ghcr.io/someone/kinetra-backend", "ghcr.io/san4o9910/kinetra-backend:latest"),
+            "FRONTEND_IMAGE": ("ghcrXio/san4o9910/kinetra-frontend", "ghcr.io/someone/kinetra-frontend", "ghcr.io/san4o9910/kinetra-frontend:latest"),
+        }
+        for key, repositories in references.items():
+            for repository in repositories:
+                with self.subTest(image=repository):
+                    data = payload()
+                    data["images"][key] = repository + "@sha256:" + "6" * 64
+                    with self.assertRaises(stage.Error): stage.metadata({"APPROVED_APP_COMMIT": COMMIT, **data["images"]})
+                    with self.assertRaises(guest["StageError"]): guest["validate_payload"](data)
+        for image in ("node", "node@sha256:" + "6" * 63, "node@sha256:" + "G" * 64,
+                      "node@sha512:" + "6" * 64, "node@sha256:" + "6" * 64 + "/extra"):
+            with self.subTest(image=image):
+                data = payload()
+                data["images"]["NODE_IMAGE"] = image
+                with self.assertRaises(stage.Error): stage.metadata({"APPROVED_APP_COMMIT": COMMIT, **data["images"]})
+                with self.assertRaises(guest["StageError"]): guest["validate_payload"](data)
+
     def test_reviewed_alpine_tags_match_outer_and_guest_allowlists(self):
         for variant in ("22-bookworm-slim", "22-alpine3.24"):
             data = payload()
@@ -320,6 +357,31 @@ class ContractTests(unittest.TestCase):
         self.assertTrue(directories)
         self.assertTrue(all(not p.exists() for p in directories))
         self.assertEqual(sum("pull" in args for args, _ in calls), 1)
+
+    def test_tagless_postgres_still_requires_actual_major_17_and_uid_999(self):
+        for version, uid, error in (("postgres (PostgreSQL) 17.6", "999", None),
+                                    ("postgres (PostgreSQL) 16.9", "999", "POSTGRES_MAJOR_MISMATCH"),
+                                    ("postgres (PostgreSQL) 17.6", "70", "POSTGRES_IMAGE_UID_MISMATCH")):
+            with self.subTest(version=version, uid=uid), tempfile.TemporaryDirectory() as temporary:
+                data = payload()
+                data["images"]["POSTGRES_IMAGE"] = "postgres@sha256:" + "5" * 64
+                calls = []
+                def command(args, **kwargs):
+                    calls.append(args)
+                    return COMMIT if "inspect" in args else ""
+                def container(options, image, arguments, **kwargs):
+                    self.assertEqual(image, data["images"]["POSTGRES_IMAGE"])
+                    self.assertIn("none", options)
+                    return version if arguments == ["--version"] else uid
+                real_temporary = tempfile.TemporaryDirectory
+                with patch.dict(guest, {"command": command, "disposable_container": container}), \
+                     patch.object(guest["tempfile"], "TemporaryDirectory", side_effect=lambda **kw: real_temporary(prefix=kw["prefix"], dir=temporary)):
+                    state = {"registry_config_cleanup": "PENDING"}
+                    if error:
+                        with self.assertRaisesRegex(guest["StageError"], error): guest["pull_images"](data, state)
+                    else: guest["pull_images"](data, state)
+                self.assertEqual(state["registry_config_cleanup"], "REMOVED")
+                self.assertTrue(any("pull" in args and data["images"]["POSTGRES_IMAGE"] in args for args in calls))
 
     def test_validator_mounts_exclude_ca_signing_key_and_use_migrate_guard(self):
         calls = []

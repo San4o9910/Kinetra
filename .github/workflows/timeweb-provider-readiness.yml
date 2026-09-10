@@ -1,3 +1,4 @@
+# Refresh presence before C5 deployment preparation; no provider calls or secret values.
 name: Kinetra provider configuration presence
 on:
   push:

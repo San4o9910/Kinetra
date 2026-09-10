@@ -43,12 +43,14 @@ SOURCE_PATHS = (
     "deploy/postgres/issue-server-certificate.sh", "deploy/postgres/validate-single-server.mjs",
     "ops/validate-production-env.mjs", "ops/run-production-job.sh", "ops/prepare-single-server.sh",
 )
+# Docker RepoDigests omit mutable tags. Provenance binds the exact approved
+# digest; known tags may be retained as metadata, never substituted for it.
 IMAGE_PATTERNS = {
-    "NODE_IMAGE": r"(?:docker.io/library/)?node:22-(?:bookworm-slim|alpine3\.24)@sha256:[a-f0-9]{64}",
-    "NGINX_IMAGE": r"(?:docker.io/)?nginxinc/nginx-unprivileged:1\.30\.4-alpine-slim@sha256:[a-f0-9]{64}",
-    "BACKEND_IMAGE": r"ghcr.io/san4o9910/kinetra-backend@sha256:[a-f0-9]{64}",
-    "FRONTEND_IMAGE": r"ghcr.io/san4o9910/kinetra-frontend@sha256:[a-f0-9]{64}",
-    "POSTGRES_IMAGE": r"(?:docker.io/library/)?postgres:17(?:\.[0-9]+)?-bookworm@sha256:[a-f0-9]{64}",
+    "NODE_IMAGE": r"(?:docker\.io/library/)?node(?::22-(?:bookworm-slim|alpine3\.24))?@sha256:[a-f0-9]{64}",
+    "NGINX_IMAGE": r"(?:docker\.io/)?nginxinc/nginx-unprivileged(?::1\.30\.4-alpine-slim)?@sha256:[a-f0-9]{64}",
+    "BACKEND_IMAGE": r"ghcr\.io/san4o9910/kinetra-backend@sha256:[a-f0-9]{64}",
+    "FRONTEND_IMAGE": r"ghcr\.io/san4o9910/kinetra-frontend@sha256:[a-f0-9]{64}",
+    "POSTGRES_IMAGE": r"(?:docker\.io/library/)?postgres(?::17(?:\.[0-9]+)?-bookworm)?@sha256:[a-f0-9]{64}",
 }
 
 
@@ -147,11 +149,11 @@ SOURCE_PATHS = (
     'ops/validate-production-env.mjs', 'ops/run-production-job.sh', 'ops/prepare-single-server.sh',
 )
 IMAGE_PATTERNS = {
-    'NODE_IMAGE': r'(?:docker.io/library/)?node:22-(?:bookworm-slim|alpine3\.24)@sha256:[a-f0-9]{64}',
-    'NGINX_IMAGE': r'(?:docker.io/)?nginxinc/nginx-unprivileged:1\.30\.4-alpine-slim@sha256:[a-f0-9]{64}',
-    'BACKEND_IMAGE': r'ghcr.io/san4o9910/kinetra-backend@sha256:[a-f0-9]{64}',
-    'FRONTEND_IMAGE': r'ghcr.io/san4o9910/kinetra-frontend@sha256:[a-f0-9]{64}',
-    'POSTGRES_IMAGE': r'(?:docker.io/library/)?postgres:17(?:\.[0-9]+)?-bookworm@sha256:[a-f0-9]{64}',
+    'NODE_IMAGE': r'(?:docker\.io/library/)?node(?::22-(?:bookworm-slim|alpine3\.24))?@sha256:[a-f0-9]{64}',
+    'NGINX_IMAGE': r'(?:docker\.io/)?nginxinc/nginx-unprivileged(?::1\.30\.4-alpine-slim)?@sha256:[a-f0-9]{64}',
+    'BACKEND_IMAGE': r'ghcr\.io/san4o9910/kinetra-backend@sha256:[a-f0-9]{64}',
+    'FRONTEND_IMAGE': r'ghcr\.io/san4o9910/kinetra-frontend@sha256:[a-f0-9]{64}',
+    'POSTGRES_IMAGE': r'(?:docker\.io/library/)?postgres(?::17(?:\.[0-9]+)?-bookworm)?@sha256:[a-f0-9]{64}',
 }
 class StageError(Exception): pass
 

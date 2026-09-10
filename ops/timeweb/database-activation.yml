@@ -60,9 +60,9 @@ jobs:
           sha256sum --check --strict <<'SHA256'
           567d892221925bb438ece6a893360a891ffd4228f8af0a18252b8ba365a682c0  ops/timeweb/inspect-server.py
           a19aca3ea953feecdcb9be6e9dcabdfc8b0e2b4f3938184391cdfb2ff3e87c9e  ops/timeweb/bootstrap-server.py
-          87c6da7011b45d6e4a7f6ba612caa686f2eb49a7c5b9a8659c213aa6031984b4  ops/timeweb/prepare-database-host.py
+          4621b1c0153ab56ae535e245fdb2de4ef2aff4a30ba5b592343a26795f0655ae  ops/timeweb/prepare-database-host.py
           041f415dedf6b0b6922484281926c8c98c87828506dcb2e1ac6fb324b00b05bb  ops/timeweb/initialize-database-host.py
-          c21fae346fe4e895c15d1124be6956dbc4de90e3ef91859e828509139fb5231b  ops/timeweb/test-prepare-database-host.py
+          29e2c69ee0e507574183a4f5a8bbd3c0ae306d0a0ed0b46dcb3043889e1b1dac  ops/timeweb/test-prepare-database-host.py
           5e26395c85ef64b99f045b5ba46bc92d72ffc595f0cb5640a571a599ad8ccea5  ops/timeweb/test-initialize-database-host.py
           SHA256
           python3 - <<'PY'
@@ -200,6 +200,16 @@ jobs:
               assert len(registry_inputs) == 4 and all(len(row) == 3 for row in registry_inputs)
               assert {row[0] for row in registry_inputs} == {'NODE_IMAGE', 'NGINX_IMAGE', 'TRIVY_IMAGE', 'GRYPE_IMAGE'}
               assert all(row[2] == env[row[0]] for row in registry_inputs if row[0] in ('NODE_IMAGE', 'NGINX_IMAGE'))
+              registry_tags = {row[0]: row[1] for row in registry_inputs}
+              assert registry_tags['NODE_IMAGE'] == 'docker.io/library/node:22-alpine3.24'
+              assert registry_tags['NGINX_IMAGE'] == 'docker.io/nginxinc/nginx-unprivileged:1.30.4-alpine-slim'
+              node_version = member('node-base-version.txt').decode('ascii')
+              nginx_version = member('nginx-base-version.txt').decode('ascii')
+              assert len(re.findall(r'^v22\.\d+\.\d+$', node_version, re.M)) == 1
+              assert len(re.findall(r'^nginx version: nginx/1\.30\.4$', nginx_version, re.M)) == 1
+              for version_evidence in (node_version, nginx_version):
+                  assert re.search(r'^ID=alpine$', version_evidence, re.M)
+                  assert re.search(r'^VERSION_ID=3\.24\.\d+$', version_evidence, re.M)
               registry_images = {row[0]: row[2] for row in registry_inputs}
               assert re.fullmatch(r'(?:docker.io/)?anchore/grype@sha256:[a-f0-9]{64}', registry_images['GRYPE_IMAGE'])
               upstream = json.loads(member('upstream-media/summary.json'))

@@ -9,7 +9,7 @@ b2918e286d014d2a873d46fada7234384e495c00a4d977dc3053d1fec4968d4a  ./.github/work
 df04e6f357e774e7abdc2d31ce90543eb2910cb752bd685ea4c075444fcea63f  ./.github/workflows/timeweb-hourly-preflight.yml
 5759fab75ef133f64b0faac6c832c57d305464519cf7abf2e4388e34cb02b79b  ./.github/workflows/timeweb-hourly-provision.yml
 de701be574b475ab49565f84ca6de8debb136a97eefacc9fc0aca87307285afe  ./.github/workflows/timeweb-key-reconcile.yml
-7b6374df459ae7d2c598eff04548228bbcbebe128de0f54fab119743520eed51  ./.github/workflows/timeweb-provider-readiness.yml
+b26a92d089d8cb436c660465cac978b5a42d3510741bb6271c602b299b5e7ed1  ./.github/workflows/timeweb-provider-readiness.yml
 2fc3506a04bb2bacc2204ee8781dbde911aec06549878bf49e4d3ba95425ed8d  ./.github/workflows/timeweb-server-bootstrap.yml
 fd6a104559b185e725e06004045074bbd1b9da50a8cb1898ea048341d9958e48  ./.github/workflows/timeweb-server-inspect.yml
 bf0b9f2976cc6caa82bd0268fc6c19b11d72a7bf17624cf1fb866462e3811e31  ./.gitignore
@@ -339,9 +339,9 @@ a9b1c236d0feea9883c7d1e0b54d7260cd692d179fc65c6a99609392af213bba  ./docs/T14_VID
 cf715055ccd10f1098d83cf11facdb3278ea844b0e30c737e2ed9be7360f4ff2  ./docs/TRAINER_VERIFICATION.md
 42cb4e2ce5f3c1726688d1f5ecb4238b79ed9b97e5f80455cbfeeaf28b2821bf  ./eslint.config.mjs
 a19aca3ea953feecdcb9be6e9dcabdfc8b0e2b4f3938184391cdfb2ff3e87c9e  ./ops/timeweb/bootstrap-server.py
-79a7b5ed6ea94420656b6fc1d625d6fec901b9dd1f366fd4ea9b9dc4e3f95ef5  ./ops/timeweb/continuous-deployment-state-20260909.md
-692fb08934822950b715fef04695aabca2ec97c9a224ce347d7797e7f7dc6567  ./ops/timeweb/database-activation-notes.md
-309d19e644c55f8fd270ed02934339d284ac4faaa27a4306ede790e7c13bed04  ./ops/timeweb/database-activation.yml
+1f50c3beedfa3f4807e33e0528be95d4d7b618cbdc6218caccccc4a5502a4cad  ./ops/timeweb/continuous-deployment-state-20260909.md
+5439859d12d061e2f8ba34d9df5e4a34666cbc079c76f59a002dc4782bc5f29e  ./ops/timeweb/database-activation-notes.md
+a1eed9d3fe2402381760c01748c113a23a4765852ae509ef3d2c55abba3ab19c  ./ops/timeweb/database-activation.yml
 493023baaac39ecfa2ca56b965a6f466bf3668aaf7ec3bbe367b2796dbb08d2f  ./ops/timeweb/ffmpeg-remediation-research.md
 21ab4cb296c76361bd8925c9975ff814b78175ae0d3b7406cf11d1ae6983b6ed  ./ops/timeweb/ffmpeg-source-remediation-evidence.json
 3d2a7566384ae5ac5dbc8c98b58d23f5bedfce949be15196b1b09c928f9cb8f5  ./ops/timeweb/image-findings-34408679490.json
@@ -352,7 +352,7 @@ a19aca3ea953feecdcb9be6e9dcabdfc8b0e2b4f3938184391cdfb2ff3e87c9e  ./ops/timeweb/
 3df382ffcd71c42adfaa9d0e1f76cce0fd8512f07721c1ef0297b6fd145bc6ec  ./ops/timeweb/prepare-caddy-host.py
 1710920719ea7be629b08f050be86e5c467f9aa1c338719e0ab46833bdb68daf  ./ops/timeweb/prepare-caddy-notes.md
 a23d52b21f7c638f757a723048ee632d37e8f217ae796f97dd92ec3bbb990e2d  ./ops/timeweb/prepare-caddy.sh
-87c6da7011b45d6e4a7f6ba612caa686f2eb49a7c5b9a8659c213aa6031984b4  ./ops/timeweb/prepare-database-host.py
+4621b1c0153ab56ae535e245fdb2de4ef2aff4a30ba5b592343a26795f0655ae  ./ops/timeweb/prepare-database-host.py
 c44ad2bdaf40d995ae7d423457fd6fa38b94cbc4ccd7164d16baf00d592141e9  ./ops/timeweb/progress-geometry-smoke.mjs
 e62a6130be5583bd2f0e287fec2b098012206d722311681aea7357508d7f2cc0  ./ops/timeweb/provision-hourly.py
 a82c532235f04a75bffa484ce3c5be1aad4e5f232fe35392e5fa8726bae7420e  ./ops/timeweb/scan-upstream-media.py
@@ -360,7 +360,7 @@ a82c532235f04a75bffa484ce3c5be1aad4e5f232fe35392e5fa8726bae7420e  ./ops/timeweb/
 5e26395c85ef64b99f045b5ba46bc92d72ffc595f0cb5640a571a599ad8ccea5  ./ops/timeweb/test-initialize-database-host.py
 75b7f891f1ff9bab93458bb3f8090ca008886bdbd9a414e8441e80ebb79f43cf  ./ops/timeweb/test-inspect-host-monitoring.py
 412e6f55aa42598e1f9582ddbe17c5813cc87773e0a255ccd473ed2fb7caf96d  ./ops/timeweb/test-prepare-caddy-host.py
-c21fae346fe4e895c15d1124be6956dbc4de90e3ef91859e828509139fb5231b  ./ops/timeweb/test-prepare-database-host.py
+29e2c69ee0e507574183a4f5a8bbd3c0ae306d0a0ed0b46dcb3043889e1b1dac  ./ops/timeweb/test-prepare-database-host.py
 c27129cff5dc77a32c278563d41231d78e75175fd7f4fe917da01c7dcef16431  ./ops/timeweb/test-scan-upstream-media.py
 ca34313e3e69827306dc65884bd88ff99e91e35c6bb29db8d9e4c3e49fb3f9a6  ./package-lock.json
 67946edf50475090423548f35b8a2746f8c7f27d0b50ce2053ae2afd0700b9ae  ./package.json
