@@ -18,21 +18,22 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  APPROVED_APP_COMMIT: 2e20e6d20ea202bccca44488a2f897e4b6b9552d
+  APPROVED_APP_COMMIT: 644878e4cf4c917fb87b07a5ff8a0cdcf4e74a48
   APPROVED_BASE_COMMIT: ea0412a20baa87b7a00c4ce466d204d12fb052cc
-  APPROVED_MERGE_COMMIT: a27c8a280ea9918123352e4cf29137bdb464c3a6
-  APPROVED_HEAD_RUN: '34409666852'
-  APPROVED_MERGE_RUN: '34409670669'
+  APPROVED_MERGE_COMMIT: ddf2bd3d1047cf3e794878bf54360c4a579a23f4
+  APPROVED_HEAD_RUN: '34438646842'
+  APPROVED_MERGE_RUN: '34438648896'
   PUBLISH_TO_GHCR: 'true'
   PUBLIC_ORIGIN: https://80.68.156.131
-  NODE_TAG: docker.io/library/node:22-bookworm-slim
+  NODE_TAG: docker.io/library/node:22-alpine3.24
   NGINX_TAG: docker.io/nginxinc/nginx-unprivileged:1.30.4-alpine-slim
   TRIVY_TAG: docker.io/aquasec/trivy:0.74.0
+  GRYPE_TAG: docker.io/anchore/grype:v0.118.0
 
 jobs:
   qualify:
     runs-on: ubuntu-24.04
-    timeout-minutes: 55
+    timeout-minutes: 75
     permissions:
       contents: read
       actions: read
@@ -132,6 +133,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$APPROVED_APP_COMMIT"
           git diff --exit-code
           sha256sum --check --quiet MANIFEST.sha256
+          node --test deploy/media/inventory.test.mjs
           evidence="$RUNNER_TEMP/kinetra-image-evidence"
           docker version > "$evidence/docker-version.txt"
           docker buildx version >> "$evidence/docker-version.txt"
@@ -147,6 +149,17 @@ jobs:
           resolve NODE_IMAGE "$NODE_TAG"
           resolve NGINX_IMAGE "$NGINX_TAG"
           resolve TRIVY_IMAGE "$TRIVY_TAG"
+          resolve GRYPE_IMAGE "$GRYPE_TAG"
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          path: .kinetra-control
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /ops/timeweb/scan-upstream-media.py
+            /ops/timeweb/test-scan-upstream-media.py
 
       - name: Check actual upstream versions and build both final targets
         shell: bash
@@ -155,7 +168,7 @@ jobs:
           evidence="$RUNNER_TEMP/kinetra-image-evidence"
           docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges \
             --user 1000:1000 --entrypoint sh "$NODE_IMAGE" -ec \
-            '. /etc/os-release; test "$VERSION_CODENAME" = bookworm; node -e '\''if(process.versions.node.split(".")[0]!=="22")process.exit(1)'\''; node --version; npm --version; cat /etc/os-release' \
+            '. /etc/os-release; test "$ID" = alpine; case "$VERSION_ID" in 3.24.*) ;; *) exit 1 ;; esac; node -e '\''if(process.versions.node.split(".")[0]!=="22")process.exit(1)'\''; node --version; npm --version; cat /etc/os-release' \
             > "$evidence/node-base-version.txt"
           docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges \
             --user 101:101 --entrypoint sh "$NGINX_IMAGE" -ec \
@@ -176,6 +189,7 @@ jobs:
           done
 
       - name: Smoke backend tooling as UID 1000 with immutable filesystem
+        id: backend_smoke
         shell: bash
         run: |
           set -euo pipefail
@@ -202,8 +216,34 @@ jobs:
               test "$(identify -format "%wx%h" /tmp/smoke.png)" = 2x2
               ffmpeg -v error -f lavfi -i color=c=black:s=16x16:d=0.1 -c:v libx264 /tmp/smoke.mp4
               test "$(ffprobe -v error -select_streams v:0 -show_entries stream=codec_name -of csv=p=0 /tmp/smoke.mp4)" = h264
-              dpkg-query -W
+              apk info -vv
+              apk info --who-owns /usr/bin/ffmpeg /usr/bin/ffprobe /usr/bin/magick
+              test -s /usr/share/kinetra-media/source-components.cdx.json
+              test -s /usr/share/kinetra-media/source-builds.json
             ' > "$RUNNER_TEMP/kinetra-image-evidence/backend-smoke.txt"
+          docker run --rm --network none --user 1000:1000 --read-only --cap-drop ALL \
+            --security-opt no-new-privileges --tmpfs /tmp:rw,noexec,nosuid,size=256m,uid=1000,gid=1000,mode=0700 \
+            --mount "type=bind,source=$GITHUB_WORKSPACE/deploy/media/runtime-smoke.mjs,target=/runtime-smoke.mjs,readonly" \
+            --entrypoint node kinetra-backend:qualified /runtime-smoke.mjs \
+            | tee "$RUNNER_TEMP/kinetra-image-evidence/backend-application-smoke.txt"
+          grep -Fx 'KINETRA_FINAL_IMAGE_BCRYPT_AND_PHOTO_NORMALIZATION=PASS' \
+            "$RUNNER_TEMP/kinetra-image-evidence/backend-application-smoke.txt"
+          grep -Fx 'KINETRA_FINAL_IMAGE_MP4_H264_AAC=PASS' \
+            "$RUNNER_TEMP/kinetra-image-evidence/backend-application-smoke.txt"
+          docker run --rm --network none --user 1000:1000 --read-only --cap-drop ALL \
+            --security-opt no-new-privileges \
+            --mount "type=bind,source=$GITHUB_WORKSPACE/deploy/media/verify-inventory.mjs,target=/verify-inventory.mjs,readonly" \
+            --mount "type=bind,source=$GITHUB_WORKSPACE/deploy/media/sources.json,target=/expected-sources.json,readonly" \
+            --entrypoint node kinetra-backend:qualified /verify-inventory.mjs /expected-sources.json \
+            > "$RUNNER_TEMP/kinetra-image-evidence/media-source-verification.json"
+          python3 - <<'PY'
+          import json, os, pathlib
+          root = pathlib.Path(os.environ['RUNNER_TEMP']) / 'kinetra-image-evidence'
+          result = json.loads((root / 'media-source-verification.json').read_text())
+          assert result['result'] == 'KINETRA_SOURCE_MEDIA_INVENTORY=PASS'
+          (root / 'source-components.cdx.json').write_text(json.dumps(result['source_components'], indent=2) + '\n')
+          print('KINETRA_SOURCE_MEDIA_INVENTORY=PASS')
+          PY
           echo 'KINETRA_BACKEND_IMAGE_TOOLING=PASS'
 
       - name: Smoke nginx config, static assets and CSP as UID 101
@@ -427,7 +467,7 @@ jobs:
               (root / (target + '-scan.json')).write_text(json.dumps(report, indent=2) + '\n')
               image_metadata = report.get('Metadata') or {}
               image_os = image_metadata.get('OS') if isinstance(image_metadata, dict) else None
-              expected_family = {'backend': 'debian', 'frontend': 'alpine'}[target]
+              expected_family = 'alpine'
               require(bool(results) and isinstance(image_os, dict) and image_os.get('Family') == expected_family,
                       target + ': expected ' + expected_family + ' scan metadata missing')
               require(any(result.get('Class') == 'os-pkgs' for result in results), target + ': OS coverage missing')
@@ -450,6 +490,20 @@ jobs:
           (root / 'qualification.txt').write_text('KINETRA_IMAGE_SCAN_HIGH_CRITICAL=PASS\n')
           print('KINETRA_IMAGE_SCAN_HIGH_CRITICAL=PASS')
           PY
+
+      - name: Verify upstream source coverage with independent CPE matching
+        if: always() && steps.backend_smoke.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C .kinetra-control rev-parse HEAD)" = "$GITHUB_SHA"
+          sha256sum --check --strict <<'SHA256'
+          a82c532235f04a75bffa484ce3c5be1aad4e5f232fe35392e5fa8726bae7420e  .kinetra-control/ops/timeweb/scan-upstream-media.py
+          c27129cff5dc77a32c278563d41231d78e75175fd7f4fe917da01c7dcef16431  .kinetra-control/ops/timeweb/test-scan-upstream-media.py
+          SHA256
+          python3 .kinetra-control/ops/timeweb/test-scan-upstream-media.py
+          python3 .kinetra-control/ops/timeweb/scan-upstream-media.py \
+            --sbom "$RUNNER_TEMP/kinetra-image-evidence/source-components.cdx.json"
 
       - name: Publish qualified images to project GHCR packages when enabled
         if: env.PUBLISH_TO_GHCR == 'true'

@@ -1,0 +1,321 @@
+# DORMANT REVIEW COPY: this path is not a GitHub Actions workflow.
+# Root must fill every REVIEW_REQUIRED value from actual successful evidence,
+# then publish the reviewed copy as .github/workflows/timeweb-database-initialization.yml.
+# One first initialization on existing server 9069403; no API/frontend/provider activation.
+name: Initialize approved empty Kinetra database on existing hourly host
+
+on:
+  push:
+    branches: [ops/timeweb-hourly-preflight-20260909]
+    paths: [.github/workflows/timeweb-database-initialization.yml]
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+  packages: read
+
+concurrency:
+  group: kinetra-timeweb-hourly-provision
+  cancel-in-progress: false
+
+env:
+  ACTIVATE_DATABASE_INITIALIZATION: REVIEW_REQUIRED
+  APPROVED_APP_COMMIT: REVIEW_REQUIRED
+  APPROVED_BASE_COMMIT: REVIEW_REQUIRED
+  APPROVED_MERGE_COMMIT: REVIEW_REQUIRED
+  APPROVED_HEAD_RUN: REVIEW_REQUIRED
+  APPROVED_MERGE_RUN: REVIEW_REQUIRED
+  APPROVED_IMAGE_RUN: REVIEW_REQUIRED
+  APPROVED_IMAGE_CONTROL_COMMIT: REVIEW_REQUIRED
+  APPROVED_IMAGE_WORKFLOW_SHA256: REVIEW_REQUIRED
+  APPROVED_IMAGE_ARTIFACT_ID: REVIEW_REQUIRED
+  APPROVED_IMAGE_ARTIFACT_SHA256: REVIEW_REQUIRED
+  NODE_IMAGE: REVIEW_REQUIRED
+  NGINX_IMAGE: REVIEW_REQUIRED
+  BACKEND_IMAGE: REVIEW_REQUIRED
+  FRONTEND_IMAGE: REVIEW_REQUIRED
+  POSTGRES_IMAGE: REVIEW_REQUIRED
+  ROOT_SUPPLIED_SERVER_ID: '9069403'
+  ROOT_SUPPLIED_SERVER_IP: 80.68.156.131
+
+jobs:
+  initialize-database:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify reviewed control scripts and explicit activation inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = San4o9910/Kinetra
+          test "$GITHUB_REF" = refs/heads/ops/timeweb-hourly-preflight-20260909
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$ACTIVATE_DATABASE_INITIALIZATION" = APPROVED
+          sha256sum --check --strict <<'SHA256'
+          567d892221925bb438ece6a893360a891ffd4228f8af0a18252b8ba365a682c0  ops/timeweb/inspect-server.py
+          a19aca3ea953feecdcb9be6e9dcabdfc8b0e2b4f3938184391cdfb2ff3e87c9e  ops/timeweb/bootstrap-server.py
+          87c6da7011b45d6e4a7f6ba612caa686f2eb49a7c5b9a8659c213aa6031984b4  ops/timeweb/prepare-database-host.py
+          041f415dedf6b0b6922484281926c8c98c87828506dcb2e1ac6fb324b00b05bb  ops/timeweb/initialize-database-host.py
+          c21fae346fe4e895c15d1124be6956dbc4de90e3ef91859e828509139fb5231b  ops/timeweb/test-prepare-database-host.py
+          5e26395c85ef64b99f045b5ba46bc92d72ffc595f0cb5640a571a599ad8ccea5  ops/timeweb/test-initialize-database-host.py
+          SHA256
+          python3 - <<'PY'
+          import importlib.util, os, re
+          for name in ('APPROVED_APP_COMMIT', 'APPROVED_BASE_COMMIT', 'APPROVED_MERGE_COMMIT', 'APPROVED_IMAGE_CONTROL_COMMIT'):
+              assert re.fullmatch(r'[a-f0-9]{40}', os.environ[name]), name
+          for name in ('APPROVED_HEAD_RUN', 'APPROVED_MERGE_RUN', 'APPROVED_IMAGE_RUN', 'APPROVED_IMAGE_ARTIFACT_ID'):
+              assert re.fullmatch(r'[1-9][0-9]{0,19}', os.environ[name]), name
+          for name in ('APPROVED_IMAGE_WORKFLOW_SHA256', 'APPROVED_IMAGE_ARTIFACT_SHA256'):
+              assert re.fullmatch(r'[a-f0-9]{64}', os.environ[name]), name
+          spec = importlib.util.spec_from_file_location('stage', 'ops/timeweb/prepare-database-host.py')
+          stage = importlib.util.module_from_spec(spec); spec.loader.exec_module(stage)
+          stage.metadata(os.environ)
+          PY
+
+      - name: Verify immutable qualified image evidence and current source gates
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, hashlib, io, json, os, re, urllib.error, urllib.parse, urllib.request, zipfile
+          from datetime import datetime, timezone
+          repo = 'San4o9910/Kinetra'
+          env = os.environ
+          app, base, merge = [env[name] for name in ('APPROVED_APP_COMMIT', 'APPROVED_BASE_COMMIT', 'APPROVED_MERGE_COMMIT')]
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, request, file, code, message, headers, new_url): return None
+          opener = urllib.request.build_opener(NoRedirect)
+          def api(path, *, archive=False):
+              request = urllib.request.Request('https://api.github.com/repos/' + repo + path,
+                  headers={'Authorization': 'Bearer ' + env['GH_TOKEN'], 'Accept': 'application/vnd.github+json',
+                           'X-GitHub-Api-Version': '2022-11-28'})
+              try:
+                  response = opener.open(request, timeout=30)
+              except urllib.error.HTTPError as error:
+                  if not archive or error.code != 302: raise
+                  location = error.headers['Location']; url = urllib.parse.urlsplit(location)
+                  assert url.scheme == 'https' and not url.username and not url.password and url.port in (None, 443)
+                  assert url.hostname and url.hostname.endswith(('.blob.core.windows.net', '.actions.githubusercontent.com'))
+                  # The signed artifact URL receives no GitHub bearer header.
+                  response = opener.open(urllib.request.Request(location), timeout=30)
+              with response:
+                  limit = 64 * 1024 * 1024 if archive else 4 * 1024 * 1024
+                  body = response.read(limit + 1)
+              assert len(body) <= limit
+              return body if archive else json.loads(body)
+          def successful_run(run_id, path, sha, event):
+              run = api('/actions/runs/' + str(run_id))
+              assert run['repository']['full_name'] == repo and run['head_sha'] == sha and run['event'] == event
+              assert run['path'] == path and run['status'] == 'completed' and run['conclusion'] == 'success'
+              assert run['run_attempt'] == 1, 'Only the reviewed first attempt is authorized'
+              jobs = api('/actions/runs/' + str(run_id) + '/attempts/1/jobs?per_page=100')
+              assert jobs['total_count'] == len(jobs['jobs']) and jobs['jobs']
+              for job in jobs['jobs']:
+                  assert job['status'] == 'completed' and job['conclusion'] == 'success'
+                  assert job['steps'] and all(step['status'] == 'completed' and step['conclusion'] == 'success' for step in job['steps'])
+              return run, jobs['jobs']
+          image_run, image_jobs = successful_run(env['APPROVED_IMAGE_RUN'], '.github/workflows/kinetra-image-validation.yml',
+              env['APPROVED_IMAGE_CONTROL_COMMIT'], 'push')
+          assert image_run['head_branch'] == 'ops/timeweb-hourly-preflight-20260909'
+          assert len(image_jobs) == 1 and image_jobs[0]['name'] == 'qualify'
+          assert 'Publish qualified images to project GHCR packages when enabled' in {step['name'] for step in image_jobs[0]['steps']}
+          assert 'Verify upstream source coverage with independent CPE matching' in {step['name'] for step in image_jobs[0]['steps']}
+          source = api('/contents/.github/workflows/kinetra-image-validation.yml?ref=' + env['APPROVED_IMAGE_CONTROL_COMMIT'])
+          assert source['type'] == 'file' and source['encoding'] == 'base64'
+          workflow = base64.b64decode(source['content'])
+          assert hashlib.sha256(workflow).hexdigest() == env['APPROVED_IMAGE_WORKFLOW_SHA256']
+          # This reviewed workflow already checked actual checkout SHA/semantics in every CI job log.
+          # Reuse its immutable artifact, and recheck current PR/run state below instead of duplicating that parser.
+          artifact = api('/actions/artifacts/' + env['APPROVED_IMAGE_ARTIFACT_ID'])
+          assert artifact['id'] == int(env['APPROVED_IMAGE_ARTIFACT_ID']) and artifact['expired'] is False
+          assert artifact['name'] == 'kinetra-image-evidence-' + env['APPROVED_IMAGE_RUN'] + '-1'
+          assert artifact['workflow_run']['id'] == int(env['APPROVED_IMAGE_RUN'])
+          assert artifact['workflow_run']['head_sha'] == env['APPROVED_IMAGE_CONTROL_COMMIT']
+          assert artifact['digest'] == 'sha256:' + env['APPROVED_IMAGE_ARTIFACT_SHA256']
+          assert 0 < artifact['size_in_bytes'] <= 64 * 1024 * 1024
+          archive = api('/actions/artifacts/' + env['APPROVED_IMAGE_ARTIFACT_ID'] + '/zip', archive=True)
+          assert hashlib.sha256(archive).hexdigest() == env['APPROVED_IMAGE_ARTIFACT_SHA256']
+          with zipfile.ZipFile(io.BytesIO(archive)) as zipped:
+              names = zipped.namelist()
+              assert len(names) == len(set(names)) and len(names) <= 150
+              def member(name):
+                  info = zipped.getinfo(name)
+                  assert not info.is_dir() and not info.flag_bits & 1 and info.file_size <= 4 * 1024 * 1024
+                  return zipped.read(info)
+              gates = json.loads(member('source-gates.json'))
+              assert gates['repository'] == repo
+              assert (gates['app_commit'], gates['base_commit'], gates['merge_commit']) == (app, base, merge)
+              assert len(gates['runs']) == 2
+              pr = api('/pulls/21')
+              assert pr['state'] == 'open' and pr['draft'] and not pr['merged']
+              assert pr['head']['repo']['full_name'] == repo and pr['head']['ref'] == 'feature/onboarding-exploration-mode'
+              assert (pr['head']['sha'], pr['base']['sha'], pr['merge_commit_sha']) == (app, base, merge)
+              assert [parent['sha'] for parent in api('/commits/' + merge)['parents']] == [base, app]
+              expected_names = {'Lint, Typecheck & Build', 'Unit & E2E Tests', 'Structure Verification'}
+              for kind, variable, event, semantics, checkout in (
+                  ('exact-head', 'APPROVED_HEAD_RUN', 'push', 'push-head', app),
+                  ('merge-ref', 'APPROVED_MERGE_RUN', 'pull_request', 'pull-request-merge', merge)):
+                  records = [record for record in gates['runs'] if record['kind'] == kind]
+                  assert len(records) == 1
+                  recorded = records[0]
+                  assert recorded['id'] == int(env[variable]) and recorded['attempt'] == 1
+                  run, jobs = successful_run(env[variable], '.github/workflows/ci.yml', app, event)
+                  if event == 'pull_request':
+                      assert any(item['number'] == 21 and item['head']['sha'] == app and item['base']['sha'] == base for item in run['pull_requests'])
+                  assert len(jobs) == 3 and {job['name'] for job in jobs} == expected_names
+                  assert len(recorded['jobs']) == 3 and {job['name'] for job in recorded['jobs']} == expected_names
+                  assert {(job['id'], job['name']) for job in recorded['jobs']} == {(job['id'], job['name']) for job in jobs}
+                  assert all(job['semantics'] == semantics and job['checkout'] == checkout for job in recorded['jobs'])
+              assert member('qualification.txt') == b'KINETRA_IMAGE_SCAN_HIGH_CRITICAL=PASS\n'
+              runtime_markers = member('backend-application-smoke.txt').decode('ascii').splitlines()
+              assert runtime_markers == ['KINETRA_FINAL_IMAGE_BCRYPT_AND_PHOTO_NORMALIZATION=PASS',
+                                         'KINETRA_FINAL_IMAGE_MP4_H264_AAC=PASS']
+              inventory = json.loads(member('media-source-verification.json'))
+              assert inventory['result'] == 'KINETRA_SOURCE_MEDIA_INVENTORY=PASS'
+              source_components = json.loads(member('source-components.cdx.json'))
+              assert inventory['source_components'] == source_components
+              assert source_components['bomFormat'] == 'CycloneDX' and source_components['specVersion'] == '1.6'
+              assert len(source_components['components']) == 2
+              assert {component['name'] for component in source_components['components']} == {'ffmpeg', 'imagemagick'}
+              assert inventory['source_builds']['schemaVersion'] == 1
+              assert len(inventory['source_builds']['components']) == 2
+              assert {component['name'] for component in inventory['source_builds']['components']} == {'ffmpeg', 'imagemagick'}
+              assert inventory['media_apk_inventory'] and inventory['runtime_apk_inventory'].strip()
+              summary = json.loads(member('scan-summary.json'))
+              assert summary['scanner_step_outcome'] == 'success' and summary['errors'] == []
+              assert len(summary['images']) == 2 and {item['image'] for item in summary['images']} == {'backend', 'frontend'}
+              assert all(item['vulnerability_count'] == 0 and item['secret_count'] == 0 for item in summary['images'])
+              assert member('scanner-cleanup.status').strip() == b'0'
+              published = member('published-images.env').decode('ascii').splitlines()
+              assert len(published) == 2 and set(published) == {'BACKEND_IMAGE=' + env['BACKEND_IMAGE'], 'FRONTEND_IMAGE=' + env['FRONTEND_IMAGE']}
+              registry_inputs = [line.split('\t') for line in member('registry-inputs.tsv').decode('ascii').splitlines()]
+              assert len(registry_inputs) == 4 and all(len(row) == 3 for row in registry_inputs)
+              assert {row[0] for row in registry_inputs} == {'NODE_IMAGE', 'NGINX_IMAGE', 'TRIVY_IMAGE', 'GRYPE_IMAGE'}
+              assert all(row[2] == env[row[0]] for row in registry_inputs if row[0] in ('NODE_IMAGE', 'NGINX_IMAGE'))
+              registry_images = {row[0]: row[2] for row in registry_inputs}
+              assert re.fullmatch(r'(?:docker.io/)?anchore/grype@sha256:[a-f0-9]{64}', registry_images['GRYPE_IMAGE'])
+              upstream = json.loads(member('upstream-media/summary.json'))
+              assert upstream['result'] == 'PASS' and not upstream.get('failure')
+              assert upstream['scanner'] == '0.118.0' and upstream['scanner_image'] == registry_images['GRYPE_IMAGE']
+              assert upstream['source_sbom_sha256'] == hashlib.sha256(member('source-components.cdx.json')).hexdigest()
+              component_versions = {component['name']: component['version'] for component in source_components['components']}
+              assert upstream['components'] == component_versions
+              assert {component['name']: component['version'] for component in inventory['source_builds']['components']} == component_versions
+              database = upstream['database']
+              assert re.fullmatch(r'[a-f0-9]{64}', database['sha256'])
+              db_status = json.loads(member('upstream-media/db-status.stdout'))
+              assert db_status['valid'] is True and not db_status.get('error')
+              assert re.fullmatch(r'6(?:\.\d+){0,2}', db_status['schemaVersion'])
+              assert db_status['from'].startswith('https://grype.anchore.io/')
+              assert all(database[key] == db_status[key] for key in ('schemaVersion', 'built', 'from'))
+              built = datetime.fromisoformat(database['built'].replace('Z', '+00:00'))
+              assert built.tzinfo is not None
+              assert -300 <= (datetime.now(timezone.utc) - built).total_seconds() <= 120 * 3600
+              expected_calls = [('version', 0, False), ('db-update', 0, True), ('db-status', 0, False),
+                                ('positive-control', 2, False), ('production', 0, False)]
+              assert [(call['phase'], call['exit_code'], call['network']) for call in upstream['calls']] == expected_calls
+              assert upstream['positive-control']['exit_code'] == 2 and upstream['production']['exit_code'] == 0
+              assert upstream['high_critical_findings'] == 0
+              for phase, expected_coverage in (('positive-control', {'ffmpeg': '5.1.9', 'imagemagick': '7.1.2-29'}),
+                                               ('production', component_versions)):
+                  assert upstream[phase]['result'] == 'PASS' and upstream[phase]['network'] == 'none'
+                  assert upstream[phase]['coverage'] == expected_coverage
+                  assert upstream[phase]['database_sha256'] == database['sha256']
+              controls = upstream['positive-control']['findings']
+              assert any(finding['severity'] in ('High', 'Critical') for finding in controls)
+              for name, version, cves in (
+                  ('ffmpeg', '5.1.9', {'CVE-2026-8461'}),
+                  ('imagemagick', '7.1.2-29', {'CVE-2026-86420', 'CVE-2026-86421'})):
+                  assert cves <= {finding['id'] for finding in controls if finding['component'] == name and finding['version'] == version}
+              findings = upstream['production']['findings']
+              assert isinstance(findings, list)
+              assert all(finding['component'] in component_versions and finding['version'] == component_versions[finding['component']]
+                         and finding['severity'] in ('Unknown', 'Negligible', 'Low', 'Medium') for finding in findings)
+              production = json.loads(member('upstream-media/production.json'))
+              assert production['descriptor']['name'] == 'grype' and production['descriptor']['version'] == upstream['scanner']
+              assert all(production['descriptor']['db'][key] == database[key] for key in ('schemaVersion', 'built', 'from'))
+              assert isinstance(production['matches'], list) and len(production['matches']) == len(findings)
+              assert not production.get('ignoredMatches')
+              assert all(match['vulnerability']['severity'] in ('Unknown', 'Negligible', 'Low', 'Medium') for match in production['matches'])
+              scanned_bom = json.loads(member('upstream-media/production.cdx.json'))
+              assert scanned_bom['bomFormat'] == 'CycloneDX' and scanned_bom['specVersion'] == '1.7'
+              assert len(scanned_bom['components']) == 2
+              assert {component['name']: component['version'] for component in scanned_bom['components']} == component_versions
+              expected_components = {component['name']: component for component in source_components['components']}
+              for component in scanned_bom['components']:
+                  expected = expected_components[component['name']]
+                  assert component['purl'] == expected['purl']
+                  assert component['cpe'].replace('\\-', '-') == expected['cpe']
+              for target in ('backend', 'frontend'):
+                  raw_manifest = member(target + '-registry-manifest.json')
+                  assert 'sha256:' + hashlib.sha256(raw_manifest).hexdigest() == env[target.upper() + '_IMAGE'].split('@')[1]
+                  manifest = json.loads(raw_manifest)
+                  images = json.loads(member(target + '-image.json'))
+                  assert len(images) == 1 and manifest['config']['digest'] == images[0]['Id']
+                  assert images[0]['Config']['Labels']['org.opencontainers.image.revision'] == app
+                  assert images[0]['Os'] == 'linux' and images[0]['Architecture'] == 'amd64'
+          # Live package metadata must still identify private packages owned by this project.
+          for target in ('backend', 'frontend'):
+              request = urllib.request.Request('https://api.github.com/users/San4o9910/packages/container/kinetra-' + target,
+                  headers={'Authorization': 'Bearer ' + env['GH_TOKEN'], 'Accept': 'application/vnd.github+json',
+                           'X-GitHub-Api-Version': '2022-11-28'})
+              with opener.open(request, timeout=30) as response:
+                  body = response.read(1024 * 1024 + 1)
+              assert len(body) <= 1024 * 1024
+              package = json.loads(body)
+              assert package['visibility'] == 'private' and package['repository']['full_name'] == repo
+          print('KINETRA_DATABASE_SOURCE_AND_IMAGE_PROVENANCE=PASS')
+          PY
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.APPROVED_APP_COMMIT }}
+          path: Kinetra
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify exact application checkout and offline database runner tests
+        shell: bash
+        env:
+          APP_CHECKOUT: ${{ github.workspace }}/Kinetra
+        run: |
+          set -euo pipefail
+          test "$(git -C "$APP_CHECKOUT" rev-parse HEAD)" = "$APPROVED_APP_COMMIT"
+          git -C "$APP_CHECKOUT" diff --exit-code
+          (cd "$APP_CHECKOUT" && sha256sum --check --quiet MANIFEST.sha256)
+          command -v node >/dev/null
+          env -i PATH="$PATH" python3 ops/timeweb/test-prepare-database-host.py
+          env -i PATH="$PATH" APP_CHECKOUT="$APP_CHECKOUT" python3 ops/timeweb/test-initialize-database-host.py
+
+      - name: Stage exact sources and qualified images on existing server 9069403
+        shell: bash
+        env:
+          APP_CHECKOUT: ${{ github.workspace }}/Kinetra
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 ops/timeweb/prepare-database-host.py --stage-new-empty-database-host
+
+      - name: Initialize only the approved new empty PostgreSQL database
+        shell: bash
+        env:
+          APP_CHECKOUT: ${{ github.workspace }}/Kinetra
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -z "${GITHUB_TOKEN:-}"
+          test -z "${GH_TOKEN:-}"
+          python3 ops/timeweb/initialize-database-host.py --initialize-new-empty-database
+
+# Host helpers enforce fixed server identity, pinned SSH, invocation-owned key
+# cleanup, read-only approved inputs, preserved partial data and no app startup.
+# A failed/partial stage or initialization needs a diagnosed correction/resume;
+# this first-initialization workflow must never clear state or blindly rerun.

@@ -200,6 +200,22 @@ class OrchestrationTests(unittest.TestCase):
 
 
 class ContractTests(unittest.TestCase):
+    def test_reviewed_alpine_tags_match_outer_and_guest_allowlists(self):
+        for variant in ("22-bookworm-slim", "22-alpine3.24"):
+            data = payload()
+            data["images"]["NODE_IMAGE"] = "node:" + variant + "@sha256:" + "1" * 64
+            self.assertEqual(stage.metadata({"APPROVED_APP_COMMIT": COMMIT, **data["images"]})["images"], data["images"])
+            guest["validate_payload"](data)
+        for image in ("nginxinc/nginx-unprivileged:1.30.4@sha256:" + "2" * 64,
+                      "nginxinc/nginx-unprivileged:1.30.4-alpine@sha256:" + "2" * 64,
+                      "nginxinc/nginx-unprivileged:latest@sha256:" + "2" * 64):
+            data = payload()
+            data["images"]["NGINX_IMAGE"] = image
+            with self.assertRaises(stage.Error):
+                stage.metadata({"APPROVED_APP_COMMIT": COMMIT, **data["images"]})
+            with self.assertRaises(guest["StageError"]):
+                guest["validate_payload"](data)
+
     def test_compose_supports_verified_ubuntu_suffix_without_accepting_unsupported_versions(self):
         for version in ('2.40.3+ds1-0ubuntu1~24.04.1', 'v2.30.0', '2.40.3'):
             guest['validate_compose_version'](version)
