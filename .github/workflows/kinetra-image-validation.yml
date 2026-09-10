@@ -18,11 +18,11 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  APPROVED_APP_COMMIT: 1d7f827b301072faa86d4955f0d94ec1b027d353
+  APPROVED_APP_COMMIT: fc55ef42169d2729f31a897d6b499d936004c756
   APPROVED_BASE_COMMIT: ea0412a20baa87b7a00c4ce466d204d12fb052cc
-  APPROVED_MERGE_COMMIT: 072b29862ec25a3739fafb030cb3d6382ed4d4f7
-  APPROVED_HEAD_RUN: '34441915544'
-  APPROVED_MERGE_RUN: '34441917975'
+  APPROVED_MERGE_COMMIT: 36ec682d203fc5335d00f4816f4dbb8a0fd7f9cf
+  APPROVED_HEAD_RUN: '34447345842'
+  APPROVED_MERGE_RUN: '34447349464'
   PUBLISH_TO_GHCR: 'true'
   PUBLIC_ORIGIN: https://80.68.156.131
   NODE_TAG: docker.io/library/node:22-alpine3.24
@@ -33,7 +33,7 @@ env:
 jobs:
   qualify:
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 150
     permissions:
       contents: read
       actions: read
@@ -166,6 +166,15 @@ jobs:
         run: |
           set -euo pipefail
           evidence="$RUNNER_TEMP/kinetra-image-evidence"
+          python3 - <<'PY_RESOURCES'
+          import json, os, pathlib, shutil
+          mem = {line.split(':', 1)[0]: line.split(':', 1)[1].strip() for line in pathlib.Path('/proc/meminfo').read_text().splitlines()}
+          record = {'logical_cpus': os.cpu_count(), 'affinity_cpus': len(os.sched_getaffinity(0)),
+                    'memory_total_bytes': int(mem['MemTotal'].split()[0]) * 1024,
+                    'disk_free_bytes': shutil.disk_usage(os.environ['RUNNER_TEMP']).free}
+          (pathlib.Path(os.environ['RUNNER_TEMP']) / 'kinetra-image-evidence/runner-resources.json').write_text(json.dumps(record, indent=2) + '\n')
+          print('KINETRA_IMAGE_RUNNER_RESOURCES=' + json.dumps(record, sort_keys=True))
+          PY_RESOURCES
           docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges \
             --user 1000:1000 --entrypoint sh "$NODE_IMAGE" -ec \
             '. /etc/os-release; test "$ID" = alpine; case "$VERSION_ID" in 3.24.*) ;; *) exit 1 ;; esac; node -e '\''if(process.versions.node.split(".")[0]!=="22")process.exit(1)'\''; node --version; npm --version; cat /etc/os-release' \

@@ -1,0 +1,83 @@
+# Application activation after DATABASE_INITIALIZED_ONLY
+
+Inactive runbook only; no workflow or host action has run from this document. Target **Timeweb 9069403 / 80.68.156.131**, hourly billing, total hosting **≤2,000 RUB/month**. Latest CONTINUOUS FIX & DEPLOYMENT approval controls: diagnosed fixes/reruns and deployment after green mandatory gates are allowed; merge, existing-data deletion, real payments and user messages remain prohibited. No new server/resource or feature-flag activation is included. Chat short videos remain T15.
+
+## 1. Verify the handoff
+
+- Reuse `kinetra-timeweb-hourly-provision` concurrency and `/run/kinetra-database-stage.lock`. Verify the fixed server/account/IP through `ops/timeweb/inspect-server.py`; pin SSH **SHA256:T3RfyVAstE+dyvneeMMYUjIm1Ej+NN3D5Vr9sIyRUG0** before creating an invocation-owned key. Reuse the existing guest/account/local cleanup contract; secrets stay step-local and outside child environments/logs.
+- Require current Draft PR #21 identity, exact-head/merge-ref success without skipped mandatory gates, and immutable qualified images. Reuse `database-activation.yml` provenance verification, including actual runtime and upstream source scans.
+- Require `/srv/kinetra-stage/evidence/initialization.json`: `DATABASE_INITIALIZED_ONLY`, `INITIALIZATION_COMPLETE`, `readonly_acceptance=true`, `application_started=false`; commit/images/migration hashes must match. Require the successful outer result including key cleanup. Preserve both earlier evidence files.
+- Reinspect the recorded healthy PostgreSQL container, data bind, private network and no published database port; verify migration ledger 001–013 through read-only SQL. Require prepared Caddy 2.11.4 disabled/inactive and unchanged firewall. Never rerun initialization or Caddy installation.
+
+**Reference spelling:** before staging, use `postgres:17-bookworm@sha256:<reviewed-digest>`. Staging accepts canonical tagless PG references, but the approved app's `deploy/postgres/validate-single-server.mjs` still requires this explicit tag plus digest. Node/nginx retain their qualified canonical references. Do not rewrite already-staged references to evade evidence equality.
+
+## 2. Complete the private API environment
+
+Read `deploy/api.env.example` from the approved app commit; that template is not among the fifteen files already staged. Construct a root-owned mode0600 replacement for `/srv/kinetra-stage/env/api.env`, validate it, and atomically install it while preserving the previous incomplete file privately. Require that previous file to equal its recorded state. Do not print secrets, full environment, Docker `Config.Env` or credential-bearing URLs.
+
+| Setting/file | Required value or source |
+| --- | --- |
+| `env/production.env` | Preserve image digests, `VCS_REF`, `VITE_API_URL=https://80.68.156.131`, blank private-media origin/video scratch, and existing absolute API-env path. A changed frontend origin requires newly qualified assets. |
+| `env/single-server.env` | Preserve PostgreSQL digest and all existing data, role-secret, public CA, leaf certificate/key and edge paths. |
+| API `DATABASE_URL` | Construct privately from existing `postgres/secrets/api_password`: `postgresql://kinetra_api:<existing-password>@postgres:5432/kinetra?sslmode=verify-full`. No role-password regeneration or migration/bootstrap credentials. |
+| Listener/proxy | `NODE_ENV=production`, `HOST=0.0.0.0`, `PORT=3000`, `TRUST_PROXY_HOPS=1`, `CORS_ORIGIN=https://80.68.156.131`. Port 3000 remains unpublished. |
+| JWT | Generate at least 32 cryptographically random bytes privately for this first deployment. Do not rotate on later retries with existing sessions. |
+| Auth delivery | Secure refresh cookie; `AUTH_TOKEN_DELIVERY_MODE=webhook`; timeout 10000. **Missing:** genuine compatible HTTPS webhook URL and agreed secret satisfying the validator. |
+| YooKassa | **Missing:** genuine matching `YUKASSA_SHOP_ID` and `YUKASSA_SECRET_KEY`. Return URL `https://80.68.156.131/payment/success`, timeout 10000. Record account mode; no payment request or demo subscription seed. |
+| VAPID | Generate a genuine P-256 pair privately; set `VAPID_SUBJECT=https://80.68.156.131`. The trio is required even with notification workers inactive; no invented owner email is needed. |
+| Flags/storage | `CHAT_ENABLED=false`, `CHAT_PHOTO_UPLOADS_ENABLED=false`, `TRAINER_VIDEO_UPLOADS_ENABLED=false`; all five S3 connection/credential values blank, path-style false, encryption AES256, KMS blank. No partial S3 config. |
+| Lifecycle | `READINESS_TIMEOUT_MS=2000`, `SHUTDOWN_DRAIN_MS=5000`, `SHUTDOWN_TIMEOUT_MS=25000`, matching the approved example. |
+| Existing private/public files | Preserve `env/jobs/migrate.env`, eight role-password files, TLS material and `edge/nginx-real-ip.conf`. Keep its exact observed peer; never guess a gateway or trust a subnet. No worker env/scheduler activation. |
+
+All paths above are beneath `/srv/kinetra-stage` unless absolute. Runtime/API keys must use the template's exact names and raw-env syntax.
+
+The delivery implementation is an **outbound** HTTPS client: Bearer secret and JSON `version/event/recipient/token/expiresAt`. This project supplies neither an SMTP adapter nor a receiving delivery service. SMTP credentials or a random secret alone do not satisfy it. Do not call that receiver during no-message acceptance.
+
+## 3. Validate before startup
+
+Run staged `deploy/postgres/validate-single-server.mjs` with `/srv/kinetra-stage/env/single-server.env` and `/srv/kinetra-stage/env/production.env`, **without migrate/job arguments**. This invokes full API validation and verifies existing role credentials/TLS/paths/edge trust.
+
+Use the reviewed disposable backend-image pattern: network none, read-only filesystem, narrow read-only mounts and short-lived root plus `DAC_READ_SEARCH` for private-file inspection. Never mount the CA signing-key directory or whole stage. Running API remains UID 1000 without that capability; host Node/npm is unnecessary. Also import actual compiled `apps/backend/dist/config/env.js` in an isolated backend container with the completed API env, without running `server.js`; emit only a fixed validation marker.
+
+Current recorded presence run [34439772760](https://github.com/San4o9910/Kinetra/actions/runs/34439772760) found all four provider settings absent. Until supplied, leave the API environment explicitly incomplete and application services inactive. Generated JWT/VAPID keys cannot remove this blocker; development mode or fake credentials are not substitutes.
+
+## 4. Start only application services
+
+After the handoff/configuration checks, use verified existing images and this clean Compose prefix:
+
+```bash
+kinetra_compose=(
+  /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin LC_ALL=C
+  /usr/bin/docker compose --project-name kinetra-production
+  --env-file /srv/kinetra-stage/env/production.env
+  --env-file /srv/kinetra-stage/env/single-server.env
+  -f /srv/kinetra-stage/source/deploy/compose.production.yml
+  -f /srv/kinetra-stage/source/deploy/compose.single-server.yml
+)
+"${kinetra_compose[@]}" config --quiet
+"${kinetra_compose[@]}" up --detach --no-deps --no-build --pull never backend
+```
+
+Verify the exact backend image/ID, UID 1000, read-only state, caps/networks and absent published ports. Require healthy state within a bounded deadline and internal `http://127.0.0.1:3000/ready` HTTP 200/`status:ready`. This is connectivity/draining evidence, not schema/provider acceptance.
+
+Then run the same prefix with `up --detach --no-deps --no-build --pull never frontend`. Verify image, UID 101, read-only state, nginx syntax and only 127.0.0.1:8080 publication. Host-loopback checks: `/` and real assets 200, `/health` 200, `/ready` 404, unauthenticated `/api/v1/me` 401; inspect CSP/security headers and API no-store. Image metadata proves the commit, not the fixed health-version string.
+
+Only postgres/backend/frontend persist. No jobs profile, migrate/seed execution, worker/scheduler, image pull/build or media flags. Inactive renewal workers do **not** disable API payment routes. PostgreSQL retains restart policy `no`; root must implement and verify a separately recorded persistent runtime policy before claiming unattended/reboot-ready operation, preserving staged source/data.
+
+## 5. Start prepared HTTPS and perform restricted browser acceptance
+
+Reverify prepared Caddy binary/unit and Caddyfile SHA256 `c06f2a92c3daaf28c1f0db737c2389447c9f33604615bb599d082df114c9372d`, fixed PUBLIC_IPV4 and observed nginx peer. Validate as `caddy` using the existing isolated validation pattern. Only after local acceptance, `systemctl start caddy.service` requests the short-lived Let's Encrypt IP certificate via HTTP01 and enables public routing. Enable at boot after acceptance and database restart-policy completion; do not reinstall or change origin.
+
+Externally verify ordinary trusted HTTPS, IP SAN 80.68.156.131, chain/validity dates and HTTP→HTTPS redirect, without insecure flags. Repeat shell/assets/health/401/404 checks and inspect listeners: no public ports 3000/5432/8080. Retain sanitized HTTP/certificate evidence; issuance does not prove renewal monitoring.
+
+Use a fresh browser context without cookies/storage. Check mobile/desktop login rendering, focus, theme, assets and mixed-content/runtime errors; no forms, payment/reset/verification, push permissions, media uploads or production writes. One expected request is `POST /api/v1/auth/refresh`: with **no Cookie header**, the current router returns 401/`REFRESH_TOKEN_REQUIRED` before invoking its service. Permit only that checked anonymous bootstrap plus GET/HEAD/OPTIONS; block other mutations or refresh with a cookie. Do not fabricate authentication responses.
+
+This proves anonymous live serving only. Exact-source CI browser gates remain the authenticated UX evidence; no production login, cookie issuance, workout save, delivery or payment is claimed tested.
+
+## 6. Record and roll back without data loss
+
+Record approved commit/image/config hashes, owned container IDs, database handoff, local/public/browser results, outstanding items and key cleanup. No secrets or token-bearing traces. For this first deployment there is no previous accepted app image: on failed activation stop Caddy, then gracefully stop only this project's frontend/backend with the same Compose prefix. Preserve PostgreSQL/container/data, secrets, TLS and initialization records; retain diagnostics and the prior private API config. No `down -v`, pruning, SQL reversal, reinitialization or automatic data restore.
+
+Full user launch still needs actual encrypted offsite backup/key recovery, isolated restore evidence and agreed retention/RPO/RTO/response ownership; existing backup/monitoring documents are proposals, not completed services. These do not require invented provider keys or a renewed blanket approval. A free closed-beta mode is a separate owner product decision and implementation. Distinguish database initialization, technical reachability and accepted user launch in status reports.
+
+Sources: control `ops/timeweb/{prepare-database-host.py,initialize-database-host.py,prepare-caddy.sh,prepare-caddy-host.py}`; approved app `deploy/{api.env.example,compose.production.yml,compose.single-server.yml,nginx.conf,edge/Caddyfile,postgres/validate-single-server.mjs}`, `ops/validate-production-env.mjs`, `apps/backend/src/{server.ts,config/env.ts,auth/router.ts,auth/delivery.ts}`, `apps/frontend/src/{App.tsx,lib/api.ts}`. No new tests, broad audit or host execution accompanied this document.
