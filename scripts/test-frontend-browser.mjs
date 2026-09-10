@@ -158,6 +158,21 @@ const counters = {
   logout: 0,
 };
 
+// Independent auth-link fixtures never invoke a delivery service or affect paid-flow counters.
+const browserResetToken = `browser-reset-token-${'a'.repeat(48)}`;
+const browserExpiredResetToken = `browser-expired-reset-${'b'.repeat(48)}`;
+const browserVerificationToken = `browser-verification-${'c'.repeat(48)}`;
+const browserNewPassword = 'New-correct-password-2026!';
+const authLinkFixture = {
+  enabled: false,
+  resetRequests: [],
+  resetConfirmations: [],
+  verificationTokens: [],
+  loginCount: 0,
+  passwordChanged: false,
+  bootstrapRequests: 0,
+};
+
 const baseLessonTitles = [
   'Как понять правильно ли я дышу?',
   'Как правильно отжиматься?',
@@ -659,6 +674,91 @@ const createMockApiServer = () =>
       });
       response.end();
       return;
+    }
+
+    if (authLinkFixture.enabled && ['/api/v1/auth/refresh', '/api/v1/me'].includes(request.url)) {
+      authLinkFixture.bootstrapRequests += 1;
+    }
+
+    if (authLinkFixture.enabled && request.method === 'POST') {
+      if (request.url === '/api/v1/auth/password-reset/request') {
+        const body = await readJsonBody(request);
+        assert.deepEqual(Object.keys(body), ['identifier']);
+        assert.ok(
+          ['reset-browser@example.test', 'unknown-browser@example.test'].includes(body.identifier),
+        );
+        assert.equal(request.headers.authorization, undefined);
+        authLinkFixture.resetRequests.push(body.identifier);
+        json(response, 202, {
+          message: 'If the account exists, password-reset instructions have been sent.',
+        });
+        return;
+      }
+
+      if (request.url === '/api/v1/auth/password-reset/confirm') {
+        const body = await readJsonBody(request);
+        assert.deepEqual(Object.keys(body).sort(), ['newPassword', 'token']);
+        assert.equal(body.newPassword, browserNewPassword);
+        assert.equal(request.headers.authorization, undefined);
+        assert.ok([browserResetToken, browserExpiredResetToken].includes(body.token));
+        authLinkFixture.resetConfirmations.push(body.token);
+        if (body.token === browserExpiredResetToken || authLinkFixture.passwordChanged) {
+          json(response, 400, {
+            error: {
+              code: 'INVALID_OR_EXPIRED_RESET_TOKEN',
+              message: 'Password-reset token is invalid, expired, or already used.',
+            },
+          });
+          return;
+        }
+        authLinkFixture.passwordChanged = true;
+        json(
+          response,
+          200,
+          { message: 'Password has been reset.' },
+          {
+            'Set-Cookie': 'kinetra_refresh=; HttpOnly; Path=/api/v1/auth; Max-Age=0; SameSite=Lax',
+          },
+        );
+        return;
+      }
+
+      if (request.url === '/api/v1/auth/verify-email' || request.url === '/api/v1/auth/login') {
+        const body = await readJsonBody(request);
+        assert.equal(request.headers.authorization, undefined);
+        if (request.url === '/api/v1/auth/verify-email') {
+          assert.deepEqual(body, { token: browserVerificationToken });
+          authLinkFixture.verificationTokens.push(body.token);
+        } else {
+          assert.deepEqual(body, {
+            identifier: 'reset-browser@example.test',
+            password: browserNewPassword,
+          });
+          assert.equal(authLinkFixture.passwordChanged, true);
+          authLinkFixture.loginCount += 1;
+        }
+        json(
+          response,
+          200,
+          {
+            user: {
+              id: profile.user.id,
+              email: profile.user.email,
+              phone: null,
+              emailVerified: true,
+              createdAt: profile.user.createdAt,
+            },
+            accessToken: 'access-refresh-auth-link',
+            tokenType: 'Bearer',
+            expiresIn: 900,
+          },
+          {
+            'Set-Cookie':
+              'kinetra_refresh=auth-link-session; HttpOnly; Path=/api/v1/auth; SameSite=Lax',
+          },
+        );
+        return;
+      }
     }
 
     if (request.method === 'POST' && request.url === '/api/v1/auth/login') {
@@ -4745,6 +4845,198 @@ const runBrowserScenario = async () => {
       paymentsEnabled = freeBetaFixture.paymentsEnabled;
       await cdp.send('Page.removeScriptToEvaluateOnNewDocument', {
         identifier: freeBetaRouteObserver.identifier,
+      });
+    }
+
+    // Auth links run only after all prior scenarios and their assertions have completed.
+    authLinkFixture.enabled = true;
+    const authTokenObserver = await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
+      source: `(() => {
+        const tokens = ${JSON.stringify([browserResetToken, browserExpiredResetToken, browserVerificationToken])};
+        window.__kinetraAuthTokenWrites = [];
+        const setItem = Storage.prototype.setItem;
+        Storage.prototype.setItem = function (key, value) {
+          if (tokens.some((token) => String(key).includes(token) || String(value).includes(token))) {
+            window.__kinetraAuthTokenWrites.push(String(key));
+          }
+          return setItem.call(this, key, value);
+        };
+      })();`,
+    });
+    const assertAuthTokenCleared = async () => {
+      assert.equal(await cdp.evaluate('window.location.search + window.location.hash'), '');
+      assert.deepEqual(await cdp.evaluate('window.__kinetraAuthTokenWrites'), []);
+      assert.equal(
+        await cdp.evaluate(`(() => {
+        const tokens = ${JSON.stringify([browserResetToken, browserExpiredResetToken, browserVerificationToken])};
+        const persisted = JSON.stringify({
+          local: { ...localStorage },
+          session: { ...sessionStorage },
+          history: window.history.state,
+          cookie: document.cookie,
+        });
+        return tokens.some((token) => persisted.includes(token));
+      })()`),
+        false,
+        'Auth-link tokens must not be persisted in browser storage or history state.',
+      );
+    };
+    const fillResetPassword = async () => {
+      await setValue('reset-new-password', browserNewPassword);
+      await setValue('reset-confirm-password', browserNewPassword);
+      await waitFor(
+        'matching reset password enables submit',
+        async () => !(await disabled('reset-confirm-submit')),
+      );
+    };
+
+    try {
+      await cdp.send('Network.clearBrowserCookies');
+      await cdp.send('Page.navigate', { url: `${frontendOrigin}/login` });
+      await waitFor('login before password recovery', () => exists('login-screen'));
+      await click('login-forgot-password');
+      await waitFor('password recovery request form', () =>
+        exists('password-reset-request-screen'),
+      );
+      await setValue('reset-email', 'reset-browser@example.test');
+      await waitFor(
+        'password recovery request can submit',
+        async () => !(await disabled('reset-request-submit')),
+      );
+      await click('reset-request-submit');
+      await waitFor('neutral password recovery confirmation', () => exists('reset-request-sent'));
+      const knownAccountConfirmation = await text('reset-request-sent');
+      assert.ok(knownAccountConfirmation?.trim().length > 0);
+      assert.equal(knownAccountConfirmation.includes('reset-browser@example.test'), false);
+      await click('reset-request-back');
+      await waitFor('login after password recovery request', () => exists('login-screen'));
+      await click('login-forgot-password');
+      await waitFor('second recovery request form', () => exists('password-reset-request-screen'));
+      await setValue('reset-email', 'unknown-browser@example.test');
+      await waitFor(
+        'unknown account request can submit',
+        async () => !(await disabled('reset-request-submit')),
+      );
+      await click('reset-request-submit');
+      await waitFor('unknown account receives neutral confirmation', () =>
+        exists('reset-request-sent'),
+      );
+      assert.equal(await text('reset-request-sent'), knownAccountConfirmation);
+      assert.deepEqual(authLinkFixture.resetRequests, [
+        'reset-browser@example.test',
+        'unknown-browser@example.test',
+      ]);
+
+      for (const suffix of [
+        '',
+        `?token=${browserResetToken}`,
+        `#token=${browserResetToken}&token=${browserResetToken}`,
+      ]) {
+        const bootstrapBeforeLink = authLinkFixture.bootstrapRequests;
+        await cdp.send('Page.navigate', { url: `${frontendOrigin}/auth/reset-password${suffix}` });
+        await waitFor('invalid recovery link is explained', () => exists('auth-link-invalid'));
+        assert.equal(await exists('reset-confirm-submit'), false);
+        assert.equal(authLinkFixture.resetConfirmations.length, 0);
+        assert.equal(authLinkFixture.bootstrapRequests, bootstrapBeforeLink);
+        await assertAuthTokenCleared();
+      }
+      await click('auth-link-request-new');
+      await waitFor('invalid link offers another recovery request', () =>
+        exists('password-reset-request-screen'),
+      );
+
+      await cdp.send('Page.navigate', {
+        url: `${frontendOrigin}/auth/reset-password#token=${browserExpiredResetToken}`,
+      });
+      await waitFor('expired token is validated only after password entry', () =>
+        exists('password-reset-screen'),
+      );
+      await fillResetPassword();
+      await click('reset-confirm-submit');
+      await waitFor('server rejects expired recovery link', () => exists('auth-link-invalid'));
+      assert.equal(authLinkFixture.passwordChanged, false);
+      assert.deepEqual(authLinkFixture.resetConfirmations, [browserExpiredResetToken]);
+      await assertAuthTokenCleared();
+
+      const bootstrapBeforeReset = authLinkFixture.bootstrapRequests;
+      await cdp.send('Page.navigate', {
+        url: `${frontendOrigin}/auth/reset-password#token=${browserResetToken}`,
+      });
+      await waitFor('valid password reset link opens the new password form', () =>
+        exists('password-reset-screen'),
+      );
+      assert.equal(authLinkFixture.bootstrapRequests, bootstrapBeforeReset);
+      assert.equal(authLinkFixture.resetConfirmations.length, 1);
+      await assertAuthTokenCleared();
+      await setValue('reset-new-password', browserNewPassword);
+      await setValue('reset-confirm-password', 'Different-password-2026!');
+      assert.equal(await disabled('reset-confirm-submit'), true);
+      assert.equal(authLinkFixture.resetConfirmations.length, 1);
+      await fillResetPassword();
+      await click('reset-confirm-submit');
+      await waitFor('new password is saved successfully', () => exists('reset-success'));
+      assert.deepEqual(authLinkFixture.resetConfirmations, [
+        browserExpiredResetToken,
+        browserResetToken,
+      ]);
+      assert.equal(authLinkFixture.loginCount, 0, 'Reset completion must not silently sign in.');
+      assert.equal(await exists('reset-new-password'), false);
+      assert.equal(await exists('reset-confirm-password'), false);
+      await assertAuthTokenCleared();
+      await click('auth-link-continue');
+      await waitFor('successful reset returns to login', () => exists('login-screen'));
+      await setValue('login-identifier', 'reset-browser@example.test');
+      await setValue('login-password', browserNewPassword);
+      await waitFor('new password login can submit', async () => !(await disabled('login-submit')));
+      await click('login-submit');
+      await waitFor('the new password opens the application', () => exists('main-screen'));
+      assert.equal(authLinkFixture.loginCount, 1);
+      assert.equal(await cdp.evaluate("localStorage.getItem('kinetra.accessToken')"), null);
+
+      await cdp.send('Network.clearBrowserCookies');
+      await cdp.send('Page.navigate', {
+        url: `${frontendOrigin}/auth/reset-password#token=${browserResetToken}`,
+      });
+      await waitFor('reopening a link does not automatically submit its token', () =>
+        exists('password-reset-screen'),
+      );
+      await assertAuthTokenCleared();
+      await cdp.send('Page.reload');
+      await waitFor('reload cannot recover the consumed URL fragment from storage', () =>
+        exists('auth-link-invalid'),
+      );
+      assert.deepEqual(authLinkFixture.resetConfirmations, [
+        browserExpiredResetToken,
+        browserResetToken,
+      ]);
+      await assertAuthTokenCleared();
+      console.log('KINETRA_PASSWORD_RECOVERY_BROWSER_E2E=PASS');
+
+      const bootstrapBeforeVerification = authLinkFixture.bootstrapRequests;
+      await cdp.send('Page.navigate', {
+        url: `${frontendOrigin}/auth/verify-email#token=${browserVerificationToken}`,
+      });
+      await waitFor('email verification waits for an explicit confirmation', () =>
+        exists('email-verification-screen'),
+      );
+      assert.equal(authLinkFixture.bootstrapRequests, bootstrapBeforeVerification);
+      assert.deepEqual(authLinkFixture.verificationTokens, []);
+      assert.equal(await exists('email-verification-submit'), true);
+      await assertAuthTokenCleared();
+      await click('email-verification-submit');
+      await waitFor('email verification succeeds after the explicit click', () =>
+        exists('email-verification-success'),
+      );
+      assert.deepEqual(authLinkFixture.verificationTokens, [browserVerificationToken]);
+      await assertAuthTokenCleared();
+      await click('auth-link-continue');
+      await waitFor('verified email session opens the application', () => exists('main-screen'));
+      assert.equal(await cdp.evaluate("localStorage.getItem('kinetra.accessToken')"), null);
+      console.log('KINETRA_EMAIL_VERIFICATION_BROWSER_E2E=PASS');
+    } finally {
+      authLinkFixture.enabled = false;
+      await cdp.send('Page.removeScriptToEvaluateOnNewDocument', {
+        identifier: authTokenObserver.identifier,
       });
     }
   } catch (error) {

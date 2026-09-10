@@ -319,6 +319,8 @@ jobs:
           grep -E '^(# |ℹ )?KINETRA_FREE_BETA_POSTGRES17=PASS$' /tmp/kinetra-test.log
           grep -E '^KINETRA_PAYMENTS_DISABLED_BROWSER_E2E=PASS$' /tmp/kinetra-test.log
           grep -E '^KINETRA_FREE_BETA_BROWSER_E2E=PASS$' /tmp/kinetra-test.log
+          grep -E '^KINETRA_PASSWORD_RECOVERY_BROWSER_E2E=PASS$' /tmp/kinetra-test.log
+          grep -E '^KINETRA_EMAIL_VERIFICATION_BROWSER_E2E=PASS$' /tmp/kinetra-test.log
           node --input-type=module <<'JS_SUITE_EVIDENCE'
           import assert from 'node:assert/strict';
           import { readFileSync } from 'node:fs';

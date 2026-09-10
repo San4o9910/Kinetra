@@ -6,9 +6,14 @@ import { ApiRequestError, fetchMe, login } from '../../lib/api';
 interface LoginScreenProps {
   readonly onAuthenticated: (profile: MeResponse) => void;
   readonly onRegister: () => void;
+  readonly onForgotPassword: () => void;
 }
 
-export const LoginScreen = ({ onAuthenticated, onRegister }: LoginScreenProps): ReactNode => {
+export const LoginScreen = ({
+  onAuthenticated,
+  onRegister,
+  onForgotPassword,
+}: LoginScreenProps): ReactNode => {
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -98,6 +103,15 @@ export const LoginScreen = ({ onAuthenticated, onRegister }: LoginScreenProps): 
           </button>
         </form>
 
+        <button
+          className="auth-link-button"
+          data-testid="login-forgot-password"
+          type="button"
+          onClick={onForgotPassword}
+          disabled={isSubmitting}
+        >
+          Забыли пароль?
+        </button>
         <button className="auth-link-button" type="button" onClick={onRegister}>
           Создать аккаунт
         </button>

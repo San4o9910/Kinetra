@@ -1050,6 +1050,7 @@ h1 {
 .auth-link-button {
   display: block;
   width: 100%;
+  min-height: 44px;
   margin-top: 16px;
   padding: 0;
   border: 0;

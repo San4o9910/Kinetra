@@ -10,6 +10,7 @@ import React, {
 import type { MeResponse, SubscriptionResponse } from '@kinetra/shared';
 
 import { LoginScreen } from './features/auth/LoginScreen';
+import { ForgotPasswordScreen } from './features/auth/ForgotPasswordScreen';
 import { RegisterScreen } from './features/auth/RegisterScreen';
 import { BaseLessonsScreen } from './features/base-lessons/BaseLessonsScreen';
 import { TabBar } from './features/navigation/TabBar';
@@ -236,7 +237,7 @@ type SessionState =
   | { readonly kind: 'server'; readonly message: string }
   | { readonly kind: 'authenticated'; readonly profile: MeResponse };
 
-type AuthView = 'login' | 'register';
+type AuthView = 'login' | 'register' | 'forgot-password';
 
 type SubscriptionLoadState =
   | { readonly kind: 'idle' }
@@ -762,6 +763,10 @@ export const App = (): ReactNode => {
       );
     };
 
+    if (authView === 'forgot-password') {
+      return <ForgotPasswordScreen onBack={() => setAuthView('login')} />;
+    }
+
     if (authView === 'register') {
       return (
         <RegisterScreen onAuthenticated={handleAuthenticated} onBack={() => setAuthView('login')} />
@@ -772,6 +777,7 @@ export const App = (): ReactNode => {
       <LoginScreen
         onAuthenticated={handleAuthenticated}
         onRegister={() => setAuthView('register')}
+        onForgotPassword={() => setAuthView('forgot-password')}
       />
     );
   }

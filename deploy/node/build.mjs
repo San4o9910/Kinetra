@@ -24,7 +24,7 @@ if (
   manifest.schemaVersion !== 1 ||
   manifest.version !== '22.23.2' ||
   manifest.parallelJobs !== 4 ||
-  manifest.compileTimeoutMs !== 5_400_000
+  manifest.compileTimeoutMs !== 10_800_000
 ) {
   throw new Error('Node must be built in the reviewed Alpine 3.24 stage with the bounded recipe');
 }
