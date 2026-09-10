@@ -12,7 +12,22 @@ import {
   parseDatabaseUrl,
   parseYooKassaEnvironment,
 } from '../src/config/env.js';
-import { parsePaymentsEnabled } from '../src/config/payments.js';
+import { parseFreeBetaEnabled, parsePaymentsEnabled } from '../src/config/payments.js';
+
+test('free beta defaults off and requires an explicit disabled payment configuration', () => {
+  for (const paymentsEnabled of [true, false]) {
+    assert.equal(parseFreeBetaEnabled(undefined, paymentsEnabled), false);
+    assert.equal(parseFreeBetaEnabled('false', paymentsEnabled), false);
+    for (const value of ['', '0', '1', 'yes', 'FALSE', ' false ', 'true\n']) {
+      assert.throws(() => parseFreeBetaEnabled(value, paymentsEnabled), /FREE_BETA_ENABLED/u);
+    }
+  }
+  assert.equal(parseFreeBetaEnabled('true', false), true);
+  assert.throws(
+    () => parseFreeBetaEnabled('true', true),
+    /FREE_BETA_ENABLED=true requires PAYMENTS_ENABLED=false/u,
+  );
+});
 
 test('payments default on and accept only explicit boolean strings', () => {
   assert.equal(parsePaymentsEnabled(undefined), true);
@@ -351,6 +366,19 @@ test('actual production startup requires secure cookie and configured webhook wi
   const noPayments = run(deferred);
   assert.equal(noPayments.status, 0, noPayments.stderr);
   assert.equal(noPayments.stdout, 'STARTUP_VALID');
+  for (const freeBeta of ['false', 'true']) {
+    const beta = run({ ...deferred, FREE_BETA_ENABLED: freeBeta });
+    assert.equal(beta.status, 0, beta.stderr);
+    assert.equal(beta.stdout, 'STARTUP_VALID');
+  }
+  for (const paymentOverrides of [{}, { PAYMENTS_ENABLED: 'true' }]) {
+    const conflict = run({ ...paymentOverrides, FREE_BETA_ENABLED: 'true' });
+    assert.equal(conflict.status, 1);
+    assert.match(conflict.stderr, /FREE_BETA_ENABLED=true requires PAYMENTS_ENABLED=false/u);
+  }
+  const invalidBeta = run({ ...deferred, FREE_BETA_ENABLED: 'yes' });
+  assert.equal(invalidBeta.status, 1);
+  assert.match(invalidBeta.stderr, /FREE_BETA_ENABLED/u);
   for (const [overrides, expected] of [
     [{ AUTH_REFRESH_COOKIE_SECURE: 'false' }, /AUTH_REFRESH_COOKIE_SECURE/u],
     [{ AUTH_TOKEN_DELIVERY_MODE: 'disabled' }, /AUTH_TOKEN_DELIVERY_MODE=webhook/u],
@@ -358,8 +386,10 @@ test('actual production startup requires secure cookie and configured webhook wi
     [{ AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET: '' }, /AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET/u],
     [{ DATABASE_URL: values.DATABASE_URL.replace('?sslmode=verify-full', '') }, /DATABASE_URL/u],
   ] as const) {
-    const invalid = run({ ...deferred, ...overrides });
-    assert.equal(invalid.status, 1);
-    assert.match(invalid.stderr, expected);
+    for (const freeBeta of ['false', 'true']) {
+      const invalid = run({ ...deferred, FREE_BETA_ENABLED: freeBeta, ...overrides });
+      assert.equal(invalid.status, 1);
+      assert.match(invalid.stderr, expected);
+    }
   }
 });

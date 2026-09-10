@@ -15,9 +15,11 @@ import { HttpError } from '../auth/errors.js';
 import { requireAuthenticatedPrincipal } from '../auth/middleware.js';
 import type { PaymentsService } from './service.js';
 import type { WebhookSourceVerifier } from './webhook-source.js';
+import type { FreeBetaAccessChecker } from '../program/free-beta-access.js';
 
 export interface PaymentsRouterDependencies {
   readonly enabled?: boolean;
+  readonly freeBetaAccess?: FreeBetaAccessChecker;
   readonly service: PaymentsService;
   readonly authMiddleware: RequestHandler;
   readonly webhookSourceVerifier: WebhookSourceVerifier;
@@ -31,6 +33,7 @@ const disableCaching = (_request: Request, response: Response, next: NextFunctio
 
 export const createPaymentsRouter = ({
   enabled = true,
+  freeBetaAccess,
   service,
   authMiddleware,
   webhookSourceVerifier,
@@ -95,7 +98,11 @@ export const createPaymentsRouter = ({
     (
       request: Request,
       response: Response<
-        (SubscriptionResponse & { readonly payments_enabled?: false }) | ApiErrorResponse
+        | (SubscriptionResponse & {
+            readonly payments_enabled?: false;
+            readonly training_access?: 'free_beta';
+          })
+        | ApiErrorResponse
       >,
       next: NextFunction,
     ): void => {
@@ -103,11 +110,16 @@ export const createPaymentsRouter = ({
 
       void service
         .cancelSubscription(userId)
-        .then((subscription) =>
-          response
-            .status(200)
-            .json(enabled ? subscription : { ...subscription, payments_enabled: false }),
-        )
+        .then(async (subscription) => {
+          if (enabled) return response.status(200).json(subscription);
+          const beta =
+            freeBetaAccess !== undefined && (await freeBetaAccess.hasFreeBetaAccess(userId));
+          return response.status(200).json({
+            ...subscription,
+            payments_enabled: false,
+            ...(beta ? { training_access: 'free_beta' as const } : {}),
+          });
+        })
         .catch(next);
     },
   );

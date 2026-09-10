@@ -13,6 +13,7 @@ import { HttpError } from '../auth/errors.js';
 import type { Clock } from '../auth/service.js';
 import type { ObjectUrlSigner } from '../base-lessons/storage.js';
 import type { SubscriptionAccessChecker } from '../payments/subscription-access.js';
+import type { FreeBetaAccessChecker } from './free-beta-access.js';
 import {
   PROGRAM_DAYS_PER_WEEK,
   PROGRAM_WEEK_COUNT,
@@ -62,6 +63,7 @@ export class ProgramService {
     private readonly objectUrlSigner: ObjectUrlSigner,
     private readonly subscriptionAccess: SubscriptionAccessChecker,
     private readonly clock: Clock,
+    private readonly freeBetaAccess: FreeBetaAccessChecker | null = null,
   ) {}
 
   public async getCurrentWeek(userId: string): Promise<WeekResponse> {
@@ -177,11 +179,16 @@ export class ProgramService {
   }
 
   private async requireActiveSubscription(userId: string): Promise<void> {
-    if (!(await this.subscriptionAccess.hasActiveSubscription(userId, this.clock.now()))) {
+    const paid = await this.subscriptionAccess.hasActiveSubscription(userId, this.clock.now());
+    const beta =
+      !paid &&
+      this.freeBetaAccess !== null &&
+      (await this.freeBetaAccess.hasFreeBetaAccess(userId));
+    if (!paid && !beta) {
       throw new HttpError(
         403,
         'SUBSCRIPTION_REQUIRED',
-        'An active subscription is required to access the training program.',
+        'Training access is required to open the program.',
       );
     }
   }

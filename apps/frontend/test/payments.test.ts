@@ -15,6 +15,8 @@ import {
   PAYMENT_PRICE_LABEL,
   beginPayment,
   arePaymentsEnabled,
+  hasFreeBetaTrainingAccess,
+  hasTrainingAccess,
   isSubscriptionActive,
   paymentBenefits,
   pollForActiveSubscription,
@@ -49,6 +51,109 @@ const expiredSubscription: SubscriptionResponse = {
   auto_renew: false,
   days_remaining: 0,
 };
+
+const freeBetaSubscription = {
+  status: 'none',
+  provider: null,
+  starts_at: null,
+  expires_at: null,
+  amount: null,
+  currency: null,
+  auto_renew: null,
+  days_remaining: null,
+  payments_enabled: false,
+  training_access: 'free_beta',
+} satisfies SubscriptionResponse & {
+  payments_enabled: false;
+  training_access: 'free_beta';
+};
+
+test('free beta grants training without turning it into a paid subscription', () => {
+  const now = Date.parse('2026-08-21T12:00:00Z');
+  assert.equal(hasTrainingAccess(freeBetaSubscription, now), true);
+  assert.equal(hasFreeBetaTrainingAccess(freeBetaSubscription), true);
+  assert.equal(isSubscriptionActive(freeBetaSubscription, now), false);
+  assert.equal(arePaymentsEnabled(freeBetaSubscription), false);
+  assert.equal(hasTrainingAccess(activeSubscription, now), true);
+  assert.equal(hasTrainingAccess(expiredSubscription, now), false);
+  assert.equal(hasTrainingAccess(null, now), false);
+
+  const noGrant = { ...expiredSubscription, payments_enabled: false };
+  assert.equal(hasTrainingAccess(noGrant, now), false);
+  for (const payments_enabled of [true, undefined, 'false', null]) {
+    const invalid = { ...freeBetaSubscription, payments_enabled };
+    assert.equal(hasTrainingAccess(invalid, now), false);
+    assert.equal(hasFreeBetaTrainingAccess(invalid), false);
+  }
+  for (const training_access of [undefined, null, true, 'active', 'FREE_BETA']) {
+    const invalid = { ...freeBetaSubscription, training_access };
+    assert.equal(hasTrainingAccess(invalid, now), false);
+  }
+});
+
+test('free beta loads the program while missing or inconsistent grants remain locked', () => {
+  const renderProgram = (subscription: SubscriptionResponse) =>
+    renderToStaticMarkup(
+      createElement(ProgramScreen, {
+        timezone: 'Europe/Moscow',
+        subscription,
+        trainingLocked: false,
+        onOpenBaseLessons: () => undefined,
+        onOpenPayment: () => assert.fail('Free beta cannot start checkout.'),
+        onSubscriptionRequired: () => undefined,
+        onWorkoutCompletionBusyChange: () => undefined,
+        onSessionExpired: () => undefined,
+      }),
+    );
+
+  const beta = renderProgram(freeBetaSubscription);
+  assert.ok(beta.includes('data-testid="program-loading"'));
+  assert.equal(beta.includes('data-testid="program-subscription-locked"'), false);
+  assert.equal(beta.includes('data-testid="subscription-paywall-dialog"'), false);
+  const withoutGrant = { ...freeBetaSubscription, training_access: undefined };
+  const paymentEnabled = { ...freeBetaSubscription, payments_enabled: true };
+  for (const invalid of [withoutGrant, paymentEnabled]) {
+    assert.ok(renderProgram(invalid).includes('data-testid="program-subscription-locked"'));
+  }
+});
+
+test('free beta cannot be mistaken for successful payment activation', async () => {
+  let clock = Date.parse('2026-08-21T12:00:00Z');
+  const result = await pollForActiveSubscription({
+    signal: new AbortController().signal,
+    intervalMs: 1,
+    timeoutMs: 3,
+    now: () => clock,
+    wait: async (milliseconds) => {
+      clock += milliseconds;
+    },
+    fetchSubscription: async () => freeBetaSubscription,
+  });
+  assert.equal(result.kind, 'timeout');
+  assert.equal(result.subscription, freeBetaSubscription);
+});
+
+test('cancellation preserves beta only for legacy responses and accepts explicit revocation', () => {
+  const cancelled = { ...expiredSubscription, status: 'cancelled' as const, auto_renew: false };
+  const legacy = preservePaymentAvailability(cancelled, freeBetaSubscription);
+  assert.deepEqual(legacy, {
+    ...cancelled,
+    payments_enabled: false,
+    training_access: 'free_beta',
+  });
+  assert.equal(hasTrainingAccess(legacy), true);
+
+  const revoked = { ...cancelled, payments_enabled: false };
+  assert.equal(preservePaymentAvailability(revoked, freeBetaSubscription), revoked);
+  assert.equal(
+    hasTrainingAccess(preservePaymentAvailability(revoked, freeBetaSubscription)),
+    false,
+  );
+  const enabled = { ...cancelled, payments_enabled: true };
+  assert.equal(preservePaymentAvailability(enabled, freeBetaSubscription), enabled);
+  const current = { ...revoked, training_access: 'free_beta' };
+  assert.equal(preservePaymentAvailability(current, freeBetaSubscription), current);
+});
 
 test('explicit payment disablement preserves real subscription entitlement and legacy behavior', () => {
   const disabled = { ...expiredSubscription, payments_enabled: false };

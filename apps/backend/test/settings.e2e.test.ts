@@ -50,6 +50,7 @@ const closeServer = async (server: Server): Promise<void> => {
 const startHarness = async (
   subscription: SettingsSubscriptionSnapshot | null = null,
   paymentsEnabled = true,
+  beta = { enabled: false },
 ): Promise<TestHarness> => {
   const userId = randomUUID();
   const accessTokens = new HmacJwtAccessTokenService(
@@ -64,6 +65,12 @@ const startHarness = async (
       repository,
       new FixedClock(new Date('2026-01-21T00:00:00.000Z')),
       paymentsEnabled,
+      {
+        hasFreeBetaAccess: async (id) => {
+          assert.equal(id, userId);
+          return beta.enabled;
+        },
+      },
     ),
     authMiddleware: createAuthMiddleware(accessTokens),
   };
@@ -254,6 +261,37 @@ test('disabled payment metadata preserves absent, active and expired subscriptio
     } finally {
       await Promise.all([enabled.close(), disabled.close()]);
     }
+  }
+});
+
+test('free beta metadata grants training independently of billing and can be revoked', async () => {
+  const beta = { enabled: true };
+  const harness = await startHarness(null, false, beta);
+  const paidMode = await startHarness(null, true, beta);
+  try {
+    const result = await requestJson(harness, '/api/v1/settings/subscription');
+    assert.equal(result.status, 200);
+    assert.deepEqual(result.body, {
+      status: 'none',
+      provider: null,
+      starts_at: null,
+      expires_at: null,
+      amount: null,
+      currency: null,
+      auto_renew: null,
+      days_remaining: null,
+      payments_enabled: false,
+      training_access: 'free_beta',
+    });
+    const paid = await requestJson(paidMode, '/api/v1/settings/subscription');
+    assert.equal('training_access' in asObject(paid.body), false);
+    beta.enabled = false;
+    const revoked = await requestJson(harness, '/api/v1/settings/subscription');
+    assert.equal(asObject(revoked.body).status, 'none');
+    assert.equal(asObject(revoked.body).payments_enabled, false);
+    assert.equal('training_access' in asObject(revoked.body), false);
+  } finally {
+    await Promise.all([harness.close(), paidMode.close()]);
   }
 });
 

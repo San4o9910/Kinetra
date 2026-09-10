@@ -1,5 +1,5 @@
 import { parseDatabaseUrl, parseNodeEnvironment, type NodeEnvironment } from './database.js';
-import { parsePaymentsEnabled } from './payments.js';
+import { parseFreeBetaEnabled, parsePaymentsEnabled } from './payments.js';
 export { parseDatabaseUrl } from './database.js';
 
 type SameSiteMode = 'lax' | 'strict' | 'none';
@@ -541,6 +541,8 @@ export const parseShutdownEnvironment = (
 };
 
 const nodeEnv = parseNodeEnvironment(process.env.NODE_ENV);
+const paymentsEnabled = parsePaymentsEnabled(process.env.PAYMENTS_ENABLED);
+const freeBetaEnabled = parseFreeBetaEnabled(process.env.FREE_BETA_ENABLED, paymentsEnabled);
 const s3 = parseS3Environment(nodeEnv);
 const videoUploads = parseVideoUploadsEnvironment(process.env);
 const chatEnabled = parseBoolean('CHAT_ENABLED', process.env.CHAT_ENABLED, false);
@@ -641,7 +643,8 @@ export const env = Object.freeze({
   shutdown,
   s3,
   videoUploads,
-  paymentsEnabled: parsePaymentsEnabled(process.env.PAYMENTS_ENABLED),
+  paymentsEnabled,
+  freeBetaEnabled,
   yookassa: parseYooKassaEnvironment(nodeEnv),
   vapid: parseVapidEnvironment(nodeEnv),
   chat: Object.freeze({

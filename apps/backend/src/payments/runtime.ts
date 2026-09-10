@@ -5,6 +5,10 @@ import { SystemClock } from '../auth/service.js';
 import { HmacJwtAccessTokenService } from '../auth/tokens.js';
 import { env } from '../config/env.js';
 import { databasePool } from '../db/pool.js';
+import {
+  PostgresFreeBetaAccessChecker,
+  type FreeBetaAccessChecker,
+} from '../program/free-beta-access.js';
 import { PostgresPaymentsRepository } from './postgres-payments.repository.js';
 import {
   ConsoleRenewalFailureNotifier,
@@ -21,6 +25,7 @@ import { YooKassaWebhookSourceVerifier, type WebhookSourceVerifier } from './web
 
 export interface PaymentsRuntime {
   readonly enabled?: boolean;
+  readonly freeBetaAccess?: FreeBetaAccessChecker;
   readonly service: PaymentsService;
   readonly renewalService: RenewalService;
   readonly authMiddleware: RequestHandler;
@@ -57,6 +62,7 @@ export const createProductionPaymentsRuntime = (
 
   return {
     enabled: env.paymentsEnabled,
+    freeBetaAccess: new PostgresFreeBetaAccessChecker(databasePool, env.freeBetaEnabled),
     service: new PaymentsService(repository, client, clock, allowedReturnUrls, env.paymentsEnabled),
     renewalService: new RenewalService(
       repository,

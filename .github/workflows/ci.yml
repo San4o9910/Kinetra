@@ -316,6 +316,9 @@ jobs:
           grep -F 'KINETRA_TRAINER_VERIFICATION_AUDIT_CASCADE_POSTGRES17=PASS' /tmp/kinetra-test.log
           grep -F 'KINETRA_TRAINER_VERIFICATION_LATEST_REQUEST_POSTGRES17=PASS' /tmp/kinetra-test.log
           grep -E '^(# |ℹ )?KINETRA_PRODUCTION_CONTENT_SEED_POSTGRES_TEST=PASS$' /tmp/kinetra-test.log
+          grep -E '^(# |ℹ )?KINETRA_FREE_BETA_POSTGRES17=PASS$' /tmp/kinetra-test.log
+          grep -E '^KINETRA_PAYMENTS_DISABLED_BROWSER_E2E=PASS$' /tmp/kinetra-test.log
+          grep -E '^KINETRA_FREE_BETA_BROWSER_E2E=PASS$' /tmp/kinetra-test.log
           node --input-type=module <<'JS_SUITE_EVIDENCE'
           import assert from 'node:assert/strict';
           import { readFileSync } from 'node:fs';

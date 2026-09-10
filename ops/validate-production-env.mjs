@@ -72,6 +72,7 @@ const apiKeys = [
   'CHAT_MEDIA_URL_TTL_SECONDS',
   'YUKASSA_SHOP_ID',
   'PAYMENTS_ENABLED',
+  'FREE_BETA_ENABLED',
   'YUKASSA_SECRET_KEY',
   'YUKASSA_RETURN_URL',
   'YUKASSA_REQUEST_TIMEOUT_MS',
@@ -239,6 +240,13 @@ function paymentsEnabled(values) {
   if (!['true', 'false'].includes(value)) fail('PAYMENTS_ENABLED');
   return value === 'true';
 }
+function freeBetaEnabled(values, enabledPayments) {
+  const value = values.FREE_BETA_ENABLED ?? 'false';
+  if (!['true', 'false'].includes(value)) fail('FREE_BETA_ENABLED');
+  if (value === 'true' && enabledPayments)
+    fail('FREE_BETA_ENABLED=true requires PAYMENTS_ENABLED=false');
+  return value === 'true';
+}
 export function validateMain(values) {
   exactKeys(values, mainKeys);
   for (const key of ['NODE_IMAGE', 'NGINX_IMAGE', 'BACKEND_IMAGE', 'FRONTEND_IMAGE']) {
@@ -264,7 +272,9 @@ export function validateApi(values, main) {
     fail('auth delivery/cookie');
   https(required(values, 'AUTH_TOKEN_DELIVERY_WEBHOOK_URL'), 'AUTH_TOKEN_DELIVERY_WEBHOOK_URL');
   integer(values, 'AUTH_TOKEN_DELIVERY_TIMEOUT_MS', 1000, 30000);
-  if (paymentsEnabled(values)) {
+  const enabledPayments = paymentsEnabled(values);
+  freeBetaEnabled(values, enabledPayments);
+  if (enabledPayments) {
     payments(values);
     for (const url of required(values, 'YUKASSA_RETURN_URL').split(','))
       https(url, 'YUKASSA_RETURN_URL');

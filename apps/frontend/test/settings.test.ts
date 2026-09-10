@@ -104,6 +104,50 @@ const renderSettings = (
     }),
   );
 
+test('free beta has its own access notice without inventing a paid subscription', () => {
+  const beta = {
+    status: 'none',
+    provider: null,
+    starts_at: null,
+    expires_at: null,
+    amount: null,
+    currency: null,
+    auto_renew: null,
+    days_remaining: null,
+    payments_enabled: false,
+    training_access: 'free_beta',
+  } satisfies SubscriptionResponse & {
+    payments_enabled: false;
+    training_access: 'free_beta';
+  };
+  const markup = renderSettings(beta);
+  assert.ok(markup.includes('data-testid="settings-free-beta-access"'));
+  assert.ok(markup.includes('Бесплатный тестовый доступ'));
+  assert.ok(markup.includes('Тренировки открыты на время тестирования. Оплата не требуется.'));
+  assert.ok(markup.includes('data-status="none"'));
+  assert.equal(markup.includes('data-testid="settings-renew-subscription"'), false);
+  assert.equal(markup.includes('data-testid="settings-cancel-auto-renew"'), false);
+  assert.equal(markup.includes('data-testid="settings-subscription-provider"'), false);
+
+  const paidBeta = { ...subscription, payments_enabled: false, training_access: 'free_beta' };
+  const paidMarkup = renderSettings(paidBeta);
+  assert.ok(paidMarkup.includes('data-testid="settings-free-beta-access"'));
+  assert.ok(paidMarkup.includes('Активна до 15 февраля 2026'));
+  assert.ok(paidMarkup.includes('799 ₽'));
+  assert.ok(paidMarkup.includes('data-testid="settings-cancel-auto-renew"'));
+
+  for (const invalid of [
+    { ...beta, payments_enabled: true },
+    { ...beta, payments_enabled: undefined },
+    { ...beta, training_access: undefined },
+  ]) {
+    assert.equal(
+      renderSettings(invalid).includes('data-testid="settings-free-beta-access"'),
+      false,
+    );
+  }
+});
+
 test('disabled checkout hides purchases while retaining subscription status and cancellation', () => {
   for (const status of ['none', 'expired', 'cancelled'] as const) {
     const disabled = { ...subscription, status, payments_enabled: false };

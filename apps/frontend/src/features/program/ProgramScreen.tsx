@@ -9,7 +9,7 @@ import type {
 import { ApiRequestError, getBaseLessons, getCurrentWeek, getWeek } from '../../lib/api';
 import { appRoutes } from '../../routing';
 import { BaseLessonsRequiredDialog } from '../base-lessons/BaseLessonsRequiredDialog';
-import { isSubscriptionActive } from '../payments/model';
+import { hasTrainingAccess } from '../payments/model';
 import { SubscriptionPaywallDialog } from '../payments/SubscriptionPaywallDialog';
 import { SubscriptionLockedScreen } from '../payments/SubscriptionLockedScreen';
 
@@ -111,16 +111,16 @@ export const ProgramScreen = ({
   const initialWorkoutSelection = trainingLocked
     ? { videoId: null, dayOfWeek: null, programWeek: null }
     : historyWorkoutSelection;
-  const initiallyActive = isSubscriptionActive(subscription);
+  const initiallyAccessible = hasTrainingAccess(subscription);
   const [loadState, setLoadState] = useState<ProgramLoadState>(
-    initiallyActive ? { kind: 'loading' } : { kind: 'blocked' },
+    initiallyAccessible ? { kind: 'loading' } : { kind: 'blocked' },
   );
   const [selectedVideoId, setSelectedVideoId] = useState<string | null>(
     initialWorkoutSelection.videoId,
   );
   const [isNavigating, setIsNavigating] = useState(false);
   const [isCompletingWorkout, setIsCompletingWorkout] = useState(false);
-  const [paywallOpen, setPaywallOpen] = useState(!initiallyActive);
+  const [paywallOpen, setPaywallOpen] = useState(!initiallyAccessible);
   const [baseLessonsDialogOpen, setBaseLessonsDialogOpen] = useState(false);
   const [preparationState, setPreparationState] = useState<PreparationLoadState>(
     trainingLocked ? { kind: 'loading' } : { kind: 'idle' },
@@ -137,7 +137,7 @@ export const ProgramScreen = ({
   const currentWeekNumberRef = useRef<number | null>(null);
   const completionBusyRef = useRef(false);
   const todayDayOfWeek = useMemo(() => dayOfWeekInTimeZone(new Date(), timezone), [timezone]);
-  const subscriptionActive = isSubscriptionActive(subscription);
+  const trainingAccessible = hasTrainingAccess(subscription);
 
   const handleAuthError = useCallback(
     (error: unknown): boolean => {
@@ -407,7 +407,7 @@ export const ProgramScreen = ({
   }, [loadPreparation, trainingLocked]);
 
   useEffect(() => {
-    if (!subscriptionActive) {
+    if (!trainingAccessible) {
       requestVersion.current += 1;
       requestController.current?.abort();
       requestController.current = null;
@@ -428,7 +428,7 @@ export const ProgramScreen = ({
       requestController.current?.abort();
       requestController.current = null;
     };
-  }, [restoreCurrentWeek, subscriptionActive]);
+  }, [restoreCurrentWeek, trainingAccessible]);
 
   useEffect(() => {
     const restoreWorkoutFromHistory = (event: PopStateEvent): void => {
@@ -450,7 +450,7 @@ export const ProgramScreen = ({
         return;
       }
 
-      if (workoutRequested && !isSubscriptionActive(subscription)) {
+      if (workoutRequested && !hasTrainingAccess(subscription)) {
         clearWorkoutHistorySentinel();
         selectedVideoIdRef.current = null;
         selectedDayOfWeekRef.current = null;
@@ -518,7 +518,7 @@ export const ProgramScreen = ({
   }, [restoreCurrentWeek, restoreHistoryWorkout, subscription, trainingLocked]);
 
   useEffect(() => {
-    if (subscriptionActive || selectedVideoId === null) {
+    if (trainingAccessible || selectedVideoId === null) {
       return;
     }
 
@@ -528,7 +528,7 @@ export const ProgramScreen = ({
     selectedProgramWeekRef.current = null;
     setSelectedVideoId(null);
     setPaywallOpen(true);
-  }, [selectedVideoId, subscriptionActive]);
+  }, [selectedVideoId, trainingAccessible]);
 
   useEffect(
     () => () => {
@@ -682,7 +682,7 @@ export const ProgramScreen = ({
       ? undefined
       : loadState.response.week.days.find(({ video }) => video.id === selectedVideoId);
 
-  if (selectedDay !== undefined && subscriptionActive && !trainingLocked) {
+  if (selectedDay !== undefined && trainingAccessible && !trainingLocked) {
     return (
       <WorkoutPlayer
         day={selectedDay}
@@ -720,7 +720,7 @@ export const ProgramScreen = ({
       return;
     }
 
-    if (!isSubscriptionActive(subscription)) {
+    if (!hasTrainingAccess(subscription)) {
       setPaywallOpen(true);
       return;
     }
@@ -783,7 +783,7 @@ export const ProgramScreen = ({
         }}
       />
       <SubscriptionPaywallDialog
-        open={paywallOpen || (selectedDay !== undefined && !subscriptionActive)}
+        open={paywallOpen || (selectedDay !== undefined && !trainingAccessible)}
         subscription={subscription}
         onClose={() => setPaywallOpen(false)}
         onRenew={() => {

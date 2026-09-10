@@ -6,7 +6,11 @@ import type {
 import React, { type ReactNode } from 'react';
 
 import type { PushBackendRegistrationStatus, PushPermission } from '../../pwa/pushNotifications';
-import { PAYMENTS_UNAVAILABLE_TITLE, arePaymentsEnabled } from '../payments/model';
+import {
+  PAYMENTS_UNAVAILABLE_TITLE,
+  arePaymentsEnabled,
+  hasFreeBetaTrainingAccess,
+} from '../payments/model';
 import { themeOptions, type ResolvedTheme, type ThemePreference } from '../theme/model';
 import { ChevronIcon, SettingsIcon, ThemeModeIcon } from './SettingsIcons';
 import {
@@ -287,6 +291,14 @@ const SubscriptionCard = ({
         </div>
         <SettingsIcon name="subscription" />
       </div>
+
+      {hasFreeBetaTrainingAccess(subscription) ? (
+        <p>
+          <strong data-testid="settings-free-beta-access">Бесплатный тестовый доступ</strong>
+          <br />
+          Тренировки открыты на время тестирования. Оплата не требуется.
+        </p>
+      ) : null}
 
       {subscription.provider === null ? null : (
         <div className="settings-provider" data-testid="settings-subscription-provider">

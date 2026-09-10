@@ -95,6 +95,12 @@ test('minimal purpose environments pass and unrelated API credentials are reject
       () => validateJob({ ...values, JWT_ACCESS_SECRET: 'unexpected-credential' }, name),
       /unexpected key/,
     );
+    for (const beta of ['true', 'false']) {
+      assert.throws(
+        () => validateJob({ ...values, FREE_BETA_ENABLED: beta }, name),
+        /unexpected key/,
+      );
+    }
   }
 });
 test('deferred payment API accepts no YooKassa credentials while keeping auth and TLS guards', () => {
@@ -156,6 +162,44 @@ test('payment validation retains enabled defaults and rejects invalid flag value
     assert.throws(
       () => validateJob({ ...common, ...credentials, PAYMENTS_ENABLED: 'false' }, 'renewals'),
       /renewals are disabled/,
+    );
+  }
+});
+test('free beta validates only with payments disabled and preserves production security', () => {
+  const deferred = {
+    ...api,
+    PAYMENTS_ENABLED: 'false',
+    YUKASSA_SHOP_ID: '',
+    YUKASSA_SECRET_KEY: '',
+    YUKASSA_RETURN_URL: '',
+  };
+  validateApi({ ...api, FREE_BETA_ENABLED: 'false' }, main);
+  validateApi({ ...deferred, FREE_BETA_ENABLED: 'false' }, main);
+  validateApi({ ...deferred, FREE_BETA_ENABLED: 'true' }, main);
+  for (const paymentOverrides of [{}, { PAYMENTS_ENABLED: 'true' }]) {
+    assert.throws(
+      () => validateApi({ ...api, ...paymentOverrides, FREE_BETA_ENABLED: 'true' }, main),
+      /FREE_BETA_ENABLED=true requires PAYMENTS_ENABLED=false/,
+    );
+  }
+  for (const value of ['', '0', '1', 'yes', 'FALSE', ' false ', 'true\n']) {
+    assert.throws(
+      () => validateApi({ ...deferred, FREE_BETA_ENABLED: value }, main),
+      /FREE_BETA_ENABLED/,
+    );
+  }
+  for (const overrides of [
+    { YUKASSA_SHOP_ID: 'synthetic-shop' },
+    { YUKASSA_SECRET_KEY: 'synthetic-secret' },
+    { AUTH_TOKEN_DELIVERY_WEBHOOK_URL: '' },
+    { AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET: '' },
+    { AUTH_TOKEN_DELIVERY_MODE: 'disabled' },
+    { AUTH_REFRESH_COOKIE_SECURE: 'false' },
+    { CORS_ORIGIN: 'http://app.kinetra.test' },
+    { DATABASE_URL: common.DATABASE_URL.replace('?sslmode=verify-full', '') },
+  ]) {
+    assert.throws(() =>
+      validateApi({ ...deferred, FREE_BETA_ENABLED: 'true', ...overrides }, main),
     );
   }
 });

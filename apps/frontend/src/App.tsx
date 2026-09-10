@@ -19,7 +19,7 @@ import { PaymentCancelScreen } from './features/payments/PaymentCancelScreen';
 import { PaymentAvailabilityGate } from './features/payments/PaymentAvailabilityGate';
 import { PaymentScreen } from './features/payments/PaymentScreen';
 import { PaymentSuccessScreen } from './features/payments/PaymentSuccessScreen';
-import { isSubscriptionActive } from './features/payments/model';
+import { hasTrainingAccess, isSubscriptionActive } from './features/payments/model';
 import { SubscriptionLockedScreen } from './features/payments/SubscriptionLockedScreen';
 import { SubscriptionVerificationState } from './features/payments/SubscriptionVerificationState';
 import { ProgressScreen } from './features/progress/ProgressScreen';
@@ -648,10 +648,7 @@ export const App = (): ReactNode => {
   }, [authenticatedRole, authenticatedUserId, loadSubscription, trainerVerificationRequired]);
 
   useLayoutEffect(() => {
-    if (
-      subscriptionState.kind === 'ready' &&
-      !isSubscriptionActive(subscriptionState.subscription)
-    ) {
+    if (subscriptionState.kind === 'ready' && !hasTrainingAccess(subscriptionState.subscription)) {
       clearWorkoutHistorySentinel();
     }
   }, [subscriptionState]);
@@ -1100,7 +1097,7 @@ export const App = (): ReactNode => {
   const activeContent =
     route === appRoutes.schedule ? (
       subscriptionState.kind === 'ready' ? (
-        isSubscriptionActive(subscriptionState.subscription) ? (
+        hasTrainingAccess(subscriptionState.subscription) ? (
           <ScheduleScreen
             onOpenWorkout={openScheduledWorkout}
             onSessionExpired={handleActiveSessionExpired}
@@ -1139,7 +1136,7 @@ export const App = (): ReactNode => {
         onSessionExpired={handleActiveSessionExpired}
       />
     ) : subscriptionState.kind === 'ready' ? (
-      isSubscriptionActive(subscriptionState.subscription) ? (
+      hasTrainingAccess(subscriptionState.subscription) ? (
         <ProgramScreen
           timezone={profile.user.timezone}
           subscription={subscriptionState.subscription}

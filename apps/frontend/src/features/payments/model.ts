@@ -16,16 +16,26 @@ export const arePaymentsEnabled = (subscription: SubscriptionResponse | null): b
   !('payments_enabled' in subscription) ||
   subscription.payments_enabled !== false;
 
-// Retain disabled availability if an older cancellation response omits the metadata.
+export const hasFreeBetaTrainingAccess = (subscription: SubscriptionResponse | null): boolean =>
+  subscription !== null &&
+  !arePaymentsEnabled(subscription) &&
+  'training_access' in subscription &&
+  subscription.training_access === 'free_beta';
+
+// Retain availability only if an older cancellation response omits the metadata.
 export const preservePaymentAvailability = (
   updated: SubscriptionResponse,
   previous: SubscriptionResponse | null,
 ): SubscriptionResponse => {
-  if (arePaymentsEnabled(previous)) {
+  if (arePaymentsEnabled(previous) || 'payments_enabled' in updated) {
     return updated;
   }
 
-  const subscription = { ...updated, payments_enabled: false };
+  const subscription = {
+    ...updated,
+    payments_enabled: false,
+    ...(hasFreeBetaTrainingAccess(previous) ? { training_access: 'free_beta' } : {}),
+  };
   return subscription;
 };
 
@@ -59,6 +69,11 @@ export const isSubscriptionActive = (
 
   return startsAt !== null && startsAt <= now && expiresAt !== null && expiresAt > now;
 };
+
+export const hasTrainingAccess = (
+  subscription: SubscriptionResponse | null,
+  now = Date.now(),
+): boolean => isSubscriptionActive(subscription, now) || hasFreeBetaTrainingAccess(subscription);
 
 export const effectivePaywallStatus = (
   subscription: SubscriptionResponse | null,

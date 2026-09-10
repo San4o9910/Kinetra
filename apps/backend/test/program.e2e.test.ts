@@ -112,7 +112,7 @@ const closeServer = async (server: Server): Promise<void> => {
   });
 };
 
-const startHarness = async (): Promise<TestHarness> => {
+const startHarness = async (beta = { enabled: false }): Promise<TestHarness> => {
   const userId = randomUUID();
   const accessTokens = new HmacJwtAccessTokenService(
     'test-only-program-secret-with-more-than-32-characters',
@@ -129,6 +129,12 @@ const startHarness = async (): Promise<TestHarness> => {
       signer,
       subscriptionAccess,
       new MutableClock(new Date('2026-08-21T00:00:00.000Z')),
+      {
+        hasFreeBetaAccess: async (id) => {
+          assert.equal(id, userId);
+          return beta.enabled;
+        },
+      },
     ),
     authMiddleware: createAuthMiddleware(accessTokens),
   };
@@ -236,6 +242,67 @@ test('program endpoints require a currently active subscription', async () => {
       assert.equal(errorCode(response.body), 'SUBSCRIPTION_REQUIRED');
       assert.equal(response.cacheControl, 'no-store');
     }
+  } finally {
+    await harness.close();
+  }
+});
+
+test('free beta opens training while preserving authentication, onboarding, week and revocation gates', async () => {
+  const beta = { enabled: true };
+  const harness = await startHarness(beta);
+  harness.subscriptionAccess.setActive(false);
+  const videoId = harness.repository.videoIdsForWeek(1)[0] as string;
+  const complete = () =>
+    requestJson(harness, '/api/v1/program/complete-workout', {
+      method: 'PUT',
+      body: { video_id: videoId, program_week: 1 },
+    });
+  try {
+    const unauthorized = await requestJson(harness, '/api/v1/program/current-week', {
+      token: null,
+    });
+    assert.equal(unauthorized.status, 401);
+    harness.repository.setOnboardingStatus('survey_pending');
+    assert.equal(
+      errorCode((await requestJson(harness, '/api/v1/program/current-week')).body),
+      'ONBOARDING_REQUIRED',
+    );
+    harness.repository.markMediaAvailable(1, videoId);
+    harness.repository.setOnboardingStatus('base_lessons');
+    const preview = await requestJson(harness, '/api/v1/program/current-week');
+    assert.equal(preview.status, 200);
+    assert.equal(harness.signer.requestedKeys.length, 0);
+    assert.equal(errorCode((await complete()).body), 'BASE_LESSONS_REQUIRED');
+    harness.repository.setOnboardingStatus('active');
+    for (const path of [
+      '/api/v1/program/current-week',
+      '/api/v1/program/schedule',
+      '/api/v1/program/weeks/1',
+    ]) {
+      const result = await requestJson(harness, path);
+      assert.equal(result.status, 200);
+      assert.equal(result.cacheControl, 'no-store');
+    }
+    assert.ok(harness.signer.requestedKeys.length > 0);
+    const locked = await requestJson(harness, '/api/v1/program/weeks/3');
+    assert.equal(locked.status, 403);
+    assert.equal(errorCode(locked.body), 'PROGRAM_WEEK_LOCKED');
+    const saved = await complete();
+    assert.equal(saved.status, 200);
+    assert.equal(asObject(asObject(saved.body).overall_progress).total_workouts_done, 1);
+    beta.enabled = false;
+    for (const path of [
+      '/api/v1/program/current-week',
+      '/api/v1/program/schedule',
+      '/api/v1/program/weeks/1',
+    ]) {
+      const result = await requestJson(harness, path);
+      assert.equal(result.status, 403);
+      assert.equal(errorCode(result.body), 'SUBSCRIPTION_REQUIRED');
+    }
+    assert.equal(errorCode((await complete()).body), 'SUBSCRIPTION_REQUIRED');
+    harness.subscriptionAccess.setActive(true);
+    assert.equal((await requestJson(harness, '/api/v1/program/current-week')).status, 200);
   } finally {
     await harness.close();
   }

@@ -4580,6 +4580,173 @@ const runBrowserScenario = async () => {
         identifier: disabledRouteObserver.identifier,
       });
     }
+
+    // Free beta is a separate entitlement; disabling payments alone stays locked above.
+    const freeBetaFixture = {
+      subscription: subscriptionPayload,
+      profile,
+      pendingPolls: pendingSubscriptionPollsRemaining,
+      paymentsEnabled,
+    };
+    const freeBetaSubscription = {
+      status: 'none',
+      provider: null,
+      starts_at: null,
+      expires_at: null,
+      amount: null,
+      currency: null,
+      auto_renew: null,
+      days_remaining: null,
+      training_access: 'free_beta',
+    };
+    const paymentCreatesBeforeFreeBeta = counters.paymentCreate;
+    const subscriptionCancelsBeforeFreeBeta = counters.subscriptionCancel;
+    const workoutCompletionsBeforeFreeBeta = counters.workoutComplete;
+    const freeBetaRouteObserver = await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
+      source: `(() => {
+        window.__kinetraFreeBetaPaymentScreens = [];
+        const observeScreens = () => {
+          for (const testId of ['payment-screen', 'payment-success-screen', 'payment-cancel-screen']) {
+            if (document.querySelector('[data-testid="' + testId + '"]') &&
+                !window.__kinetraFreeBetaPaymentScreens.includes(testId)) {
+              window.__kinetraFreeBetaPaymentScreens.push(testId);
+            }
+          }
+        };
+        new MutationObserver(observeScreens).observe(document, { childList: true, subtree: true });
+        observeScreens();
+      })();`,
+    });
+
+    try {
+      paymentsEnabled = false;
+      pendingSubscriptionPollsRemaining = 0;
+      subscriptionPayload = { ...freeBetaSubscription };
+      assert.equal(profile.user.onboardingStatus, 'active');
+      const currentWeekRequestsBeforeFreeBeta = counters.currentWeekGet;
+      await cdp.send('Page.navigate', { url: `${frontendOrigin}/` });
+      await waitFor(
+        'free beta opens Today for an unpaid account',
+        async () =>
+          (await pathname()) === '/' &&
+          (await exists('main-screen')) &&
+          (await text('today-heading')) === 'Сегодня' &&
+          counters.currentWeekGet > currentWeekRequestsBeforeFreeBeta,
+      );
+      assert.equal(await exists('program-subscription-locked'), false);
+      assert.equal(await dialogIsOpen('subscription-paywall-dialog'), false);
+      assert.equal(await exists('open-subscription-paywall'), false);
+
+      await click('tab-schedule');
+      await waitFor(
+        'free beta opens the current schedule',
+        async () => (await pathname()) === '/schedule' && (await exists('schedule-panel-current')),
+      );
+      await click('schedule-current-day-1');
+      await waitFor(
+        'free beta opens the selected current-week workout video',
+        async () =>
+          (await exists('workout-player')) &&
+          (await exists('workout-video')) &&
+          (await cdp.evaluate(
+            `window.history.state?.kinetraWorkoutVideoId === ${JSON.stringify(workoutVideoId(1, 1))} &&
+              window.history.state?.kinetraProgramWeek === 1`,
+          )),
+      );
+      await click('workout-back');
+      await waitFor('free beta returns to the selected schedule', () =>
+        exists('schedule-panel-current'),
+      );
+      await click('schedule-current-day-7');
+      await waitFor('free beta retains the missing-media placeholder', () =>
+        exists('workout-video-placeholder'),
+      );
+      assert.equal(await exists('workout-video'), false);
+      assert.ok((await text('workout-video-placeholder'))?.includes('Видео скоро будет доступно'));
+      await click('workout-back');
+      await waitFor('free beta schedule before checking a locked week', () =>
+        exists('schedule-panel-current'),
+      );
+      await click('schedule-segment-next');
+      await waitFor('free beta displays the next-week schedule', () =>
+        exists('schedule-panel-next'),
+      );
+      await click('schedule-next-day-4');
+      await waitFor(
+        'free beta does not bypass a locked program week',
+        async () =>
+          (await pathname()) === '/' &&
+          (await exists('main-screen')) &&
+          !(await exists('workout-player')) &&
+          (await text('main-screen'))?.includes('когда начнётся выбранная неделя') === true &&
+          (await cdp.evaluate(
+            `window.history.state?.kinetraWorkoutVideoId === undefined &&
+              window.history.state?.kinetraWorkoutDayOfWeek === undefined &&
+              window.history.state?.kinetraProgramWeek === undefined`,
+          )),
+      );
+
+      profile = {
+        ...profile,
+        user: { ...profile.user, onboardingStatus: 'base_lessons' },
+      };
+      await cdp.send('Page.navigate', { url: `${frontendOrigin}/` });
+      await waitFor('free beta retains required training preparation', () =>
+        exists('training-preparation-card'),
+      );
+      await click(`workout-card-${browserTodayDayOfWeek}`);
+      await waitFor('free beta retains the base-lessons workout guard', () =>
+        dialogIsOpen('base-lessons-required-dialog'),
+      );
+      assert.equal(await exists('workout-player'), false);
+      assert.equal(counters.workoutComplete, workoutCompletionsBeforeFreeBeta);
+
+      profile = freeBetaFixture.profile;
+      await cdp.send('Page.navigate', { url: `${frontendOrigin}/settings` });
+      await waitFor(
+        'free beta settings explain access without inventing a paid subscription',
+        async () =>
+          (await exists('settings-free-beta-access')) &&
+          (await exists('settings-payments-unavailable')) &&
+          (await attribute('settings-subscription-card', 'data-status')) === 'none',
+      );
+      assert.equal(await text('settings-free-beta-access'), 'Бесплатный тестовый доступ');
+      assert.equal(await text('settings-subscription-status'), 'Нет подписки');
+      assert.equal(await exists('settings-renew-subscription'), false);
+      assert.equal(await exists('settings-cancel-auto-renew'), false);
+      assert.equal(await exists('settings-subscription-provider'), false);
+
+      for (const route of ['/payment', '/payment/success', '/payment/cancel']) {
+        await cdp.send('Page.navigate', { url: `${frontendOrigin}${route}` });
+        await waitFor(
+          `free beta keeps checkout deep link ${route} disabled`,
+          async () => (await pathname()) === route && (await exists('payments-unavailable-screen')),
+        );
+        assert.ok((await text('payments-unavailable-screen'))?.includes('Оплата появится позже'));
+        assert.equal(await exists('create-payment'), false);
+        assert.equal(await exists('retry-payment'), false);
+        assert.equal(await exists('payment-success-status'), false);
+        assert.equal(await exists('payments-unavailable-back'), true);
+        assert.deepEqual(
+          await cdp.evaluate('window.__kinetraFreeBetaPaymentScreens'),
+          [],
+          `${route} must never mount payment screens for free-beta access.`,
+        );
+        assert.equal(counters.paymentCreate, paymentCreatesBeforeFreeBeta);
+      }
+      assert.deepEqual(subscriptionPayload, freeBetaSubscription);
+      assert.equal(counters.subscriptionCancel, subscriptionCancelsBeforeFreeBeta);
+      assert.equal(counters.workoutComplete, workoutCompletionsBeforeFreeBeta);
+      console.log('KINETRA_FREE_BETA_BROWSER_E2E=PASS');
+    } finally {
+      subscriptionPayload = freeBetaFixture.subscription;
+      profile = freeBetaFixture.profile;
+      pendingSubscriptionPollsRemaining = freeBetaFixture.pendingPolls;
+      paymentsEnabled = freeBetaFixture.paymentsEnabled;
+      await cdp.send('Page.removeScriptToEvaluateOnNewDocument', {
+        identifier: freeBetaRouteObserver.identifier,
+      });
+    }
   } catch (error) {
     if (cdp !== null) {
       try {

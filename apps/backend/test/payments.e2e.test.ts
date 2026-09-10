@@ -62,7 +62,7 @@ const closeServer = async (server: Server): Promise<void> => {
   });
 };
 
-const startHarness = async (enabled = true): Promise<TestHarness> => {
+const startHarness = async (enabled = true, beta = { enabled: false }): Promise<TestHarness> => {
   const userId = randomUUID();
   const clock = new MutableClock(new Date('2026-08-21T12:00:00.000Z'));
   const accessTokens = new HmacJwtAccessTokenService(
@@ -79,6 +79,12 @@ const startHarness = async (enabled = true): Promise<TestHarness> => {
   const service = new PaymentsService(repository, client, clock, [RETURN_URL], enabled);
   const paymentsRuntime: PaymentsRuntime = {
     enabled,
+    freeBetaAccess: {
+      hasFreeBetaAccess: async (id) => {
+        assert.equal(id, userId);
+        return beta.enabled;
+      },
+    },
     service,
     renewalService,
     authMiddleware: createAuthMiddleware(accessTokens),
@@ -262,6 +268,43 @@ test('disabled payments preserve the paid period and still allow cancellation of
     assert.equal(subscription.payments_enabled, false);
     assert.equal(harness.repository.peekSubscription()?.autoRenew, false);
     assert.equal(harness.repository.peekSubscription()?.status, 'active');
+    assert.equal(harness.client.created.length, 0);
+  } finally {
+    await harness.close();
+  }
+});
+
+test('cancellation returns current beta eligibility while payment creation remains disabled', async () => {
+  const beta = { enabled: true };
+  const harness = await startHarness(false, beta);
+  harness.repository.seedSubscription({
+    id: randomUUID(),
+    userId: harness.userId,
+    provider: 'yukassa',
+    status: 'active',
+    startsAt: new Date('2026-08-01T00:00:00.000Z'),
+    expiresAt: new Date('2026-09-01T00:00:00.000Z'),
+    amountMinor: 79_900,
+    currency: 'RUB',
+    autoRenew: true,
+    paymentMethodId: 'existing-method',
+  });
+  try {
+    const cancelled = await requestJson(harness, '/api/v1/payments/cancel-subscription');
+    assert.equal(cancelled.status, 200);
+    assert.equal(asObject(cancelled.body).training_access, 'free_beta');
+    assert.equal(asObject(cancelled.body).payments_enabled, false);
+    assert.equal(asObject(cancelled.body).status, 'active');
+    assert.equal(asObject(cancelled.body).auto_renew, false);
+    beta.enabled = false;
+    const repeated = await requestJson(harness, '/api/v1/payments/cancel-subscription');
+    assert.equal(repeated.status, 200);
+    assert.equal(asObject(repeated.body).payments_enabled, false);
+    assert.equal('training_access' in asObject(repeated.body), false);
+    assert.equal(
+      errorCode((await requestJson(harness, '/api/v1/payments/create')).body),
+      'PAYMENTS_DISABLED',
+    );
     assert.equal(harness.client.created.length, 0);
   } finally {
     await harness.close();

@@ -9,11 +9,13 @@ import { HttpError } from '../auth/errors.js';
 import type { Clock } from '../auth/service.js';
 import type { SettingsRepository, SettingsSubscriptionSnapshot } from './repository.js';
 import { deleteAccountSchema, notificationPreferencesSchema } from './schema.js';
+import type { FreeBetaAccessChecker } from '../program/free-beta-access.js';
 
 const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
 
 export type SettingsSubscriptionResponse = SubscriptionResponse & {
   readonly payments_enabled?: false;
+  readonly training_access?: 'free_beta';
 };
 
 const profileNotFound = (): HttpError =>
@@ -53,6 +55,7 @@ export class SettingsService {
     private readonly repository: SettingsRepository,
     private readonly clock: Clock,
     private readonly paymentsEnabled = true,
+    private readonly freeBetaAccess: FreeBetaAccessChecker | null = null,
   ) {}
 
   public async getProfile(userId: string): Promise<SettingsProfileResponse> {
@@ -71,8 +74,16 @@ export class SettingsService {
     };
   }
 
-  private subscriptionResponse(value: SubscriptionResponse): SettingsSubscriptionResponse {
-    return this.paymentsEnabled ? value : { ...value, payments_enabled: false };
+  private subscriptionResponse(
+    value: SubscriptionResponse,
+    beta: boolean,
+  ): SettingsSubscriptionResponse {
+    if (this.paymentsEnabled) return value;
+    return {
+      ...value,
+      payments_enabled: false,
+      ...(beta ? { training_access: 'free_beta' as const } : {}),
+    };
   }
 
   public async getSubscription(userId: string): Promise<SettingsSubscriptionResponse> {
@@ -84,30 +95,40 @@ export class SettingsService {
     }
 
     const subscription = lookup.subscription;
+    const beta =
+      !this.paymentsEnabled &&
+      this.freeBetaAccess !== null &&
+      (await this.freeBetaAccess.hasFreeBetaAccess(userId));
 
     if (subscription === null) {
-      return this.subscriptionResponse({
-        status: 'none',
-        provider: null,
-        starts_at: null,
-        expires_at: null,
-        amount: null,
-        currency: null,
-        auto_renew: null,
-        days_remaining: null,
-      });
+      return this.subscriptionResponse(
+        {
+          status: 'none',
+          provider: null,
+          starts_at: null,
+          expires_at: null,
+          amount: null,
+          currency: null,
+          auto_renew: null,
+          days_remaining: null,
+        },
+        beta,
+      );
     }
 
-    return this.subscriptionResponse({
-      status: effectiveSubscriptionStatus(subscription, now),
-      provider: subscription.provider,
-      starts_at: subscription.startsAt?.toISOString() ?? null,
-      expires_at: subscription.expiresAt?.toISOString() ?? null,
-      amount: subscription.amountMinor === null ? null : subscription.amountMinor / 100,
-      currency: subscription.currency,
-      auto_renew: subscription.autoRenew,
-      days_remaining: daysRemaining(subscription.expiresAt, now),
-    });
+    return this.subscriptionResponse(
+      {
+        status: effectiveSubscriptionStatus(subscription, now),
+        provider: subscription.provider,
+        starts_at: subscription.startsAt?.toISOString() ?? null,
+        expires_at: subscription.expiresAt?.toISOString() ?? null,
+        amount: subscription.amountMinor === null ? null : subscription.amountMinor / 100,
+        currency: subscription.currency,
+        auto_renew: subscription.autoRenew,
+        days_remaining: daysRemaining(subscription.expiresAt, now),
+      },
+      beta,
+    );
   }
 
   public async updateNotifications(userId: string, body: unknown): Promise<void> {
