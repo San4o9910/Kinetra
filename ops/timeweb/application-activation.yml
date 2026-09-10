@@ -1,0 +1,144 @@
+# DORMANT REVIEW COPY: this path is not a GitHub Actions workflow.
+# Fill REVIEW_REQUIRED from actual green current CI/image/database evidence;
+# review this caller before publishing as .github/workflows/timeweb-application-activation.yml.
+# Only API environment preparation and local application startup. No HTTPS/boot/jobs.
+name: Prepare free-beta API and accept local Kinetra application
+
+on:
+  push:
+    branches: [ops/timeweb-hourly-preflight-20260909]
+    paths: [.github/workflows/timeweb-application-activation.yml]
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+  packages: read
+
+concurrency:
+  group: kinetra-timeweb-hourly-provision
+  cancel-in-progress: false
+
+env:
+  ACTIVATE_LOCAL_APPLICATION: REVIEW_REQUIRED
+  APPROVED_APP_COMMIT: REVIEW_REQUIRED
+  APPROVED_BASE_COMMIT: REVIEW_REQUIRED
+  APPROVED_MERGE_COMMIT: REVIEW_REQUIRED
+  APPROVED_HEAD_RUN: REVIEW_REQUIRED
+  APPROVED_MERGE_RUN: REVIEW_REQUIRED
+  APPROVED_IMAGE_RUN: REVIEW_REQUIRED
+  APPROVED_IMAGE_CONTROL_COMMIT: REVIEW_REQUIRED
+  APPROVED_IMAGE_WORKFLOW_SHA256: REVIEW_REQUIRED
+  APPROVED_IMAGE_ARTIFACT_ID: REVIEW_REQUIRED
+  APPROVED_IMAGE_ARTIFACT_SHA256: REVIEW_REQUIRED
+  APPROVED_DATABASE_RUN: REVIEW_REQUIRED
+  APPROVED_DATABASE_CONTROL_COMMIT: REVIEW_REQUIRED
+  APPROVED_DATABASE_WORKFLOW_SHA256: REVIEW_REQUIRED
+  APPROVED_DATABASE_ARTIFACT_ID: REVIEW_REQUIRED
+  APPROVED_DATABASE_ARTIFACT_SHA256: REVIEW_REQUIRED
+  NODE_IMAGE: REVIEW_REQUIRED
+  NGINX_IMAGE: REVIEW_REQUIRED
+  BACKEND_IMAGE: REVIEW_REQUIRED
+  FRONTEND_IMAGE: REVIEW_REQUIRED
+  POSTGRES_IMAGE: REVIEW_REQUIRED
+  ROOT_SUPPLIED_SERVER_ID: '9069403'
+  ROOT_SUPPLIED_SERVER_IP: 80.68.156.131
+
+jobs:
+  activate-local-application:
+    runs-on: ubuntu-24.04
+    # Includes separate 30min API preparation and 60min local wrapper bounds,
+    # authenticated evidence checks, and graceful cleanup/artifact allowance.
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify reviewed caller and exact control checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = San4o9910/Kinetra
+          test "$GITHUB_REF" = refs/heads/ops/timeweb-hourly-preflight-20260909
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$ACTIVATE_LOCAL_APPLICATION" = APPROVED
+          sha256sum --check --strict <<'SHA256'
+          635042bf8f95dca8c26b0bb42445152b06385b3b09c35eca3e3b4d277c080dd3  ops/timeweb/application-caller.py
+          465b7a22cf59d5b3a9e40fb203b45ffeee97e7780ba54a6e315f09f4cc9d3366  ops/timeweb/verify-launch-provenance.py
+          bb998e300856eb9392dd9bf16c0446d61dee48a9634861949762e4aa695839be  ops/timeweb/test-application-caller.py
+          SHA256
+          env -i PATH="$PATH" python3 ops/timeweb/test-application-caller.py
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.APPROVED_APP_COMMIT }}
+          path: Kinetra
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify exact application checkout
+        shell: bash
+        env:
+          APP_CHECKOUT: ${{ github.workspace }}/Kinetra
+        run: |
+          set -euo pipefail
+          test "$(git -C "$APP_CHECKOUT" rev-parse HEAD)" = "$APPROVED_APP_COMMIT"
+          git -C "$APP_CHECKOUT" diff --exit-code
+          (cd "$APP_CHECKOUT" && sha256sum --check --quiet MANIFEST.sha256)
+      - name: Authenticate current source images and successful database handoff
+        shell: bash
+        env:
+          APP_CHECKOUT: ${{ github.workspace }}/Kinetra
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 ops/timeweb/application-caller.py --authenticate-database
+      - name: Prepare API with only step-local auth provider inputs
+        shell: bash
+        env:
+          APP_CHECKOUT: ${{ github.workspace }}/Kinetra
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+          AUTH_TOKEN_DELIVERY_WEBHOOK_URL: ${{ secrets.AUTH_TOKEN_DELIVERY_WEBHOOK_URL }}
+          AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET: ${{ secrets.AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET }}
+        run: |
+          set -euo pipefail
+          python3 ops/timeweb/application-caller.py --prepare-api
+      - name: Recheck current source images and database before local startup
+        shell: bash
+        env:
+          APP_CHECKOUT: ${{ github.workspace }}/Kinetra
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 ops/timeweb/application-caller.py --recheck-provenance
+      - name: Start and accept only local backend and frontend
+        shell: bash
+        env:
+          APP_CHECKOUT: ${{ github.workspace }}/Kinetra
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 ops/timeweb/application-caller.py --start-local
+      - name: Retain sanitized accepted local handoff
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: kinetra-local-handoff-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/kinetra-launch-caller-${{ github.run_id }}-1/accepted-local-handoff.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Retain sanitized attempt observations for reconciliation
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: kinetra-local-attempt-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/kinetra-launch-caller-${{ github.run_id }}-1/api-outer.json
+            ${{ runner.temp }}/kinetra-launch-caller-${{ github.run_id }}-1/local-outer.json
+            ${{ runner.temp }}/kinetra-launch-caller-${{ github.run_id }}-1/api-outer.observations.jsonl
+            ${{ runner.temp }}/kinetra-launch-caller-${{ github.run_id }}-1/local-outer.observations.jsonl
+          if-no-files-found: ignore
+          retention-days: 14
+
+# Failure is not an instruction to repeat preparation/start. Private local
+# failure records and the durable host attempt remain for state-specific review.
+# Caddy, HTTP certificate requests, boot policy and production writes are excluded.
