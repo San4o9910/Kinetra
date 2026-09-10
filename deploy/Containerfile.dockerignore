@@ -32,6 +32,13 @@
 !deploy/nginx.conf
 !deploy/Containerfile
 !deploy/Containerfile.dockerignore
+!deploy/media
+!deploy/media/build.mjs
+!deploy/media/inventory.mjs
+!deploy/media/sources.json
+!deploy/media/keys
+!deploy/media/keys/ffmpeg.asc
+!deploy/media/keys/imagemagick.asc
 **/.env*
 **/*.pem
 **/*.key

@@ -1,6 +1,14 @@
-# Supply reviewed Node 22 bookworm-slim and nginx-unprivileged Alpine 3.24 slim digests.
+# Supply reviewed Node 22 Alpine 3.24 and nginx-unprivileged Alpine 3.24 slim digests.
 ARG NODE_IMAGE
 ARG NGINX_IMAGE
+FROM ${NODE_IMAGE} AS media-build
+ARG NODE_IMAGE
+RUN node -e 'if (!/@sha256:[a-f0-9]{64}$/.test(process.argv[1]) || process.versions.node.split(".")[0] !== "22") process.exit(1)' "$NODE_IMAGE"
+RUN . /etc/os-release && test "$ID" = alpine && case "$VERSION_ID" in 3.24.*) ;; *) exit 1 ;; esac
+RUN apk add --no-cache build-base ca-certificates curl gnupg openssl pkgconf nasm pax-utils xz x264-dev zlib-dev libjpeg-turbo-dev libpng-dev libwebp-dev
+COPY deploy/media /media-recipe
+RUN node /media-recipe/build.mjs
+
 FROM ${NODE_IMAGE} AS build
 ARG NODE_IMAGE
 ARG VCS_REF
@@ -8,6 +16,9 @@ ARG VITE_API_URL
 ARG VITE_PRIVATE_MEDIA_ORIGIN
 WORKDIR /app
 RUN node -e 'if (!/@sha256:[a-f0-9]{64}$/.test(process.argv[1]) || !/^[a-f0-9]{40}([a-f0-9]{24})?$/.test(process.argv[2])) process.exit(1)' "$NODE_IMAGE" "$VCS_REF"
+RUN . /etc/os-release && test "$ID" = alpine && case "$VERSION_ID" in 3.24.*) ;; *) exit 1 ;; esac
+# bcrypt and all native modules are installed on the same musl ABI as runtime.
+RUN apk add --no-cache python3 make g++
 COPY package.json package-lock.json tsconfig.base.json ./
 COPY packages/shared/package.json ./packages/shared/
 COPY apps/backend/package.json ./apps/backend/
@@ -29,7 +40,18 @@ ARG VCS_REF
 LABEL org.opencontainers.image.revision=$VCS_REF
 # Final image packages must be scanned and the final image deployed by digest.
 USER root
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates ffmpeg imagemagick tini && rm -rf /var/lib/apt/lists/*
+RUN . /etc/os-release && test "$ID" = alpine && case "$VERSION_ID" in 3.24.*) ;; *) exit 1 ;; esac
+COPY --from=media-build /media-output/kinetra-media.rsa.pub /etc/apk/keys/kinetra-media.rsa.pub
+COPY --from=media-build /media-output/*.apk /tmp/media-packages/
+RUN apk verify /tmp/media-packages/*.apk \
+    && apk add --no-cache ca-certificates tini /tmp/media-packages/*.apk \
+    && rm -rf /tmp/media-packages \
+    && ln -s /sbin/tini /usr/bin/tini \
+    && apk info -e ffmpeg imagemagick \
+    && apk info --who-owns /usr/bin/ffmpeg /usr/bin/ffprobe /usr/bin/magick
+COPY --from=media-build /media-output/evidence /usr/share/kinetra-media
+RUN apk info -vv > /usr/share/kinetra-media/runtime-apk-inventory.txt
+RUN apk query --from installed --format json --fields name,version,origin,arch,depends,provides,contents ffmpeg imagemagick > /usr/share/kinetra-media/media-apk-inventory.json
 # API and worker entrypoints execute Node directly. Package managers are build
 # tools: remove their actual programs and vendored dependencies from the runtime.
 RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack /opt/yarn-v* \
