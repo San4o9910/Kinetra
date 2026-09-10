@@ -135,7 +135,7 @@ class WrapperTests(unittest.TestCase):
         self.environ = {"GITHUB_ACTIONS": "true", "GITHUB_REPOSITORY": inspection.REPOSITORY, "GITHUB_RUN_ATTEMPT": "1",
             "GITHUB_RUN_ID": "34500000009", "RUNNER_TEMP": str(self.root), "TIMEWEB_CLOUD_TOKEN": TOKEN,
             "GITHUB_TOKEN": REGISTRY_TOKEN, "GH_TOKEN": REGISTRY_TOKEN, "APP_CHECKOUT": str(self.root / "checkout"), **IMAGES,
-            **{key: "offline-provider-secret" for key in module.prepare.activation.PROVIDERS}}
+            **{key: "offline-provider-secret" for key in module.prepare.activation.PROVIDER_ENV_KEYS}}
         self.bind()
 
     def bind(self):
@@ -251,6 +251,8 @@ class WrapperTests(unittest.TestCase):
         self.assertEqual(state["activation_outcome"], "ACCEPTED_OBSERVED")
         self.assertEqual(state["guest_temp_cleanup"], "REMOVED")
         self.assertEqual(state["local_key_cleanup"], "REMOVED")
+        for name in (*module.prepare.activation.PROVIDER_ENV_KEYS, "GITHUB_TOKEN", "GH_TOKEN"):
+            self.assertNotIn(name, self.environ)
         args, wire, _ = calls.ssh.call_args.args
         payload = json.loads(wire)
         self.assertEqual(payload["approved"], request()["approved"])

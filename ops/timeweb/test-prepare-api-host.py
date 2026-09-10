@@ -28,8 +28,7 @@ IMAGES = {
     "POSTGRES_IMAGE": "postgres:17-bookworm@sha256:" + "5" * 64,
 }
 # Offline fixtures only; never sent to a provider or server.
-PROVIDERS = {"YUKASSA_SHOP_ID": "123456", "YUKASSA_SECRET_KEY": "offline-provider-key-" + "d" * 32,
-    "AUTH_TOKEN_DELIVERY_WEBHOOK_URL": "https://delivery.kinetra.ru/token",
+PROVIDERS = {"AUTH_TOKEN_DELIVERY_WEBHOOK_URL": "https://delivery.kinetra.ru/token",
     "AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET": "offline-delivery-key-" + "e" * 32}
 TIMEWEB_TOKEN = "offline-timeweb-token-do-not-print"
 REGISTRY_TOKEN = "offline-registry-token-do-not-forward"
@@ -144,6 +143,35 @@ class WrapperTests(unittest.TestCase):
                 self.assertEqual(FakeApi.instances, [])
                 self.assertFalse(calls.key.called or calls.ssh.called)
 
+    def test_payment_environment_values_are_scrubbed_and_rejected_before_timeweb(self):
+        for key in prepare.activation.PAYMENT_PROVIDER_KEYS:
+            with self.subTest(key=key):
+                self.setUp()
+                self.environ[key] = "offline-rejected-payment-input"
+                code, state, calls = self.run_wrapper()
+                self.assertEqual((code, state["error"]), (1, "PAYMENT_PROVIDER_INPUTS_NOT_ALLOWED"))
+                self.assertEqual(FakeApi.instances, [])
+                self.assertFalse(any(call.called for call in (calls.source, calls.migrations, calls.pin, calls.key, calls.inspect, calls.ssh, calls.nonce)))
+                for name in (*prepare.activation.PROVIDER_ENV_KEYS, "TIMEWEB_CLOUD_TOKEN", "GITHUB_TOKEN", "GH_TOKEN"):
+                    self.assertNotIn(name, self.environ)
+                self.assertEqual(list(self.root.iterdir()), [])
+
+    def test_payment_provider_file_values_refused_without_timeweb_or_file_mutation(self):
+        for key in prepare.activation.PAYMENT_PROVIDER_KEYS:
+            with self.subTest(key=key):
+                self.setUp()
+                private = self.root / "providers.json"
+                private.write_text(json.dumps({**PROVIDERS, key: ""}))
+                private.chmod(0o600)
+                original = private.read_bytes()
+                for name in PROVIDERS:
+                    self.environ.pop(name)
+                code, state, calls = self.run_wrapper(argv=["--prepare-api-environment", "--provider-input", str(private)])
+                self.assertEqual((code, state["error"]), (1, "REQUIRED_PROVIDER_INPUTS_MISSING"))
+                self.assertEqual(FakeApi.instances, [])
+                self.assertFalse(calls.key.called or calls.ssh.called or calls.nonce.called)
+                self.assertEqual(private.read_bytes(), original)
+
     def test_exact_checkout_failure_and_helper_pin_failure_prevent_api(self):
         code, state, calls = self.run_wrapper(source_error=prepare.Error("APP_CHECKOUT_COMMIT_MISMATCH"))
         self.assertEqual((code, state["error"]), (1, "APP_CHECKOUT_COMMIT_MISMATCH"))
@@ -157,6 +185,7 @@ class WrapperTests(unittest.TestCase):
         self.assertFalse(calls.nonce.called)
 
     def test_success_binds_sources_and_sends_secrets_only_on_stdin(self):
+        self.environ.update({key: "" for key in prepare.activation.PAYMENT_PROVIDER_KEYS})
         code, state, calls = self.run_wrapper()
         self.assertEqual((code, state["result"]), (0, "API_ENVIRONMENT_PREPARED_ONLY"))
         self.assertFalse(state["application_started"] or state["caddy_started"])
@@ -175,7 +204,7 @@ class WrapperTests(unittest.TestCase):
             self.assertNotIn(secret, " ".join(args))
         self.assertNotIn(TIMEWEB_TOKEN.encode(), wire)
         self.assertNotIn(REGISTRY_TOKEN.encode(), wire)
-        for key in (*prepare.activation.PROVIDERS, "TIMEWEB_CLOUD_TOKEN", "GITHUB_TOKEN", "GH_TOKEN"):
+        for key in (*prepare.activation.PROVIDER_ENV_KEYS, "TIMEWEB_CLOUD_TOKEN", "GITHUB_TOKEN", "GH_TOKEN"):
             self.assertNotIn(key, self.environ)
         calls.source.assert_called_once_with(str(self.root / "approved-checkout"), COMMIT)
         calls.migrations.assert_called_once_with(str(self.root / "approved-checkout"), COMMIT)
@@ -249,7 +278,7 @@ class WrapperTests(unittest.TestCase):
             lambda d: d.update(guest_temp_cleanup="NOT_NEEDED"),
             lambda d: d["preparation"].update(application_started=True),
             lambda d: d["preparation"].update(provider_requests=1),
-            lambda d: d["preparation"].update(error=PROVIDERS["YUKASSA_SECRET_KEY"]),
+            lambda d: d["preparation"].update(error=PROVIDERS["AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET"]),
             lambda d: d["preparation"].update(candidate_directory="../env/api.env"),
             lambda d: d["preparation"].update(api_environment_installed=False),
         ):

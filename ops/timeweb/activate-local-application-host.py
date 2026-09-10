@@ -36,14 +36,14 @@ import tempfile
 import time
 
 PINS = {
-    "start-application-host.py": "498715ff4f8cedd8b5230ed662b9c079f5ab33ce67ce06d5e054f5ef76c00f6c",
-    "activate-application-host.py": "c4aa6e204d8a17aa686ad6179caf1dd5a1f397867aa534d3c574c103e3c65a21",
+    "start-application-host.py": "dafe6e3544b60c1ca94bf39f06c0522c89a0b7dd80ad19b489b28227da3a5747",
+    "activate-application-host.py": "73e2a6c2389206c11712d96e3a4736da481e6ab4d0494dc088abc6f447f9ea72",
     "initialize-database-host.py": "041f415dedf6b0b6922484281926c8c98c87828506dcb2e1ac6fb324b00b05bb",
     "prepare-database-host.py": "4621b1c0153ab56ae535e245fdb2de4ef2aff4a30ba5b592343a26795f0655ae",
     "bootstrap-server.py": "a19aca3ea953feecdcb9be6e9dcabdfc8b0e2b4f3938184391cdfb2ff3e87c9e",
     "inspect-server.py": "567d892221925bb438ece6a893360a891ffd4228f8af0a18252b8ba365a682c0",
 }
-LOCAL_PINS = {**PINS, "prepare-api-host.py": "d07e96d93636bdc90b78f22c990df8e6e8fbb707efc5f0c77aeec28a9206dc5f"}
+LOCAL_PINS = {**PINS, "prepare-api-host.py": "e82612acbe9a642d37da867ec2f9cd6cae3d511387d3f2bdecee0fdfddf426a1"}
 
 
 def public_helpers():
@@ -394,7 +394,7 @@ def main(argv=None, environ=None, api_factory=inspection.Api):
         "provider_requests": 0, "full_launch_accepted": False}
     api, folder, payload, request = None, None, b"", None
     token = environ.pop("TIMEWEB_CLOUD_TOKEN", "")
-    for key in (*prepare.activation.PROVIDERS, "GITHUB_TOKEN", "GH_TOKEN"): environ.pop(key, None)
+    for key in (*prepare.activation.PROVIDER_ENV_KEYS, "GITHUB_TOKEN", "GH_TOKEN"): environ.pop(key, None)
     try:
         request = private_input(argv)
         require(environ.get("GITHUB_ACTIONS") == "true" and environ.get("GITHUB_REPOSITORY") == inspection.REPOSITORY

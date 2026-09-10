@@ -42,7 +42,10 @@ LOCK = Path("/run/kinetra-database-stage.lock")
 SERVER_ID = 9069403
 PUBLIC_IP = "80.68.156.131"
 ORIGIN = "https://" + PUBLIC_IP
-PROVIDERS = ("YUKASSA_SHOP_ID", "YUKASSA_SECRET_KEY", "AUTH_TOKEN_DELIVERY_WEBHOOK_URL", "AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET")
+PROVIDERS = ("AUTH_TOKEN_DELIVERY_WEBHOOK_URL", "AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET")
+PAYMENT_PROVIDER_KEYS = ("YUKASSA_SHOP_ID", "YUKASSA_SECRET_KEY", "YUKASSA_RETURN_URL")
+# Keep legacy payment inputs in the scrub set even though this launch rejects them.
+PROVIDER_ENV_KEYS = (*PROVIDERS, *PAYMENT_PROVIDER_KEYS)
 PRIVATE_INPUT_KEYS = {"schema", "server_id", "public_ipv4", "commit", "images", "source_hashes", "migration_hashes", "providers"}
 BAD_VALUE = re.compile(r"replace|example|change[_-]?me|placeholder|dummy|fake|local.only", re.I)
 
@@ -203,8 +206,8 @@ def api_values(data, vapid):
         "AUTH_REFRESH_COOKIE_SECURE": "true", "AUTH_TOKEN_DELIVERY_MODE": "webhook",
         "AUTH_TOKEN_DELIVERY_WEBHOOK_URL": data["providers"]["AUTH_TOKEN_DELIVERY_WEBHOOK_URL"],
         "AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET": data["providers"]["AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET"],
-        "AUTH_TOKEN_DELIVERY_TIMEOUT_MS": "10000", "YUKASSA_SHOP_ID": data["providers"]["YUKASSA_SHOP_ID"],
-        "YUKASSA_SECRET_KEY": data["providers"]["YUKASSA_SECRET_KEY"], "YUKASSA_RETURN_URL": ORIGIN + "/payment/success",
+        "AUTH_TOKEN_DELIVERY_TIMEOUT_MS": "10000", "PAYMENTS_ENABLED": "false", "FREE_BETA_ENABLED": "true",
+        "YUKASSA_SHOP_ID": "", "YUKASSA_SECRET_KEY": "", "YUKASSA_RETURN_URL": "",
         "YUKASSA_REQUEST_TIMEOUT_MS": "10000", "VAPID_PUBLIC_KEY": vapid["public"], "VAPID_PRIVATE_KEY": vapid["private"],
         "VAPID_SUBJECT": ORIGIN, "CHAT_ENABLED": "false", "CHAT_PHOTO_UPLOADS_ENABLED": "false",
         "TRAINER_VIDEO_UPLOADS_ENABLED": "false", "S3_ENDPOINT": "", "S3_REGION": "", "S3_BUCKET": "",
@@ -212,6 +215,12 @@ def api_values(data, vapid):
         "VIDEO_S3_SERVER_SIDE_ENCRYPTION": "AES256", "VIDEO_S3_KMS_KEY_ID": "",
         "READINESS_TIMEOUT_MS": "2000", "SHUTDOWN_DRAIN_MS": "5000", "SHUTDOWN_TIMEOUT_MS": "25000",
     }
+
+
+API_ENV_PROGRAM = ("const {env}=await import('./apps/backend/dist/config/env.js');"
+    "if(env.paymentsEnabled!==false||env.freeBetaEnabled!==true||env.yookassa!==null)"
+    "throw new Error('FREE_BETA_RUNTIME_CONFIGURATION_REQUIRED');"
+    "console.log('KINETRA_API_RUNTIME_ENV=PASS');")
 
 
 def validate_candidate(image, main_file, api_file):
@@ -229,7 +238,7 @@ def validate_candidate(image, main_file, api_file):
     output = disposable(["--network", "none", "--log-driver", "none", "--user", "1000:1000", "--read-only", "--cap-drop", "ALL",
                          "--security-opt", "no-new-privileges:true", "--pids-limit", "32", "--memory", "128m",
                          "--memory-swap", "128m", "--cpus", "0.25", "--env-file", str(api_file), "--entrypoint", "node"], image,
-                        ["--input-type=module", "-e", "await import('./apps/backend/dist/config/env.js');console.log('KINETRA_API_RUNTIME_ENV=PASS');"], capture=True)
+                         ["--input-type=module", "-e", API_ENV_PROGRAM], capture=True)
     require(output.strip() == "KINETRA_API_RUNTIME_ENV=PASS", "COMPILED_API_ENV_REJECTED")
 
 

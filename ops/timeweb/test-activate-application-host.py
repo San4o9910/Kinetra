@@ -33,8 +33,7 @@ IMAGES = {
     "POSTGRES_IMAGE": "postgres:17-bookworm@sha256:" + "5" * 64,
 }
 # Synthetic fixtures, never production inputs or a provider request.
-PROVIDERS = {"YUKASSA_SHOP_ID": "123456", "YUKASSA_SECRET_KEY": "offline-provider-key-" + "b" * 32,
-    "AUTH_TOKEN_DELIVERY_WEBHOOK_URL": "https://delivery.kinetra.ru/token",
+PROVIDERS = {"AUTH_TOKEN_DELIVERY_WEBHOOK_URL": "https://delivery.kinetra.ru/token",
     "AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET": "offline-delivery-key-" + "c" * 32}
 DB_PASSWORD = "d" * 64
 OLD_API = b"# Explicitly incomplete first-deployment state\nNODE_ENV=production\n"
@@ -154,8 +153,8 @@ class PreparationTests(unittest.TestCase):
 
     def test_unsafe_provider_values_and_bad_ports_refuse_before_mutation(self):
         for key, value in (
-            ("YUKASSA_SECRET_KEY", "replace_me"), ("YUKASSA_SECRET_KEY", "secret$HOME"),
-            ("YUKASSA_SHOP_ID", "123\nHOST=other"), ("AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET", "short"),
+            ("AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET", "replace_me"), ("AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET", "secret$HOME"),
+            ("AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET", "123\nHOST=other"), ("AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET", "short"),
             *(('AUTH_TOKEN_DELIVERY_WEBHOOK_URL', value) for value in (
                 "http://delivery.kinetra.ru/token", "https://127.0.0.1/token", "https://localhost/token",
                 "https://delivery.kinetra.ru:bad/token", "https://delivery.kinetra.ru:65536/token", "https://delivery.kinetra.ru:0/token",
@@ -168,6 +167,18 @@ class PreparationTests(unittest.TestCase):
                 self.assertEqual(code, 1)
                 self.assertFalse(identity.called or generate.called or validate.called)
                 self.assertEqual(list(self.stage.iterdir()), [])
+
+    def test_payment_provider_inputs_are_rejected_even_if_empty_before_mutation(self):
+        for key in activate.PAYMENT_PROVIDER_KEYS:
+            for value in ("", "offline-payment-value"):
+                with self.subTest(key=key, value=value):
+                    data = payload()
+                    data["providers"][key] = value
+                    with patch.object(activate.fcntl, "flock") as lock, patch.object(activate, "write_new") as write:
+                        code, state, identity, generate, validate = self.run_main(data)
+                    self.assertEqual((code, state["error"]), (1, "REQUIRED_PROVIDER_INPUTS_MISSING"))
+                    self.assertFalse(any(mock.called for mock in (lock, write, identity, generate, validate, self.host_command)))
+                    self.assertEqual(list(self.stage.iterdir()), [])
 
     def test_identity_scope_and_required_tagged_postgres_fail_closed(self):
         for mutate in (
@@ -283,10 +294,33 @@ class PreparationTests(unittest.TestCase):
             input=json.dumps({"api": values, "main": self.main}), capture_output=True, text=True, timeout=10)
         self.assertEqual((result.returncode, result.stdout.strip()), (0, "VALID"), result.stderr)
         self.assertGreaterEqual(len(base64.urlsafe_b64decode(values["JWT_ACCESS_SECRET"])), 48)
+        self.assertEqual(values["PAYMENTS_ENABLED"], "false")
+        self.assertEqual(values["FREE_BETA_ENABLED"], "true")
+        for key in activate.PAYMENT_PROVIDER_KEYS:
+            self.assertEqual(values[key], "")
         for key in ("CHAT_ENABLED", "CHAT_PHOTO_UPLOADS_ENABLED", "TRAINER_VIDEO_UPLOADS_ENABLED"):
             self.assertEqual(values[key], "false")
         for key in ("S3_ENDPOINT", "S3_REGION", "S3_BUCKET", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY"):
             self.assertEqual(values[key], "")
+
+    def test_compiled_environment_assertion_rejects_missing_or_wrong_launch_flags(self):
+        fixture = self.root / "runtime-env.mjs"
+        program = activate.API_ENV_PROGRAM.replace("'./apps/backend/dist/config/env.js'", "process.argv[1]")
+        valid = {"paymentsEnabled": False, "freeBetaEnabled": True, "yookassa": None}
+        variants = [valid, {}, {**valid, "paymentsEnabled": True}, {**valid, "freeBetaEnabled": False},
+            {**valid, "paymentsEnabled": "false"}, {**valid, "freeBetaEnabled": "true"},
+            {**valid, "yookassa": {"shopId": "offline-shop"}}]
+        for values in variants:
+            with self.subTest(values=values):
+                fixture.write_text("export const env=" + json.dumps(values) + ";\n")
+                result = subprocess.run([self.node, "--input-type=module", "-e", program, fixture.as_uri()],
+                    capture_output=True, text=True, timeout=10)
+                if values == valid:
+                    self.assertEqual((result.returncode, result.stdout.strip()), (0, "KINETRA_API_RUNTIME_ENV=PASS"), result.stderr)
+                else:
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertEqual(result.stdout, "")
+                    self.assertIn("FREE_BETA_RUNTIME_CONFIGURATION_REQUIRED", result.stderr)
 
     def test_validators_have_only_readonly_narrow_mounts_and_no_jobs_or_server(self):
         with patch.object(activate, "disposable", side_effect=[STRICT_MARKER, "KINETRA_API_RUNTIME_ENV=PASS"]) as call:
@@ -312,6 +346,7 @@ class PreparationTests(unittest.TestCase):
         self.assertIn("DAC_READ_SEARCH", first[0])
         self.assertNotIn("--cap-add", second[0])
         self.assertIn("./apps/backend/dist/config/env.js", second[2][-1])
+        self.assertEqual(second[2][-1], activate.API_ENV_PROGRAM)
         for outputs in (["unexpected", "KINETRA_API_RUNTIME_ENV=PASS"], [STRICT_MARKER, ""]):
             with patch.object(activate, "disposable", side_effect=outputs), self.assertRaises(activate.Error):
                 activate.validate_candidate(IMAGES["BACKEND_IMAGE"], self.stage / "env/production.env", self.stage / "env/api.env")
@@ -394,7 +429,7 @@ class PreparationTests(unittest.TestCase):
             self.assertFalse(identity.called or generate.called)
         finally:
             os.close(descriptor)
-        code, state, *_ = self.run_main(live=RuntimeError(PROVIDERS["YUKASSA_SECRET_KEY"]))
+        code, state, *_ = self.run_main(live=RuntimeError(PROVIDERS["AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET"]))
         self.assertEqual((code, state["error"]), (1, "UNEXPECTED_ERROR_PRIVATE_STATE_PRESERVED"))
         self.assertEqual((self.stage / "env/api.env").read_bytes(), OLD_API)
 

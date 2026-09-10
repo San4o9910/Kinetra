@@ -23,7 +23,7 @@ import tempfile
 import time
 
 PINS = {
-    "activate-application-host.py": "c4aa6e204d8a17aa686ad6179caf1dd5a1f397867aa534d3c574c103e3c65a21",
+    "activate-application-host.py": "73e2a6c2389206c11712d96e3a4736da481e6ab4d0494dc088abc6f447f9ea72",
     "initialize-database-host.py": "041f415dedf6b0b6922484281926c8c98c87828506dcb2e1ac6fb324b00b05bb",
     "prepare-database-host.py": "4621b1c0153ab56ae535e245fdb2de4ef2aff4a30ba5b592343a26795f0655ae",
     "bootstrap-server.py": "a19aca3ea953feecdcb9be6e9dcabdfc8b0e2b4f3938184391cdfb2ff3e87c9e",
@@ -259,11 +259,15 @@ def main(argv=None, environ=None, api_factory=inspection.Api):
         "guest_temp_cleanup": "NOT_NEEDED", "preparation": None, "error": None,
         "application_started": False, "caddy_started": False}
     api, folder, data, payload = None, None, None, b""
-    providers = {key: environ.pop(key, "") for key in activation.PROVIDERS}
+    provider_environment = {key: environ.pop(key, "") for key in activation.PROVIDER_ENV_KEYS}
+    providers = {key: provider_environment[key] for key in activation.PROVIDERS}
     token = environ.pop("TIMEWEB_CLOUD_TOKEN", "")
     environ.pop("GITHUB_TOKEN", None)
     environ.pop("GH_TOKEN", None)
     try:
+        require(not any(provider_environment[key] for key in activation.PAYMENT_PROVIDER_KEYS),
+                "PAYMENT_PROVIDER_INPUTS_NOT_ALLOWED")
+        provider_environment = None
         providers = provider_input(argv, providers)
         require(environ.get("GITHUB_ACTIONS") == "true" and environ.get("GITHUB_REPOSITORY") == inspection.REPOSITORY
                 and environ.get("GITHUB_RUN_ATTEMPT") == "1", "AUTHORIZED_NEW_GITHUB_RUN_REQUIRED")
@@ -279,7 +283,7 @@ def main(argv=None, environ=None, api_factory=inspection.Api):
         data = {"schema": 1, "server_id": inspection.SERVER_ID, "public_ipv4": inspection.PUBLIC_IPV4,
             **metadata, "source_hashes": {name: entry["sha256"] for name, entry in files.items()},
             "migration_hashes": initialization.migration_hashes(environ.get("APP_CHECKOUT", ""), metadata["commit"]), "providers": providers}
-        # Frozen guest validation checks all four required providers before any
+        # Frozen guest validation checks both required auth providers before any
         # API call, nonce/key generation, local temp directory or host action.
         activation.validate_input(data)
         public = public_helpers()
