@@ -28,18 +28,20 @@ Record the exact reviewed commit, immutable backend/frontend image digests, buil
 - Accessibility review includes keyboard, focus, reduced motion, contrast, mobile viewport and readable charts. Existing trainer content with meaningful audio needs an approved accessible alternative/caption workflow before that content can launch; no fake caption readiness.
 - Chat video attachments remain outside this change and need the separate T15 plan/gates.
 
-## Future cutover sequence — requires separate approval
+## Cutover sequence within the existing deployment approval
 
 | Step | Operator action                                                 | Verification and pause point                                                                     |
 | ---- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| 1    | Confirm launch window, exact release and available roles        | Owner GO recorded; backup/rollback evidence current                                              |
+| 1    | Confirm launch window, exact release and available roles        | Existing conditional deployment approval recorded; required evidence current                     |
 | 2    | Restrict traffic and capture approved recovery point            | Integrity verified; no competing migrator/jobs                                                   |
 | 3    | Execute only approved migration job, with dedicated credentials | Complete immutable ledger/schema check; stop on first failure                                    |
 | 4    | Start reviewed API and frontend images in approved environment  | Correct digest, healthy process, private readiness, no accidental public upstream                |
 | 5    | Verify edge/routing and sandbox-only critical journeys          | Login, profile, today/plan, workout save including Back fence, progress, trainer/chat if enabled |
-| 6    | Owner authorizes traffic admission                              | Correct client-IP trust, stable error/latency baseline and monitoring delivery                   |
+| 6    | Admit traffic after all required checks pass                    | Correct client-IP trust, stable error/latency baseline and monitoring delivery                   |
 | 7    | Separately authorize each scheduler/feature/provider activation | Correct purpose credentials, fresh heartbeats, no duplicate actions                              |
 | 8    | Observe first hour/day                                          | Record known regressions and owner decision; only then approve announcements                     |
+
+The existing continuous approval already covers deployment and first initialization of the empty database on the named host after green mandatory gates. These steps do not require another blanket approval. Missing external credentials or an unapproved resource/cost decision still require the owner. Payment activation and real messages remain excluded.
 
 Timeweb server 9069403 is the selected target. Follow the reviewed single-server and IP HTTPS deployment instructions; record image digests and actual provider configuration before GO. Do not improvise provider commands during an incident.
 

@@ -4881,6 +4881,17 @@ const runBrowserScenario = async () => {
         'Auth-link tokens must not be persisted in browser storage or history state.',
       );
     };
+    const authLinkUrlIsCleared = () =>
+      cdp.evaluate('window.location.search === "" && window.location.hash === ""');
+    const waitForResetPasswordForm = (label) =>
+      waitFor(
+        label,
+        async () =>
+          (await exists('password-reset-screen')) &&
+          (await exists('reset-new-password')) &&
+          (await exists('reset-confirm-submit')) &&
+          (await authLinkUrlIsCleared()),
+      );
     const fillResetPassword = async () => {
       await setValue('reset-new-password', browserNewPassword);
       await setValue('reset-confirm-password', browserNewPassword);
@@ -4934,7 +4945,10 @@ const runBrowserScenario = async () => {
       ]) {
         const bootstrapBeforeLink = authLinkFixture.bootstrapRequests;
         await cdp.send('Page.navigate', { url: `${frontendOrigin}/auth/reset-password${suffix}` });
-        await waitFor('invalid recovery link is explained', () => exists('auth-link-invalid'));
+        await waitFor(
+          'invalid recovery link is explained after its URL is consumed',
+          async () => (await exists('auth-link-invalid')) && (await authLinkUrlIsCleared()),
+        );
         assert.equal(await exists('reset-confirm-submit'), false);
         assert.equal(authLinkFixture.resetConfirmations.length, 0);
         assert.equal(authLinkFixture.bootstrapRequests, bootstrapBeforeLink);
@@ -4948,9 +4962,7 @@ const runBrowserScenario = async () => {
       await cdp.send('Page.navigate', {
         url: `${frontendOrigin}/auth/reset-password#token=${browserExpiredResetToken}`,
       });
-      await waitFor('expired token is validated only after password entry', () =>
-        exists('password-reset-screen'),
-      );
+      await waitForResetPasswordForm('expired token is validated only after password entry');
       await fillResetPassword();
       await click('reset-confirm-submit');
       await waitFor('server rejects expired recovery link', () => exists('auth-link-invalid'));
@@ -4959,11 +4971,15 @@ const runBrowserScenario = async () => {
       await assertAuthTokenCleared();
 
       const bootstrapBeforeReset = authLinkFixture.bootstrapRequests;
+      const documentBeforeResetLink = await cdp.evaluate('performance.timeOrigin');
       await cdp.send('Page.navigate', {
         url: `${frontendOrigin}/auth/reset-password#token=${browserResetToken}`,
       });
-      await waitFor('valid password reset link opens the new password form', () =>
-        exists('password-reset-screen'),
+      await waitForResetPasswordForm('valid password reset link opens the new password form');
+      assert.equal(
+        await cdp.evaluate('performance.timeOrigin'),
+        documentBeforeResetLink,
+        'A valid reset link must replace the invalid screen without reloading the document.',
       );
       assert.equal(authLinkFixture.bootstrapRequests, bootstrapBeforeReset);
       assert.equal(authLinkFixture.resetConfirmations.length, 1);
@@ -4997,13 +5013,12 @@ const runBrowserScenario = async () => {
       await cdp.send('Page.navigate', {
         url: `${frontendOrigin}/auth/reset-password#token=${browserResetToken}`,
       });
-      await waitFor('reopening a link does not automatically submit its token', () =>
-        exists('password-reset-screen'),
-      );
+      await waitForResetPasswordForm('reopening a link does not automatically submit its token');
       await assertAuthTokenCleared();
       await cdp.send('Page.reload');
-      await waitFor('reload cannot recover the consumed URL fragment from storage', () =>
-        exists('auth-link-invalid'),
+      await waitFor(
+        'reload cannot recover the consumed URL fragment from storage',
+        async () => (await exists('auth-link-invalid')) && (await authLinkUrlIsCleared()),
       );
       assert.deepEqual(authLinkFixture.resetConfirmations, [
         browserExpiredResetToken,
@@ -5016,8 +5031,12 @@ const runBrowserScenario = async () => {
       await cdp.send('Page.navigate', {
         url: `${frontendOrigin}/auth/verify-email#token=${browserVerificationToken}`,
       });
-      await waitFor('email verification waits for an explicit confirmation', () =>
-        exists('email-verification-screen'),
+      await waitFor(
+        'email verification waits for an explicit confirmation after its URL is consumed',
+        async () =>
+          (await exists('email-verification-screen')) &&
+          (await exists('email-verification-submit')) &&
+          (await authLinkUrlIsCleared()),
       );
       assert.equal(authLinkFixture.bootstrapRequests, bootstrapBeforeVerification);
       assert.deepEqual(authLinkFixture.verificationTokens, []);

@@ -5,10 +5,107 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 import { AuthLinkGate } from '../src/features/auth/AuthLinkGate.js';
 import { ForgotPasswordScreen } from '../src/features/auth/ForgotPasswordScreen.js';
-import { consumeAuthLink, resetPasswordIssue } from '../src/features/auth/authLinks.js';
+import {
+  consumeAuthLink,
+  listenForAuthLinkNavigation,
+  resetPasswordIssue,
+  type AuthLink,
+} from '../src/features/auth/authLinks.js';
 import { ApiClient, ApiRequestError } from '../src/lib/api.js';
 
 const token = 'a'.repeat(43);
+
+const navigationHarness = () => {
+  let location = new URL('https://app.example.test/auth/reset-password');
+  const events = new EventTarget();
+  const replacements: string[] = [];
+  const frames: AuthLink[] = [];
+  const browser = {
+    get location() {
+      return location;
+    },
+    history: {
+      replaceState: (_state: unknown, _title: string, url?: string | URL | null) => {
+        location = new URL(String(url), location);
+        replacements.push(location.href);
+      },
+    },
+    addEventListener: (type: 'hashchange' | 'popstate', listener: (event: Event) => void) =>
+      events.addEventListener(type, listener),
+    removeEventListener: (type: 'hashchange' | 'popstate', listener: (event: Event) => void) =>
+      events.removeEventListener(type, listener),
+  };
+  const dispose = listenForAuthLinkNavigation(browser, (link) => {
+    assert.equal(location.hash, '', 'URL must be clean before the new form is rendered');
+    assert.equal(location.search, '');
+    frames.push(link);
+  });
+  const dispatch = (type: 'hashchange' | 'popstate', newURL = location.href) => {
+    const event = new Event(type);
+    if (type === 'hashchange') Object.assign(event, { newURL });
+    events.dispatchEvent(event);
+  };
+  return {
+    browser,
+    replacements,
+    frames,
+    dispose,
+    dispatch,
+    navigate: (relativeUrl: string, type: 'hashchange' | 'popstate' = 'hashchange') => {
+      location = new URL(relativeUrl, location);
+      const navigatedUrl = location.href;
+      dispatch(type, navigatedUrl);
+      return navigatedUrl;
+    },
+  };
+};
+
+test('same-document auth links clean invalid input then deliver each new form independently', () => {
+  const harness = navigationHarness();
+  harness.navigate(`/auth/reset-password#token=${token}&token=${token}`);
+  harness.navigate(`/auth/reset-password#token=${token}`);
+  harness.navigate(`/auth/reset-password#token=${'b'.repeat(43)}`);
+  assert.deepEqual(harness.frames, [
+    { kind: 'reset', token: null },
+    { kind: 'reset', token },
+    { kind: 'reset', token: 'b'.repeat(43) },
+  ]);
+  assert.equal(harness.replacements.length, 3);
+  harness.dispose();
+});
+
+test('paired popstate and delayed hashchange cannot discard or replay a consumed auth token', () => {
+  const harness = navigationHarness();
+  const earlierUrl = harness.navigate(`/auth/reset-password#token=${token}`, 'popstate');
+  harness.dispatch('hashchange', earlierUrl);
+  assert.deepEqual(harness.frames, [{ kind: 'reset', token }]);
+  harness.navigate(`/auth/verify-email#token=${'v'.repeat(43)}`, 'popstate');
+  harness.dispatch('hashchange', earlierUrl);
+  assert.deepEqual(harness.frames, [
+    { kind: 'reset', token },
+    { kind: 'verify', token: 'v'.repeat(43) },
+  ]);
+  harness.dispose();
+});
+
+test('ordinary app history never replaces a form or resets the mounted application', () => {
+  const harness = navigationHarness();
+  harness.navigate(`/auth/reset-password#token=${token}`);
+  const frameCount = harness.frames.length;
+  const replacementCount = harness.replacements.length;
+  for (const route of ['/login', '/', '/schedule', '/progress', '/settings', '/?day=1#workout']) {
+    harness.navigate(route, 'popstate');
+  }
+  assert.equal(harness.frames.length, frameCount);
+  assert.equal(harness.replacements.length, replacementCount);
+  harness.dispose();
+  harness.navigate(`/auth/reset-password#token=${token}`);
+  assert.equal(
+    harness.frames.length,
+    frameCount,
+    'disposed listeners must not render another form',
+  );
+});
 const authSession = (accessToken: string, id = 'verified-user') => ({
   user: {
     id,

@@ -214,11 +214,11 @@ e5f3053e596420038ee439d39eb060d0644c39a96d867317da8874da2f076d01  ./apps/fronten
 123f4d0515a955448db206b80b1a3656e96e4e522790ef4d1645b4e5892d84b2  ./apps/frontend/public/service-worker.js
 d9988fba5a56d7bd81528b74156f5ce65a8d07f649b9eef77104e81ae768788b  ./apps/frontend/public/theme-init.js
 65cc1cce5d05a7642c3c202779cb1969b73e7055eb93983931295ac6a55bde24  ./apps/frontend/src/App.tsx
-e8a8900d0dd2a0ecde15fc2da7a2575722a53110d1458f8b3ec6d9351ac73912  ./apps/frontend/src/features/auth/AuthLinkGate.tsx
+dd4016384c60a9af3fd6f5080eb430033cb9118cd8a66e2e2298973384ea787f  ./apps/frontend/src/features/auth/AuthLinkGate.tsx
 346c28a7c6f8ec4ba4a9210f8776c1b6e36eb3f6e76a8d4a0edcee5b0f10fdd6  ./apps/frontend/src/features/auth/ForgotPasswordScreen.tsx
 1895192dc2d61436abfa2a2539c9d6c7f08ca24722621b28e6bd7a1b948dbedf  ./apps/frontend/src/features/auth/LoginScreen.tsx
 c2d98d598d5a620837cd0b6af7db4014531e994d23832ebb157aa524733fecb0  ./apps/frontend/src/features/auth/RegisterScreen.tsx
-6d0338e925414d25124bb5f601c3e7fad140f5dba6f3e31dccf1b96ab3100a91  ./apps/frontend/src/features/auth/authLinks.ts
+4f9abb15548a63cad6ad9d4a6fbd53ec2a844863eee061e9f3c9fe1bb84d154a  ./apps/frontend/src/features/auth/authLinks.ts
 59da136b4bd233913eecddb1f9f478f7b5151651274d6ea6f7574627dda92bed  ./apps/frontend/src/features/base-lessons/BaseLessonsRequiredDialog.tsx
 303b3e78dfb56823ec7b109fe3361ae28ff3ee0852df294a4cecbb3d3b861c4c  ./apps/frontend/src/features/base-lessons/BaseLessonsScreen.tsx
 6ceba943743dd6cf6ae5bad486b7e97cfd5b119ae4ae19dd8c1c9671efd799b7  ./apps/frontend/src/features/base-lessons/BaseLessonsView.tsx
@@ -296,7 +296,7 @@ bbdc24fa87de51e6fafebc74b1ee33012b6910088b5e586184568490f90dfa6e  ./apps/fronten
 0fb1a6278d83149e7e742b69f4000b9c6c4359ba6c449d97a74ffb8d819f9262  ./apps/frontend/src/features/trainer-videos/upload.ts
 5d48d620f85a1e5f1474bee60dde745b675565620553d0a70096388b3e7d1fb7  ./apps/frontend/src/hooks/useOnlineStatus.ts
 40414e5e4c59a99d9fd444aa0110efe83175cd54844144e153e74a4827c6ef4c  ./apps/frontend/src/lib/api.ts
-74e43978c86057b65951b5025c5acff7d46c1ba4f4e41e0d671a78ba307e4a0b  ./apps/frontend/src/main.tsx
+71ab9297f919ef79b7d4c455629b184bcb9a46b44a8e0bcf5cd7b268c2bc712b  ./apps/frontend/src/main.tsx
 9c8d28bf5de111010e1ffa689b6bc2ee7385fb2d7c14ef882064b6204b140ecf  ./apps/frontend/src/pwa/pushNotifications.ts
 f65d6dc912ad0ce9c4cf7c69f71e4dbe2db849878a195f96f1d865d77d0c3577  ./apps/frontend/src/pwa/registerServiceWorker.ts
 2f9ad659021866bc007aea56ea0703fc1e7070f0175fd121c0262b0f6b3b7c05  ./apps/frontend/src/realtime/socket.ts
@@ -304,7 +304,7 @@ fb665289461c07867ceb19e86e88ff31f8c9e795f48dae5d96bc8ae6560917d1  ./apps/fronten
 a4638e28e3c9c6eb7b3d4a55c7b308408f4caf9102b908171de5b81f2a463a40  ./apps/frontend/src/styles.css
 8e6a482dec7d62533619e4354794d9248850e9171d650832e7acdf4c313ef0d8  ./apps/frontend/src/vite-env.d.ts
 6b05ae8ab3c10f85b663ffdf99e4b0ff51bf3d3795c1fbcb4762ec2fbc9b41ad  ./apps/frontend/test/api-session.test.ts
-fede35ea03c172a4732d39bf86486f80184fdece1eebdd2da255baac8aed4a49  ./apps/frontend/test/auth-recovery.test.ts
+956bb8473257a1251c1f1cd1124cb92a7f193c1948d6e67d461bc03474644b55  ./apps/frontend/test/auth-recovery.test.ts
 9d00f031dcc00f458cfc33950cc82cd2c08681ec6bf51ed2efdc2952fdc2253f  ./apps/frontend/test/base-lessons-api.test.ts
 89b8b8cb7a51399aa33bad57302e27b44325ea99c92a77e2fe6ba860a9badbed  ./apps/frontend/test/base-lessons.test.ts
 b0d03223b6f02095bbb71082770e8d81a950acae02bc2362d9637813d2f34071  ./apps/frontend/test/chat-csp.test.ts
@@ -378,7 +378,7 @@ f154eedac3930c22fe497e81404f12f2d35927d56e0f202dd7e9af9bd31c1f00  ./deploy/postg
 4886a014b25ffc2f459dd91f910ac6cc7bd25da7e340c1596c97f401d0e41f11  ./docs/DISASTER_RECOVERY.md
 ef1acd72396bef79c34151b24fc9bb7e38847b4f0a6b5b13347ada1e885b3ec9  ./docs/IP_HTTPS_DEPLOYMENT.md
 9dac41d9452f5c9ac2d35c2770643e267f24a66cbfcb310eeddca6d8a9bc0a33  ./docs/PRODUCTION_DELIVERY.md
-6c55fdd86a488b639f85961d6611b3c6a7c50bd11a3318a42f6686257df91961  ./docs/PRODUCTION_LAUNCH_RUNBOOK.md
+1c25f97e76d08c0a8fd834154ccaa45a3ccc96b3bda61a5398b11cbc29f95224  ./docs/PRODUCTION_LAUNCH_RUNBOOK.md
 c886b8c7080fa4a87f68f24fe0f6b4990c947e7be7b9db8fdc2b79b963f95d2a  ./docs/PRODUCTION_MONITORING.md
 25fd9d4d9c4948eb5cf2e40dac4d6ca40b2d8e9302f86b9abec8c36d5c348ccc  ./docs/PRODUCTION_READINESS_REVIEW.md
 44a9dd4a666e5dc54473588f15aaded2af471669d80c48495190640d8b839cde  ./docs/PRODUCT_DIRECTION.md
@@ -414,6 +414,6 @@ c8171db33a1b645b8c36d542cf4bfc5c47073df8842b846f91a6ebf083973c5e  ./packages/sha
 d16d01c4778cc1b7b5f6695a8ad979bc82ed5d3ecec2a77ac579f3bda9e4210f  ./scripts/local-demo-guard.mjs
 aa40f7eec1b859bca8bfe25c88bb945223365e3490c3b675f3b837afda357737  ./scripts/prepare-local-demo.mjs
 bd552b5c0ba879666a9fecf9a8bba3b30f5b1223fbc1cf69fef30a5c6437aaf2  ./scripts/run-local-demo.mjs
-79dcbf5ec491d90db8ef4d084152aca1017d73dedeffd107f25d2479925c1454  ./scripts/test-frontend-browser.mjs
+7ad25fcaa9f273e6cb4cfb67b785cbf7ef271ae7b99a8ce77ed624f4ab8b38e5  ./scripts/test-frontend-browser.mjs
 ae74a15a947b4ff6dc58e019c636ac623410e4cf26e1cb1327ff09cc9bd31cff  ./scripts/verify-project.mjs
 2b67887209f3334ebdc96426f5c2cb87480fb85ff2f75c0d42b0a944dae7922a  ./tsconfig.base.json

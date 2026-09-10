@@ -9,7 +9,7 @@ export interface AuthLink {
 }
 
 // Email links keep credentials in the fragment, which is never sent in the HTTP URL.
-// Read once before rendering or session restoration; do not persist tokens in storage.
+// Consume before rendering or session restoration; do not persist tokens in storage.
 export const consumeAuthLink = (
   location: Pick<Location, 'pathname' | 'search' | 'hash'>,
   history: Pick<History, 'replaceState'>,
@@ -37,6 +37,45 @@ export const consumeAuthLink = (
     return { kind, token: null };
   }
   return { kind, token: valid ? token : null };
+};
+
+interface AuthLinkNavigationSource {
+  readonly location: Pick<Location, 'pathname' | 'search' | 'hash' | 'href'>;
+  readonly history: Pick<History, 'replaceState'>;
+  readonly addEventListener: (
+    type: 'hashchange' | 'popstate',
+    listener: (event: Event) => void,
+  ) => void;
+  readonly removeEventListener: (
+    type: 'hashchange' | 'popstate',
+    listener: (event: Event) => void,
+  ) => void;
+}
+
+export const listenForAuthLinkNavigation = (
+  browser: AuthLinkNavigationSource,
+  onLink: (link: AuthLink) => void,
+): (() => void) => {
+  const handleNavigation = (event: Event): void => {
+    // One history traversal can fire popstate, then hashchange. The first handler
+    // already removed its token: a delayed hashchange must not replace the valid
+    // form with an empty-token form, or replay a previous navigation's token.
+    if (
+      event.type === 'hashchange' &&
+      'newURL' in event &&
+      typeof event.newURL === 'string' &&
+      event.newURL !== browser.location.href
+    )
+      return;
+    const link = consumeAuthLink(browser.location, browser.history);
+    if (link !== null) onLink(link);
+  };
+  browser.addEventListener('hashchange', handleNavigation);
+  browser.addEventListener('popstate', handleNavigation);
+  return () => {
+    browser.removeEventListener('hashchange', handleNavigation);
+    browser.removeEventListener('popstate', handleNavigation);
+  };
 };
 
 export const resetPasswordIssue = (password: string, confirmation: string): string | null => {

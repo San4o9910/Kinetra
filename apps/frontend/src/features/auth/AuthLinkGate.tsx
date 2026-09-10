@@ -1,15 +1,16 @@
-import React, { useState, type FormEvent, type ReactNode } from 'react';
+import React, { useLayoutEffect, useState, type FormEvent, type ReactNode } from 'react';
 
 import { ApiRequestError, confirmPasswordReset, verifyEmail } from '../../lib/api';
 import { ForgotPasswordScreen } from './ForgotPasswordScreen';
-import { resetPasswordIssue, type AuthLink } from './authLinks';
+import { authLinkPaths, resetPasswordIssue, type AuthLink } from './authLinks';
 
 interface AuthLinkGateProps {
   readonly link: AuthLink | null;
   readonly children: ReactNode;
+  readonly onFinished?: () => void;
 }
 
-export const AuthLinkGate = ({ link, children }: AuthLinkGateProps): ReactNode => {
+export const AuthLinkGate = ({ link, children, onFinished }: AuthLinkGateProps): ReactNode => {
   const [finished, setFinished] = useState(false);
   const [requestNew, setRequestNew] = useState(false);
   const [token, setToken] = useState(link?.token ?? null);
@@ -24,12 +25,31 @@ export const AuthLinkGate = ({ link, children }: AuthLinkGateProps): ReactNode =
       ? null
       : resetPasswordIssue(password, confirmation);
 
+  useLayoutEffect(() => {
+    if (link === null || finished || typeof window === 'undefined') return;
+    const handlePopState = (): void => {
+      if (
+        window.location.pathname === authLinkPaths.reset ||
+        window.location.pathname === authLinkPaths.verify
+      )
+        return;
+      setToken(null);
+      setPassword('');
+      setConfirmation('');
+      setFinished(true);
+      onFinished?.();
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [finished, link, onFinished]);
+
   const continueToApp = (): void => {
     setToken(null);
     setPassword('');
     setConfirmation('');
     window.history.replaceState(null, '', '/login');
     setFinished(true);
+    onFinished?.();
   };
 
   const submit = async (event?: FormEvent<HTMLFormElement>): Promise<void> => {
