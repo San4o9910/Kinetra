@@ -191,6 +191,85 @@ class EvidenceTests(unittest.TestCase):
             self.assertFalse((output / "positive-control.cdx.json").exists())
             self.assertFalse((output / "production.json").exists())
 
+    def test_hydration_failure_retains_database_peak_before_cleanup_and_uses_disk_temp(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            work, output = root / "work", root / "output"
+            work.mkdir()
+            output.mkdir()
+            scanner = scan.Scanner("anchore/grype@sha256:" + "a" * 64, work, output)
+            database = scanner.cache / "grype-db-download-fixture" / "vulnerability.db"
+            command = []
+
+            class Process:
+                returncode = 1
+
+                def poll(self):
+                    return 1
+
+            def fake_start(arguments, **kwargs):
+                command.extend(arguments)
+                database.parent.mkdir()
+                # Sparse, so the meaningful >2 GiB boundary does not allocate
+                # gigabytes or require a scanner/database download in this test.
+                with database.open("wb") as stream:
+                    stream.truncate(3 * 1024**3)
+                return Process()
+
+            def fake_cleanup(*args):
+                evidence = scan.read_json(output / "db-update.resources.json")
+                self.assertEqual(evidence["disk_final"]["database_bytes"], 3 * 1024**3)
+                database.unlink()
+
+            with patch.object(scan.subprocess, "Popen", fake_start), patch.object(scanner, "cleanup", fake_cleanup):
+                self.assertEqual(scanner.run("db-update", ["db", "update"], network=True), 1)
+            self.assertIn("TMPDIR=/cache/tmp", command)
+            self.assertIn("SQLITE_TMPDIR=/cache/tmp", command)
+            self.assertIn("fsize=4294967296:4294967296", command)
+            self.assertEqual((scanner.cache / "tmp").stat().st_mode & 0o777, 0o700)
+            evidence = scan.read_json(output / "db-update.resources.json")
+            self.assertEqual(evidence["disk_peak"]["database_bytes"], 3 * 1024**3)
+            self.assertEqual(evidence["exit_code"], 1)
+            self.assertFalse(database.exists())
+
+    def test_budget_failure_still_records_sizes_and_cleans_own_container(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            work, output = root / "work", root / "output"
+            work.mkdir()
+            output.mkdir()
+            scanner = scan.Scanner("anchore/grype@sha256:" + "a" * 64, work, output)
+            (scanner.cache / "oversized").write_bytes(b"a" * 1024)
+
+            class Process:
+                returncode = 1
+
+                def poll(self):
+                    return 1
+
+            with patch.object(scan.subprocess, "Popen", return_value=Process()), \
+                    patch.object(scanner, "cleanup") as cleanup, patch.object(scan, "FILE_LIMIT", 512):
+                with self.assertRaisesRegex(scan.GateError, "scanner-file-limit-exceeded"):
+                    scanner.run("db-update", ["db", "update"], network=True)
+            cleanup.assert_called_once()
+            evidence = scan.read_json(output / "db-update.resources.json")
+            self.assertGreaterEqual(evidence["disk_final"]["max_file_bytes"], 1024)
+
+    def test_unlinked_temporary_consumption_cannot_escape_disk_budget(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            work, output = root / "work", root / "output"
+            work.mkdir()
+            output.mkdir()
+            scanner = scan.Scanner("anchore/grype@sha256:" + "a" * 64, work, output)
+            scanner.initial_free = 20 * 1024**3
+            call = {}
+            with patch.object(scan.shutil, "disk_usage", return_value=type("Disk", (), {"free": 11 * 1024**3})()):
+                with self.assertRaisesRegex(scan.GateError, "scanner-disk-budget-exceeded"):
+                    scanner.observe_disk(call)
+            self.assertEqual(call["disk_peak"]["filesystem_consumed_bytes"], 9 * 1024**3)
+            self.assertLess(call["disk_final"]["cache_bytes"], 1024)
+
 
 if __name__ == "__main__":
     unittest.main()

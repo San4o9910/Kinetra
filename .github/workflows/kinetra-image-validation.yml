@@ -18,11 +18,11 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  APPROVED_APP_COMMIT: 644878e4cf4c917fb87b07a5ff8a0cdcf4e74a48
+  APPROVED_APP_COMMIT: 1d7f827b301072faa86d4955f0d94ec1b027d353
   APPROVED_BASE_COMMIT: ea0412a20baa87b7a00c4ce466d204d12fb052cc
-  APPROVED_MERGE_COMMIT: ddf2bd3d1047cf3e794878bf54360c4a579a23f4
-  APPROVED_HEAD_RUN: '34438646842'
-  APPROVED_MERGE_RUN: '34438648896'
+  APPROVED_MERGE_COMMIT: 072b29862ec25a3739fafb030cb3d6382ed4d4f7
+  APPROVED_HEAD_RUN: '34441915544'
+  APPROVED_MERGE_RUN: '34441917975'
   PUBLISH_TO_GHCR: 'true'
   PUBLIC_ORIGIN: https://80.68.156.131
   NODE_TAG: docker.io/library/node:22-alpine3.24
@@ -33,7 +33,7 @@ env:
 jobs:
   qualify:
     runs-on: ubuntu-24.04
-    timeout-minutes: 75
+    timeout-minutes: 120
     permissions:
       contents: read
       actions: read
@@ -133,7 +133,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$APPROVED_APP_COMMIT"
           git diff --exit-code
           sha256sum --check --quiet MANIFEST.sha256
-          node --test deploy/media/inventory.test.mjs
+          node --test deploy/media/inventory.test.mjs deploy/node/verify.test.mjs
           evidence="$RUNNER_TEMP/kinetra-image-evidence"
           docker version > "$evidence/docker-version.txt"
           docker buildx version >> "$evidence/docker-version.txt"
@@ -226,10 +226,22 @@ jobs:
             --mount "type=bind,source=$GITHUB_WORKSPACE/deploy/media/runtime-smoke.mjs,target=/runtime-smoke.mjs,readonly" \
             --entrypoint node kinetra-backend:qualified /runtime-smoke.mjs \
             | tee "$RUNNER_TEMP/kinetra-image-evidence/backend-application-smoke.txt"
+          grep -Fx 'KINETRA_FINAL_NODE_SHARED_PATCHED_OPENSSL=PASS' \
+            "$RUNNER_TEMP/kinetra-image-evidence/backend-application-smoke.txt"
           grep -Fx 'KINETRA_FINAL_IMAGE_BCRYPT_AND_PHOTO_NORMALIZATION=PASS' \
             "$RUNNER_TEMP/kinetra-image-evidence/backend-application-smoke.txt"
           grep -Fx 'KINETRA_FINAL_IMAGE_MP4_H264_AAC=PASS' \
             "$RUNNER_TEMP/kinetra-image-evidence/backend-application-smoke.txt"
+          python3 - <<'PY_NODE'
+          import json, os, pathlib
+          root = pathlib.Path(os.environ['RUNNER_TEMP']) / 'kinetra-image-evidence'
+          records = [json.loads(line) for line in (root / 'backend-application-smoke.txt').read_text().splitlines()
+                     if line.startswith('{"nodeBuild":')]
+          assert len(records) == 1
+          record = records[0]['nodeBuild']
+          record['finalRuntimeLinkage'] = records[0]['runtimeLinkage']
+          (root / 'node-runtime-verification.json').write_text(json.dumps(record, indent=2) + '\n')
+          PY_NODE
           docker run --rm --network none --user 1000:1000 --read-only --cap-drop ALL \
             --security-opt no-new-privileges \
             --mount "type=bind,source=$GITHUB_WORKSPACE/deploy/media/verify-inventory.mjs,target=/verify-inventory.mjs,readonly" \
@@ -498,8 +510,8 @@ jobs:
           set -euo pipefail
           test "$(git -C .kinetra-control rev-parse HEAD)" = "$GITHUB_SHA"
           sha256sum --check --strict <<'SHA256'
-          a82c532235f04a75bffa484ce3c5be1aad4e5f232fe35392e5fa8726bae7420e  .kinetra-control/ops/timeweb/scan-upstream-media.py
-          c27129cff5dc77a32c278563d41231d78e75175fd7f4fe917da01c7dcef16431  .kinetra-control/ops/timeweb/test-scan-upstream-media.py
+          685eb54d42c5936d2986c6c2f338a2fc78780652f6b42995b70365751b5f8678  .kinetra-control/ops/timeweb/scan-upstream-media.py
+          f2f9fdd6141ae878614a9abe2289d4c21f4cb4fe33513b9d54862792a4cac781  .kinetra-control/ops/timeweb/test-scan-upstream-media.py
           SHA256
           python3 .kinetra-control/ops/timeweb/test-scan-upstream-media.py
           python3 .kinetra-control/ops/timeweb/scan-upstream-media.py \

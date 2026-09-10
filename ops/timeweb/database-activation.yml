@@ -176,8 +176,26 @@ jobs:
                   assert all(job['semantics'] == semantics and job['checkout'] == checkout for job in recorded['jobs'])
               assert member('qualification.txt') == b'KINETRA_IMAGE_SCAN_HIGH_CRITICAL=PASS\n'
               runtime_markers = member('backend-application-smoke.txt').decode('ascii').splitlines()
-              assert runtime_markers == ['KINETRA_FINAL_IMAGE_BCRYPT_AND_PHOTO_NORMALIZATION=PASS',
-                                         'KINETRA_FINAL_IMAGE_MP4_H264_AAC=PASS']
+              assert len(runtime_markers) == 4
+              assert runtime_markers[0] == 'KINETRA_FINAL_NODE_SHARED_PATCHED_OPENSSL=PASS'
+              assert runtime_markers[2:] == ['KINETRA_FINAL_IMAGE_BCRYPT_AND_PHOTO_NORMALIZATION=PASS',
+                                            'KINETRA_FINAL_IMAGE_MP4_H264_AAC=PASS']
+              node_smoke = json.loads(runtime_markers[1])
+              node_runtime = json.loads(member('node-runtime-verification.json'))
+              assert node_runtime.pop('finalRuntimeLinkage') == node_smoke['runtimeLinkage']
+              assert node_smoke['nodeBuild'] == node_runtime and node_runtime['schemaVersion'] == 1
+              assert node_runtime['runtime']['versions']['node'] == '22.23.2'
+              assert node_runtime['runtime']['versions']['modules'] == '127'
+              assert node_runtime['runtime']['node_shared_openssl'] is True
+              openssl = re.fullmatch(r'3\.5\.(\d+)', node_runtime['runtime']['versions']['openssl'])
+              assert openssl and int(openssl[1]) >= 8
+              assert re.fullmatch(r'[a-f0-9]{64}', node_runtime['binarySha256'])
+              assert node_runtime['sourceSha256'] == 'bbe768df8d5815d7fa76124052985332452e0a4742d39f32027550d1aab8f6fb'
+              assert isinstance(node_runtime['configure'], list) and '--shared-openssl' in node_runtime['configure']
+              for linkage in (node_runtime['linkage']['ldd'], node_smoke['runtimeLinkage']):
+                  assert isinstance(linkage, str) and not re.search(r'not found|Error loading shared library|Error relocating', linkage)
+                  for library in ('libssl.so.3', 'libcrypto.so.3'):
+                      assert re.search(r'^\s*' + re.escape(library) + r'\s+=>\s+/usr/lib/' + re.escape(library) + r'\s+\(', linkage, re.M)
               inventory = json.loads(member('media-source-verification.json'))
               assert inventory['result'] == 'KINETRA_SOURCE_MEDIA_INVENTORY=PASS'
               source_components = json.loads(member('source-components.cdx.json'))

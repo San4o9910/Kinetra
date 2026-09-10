@@ -34,8 +34,9 @@ IMAGE_PATTERN = re.compile(
     r"|ghcr\.io/anchore/grype@sha256:[a-f0-9]{64}$"
 )
 MAX_JSON = 64 * 1024 * 1024
-DISK_BUDGET = 4 * 1024**3
+DISK_BUDGET = 8 * 1024**3
 DISK_RESERVE = 2 * 1024**3
+FILE_LIMIT = 4 * 1024**3
 LABEL = "io.kinetra.upstream-scan"
 
 
@@ -174,15 +175,45 @@ def validate_report(report, bom, expected, status, control=False):
     return sanitized
 
 
-def disk_usage(root):
-    size = 0
-    for count, path in enumerate(root.rglob("*")):
-        require(count < 100000, "scanner-file-count-limit")
-        item = path.lstat()
-        require(not stat.S_ISLNK(item.st_mode), "scanner-created-symlink")
-        if stat.S_ISREG(item.st_mode):
-            size += max(item.st_size, item.st_blocks * 512)
-    return size
+def measure_disk(work, output, initial_free):
+    measured = {"logical_bytes": 0, "allocated_bytes": 0, "accounted_bytes": 0,
+                "cache_bytes": 0, "cache_tmp_bytes": 0, "database_bytes": 0,
+                "max_file_bytes": 0, "database_files": []}
+    cache = work / "cache"
+    count = 0
+    for root in (work, output):
+        for path in root.rglob("*"):
+            count += 1
+            require(count < 100000, "scanner-file-count-limit")
+            try:
+                item = path.lstat()
+            except FileNotFoundError:
+                # The updater legitimately removes completed download files.
+                continue
+            require(not stat.S_ISLNK(item.st_mode), "scanner-created-symlink")
+            if not stat.S_ISREG(item.st_mode):
+                continue
+            logical, allocated = item.st_size, item.st_blocks * 512
+            accounted = max(logical, allocated)
+            measured["logical_bytes"] += logical
+            measured["allocated_bytes"] += allocated
+            measured["accounted_bytes"] += accounted
+            measured["max_file_bytes"] = max(measured["max_file_bytes"], logical)
+            if path.is_relative_to(cache):
+                measured["cache_bytes"] += accounted
+                if path.is_relative_to(cache / "tmp"):
+                    measured["cache_tmp_bytes"] += accounted
+                if path.name == "vulnerability.db":
+                    measured["database_bytes"] += logical
+                    measured["database_files"].append({"path": path.relative_to(cache).as_posix(),
+                                                        "logical_bytes": logical, "allocated_bytes": allocated})
+    measured["free_bytes"] = shutil.disk_usage(work).free
+    # SQLite can unlink temporary files while keeping their descriptors open.
+    # Also bound filesystem consumption so those writes cannot evade the scan
+    # directory accounting. Concurrent runner disk growth fails conservatively.
+    measured["filesystem_consumed_bytes"] = max(0, initial_free - measured["free_bytes"])
+    measured["bounded_bytes"] = max(measured["accounted_bytes"], measured["filesystem_consumed_bytes"])
+    return measured
 
 
 class Scanner:
@@ -192,11 +223,32 @@ class Scanner:
         self.cache, self.inputs = work / "cache", work / "input"
         for path in (self.cache, self.inputs):
             path.mkdir(mode=0o700)
+        (self.cache / "tmp").mkdir(mode=0o700)
+        self.initial_free = shutil.disk_usage(work).free
         self.uid, self.gid = os.getuid(), os.getgid()
         self.env = {key: os.environ[key] for key in ("PATH", "LANG", "LC_ALL") if key in os.environ}
         self.env["TMPDIR"] = str(work)
         self.image_id = None
         self.calls = []
+
+    def observe_disk(self, call, enforce=True):
+        measured = measure_disk(self.work, self.output, self.initial_free)
+        call["disk_final"] = measured
+        peaks = call.setdefault("disk_peak", {})
+        for key, value in measured.items():
+            if key.endswith("_bytes") and key != "free_bytes":
+                peaks[key] = max(peaks.get(key, 0), value)
+        call["minimum_free_bytes"] = min(call.get("minimum_free_bytes", measured["free_bytes"]), measured["free_bytes"])
+        call["disk_samples"] = call.get("disk_samples", 0) + 1
+        files = call.setdefault("database_file_peaks", {})
+        for item in measured["database_files"]:
+            previous = files.setdefault(item["path"], {"logical_bytes": 0, "allocated_bytes": 0})
+            for key in ("logical_bytes", "allocated_bytes"):
+                previous[key] = max(previous[key], item[key])
+        if enforce:
+            require(measured["bounded_bytes"] <= DISK_BUDGET, "scanner-disk-budget-exceeded")
+            require(measured["max_file_bytes"] <= FILE_LIMIT, "scanner-file-limit-exceeded")
+            require(measured["free_bytes"] >= DISK_RESERVE, "scanner-disk-reserve-exhausted")
 
     def docker(self, arguments, timeout=30):
         result = subprocess.run(["docker", *arguments], env=self.env, stdin=subprocess.DEVNULL,
@@ -252,7 +304,8 @@ class Scanner:
                    "--label", LABEL + "=" + nonce, "--read-only", "--cap-drop", "ALL",
                    "--security-opt", "no-new-privileges", "--user", f"{self.uid}:{self.gid}",
                    "--memory", "2g", "--memory-swap", "2g", "--cpus", "2", "--pids-limit", "256",
-                   "--ulimit", "fsize=2147483648:2147483648",
+                   "--ulimit", f"fsize={FILE_LIMIT}:{FILE_LIMIT}",
+                   "--env", "TMPDIR=/cache/tmp", "--env", "SQLITE_TMPDIR=/cache/tmp",
                    "--network", "bridge" if network else "none", "--entrypoint", "/grype",
                    "--tmpfs", f"/tmp:rw,nosuid,nodev,noexec,size=256m,uid={self.uid},gid={self.gid},mode=0700",
                    "--mount", f"type=bind,source={self.cache},target=/cache",
@@ -261,34 +314,41 @@ class Scanner:
                    self.image, *arguments]
         process = None
         started = time.monotonic()
+        call = {"phase": phase, "exit_code": None, "network": network}
+        self.calls.append(call)
         try:
             with (self.output / (phase + ".stdout")).open("xb") as out, (self.output / (phase + ".stderr")).open("xb") as err:
                 process = subprocess.Popen(command, env=self.env, stdin=subprocess.DEVNULL, stdout=out, stderr=err)
                 while process.poll() is None:
                     require(time.monotonic() - started <= timeout, "scanner-phase-timeout")
-                    require(disk_usage(self.work) + disk_usage(self.output) <= DISK_BUDGET, "scanner-disk-budget-exceeded")
-                    require(shutil.disk_usage(self.work).free >= DISK_RESERVE, "scanner-disk-reserve-exhausted")
+                    self.observe_disk(call)
                     time.sleep(1)
                 code = process.returncode
-                require(disk_usage(self.work) + disk_usage(self.output) <= DISK_BUDGET,
-                        "scanner-disk-budget-exceeded")
-                require(shutil.disk_usage(self.work).free >= DISK_RESERVE,
-                        "scanner-disk-reserve-exhausted")
-                self.calls.append({"phase": phase, "exit_code": code, "network": network})
+                call["exit_code"] = code
+                self.observe_disk(call)
                 return code
         finally:
             # Remove only the inspected container from this exact operation.
             # On timeout, stopping the Docker client alone would leave it running.
             try:
-                self.cleanup(name, nonce, cid_path)
+                # Capture the state before our own container cleanup, even on
+                # failed hydration. Updater-internal cleanup may already have
+                # removed the DB, so retain sampled per-file peaks as well.
+                try:
+                    self.observe_disk(call, enforce=False)
+                finally:
+                    write_json(self.output / (phase + ".resources.json"), call)
             finally:
-                if process is not None and process.poll() is None:
-                    process.terminate()
-                    try:
-                        process.wait(timeout=10)
-                    except subprocess.TimeoutExpired:
-                        process.kill()
-                        process.wait(timeout=10)
+                try:
+                    self.cleanup(name, nonce, cid_path)
+                finally:
+                    if process is not None and process.poll() is None:
+                        process.terminate()
+                        try:
+                            process.wait(timeout=10)
+                        except subprocess.TimeoutExpired:
+                            process.kill()
+                            process.wait(timeout=10)
 
 
 def execute(sbom_path, runner, image):
@@ -306,6 +366,13 @@ def execute(sbom_path, runner, image):
     work.mkdir(mode=0o700)
     summary = {"result": "FAIL", "scanner": VERSION, "scanner_image": image,
                "source_sbom_sha256": digest(sbom_path), "components": EXPECTED}
+    # The preceding hydration failure was SQLITE_IOERR_WRITE (778). EFBIG from
+    # the previous 2 GiB RLIMIT_FSIZE is a working hypothesis, not a proven cause:
+    # that run did not capture file sizes. These bounded resources and measured
+    # peaks make a subsequent failure diagnosable without changing scan policy.
+    summary["resource_limits"] = {"disk_budget_bytes": DISK_BUDGET, "disk_reserve_bytes": DISK_RESERVE,
+                                  "file_limit_bytes": FILE_LIMIT, "memory_bytes": 2 * 1024**3,
+                                  "tmpfs_bytes": 256 * 1024**2, "temp_directory": "/cache/tmp"}
     scanner = None
     try:
         require(shutil.disk_usage(work).free >= DISK_BUDGET + DISK_RESERVE, "insufficient-scanner-disk")
