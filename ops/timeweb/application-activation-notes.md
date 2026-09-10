@@ -31,6 +31,10 @@ Read `deploy/api.env.example` from the approved app commit; that template is not
 
 All paths above are beneath `/srv/kinetra-stage` unless absolute. Runtime/API keys must use the template's exact names and raw-env syntax.
 
+The guest-only `activate-application-host.py` implements the preparation/validation phase and returns `API_ENVIRONMENT_PREPARED_ONLY`; it never starts services. Its explicit CLI is `--prepare-validated-api-environment --private-input /absolute/root-owned-0600-input.json`. Input keys are `schema:1`, `server_id:9069403`, `public_ipv4`, approved `commit`, all five `images`, the fifteen staged `source_hashes`, thirteen `migration_hashes`, and the four-key `providers` object from the table. It needs the reviewed sibling inspect/bootstrap/staging/initialization helpers. An outer wrapper must still verify current CI/image provenance, fixed account/server and pinned SSH before sending any private input; no active preparation workflow exists.
+
+The helper rejects missing/unsafe provider inputs before host commands or mutations, verifies the handoff and currently healthy private PostgreSQL, and requires Caddy inactive/disabled. It retains generated candidates and a durable previous-file hardlink; validators run without network, with read-only mounts and Docker logging disabled. A successful atomic replacement is reported even if later sync/validation fails. Existing credentials or an earlier preparation attempt are preserved and refused pending state-specific recovery. The seventeen offline tests cover these cases, real P-256 key matching and the C8 pure production validator; Docker/SSH/provider/database execution and production UID mappings are not claimed tested.
+
 The delivery implementation is an **outbound** HTTPS client: Bearer secret and JSON `version/event/recipient/token/expiresAt`. This project supplies neither an SMTP adapter nor a receiving delivery service. SMTP credentials or a random secret alone do not satisfy it. Do not call that receiver during no-message acceptance.
 
 ## 3. Validate before startup
