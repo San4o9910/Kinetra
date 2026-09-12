@@ -1,0 +1,35 @@
+name: Check Yandex SMTP network from Kinetra server
+on:
+  push:
+    branches: [ops/timeweb-hourly-preflight-20260909]
+    paths: [.github/workflows/timeweb-smtp-network.yml, ops/timeweb/inspect-smtp-network.py]
+permissions:
+  contents: read
+concurrency:
+  group: kinetra-timeweb-hourly-provision
+  cancel-in-progress: false
+jobs:
+  inspect:
+    if: github.repository == 'San4o9910/Kinetra'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify exact reviewed source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          sha256sum --check --strict <<'SHA256'
+          567d892221925bb438ece6a893360a891ffd4228f8af0a18252b8ba365a682c0  ops/timeweb/inspect-server.py
+          69b3415ec0515dd2f8f123075d704e16a4d97bedd995f694841dbd5714d9e2f8  ops/timeweb/inspect-smtp-network.py
+          SHA256
+      - name: Check TLS and SMTP greeting without account login or email
+        env:
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+        shell: bash
+        run: python3 ops/timeweb/inspect-smtp-network.py --inspect-smtp-network
