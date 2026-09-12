@@ -38,18 +38,24 @@ jobs:
               with response: data = response.read(8 * 1024 * 1024 + 1)
               assert len(data) <= 8 * 1024 * 1024
               return data if archive else json.loads(data)
-          metadata = fetch('/actions/artifacts/10178655505')
-          assert metadata['name'] == 'kinetra-image-evidence-34536263175-1' and not metadata['expired']
-          assert metadata['workflow_run']['id'] == 34536263175
-          assert metadata['workflow_run']['head_sha'] == '7ae976bee64de542e72cf382939986424ec5e1d3'
-          archive = fetch('/actions/artifacts/10178655505/zip', archive=True)
+          metadata = fetch('/actions/artifacts/10304973617')
+          assert metadata['name'] == 'kinetra-upstream-scan-34718608184-1' and not metadata['expired']
+          assert metadata['workflow_run']['id'] == 34718608184
+          assert metadata['workflow_run']['head_sha'] == '8fe96e6fdab8d8240e5d3935e78c27fccb71fd3e'
+          archive = fetch('/actions/artifacts/10304973617/zip', archive=True)
           assert 'sha256:' + hashlib.sha256(archive).hexdigest() == metadata['digest']
           with zipfile.ZipFile(io.BytesIO(archive)) as zipped:
-              for name in ('upstream-media/db-status.stdout', 'upstream-media/version.stdout', 'upstream-media/summary.json'):
-                  info = zipped.getinfo(name)
-                  assert info.file_size <= 32 * 1024 and not info.is_dir()
-                  # This isolated scanner received only public source identities and no credentials.
-                  # Never print the artifact's other files, GitHub token or signed download URL.
-                  print('KINETRA_PUBLIC_SCANNER_DIAGNOSTIC ' + json.dumps({'file': name, 'text': zipped.read(info).decode('utf-8')}))
+              info = zipped.getinfo('upstream-media/positive-control.json')
+              assert info.file_size <= 1024 * 1024 and not info.is_dir()
+              report = json.loads(zipped.read(info))
+              cfg = report['descriptor']['configuration']
+              fields = ['ignore', 'exclude', 'vex-documents', 'vex-add', 'ignore-wontfix', 'ignore-states',
+                        'only-fixed', 'only-notfixed', 'fail-on-severity', 'db']
+              print('KINETRA_PUBLIC_SCANNER_POLICY=' + json.dumps({
+                  'keys': sorted(cfg), 'values': {key: cfg[key] for key in fields if key in cfg}}))
+              info = zipped.getinfo('upstream-media/positive-control.cdx.json')
+              assert info.file_size <= 1024 * 1024 and not info.is_dir()
+              bom = json.loads(zipped.read(info))
+              print('KINETRA_PUBLIC_SCANNER_BOM_VERSION=' + json.dumps(bom.get('specVersion')))
           print('KINETRA_FAILED_IMAGE_EVIDENCE_INSPECTION=PASS')
           PY
