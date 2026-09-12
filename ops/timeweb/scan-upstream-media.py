@@ -133,6 +133,7 @@ def validate_report(report, bom, expected, status, control=False):
     require(cfg.get("match", {}).get("stock", {}).get("using-cpes") is True, "cpe-matching-disabled")
     require(cfg.get("add-cpes-if-none") is False, "undeclared-cpe-generation")
     require(cfg.get("only-fixed") is False and cfg.get("only-notfixed") is False, "fix-state-filter-enabled")
+    require(cfg.get("match-upstream-kernel-headers") is True, "implicit-kernel-ignore-rules-enabled")
     for key in ("ignore", "exclude", "vex-documents", "vex-add", "ignore-wontfix"):
         require(key in cfg and not cfg[key], "result-suppression-enabled-or-unknown")
     require(cfg.get("fail-on-severity") == "high", "severity-threshold-changed")
@@ -386,6 +387,9 @@ def execute(sbom_path, runner, image):
              "cpe": cpe(name, version)} for name, version in CONTROL.items()]}
         write_json(scanner.inputs / "positive-control.cdx.json", controls)
         config = {"check-for-app-update": False, "add-cpes-if-none": False,
+                  # Grype otherwise appends four kernel-header ignore rules even
+                  # when ignore=[]; request all matches and retain zero ignores.
+                  "match-upstream-kernel-headers": True,
                   "match": {"stock": {"using-cpes": True}},
                   "ignore": [], "exclude": [], "vex-documents": [], "vex-add": [],
                   "only-fixed": False, "only-notfixed": False, "ignore-wontfix": "",

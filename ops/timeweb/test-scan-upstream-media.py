@@ -29,6 +29,7 @@ def status():
 def report(db):
     return {"matches": [], "descriptor": {"name": "grype", "version": scan.VERSION, "db": db,
         "configuration": {"match": {"stock": {"using-cpes": True}}, "add-cpes-if-none": False,
+            "match-upstream-kernel-headers": True,
             "only-fixed": False, "only-notfixed": False, "ignore": [], "exclude": [],
             "vex-documents": [], "vex-add": [], "ignore-wontfix": "", "fail-on-severity": "high",
             "db": {"auto-update": False, "validate-age": True, "validate-by-hash-on-start": True}}}}
@@ -91,6 +92,11 @@ class EvidenceTests(unittest.TestCase):
                 self.report["descriptor"]["configuration"][key] = value
                 with self.assertRaises(scan.GateError):
                     self.validate()
+
+    def test_implicit_kernel_header_suppression_is_disabled(self):
+        self.report["descriptor"]["configuration"]["match-upstream-kernel-headers"] = False
+        with self.assertRaisesRegex(scan.GateError, "implicit-kernel-ignore-rules-enabled"):
+            self.validate()
 
     def test_stale_invalid_or_wrong_database_fails(self):
         for mutation in ({"valid": False}, {"error": "corrupt"}, {"schemaVersion": "5"},

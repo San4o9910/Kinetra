@@ -1,0 +1,49 @@
+name: Verify Kinetra Yandex SMTP credentials without sending email
+on:
+  push:
+    branches: [ops/timeweb-hourly-preflight-20260909]
+    paths: [.github/workflows/timeweb-smtp-auth-readiness.yml]
+permissions: {}
+jobs:
+  authenticate:
+    if: github.repository == 'San4o9910/Kinetra'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Authenticate the configured mailbox once over verified TLS
+        env:
+          AUTH_TOKEN_DELIVERY_SMTP_USERNAME: ${{ secrets.AUTH_TOKEN_DELIVERY_SMTP_USERNAME }}
+          AUTH_TOKEN_DELIVERY_SMTP_PASSWORD: ${{ secrets.AUTH_TOKEN_DELIVERY_SMTP_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, re, resource, smtplib, socket, ssl
+          assert os.environ['GITHUB_REPOSITORY'] == 'San4o9910/Kinetra'
+          assert os.environ['GITHUB_REF'] == 'refs/heads/ops/timeweb-hourly-preflight-20260909'
+          assert os.environ['GITHUB_RUN_ATTEMPT'] == '1'
+          resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+          username = os.environ.pop('AUTH_TOKEN_DELIVERY_SMTP_USERNAME', '')
+          password = os.environ.pop('AUTH_TOKEN_DELIVERY_SMTP_PASSWORD', '')
+          if not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', username) or not re.fullmatch(r'[!-~]{16,256}', password):
+              raise SystemExit('KINETRA_SMTP_AUTH=INVALID_CONFIGURATION_FORMAT')
+          try:
+              with smtplib.SMTP_SSL('smtp.yandex.ru', 465, timeout=15,
+                                   local_hostname='[127.0.0.1]', context=ssl.create_default_context()) as smtp:
+                  smtp.ehlo('[127.0.0.1]')
+                  smtp.login(username, password)
+              print('KINETRA_SMTP_AUTH=PASS')
+              print('KINETRA_SMTP_AUTH_SCOPE=GITHUB_RUNNER_LOGIN_ONLY_NO_EMAIL_NO_HOST_CONFIGURATION')
+          except smtplib.SMTPAuthenticationError as error:
+              print('KINETRA_SMTP_AUTH=REJECTED')
+              print('KINETRA_SMTP_AUTH_RESPONSE_CODE=' + str(error.smtp_code))
+              raise SystemExit(1) from None
+          except ssl.SSLCertVerificationError:
+              raise SystemExit('KINETRA_SMTP_AUTH=TLS_VERIFICATION_FAILED') from None
+          except (TimeoutError, socket.timeout):
+              raise SystemExit('KINETRA_SMTP_AUTH=NETWORK_TIMEOUT') from None
+          except Exception:
+              raise SystemExit('KINETRA_SMTP_AUTH=PROVIDER_CONNECTION_FAILED') from None
+          finally:
+              username = password = ''
+          PY

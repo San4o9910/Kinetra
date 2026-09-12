@@ -67,8 +67,8 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           sha256sum --check --strict <<'SHA256'
-          6211f18c9035950c1ba5f087b4bd6fbffa3bc86c97663e9208642533ed70af29  ops/timeweb/scan-upstream-media.py
-          f9a7d46d736f9bdc80b4969bc30d964c669623127cc945e9740739c2ad06b275  ops/timeweb/test-scan-upstream-media.py
+          757f65d34050e49120859510687a1ae6374a0df404b432c2db40773bc4282b48  ops/timeweb/scan-upstream-media.py
+          c175b90ecd54be6f467603ffb1a050923ebf0d664a7aa6ba73ccbec64195ca79  ops/timeweb/test-scan-upstream-media.py
           SHA256
           PYTHONDONTWRITEBYTECODE=1 python3 ops/timeweb/test-scan-upstream-media.py
           docker pull --platform linux/amd64 "$GRYPE_IMAGE"
