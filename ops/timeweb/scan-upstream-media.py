@@ -140,7 +140,11 @@ def validate_report(report, bom, expected, status, control=False):
     db_cfg = cfg.get("db", {})
     require(db_cfg.get("auto-update") is False and db_cfg.get("validate-age") is True
             and db_cfg.get("validate-by-hash-on-start") is True, "database-validation-disabled")
+    # v0.118.0 wraps ProviderStatus in descriptor.db.status; providers is
+    # separate metadata, not the database validity record.
     reported_db = descriptor.get("db")
+    require(isinstance(reported_db, dict), "missing-scan-database")
+    reported_db = reported_db.get("status")
     validate_db(reported_db)
     require(all(reported_db.get(key) == status.get(key) for key in
                 ("schemaVersion", "from", "built", "path")), "scan-database-mismatch")

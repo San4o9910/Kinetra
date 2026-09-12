@@ -65,9 +65,9 @@ jobs:
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test "$ACTIVATE_LOCAL_APPLICATION" = APPROVED
           sha256sum --check --strict <<'SHA256'
-          45c60a2baaa3ef0e787a175eba4c93361749e7432ebbe5d46a16de7382f388d9  ops/timeweb/application-caller.py
-          465b7a22cf59d5b3a9e40fb203b45ffeee97e7780ba54a6e315f09f4cc9d3366  ops/timeweb/verify-launch-provenance.py
-          c9572bcb46737188616d3449cf1eda6b21c6faa3123a109cd19ee68de62468be  ops/timeweb/test-application-caller.py
+          ffd0d196778bbd1b82497aed664d122be3282be0361a563ce3a5e9d7d7c4e1bf  ops/timeweb/application-caller.py
+          87be3ba2b1e215b95ddd8f948a98f8a5d388a7d1391d4830731331463acfbfd9  ops/timeweb/verify-launch-provenance.py
+          2de525f59737c0650ca758e58c5a6ef1c7738aa8dacef4891641e61792b2fc82  ops/timeweb/test-application-caller.py
           SHA256
           env -i PATH="$PATH" python3 ops/timeweb/test-application-caller.py
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262

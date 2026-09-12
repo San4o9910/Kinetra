@@ -163,7 +163,7 @@ def verify_source_and_images():
         assert re.fullmatch(r'[a-f0-9]{64}', database['sha256'])
         db_status = json.loads(member('upstream-media/db-status.stdout'))
         assert db_status['valid'] is True and not db_status.get('error')
-        assert re.fullmatch(r'6(?:\.\d+){0,2}', db_status['schemaVersion'])
+        assert re.fullmatch(r'v?6(?:\.\d+){0,2}', db_status['schemaVersion'])
         assert db_status['from'].startswith('https://grype.anchore.io/')
         assert all(database[key] == db_status[key] for key in ('schemaVersion', 'built', 'from'))
         built = datetime.fromisoformat(database['built'].replace('Z', '+00:00'))
@@ -191,7 +191,7 @@ def verify_source_and_images():
                    and finding['severity'] in ('Unknown', 'Negligible', 'Low', 'Medium') for finding in findings)
         production = json.loads(member('upstream-media/production.json'))
         assert production['descriptor']['name'] == 'grype' and production['descriptor']['version'] == upstream['scanner']
-        assert all(production['descriptor']['db'][key] == database[key] for key in ('schemaVersion', 'built', 'from'))
+        assert all(production['descriptor']['db']['status'][key] == database[key] for key in ('schemaVersion', 'built', 'from'))
         assert isinstance(production['matches'], list) and len(production['matches']) == len(findings)
         assert not production.get('ignoredMatches')
         assert all(match['vulnerability']['severity'] in ('Unknown', 'Negligible', 'Low', 'Medium') for match in production['matches'])

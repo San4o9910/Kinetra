@@ -27,7 +27,7 @@ def status():
 
 
 def report(db):
-    return {"matches": [], "descriptor": {"name": "grype", "version": scan.VERSION, "db": db,
+    return {"matches": [], "descriptor": {"name": "grype", "version": scan.VERSION, "db": {"status": db, "providers": {}},
         "configuration": {"match": {"stock": {"using-cpes": True}}, "add-cpes-if-none": False,
             "match-upstream-kernel-headers": True,
             "only-fixed": False, "only-notfixed": False, "ignore": [], "exclude": [],
@@ -128,6 +128,14 @@ class EvidenceTests(unittest.TestCase):
         self.report = report({**self.db, "path": "/cache/6/different.db"})
         with self.assertRaisesRegex(scan.GateError, "scan-database-mismatch"):
             self.validate()
+
+    def test_nested_database_status_is_required_and_checked(self):
+        for database in (None, {}, self.db, {"status": None}, {"status": {**self.db, "valid": False}}):
+            with self.subTest(database=database):
+                self.report = report(self.db)
+                self.report["descriptor"]["db"] = database
+                with self.assertRaises(scan.GateError):
+                    self.validate()
 
     def test_high_critical_production_findings_fail(self):
         for severity in ("High", "Critical"):

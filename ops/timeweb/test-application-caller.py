@@ -85,9 +85,19 @@ class CallerTests(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()):
             caller.authenticate_database(self.env, local, self.api, self.successful_run)
 
-    def test_original_immutable_gate_is_preserved_byte_for_byte(self):
+    def test_original_gate_preserved_except_verified_grype_serialization(self):
         source = Path(__file__).with_name("verify-launch-provenance.py").read_text()
         body = textwrap.dedent(source.split("def verify_source_and_images():\n", 1)[1].split("\n    return api, successful_run", 1)[0])
+        corrected = "assert re.fullmatch(r'v?6(?:\\.\\d+){0,2}', db_status['schemaVersion'])"
+        original = "assert re.fullmatch(r'6(?:\\.\\d+){0,2}', db_status['schemaVersion'])"
+        self.assertEqual(body.count(corrected), 1)
+        # Only the verified v0.118.0 serialization corrections are permitted.
+        # Every other acceptance check retains the original body digest.
+        body = body.replace(corrected, original)
+        corrected_db = "production['descriptor']['db']['status'][key]"
+        original_db = "production['descriptor']['db'][key]"
+        self.assertEqual(body.count(corrected_db), 1)
+        body = body.replace(corrected_db, original_db)
         self.assertEqual(hashlib.sha256(body.encode()).hexdigest(), "338cbbb5e3068f4f3e2ca917ef4dc57166be0e7438d7635304b0ad78ac748f7c")
 
     def test_verified_database_run_and_exact_artifact_create_private_receipt(self):

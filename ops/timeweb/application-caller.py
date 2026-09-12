@@ -26,7 +26,7 @@ CONTROL_REF = "refs/heads/ops/timeweb-hourly-preflight-20260909"
 DATABASE_WORKFLOW = ".github/workflows/timeweb-database-initialization.yml"
 PINS = {
     "activate-local-application-host.py": "54779ce7be566e633247d9338ef94d2ddebf43ff9169e429fd72cc6ffb9135e2",
-    "verify-launch-provenance.py": "465b7a22cf59d5b3a9e40fb203b45ffeee97e7780ba54a6e315f09f4cc9d3366",
+    "verify-launch-provenance.py": "87be3ba2b1e215b95ddd8f948a98f8a5d388a7d1391d4830731331463acfbfd9",
 }
 SOURCE_ENV = ("APPROVED_APP_COMMIT", "APPROVED_BASE_COMMIT", "APPROVED_MERGE_COMMIT", "APPROVED_HEAD_RUN",
               "APPROVED_MERGE_RUN", "APPROVED_IMAGE_RUN", "APPROVED_IMAGE_CONTROL_COMMIT",
