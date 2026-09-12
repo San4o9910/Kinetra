@@ -38,24 +38,24 @@ jobs:
               with response: data = response.read(8 * 1024 * 1024 + 1)
               assert len(data) <= 8 * 1024 * 1024
               return data if archive else json.loads(data)
-          metadata = fetch('/actions/artifacts/10304973617')
-          assert metadata['name'] == 'kinetra-upstream-scan-34718608184-1' and not metadata['expired']
-          assert metadata['workflow_run']['id'] == 34718608184
-          assert metadata['workflow_run']['head_sha'] == '8fe96e6fdab8d8240e5d3935e78c27fccb71fd3e'
-          archive = fetch('/actions/artifacts/10304973617/zip', archive=True)
+          metadata = fetch('/actions/artifacts/10305503336')
+          assert metadata['name'] == 'kinetra-upstream-scan-34719050096-1' and not metadata['expired']
+          assert metadata['workflow_run']['id'] == 34719050096
+          assert metadata['workflow_run']['head_sha'] == 'be42f5106435b8aaa08f6490537560deb2226ec8'
+          archive = fetch('/actions/artifacts/10305503336/zip', archive=True)
           assert 'sha256:' + hashlib.sha256(archive).hexdigest() == metadata['digest']
           with zipfile.ZipFile(io.BytesIO(archive)) as zipped:
-              info = zipped.getinfo('upstream-media/positive-control.json')
+              info = zipped.getinfo('upstream-media/production.json')
               assert info.file_size <= 1024 * 1024 and not info.is_dir()
               report = json.loads(zipped.read(info))
-              cfg = report['descriptor']['configuration']
-              fields = ['ignore', 'exclude', 'vex-documents', 'vex-add', 'ignore-wontfix', 'ignore-states',
-                        'only-fixed', 'only-notfixed', 'fail-on-severity', 'db']
-              print('KINETRA_PUBLIC_SCANNER_POLICY=' + json.dumps({
-                  'keys': sorted(cfg), 'values': {key: cfg[key] for key in fields if key in cfg}}))
-              info = zipped.getinfo('upstream-media/positive-control.cdx.json')
-              assert info.file_size <= 1024 * 1024 and not info.is_dir()
-              bom = json.loads(zipped.read(info))
-              print('KINETRA_PUBLIC_SCANNER_BOM_VERSION=' + json.dumps(bom.get('specVersion')))
+              for match in report['matches']:
+                  vuln, artifact = match['vulnerability'], match['artifact']
+                  if vuln['severity'] not in ['High', 'Critical']:
+                      continue
+                  print('KINETRA_UPSTREAM_FINDING=' + json.dumps({
+                      'id': vuln['id'], 'severity': vuln['severity'],
+                      'component': artifact['name'], 'version': artifact['version'],
+                      'fix': vuln.get('fix'), 'namespace': vuln.get('namespace'),
+                      'source': vuln.get('dataSource'), 'matches': match.get('matchDetails')}))
           print('KINETRA_FAILED_IMAGE_EVIDENCE_INSPECTION=PASS')
           PY
