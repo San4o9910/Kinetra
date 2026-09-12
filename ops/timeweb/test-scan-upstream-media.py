@@ -22,7 +22,7 @@ def bom(versions, input_bom=False):
 
 
 def status():
-    return {"valid": True, "schemaVersion": "6.0.3", "built": datetime.now(timezone.utc).isoformat(),
+    return {"valid": True, "schemaVersion": "v6.1.9", "built": datetime.now(timezone.utc).isoformat(),
             "path": "/cache/6/vulnerability.db", "from": "https://grype.anchore.io/databases/v6/test.tar.zst"}
 
 
@@ -100,6 +100,23 @@ class EvidenceTests(unittest.TestCase):
                 self.report = report({**self.db, **mutation})
                 with self.assertRaises(scan.GateError):
                     self.validate()
+
+    def test_actual_grype_v6_schema_spelling_and_legacy_spelling(self):
+        # Schema spelling observed in image run 34536263175, artifact 10178655505.
+        # Keep dates fresh; this regression tests parsing, not expiry exceptions.
+        for version in ("v6.1.9", "6.1.9", "v6", "6"):
+            with self.subTest(version=version):
+                self.db = {**status(), "schemaVersion": version}
+                self.report = report(self.db)
+                self.assertEqual(self.validate(), [])
+                self.assertEqual(self.db["schemaVersion"], version)
+
+    def test_other_or_malformed_schema_versions_fail(self):
+        for version in ("v5.1.9", "v7.0.0", "16.1.9", "v6.1.9junk", "v6.1.9.1",
+                        " v6.1.9", "v6.1.9\n", "vv6.1.9", "v6..9", 6, None, True):
+            with self.subTest(version=version):
+                with self.assertRaisesRegex(scan.GateError, "unexpected-database-schema"):
+                    scan.validate_db({**status(), "schemaVersion": version})
 
     def test_different_valid_database_is_not_same_control_database(self):
         self.report = report({**self.db, "path": "/cache/6/different.db"})

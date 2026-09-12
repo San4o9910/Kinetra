@@ -1,0 +1,84 @@
+name: Verify corrected Kinetra upstream scanner
+on:
+  push:
+    branches: [ops/timeweb-hourly-preflight-20260909]
+    paths: [.github/workflows/kinetra-upstream-scan-validation.yml, ops/timeweb/scan-upstream-media.py, ops/timeweb/test-scan-upstream-media.py]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GRYPE_IMAGE: anchore/grype@sha256:8a93fc48da96bd6ec5981279d099b69de11541dc68fdf222fb9161f8ff284af7
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Authenticate the exact public source SBOM from the previous image build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, io, json, os, pathlib, urllib.error, urllib.parse, urllib.request, zipfile
+          assert os.environ['GITHUB_REPOSITORY'] == 'San4o9910/Kinetra'
+          assert os.environ['GITHUB_REF'] == 'refs/heads/ops/timeweb-hourly-preflight-20260909'
+          assert os.environ['GITHUB_RUN_ATTEMPT'] == '1'
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, request, file, code, message, headers, new_url): return None
+          opener = urllib.request.build_opener(NoRedirect)
+          def fetch(path, archive=False):
+              request = urllib.request.Request('https://api.github.com/repos/San4o9910/Kinetra' + path,
+                  headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json'})
+              try:
+                  response = opener.open(request, timeout=30)
+              except urllib.error.HTTPError as error:
+                  if not archive or error.code != 302: raise RuntimeError('Artifact API read failed') from None
+                  location = error.headers['Location']; url = urllib.parse.urlsplit(location)
+                  assert url.scheme == 'https' and not url.username and not url.password and url.port in (None, 443)
+                  assert url.hostname and url.hostname.endswith(('.blob.core.windows.net', '.actions.githubusercontent.com'))
+                  response = opener.open(urllib.request.Request(location), timeout=30)
+              with response: data = response.read(8 * 1024 * 1024 + 1)
+              assert len(data) <= 8 * 1024 * 1024
+              return data if archive else json.loads(data)
+          metadata = fetch('/actions/artifacts/10178655505')
+          assert metadata['name'] == 'kinetra-image-evidence-34536263175-1' and not metadata['expired']
+          assert metadata['workflow_run']['id'] == 34536263175
+          assert metadata['workflow_run']['head_sha'] == '7ae976bee64de542e72cf382939986424ec5e1d3'
+          archive = fetch('/actions/artifacts/10178655505/zip', archive=True)
+          assert 'sha256:' + hashlib.sha256(archive).hexdigest() == metadata['digest']
+          with zipfile.ZipFile(io.BytesIO(archive)) as zipped:
+              info = zipped.getinfo('source-components.cdx.json')
+              assert info.file_size <= 32768 and not info.is_dir()
+              source = zipped.read(info)
+              assert hashlib.sha256(source).hexdigest() == 'ebb69ea87b5ec9aa929c590bf6ceab0bc6239c38bfb3040e198e6a7bfa925dd7'
+              root = pathlib.Path(os.environ['RUNNER_TEMP']) / 'kinetra-image-evidence'
+              root.mkdir(mode=0o700)
+              (root / 'source-components.cdx.json').write_bytes(source)
+          print('KINETRA_PREVIOUS_IMAGE_SOURCE_SBOM_AUTHENTICATED=PASS')
+          PY
+      - name: Run regression tests and full upstream scan with positive controls
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          sha256sum --check --strict <<'SHA256'
+          6211f18c9035950c1ba5f087b4bd6fbffa3bc86c97663e9208642533ed70af29  ops/timeweb/scan-upstream-media.py
+          f9a7d46d736f9bdc80b4969bc30d964c669623127cc945e9740739c2ad06b275  ops/timeweb/test-scan-upstream-media.py
+          SHA256
+          PYTHONDONTWRITEBYTECODE=1 python3 ops/timeweb/test-scan-upstream-media.py
+          docker pull --platform linux/amd64 "$GRYPE_IMAGE"
+          python3 ops/timeweb/scan-upstream-media.py --sbom "$RUNNER_TEMP/kinetra-image-evidence/source-components.cdx.json"
+      - name: Retain scanner evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: kinetra-upstream-scan-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/kinetra-image-evidence/
+          if-no-files-found: error
+          retention-days: 14
+# This validates the scanner and public SBOM, not current full-image qualification.

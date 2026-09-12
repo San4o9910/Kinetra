@@ -105,8 +105,10 @@ def identities(bom, expected, input_bom=False):
 def validate_db(status, now=None):
     require(isinstance(status, dict) and status.get("valid") is True, "invalid-database-status")
     require(not status.get("error"), "database-status-error")
+    # Grype v0.118.0 serializes SchemaVer.String() with a leading "v".
+    # Preserve the reported spelling for exact database identity comparisons.
     require(isinstance(status.get("schemaVersion"), str)
-            and re.fullmatch(r"6(?:\.\d+){0,2}", status["schemaVersion"]), "unexpected-database-schema")
+            and re.fullmatch(r"v?6(?:\.\d+){0,2}", status["schemaVersion"]), "unexpected-database-schema")
     require(isinstance(status.get("from"), str)
             and status["from"].startswith("https://grype.anchore.io/"), "unexpected-database-source")
     try:
