@@ -1,9 +1,36 @@
 #!/usr/bin/env python3
-"""Read-only immutable launch gate, extracted unchanged from the dormant DB workflow.
+"""Read-only launch gate with the owner-approved two-CPE disposition change.
 
-No host/provider operations. Every original assertion is retained. Returned
-GitHub readers are reused only to authenticate the prior database handoff.
+No host/provider operations. Unrelated original assertions are retained.
+GitHub readers also authenticate the prior database handoff.
 """
+
+
+def load_disposition():
+    import hashlib, importlib.util
+    from pathlib import Path
+    path = Path(__file__).with_name("upstream-disposition.py")
+    if path.is_symlink() or not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != "ba9d7f7d4a5475de9a4401be60694bcbeab1e62308d2f304454360fc72d2267e":
+        raise ValueError("approved-disposition-helper-mismatch")
+    spec = importlib.util.spec_from_file_location("kinetra_upstream_disposition", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def verify_approved_disposition(member, app):
+    import json
+    policy = load_disposition()
+    production = policy.strict_json(member('upstream-media/production.json'))
+    decision = policy.evaluate(production, member('source-components.cdx.json'), app)
+    assert decision['result'] == 'PASS' and decision['unresolved_high_critical_findings'] == 0
+    assert policy.strict_json(member('upstream-media/disposition.json')) == decision
+    upstream = policy.strict_json(member('upstream-media/summary.json'))
+    assert upstream['production']['findings'] == decision['raw_findings']
+    for key in ('raw_high_critical_findings', 'dispositioned_high_critical_findings',
+                'unresolved_high_critical_findings'):
+        assert type(upstream[key]) is int and upstream[key] == decision[key]
+    return decision
 
 
 def verify_source_and_images():
@@ -169,11 +196,15 @@ def verify_source_and_images():
         built = datetime.fromisoformat(database['built'].replace('Z', '+00:00'))
         assert built.tzinfo is not None
         assert -300 <= (datetime.now(timezone.utc) - built).total_seconds() <= 120 * 3600
+        # BEGIN OWNER-APPROVED TWO-CPE DISPOSITION
+        decision = verify_approved_disposition(member, app)
+        production_exit = 2 if decision['raw_high_critical_findings'] else 0
+        # END OWNER-APPROVED TWO-CPE DISPOSITION
         expected_calls = [('version', 0, False), ('db-update', 0, True), ('db-status', 0, False),
-                          ('positive-control', 2, False), ('production', 0, False)]
+                          ('positive-control', 2, False), ('production', production_exit, False)]
         assert [(call['phase'], call['exit_code'], call['network']) for call in upstream['calls']] == expected_calls
-        assert upstream['positive-control']['exit_code'] == 2 and upstream['production']['exit_code'] == 0
-        assert upstream['high_critical_findings'] == 0
+        assert upstream['positive-control']['exit_code'] == 2 and upstream['production']['exit_code'] == production_exit
+        assert upstream['high_critical_findings'] == decision['raw_high_critical_findings']
         for phase, expected_coverage in (('positive-control', {'ffmpeg': '5.1.9', 'imagemagick': '7.1.2-29'}),
                                          ('production', component_versions)):
             assert upstream[phase]['result'] == 'PASS' and upstream[phase]['network'] == 'none'
@@ -188,13 +219,13 @@ def verify_source_and_images():
         findings = upstream['production']['findings']
         assert isinstance(findings, list)
         assert all(finding['component'] in component_versions and finding['version'] == component_versions[finding['component']]
-                   and finding['severity'] in ('Unknown', 'Negligible', 'Low', 'Medium') for finding in findings)
+                   and finding['severity'] in ('Unknown', 'Negligible', 'Low', 'Medium', 'High', 'Critical') for finding in findings)
         production = json.loads(member('upstream-media/production.json'))
         assert production['descriptor']['name'] == 'grype' and production['descriptor']['version'] == upstream['scanner']
         assert all(production['descriptor']['db']['status'][key] == database[key] for key in ('schemaVersion', 'built', 'from'))
         assert isinstance(production['matches'], list) and len(production['matches']) == len(findings)
         assert not production.get('ignoredMatches')
-        assert all(match['vulnerability']['severity'] in ('Unknown', 'Negligible', 'Low', 'Medium') for match in production['matches'])
+        assert all(match['vulnerability']['severity'] in ('Unknown', 'Negligible', 'Low', 'Medium', 'High', 'Critical') for match in production['matches'])
         scanned_bom = json.loads(member('upstream-media/production.cdx.json'))
         assert scanned_bom['bomFormat'] == 'CycloneDX' and scanned_bom['specVersion'] == '1.7'
         assert len(scanned_bom['components']) == 2

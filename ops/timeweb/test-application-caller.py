@@ -85,7 +85,7 @@ class CallerTests(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()):
             caller.authenticate_database(self.env, local, self.api, self.successful_run)
 
-    def test_original_gate_preserved_except_verified_grype_serialization(self):
+    def test_original_gate_preserved_except_grype_serialization_and_approved_disposition(self):
         source = Path(__file__).with_name("verify-launch-provenance.py").read_text()
         body = textwrap.dedent(source.split("def verify_source_and_images():\n", 1)[1].split("\n    return api, successful_run", 1)[0])
         corrected = "assert re.fullmatch(r'v?6(?:\\.\\d+){0,2}', db_status['schemaVersion'])"
@@ -98,6 +98,22 @@ class CallerTests(unittest.TestCase):
         original_db = "production['descriptor']['db'][key]"
         self.assertEqual(body.count(corrected_db), 1)
         body = body.replace(corrected_db, original_db)
+        # The owner approved only this bounded release-rule change. Remove its
+        # explicit call block and normalize its five changed assertions; every
+        # other original acceptance line must still match the original digest.
+        import re
+        body, count = re.subn(r"    # BEGIN OWNER-APPROVED TWO-CPE DISPOSITION\n.*?    # END OWNER-APPROVED TWO-CPE DISPOSITION\n", "", body, flags=re.S)
+        self.assertEqual(count, 1)
+        self.assertEqual(body.count("('production', production_exit, False)"), 1)
+        body = body.replace("('production', production_exit, False)", "('production', 0, False)")
+        self.assertEqual(body.count("upstream['production']['exit_code'] == production_exit"), 1)
+        body = body.replace("upstream['production']['exit_code'] == production_exit", "upstream['production']['exit_code'] == 0")
+        self.assertEqual(body.count("upstream['high_critical_findings'] == decision['raw_high_critical_findings']"), 1)
+        body = body.replace("upstream['high_critical_findings'] == decision['raw_high_critical_findings']", "upstream['high_critical_findings'] == 0")
+        self.assertEqual(body.count("finding['severity'] in ('Unknown', 'Negligible', 'Low', 'Medium', 'High', 'Critical')"), 1)
+        body = body.replace("finding['severity'] in ('Unknown', 'Negligible', 'Low', 'Medium', 'High', 'Critical')", "finding['severity'] in ('Unknown', 'Negligible', 'Low', 'Medium')")
+        self.assertEqual(body.count("match['vulnerability']['severity'] in ('Unknown', 'Negligible', 'Low', 'Medium', 'High', 'Critical')"), 1)
+        body = body.replace("match['vulnerability']['severity'] in ('Unknown', 'Negligible', 'Low', 'Medium', 'High', 'Critical')", "match['vulnerability']['severity'] in ('Unknown', 'Negligible', 'Low', 'Medium')")
         self.assertEqual(hashlib.sha256(body.encode()).hexdigest(), "338cbbb5e3068f4f3e2ca917ef4dc57166be0e7438d7635304b0ad78ac748f7c")
 
     def test_verified_database_run_and_exact_artifact_create_private_receipt(self):

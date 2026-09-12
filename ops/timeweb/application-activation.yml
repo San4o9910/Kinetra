@@ -65,10 +65,15 @@ jobs:
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test "$ACTIVATE_LOCAL_APPLICATION" = APPROVED
           sha256sum --check --strict <<'SHA256'
-          ffd0d196778bbd1b82497aed664d122be3282be0361a563ce3a5e9d7d7c4e1bf  ops/timeweb/application-caller.py
-          87be3ba2b1e215b95ddd8f948a98f8a5d388a7d1391d4830731331463acfbfd9  ops/timeweb/verify-launch-provenance.py
-          2de525f59737c0650ca758e58c5a6ef1c7738aa8dacef4891641e61792b2fc82  ops/timeweb/test-application-caller.py
+          f5d31335b0c7667480d2da9938e5604d1d2cdda5c5ef6df3880c41b979c2038e  ops/timeweb/application-caller.py
+          461f4738f3d0c67890b9c57f0756149c0fa7423918adedf8c7d05f19e5978b46  ops/timeweb/verify-launch-provenance.py
+          b2b9b584612a4821e981f55e8318cafab872a481367af1a8697fb966d60f2345  ops/timeweb/test-application-caller.py
+          ba9d7f7d4a5475de9a4401be60694bcbeab1e62308d2f304454360fc72d2267e  ops/timeweb/upstream-disposition.py
+          3655e79c515544934bff25f9c85c46b3b5d26b58eaed1e30afbd19977d2c1273  ops/timeweb/test-upstream-disposition.py
+          8128ccad4b8e8d1b5031f561477e5516e968770056b75e3f8d0751cb38edd7c3  ops/timeweb/scan-upstream-media.py
+          c4a35c5b13730316bc92c8f1b1ccf1d1b54c1cbaa15718790cb5603a07aec4a8  ops/timeweb/test-scan-upstream-media.py
           SHA256
+          PYTHONDONTWRITEBYTECODE=1 python3 ops/timeweb/test-upstream-disposition.py
           env -i PATH="$PATH" python3 ops/timeweb/test-application-caller.py
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:

@@ -123,7 +123,19 @@ def validate_db(status, now=None):
             and ".." not in Path(path).parts, "unexpected-database-path")
 
 
-def validate_report(report, bom, expected, status, control=False):
+def load_disposition():
+    import hashlib, importlib.util
+    from pathlib import Path
+    path = Path(__file__).with_name("upstream-disposition.py")
+    if path.is_symlink() or not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != "ba9d7f7d4a5475de9a4401be60694bcbeab1e62308d2f304454360fc72d2267e":
+        raise ValueError("approved-disposition-helper-mismatch")
+    spec = importlib.util.spec_from_file_location("kinetra_upstream_disposition", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def validate_report(report, bom, expected, status, control=False, source_context=None):
     require(isinstance(report, dict), "invalid-scan-report")
     descriptor = report.get("descriptor", {})
     require(descriptor.get("name") == "grype" and descriptor.get("version") == VERSION,
@@ -177,6 +189,11 @@ def validate_report(report, bom, expected, status, control=False):
     if control:
         require(all(CONTROL_CVES[name] <= found[name] for name in CONTROL_CVES), "positive-control-coverage-missing")
         require(any(row["severity"] in ("High", "Critical") for row in sanitized), "positive-control-threshold-not-triggered")
+    elif source_context is not None:
+        decision = load_disposition().evaluate(report, *source_context)
+        require(decision["result"] == "PASS" and decision["unresolved_high_critical_findings"] == 0,
+                "high-or-critical-upstream-findings")
+        require(decision["raw_findings"] == sanitized, "disposition-findings-mismatch")
     else:
         require(not any(row["severity"] in ("High", "Critical") for row in sanitized), "high-or-critical-upstream-findings")
     return sanitized
@@ -437,14 +454,25 @@ def execute(sbom_path, runner, image):
                                  "-o", f"json=/output/{phase}.json",
                                  "-o", f"cyclonedx-json=/output/{phase}.cdx.json"], timeout=600)
             require(digest(db) == database_hash, "database-changed-during-scan")
-            findings = validate_report(read_json(output / (phase + ".json")),
-                                       read_json(output / (phase + ".cdx.json")), expected, status,
-                                       control=phase == "positive-control")
+            report = read_json(output / (phase + ".json"))
+            context = None
+            if phase == "production":
+                context = (sbom_path.read_bytes(), os.environ.get("APPROVED_APP_COMMIT", ""))
+                decision = load_disposition().evaluate(report, *context)
+                write_json(output / "disposition.json", decision)
+                for key in ("raw_high_critical_findings", "dispositioned_high_critical_findings",
+                            "unresolved_high_critical_findings"):
+                    summary[key] = decision[key]
+                # Preserve raw counts and Grype exit status; disposition is a
+                # separate owner-approved gate, not a rewritten scan result.
+                summary["high_critical_findings"] = decision["raw_high_critical_findings"]
+                code = 2 if decision["raw_high_critical_findings"] else 0
+            findings = validate_report(report, read_json(output / (phase + ".cdx.json")), expected, status,
+                                       control=phase == "positive-control", source_context=context)
             require(result == code, "unexpected-scan-exit-code")
             summary[phase] = {"result": "PASS", "exit_code": result, "findings": findings,
                               "coverage": expected, "database_sha256": database_hash,
                               "network": "none"}
-        summary["high_critical_findings"] = 0
         summary["result"] = "PASS"
     except GateError as error:
         summary["failure"] = str(error)

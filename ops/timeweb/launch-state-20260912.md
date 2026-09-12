@@ -4,6 +4,16 @@ The owner added the two Yandex SMTP repository secrets and requested continued
 work on Kinetra. This checkpoint supersedes the unchecked SMTP state in the
 September 10 notes. It is **not application launch acceptance**.
 
+**Subsequent owner decision, 2026-09-12:** the owner explicitly accepted the
+linked two-CPE proposal. `upstream-disposition.py` implements that limited
+approval, with the September 26 expiration, exact application/source/SBOM
+identity, unchanged raw reports and zero unresolved HIGH/CRITICAL findings.
+Both scanner qualification and downstream provenance recompute the decision
+using the same SHA-pinned helper. Local verification passed 51 tests across
+the scanner, disposition boundaries and application caller; this is not yet a
+successful fresh full-image build or live deployment. The proposal JSON and
+historical investigation below are retained unchanged as the approval record.
+
 ## Verified mail prerequisites
 
 | Check | Actual result | Evidence |
