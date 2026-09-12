@@ -1,0 +1,117 @@
+# DORMANT: fill immutable successful image/local-run evidence before copying
+# to .github/workflows/timeweb-https-activation.yml. No trigger at this path.
+name: Accept prepared HTTPS on existing Kinetra host
+'on':
+  push:
+    branches:
+    - ops/timeweb-hourly-preflight-20260909
+    paths:
+    - .github/workflows/timeweb-https-activation.yml
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+  packages: read
+concurrency:
+  group: kinetra-timeweb-hourly-provision
+  cancel-in-progress: false
+env:
+  ACTIVATE_PREPARED_HTTPS: REVIEW_REQUIRED
+  APPROVED_APP_COMMIT: REVIEW_REQUIRED
+  APPROVED_BASE_COMMIT: REVIEW_REQUIRED
+  APPROVED_MERGE_COMMIT: REVIEW_REQUIRED
+  APPROVED_HEAD_RUN: REVIEW_REQUIRED
+  APPROVED_MERGE_RUN: REVIEW_REQUIRED
+  APPROVED_IMAGE_RUN: REVIEW_REQUIRED
+  APPROVED_IMAGE_CONTROL_COMMIT: REVIEW_REQUIRED
+  APPROVED_IMAGE_WORKFLOW_SHA256: REVIEW_REQUIRED
+  APPROVED_IMAGE_ARTIFACT_ID: REVIEW_REQUIRED
+  APPROVED_IMAGE_ARTIFACT_SHA256: REVIEW_REQUIRED
+  NODE_IMAGE: REVIEW_REQUIRED
+  NGINX_IMAGE: REVIEW_REQUIRED
+  BACKEND_IMAGE: REVIEW_REQUIRED
+  FRONTEND_IMAGE: REVIEW_REQUIRED
+  POSTGRES_IMAGE: REVIEW_REQUIRED
+  APPROVED_LOCAL_RUN: REVIEW_REQUIRED
+  APPROVED_LOCAL_CONTROL_COMMIT: REVIEW_REQUIRED
+  APPROVED_LOCAL_WORKFLOW_SHA256: REVIEW_REQUIRED
+  APPROVED_LOCAL_ARTIFACT_ID: REVIEW_REQUIRED
+  APPROVED_LOCAL_ARTIFACT_SHA256: REVIEW_REQUIRED
+  ROOT_SUPPLIED_SERVER_ID: '9069403'
+  ROOT_SUPPLIED_SERVER_IP: 80.68.156.131
+  APP_CHECKOUT: ${{ github.workspace }}/Kinetra
+jobs:
+  activate-https:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        persist-credentials: false
+        fetch-depth: 1
+    - name: Verify reviewed HTTPS caller and offline ownership contracts
+      shell: bash
+      run: |
+        set -euo pipefail
+        test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+        sha256sum --check --strict <<'SHA256'
+        654ae707445717a96b04c1a7b1f9e428e22ff06ccb04f40c68a2bf6b2ae11524  ops/timeweb/start-application-host.py
+        16c9ed2fc47534f86f35e4aa215d824ffbec84fd3c684d5d02157a7e944322c4  ops/timeweb/activate-application-host.py
+        041f415dedf6b0b6922484281926c8c98c87828506dcb2e1ac6fb324b00b05bb  ops/timeweb/initialize-database-host.py
+        4621b1c0153ab56ae535e245fdb2de4ef2aff4a30ba5b592343a26795f0655ae  ops/timeweb/prepare-database-host.py
+        a19aca3ea953feecdcb9be6e9dcabdfc8b0e2b4f3938184391cdfb2ff3e87c9e  ops/timeweb/bootstrap-server.py
+        567d892221925bb438ece6a893360a891ffd4228f8af0a18252b8ba365a682c0  ops/timeweb/inspect-server.py
+        6b63573205b874c03d08e6147eec364928630ff094100848a7146382700740ea  ops/timeweb/prepare-api-host.py
+        54779ce7be566e633247d9338ef94d2ddebf43ff9169e429fd72cc6ffb9135e2  ops/timeweb/activate-local-application-host.py
+        f30c6026e238eb411b8591b1234c88f210efd15748c2888f15f87cf34198bc69  ops/timeweb/activate-https-host.py
+        a23d52b21f7c638f757a723048ee632d37e8f217ae796f97dd92ec3bbb990e2d  ops/timeweb/prepare-caddy.sh
+        2fed5aee5eb6c4462a20e8164abd4f7268adb4f280102febe289102601e958d1  ops/timeweb/https-caller.py
+        45130035b0124170fc219eae702e9422fbe1a2134f73b0f5ef0a63a39b120611  ops/timeweb/test-https-caller.py
+        f5d31335b0c7667480d2da9938e5604d1d2cdda5c5ef6df3880c41b979c2038e  ops/timeweb/application-caller.py
+        461f4738f3d0c67890b9c57f0756149c0fa7423918adedf8c7d05f19e5978b46  ops/timeweb/verify-launch-provenance.py
+        ba9d7f7d4a5475de9a4401be60694bcbeab1e62308d2f304454360fc72d2267e  ops/timeweb/upstream-disposition.py
+        d9825e47848e9703bd75192ed695adb4b12a8eed56e03976b43b345e61064258  ops/timeweb/test-activate-local-application-host.py
+        SHA256
+        env -i PATH="$PATH" PYTHONDONTWRITEBYTECODE=1 python3 ops/timeweb/test-https-caller.py
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        ref: ${{ env.APPROVED_APP_COMMIT }}
+        path: Kinetra
+        persist-credentials: false
+        fetch-depth: 1
+    - name: Verify exact application checkout
+      shell: bash
+      run: |
+        set -euo pipefail
+        test "$(git -C "$APP_CHECKOUT" rev-parse HEAD)" = "$APPROVED_APP_COMMIT"
+        git -C "$APP_CHECKOUT" diff --exit-code
+        (cd "$APP_CHECKOUT" && sha256sum --check --quiet MANIFEST.sha256)
+    - name: Authenticate current images and complete successful local application handoff
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        python3 -B ops/timeweb/https-caller.py --authenticate-local
+    - name: Activate only prepared HTTPS on the existing server
+      shell: bash
+      env:
+        TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+      run: |
+        set -euo pipefail
+        python3 -B ops/timeweb/https-caller.py --activate-https
+    - name: Retain accepted HTTPS handoff
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: kinetra-https-handoff-${{ github.run_id }}-${{ github.run_attempt }}
+        path: ${{ runner.temp }}/kinetra-https-caller-${{ github.run_id }}-1/accepted-https-handoff.json
+        if-no-files-found: error
+        retention-days: 14
+    - name: Retain sanitized HTTPS attempt observations
+      if: always()
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: kinetra-https-attempt-${{ github.run_id }}-${{ github.run_attempt }}
+        path: ${{ runner.temp }}/kinetra-https-caller-${{ github.run_id }}-1/https-outer.observations.jsonl
+        if-no-files-found: ignore
+        retention-days: 14

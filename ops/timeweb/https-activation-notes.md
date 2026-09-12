@@ -1,12 +1,35 @@
 # Prepared HTTPS activation, fixed server 9069403
 
-`activate-https-host.py` is dormant guest code. It has no workflow trigger, SSH
+`activate-https-host.py` is frozen guest code. It has no workflow trigger, SSH
 client, installer, image pull, deployment switch or automatic retry. Its explicit
 command is `python3 -B activate-https-host.py --activate-prepared-https --private-input /absolute/root-owned-0600-input.json`.
 Do not invoke it until the calling phase has authenticated current successful
 source/image gates, the approved immutable images, the fixed Timeweb server/IP,
 the pinned SSH host key and the complete successful local-activation outer result.
 Hash binding inside the guest is not independent authentication of those sources.
+
+The outer caller is now prepared in `https-caller.py`, with a dormant workflow
+template at `https-activation.yml`. The template must be filled with the actual
+successful image and local-application run, commit, workflow and artifact hashes
+before activation. Its GitHub-only step independently verifies current source
+and image gates and the exact successful local handoff artifact. A private,
+same-run receipt binds those observations to the separate Timeweb-only step.
+No SMTP credentials are passed to either HTTPS step.
+
+The outer transport verifies the pinned SSH key before adding its temporary key,
+requires the prepared host's SSH hardening, Docker and ports 22/8080, then sends
+only the hash-pinned public helpers and private activation input through SSH
+stdin. The frozen guest still proves the exact loopback address and all container
+identities before starting Caddy. Earlier empty-host checks are intentionally not
+reused after the frontend has started. Unexpected 80/443/database listeners fail.
+Temporary key and directory cleanup must all complete before the outer caller
+writes `accepted-https-handoff.json`. Failed or lost responses retain sanitized
+attempt identities and never become successful handoffs.
+
+The 17 offline caller tests cover immutable prior-run authentication, changed
+attempt/checkpoint binding, private receipts, CLI handoff creation, transport and
+secret handling, SSH pinning, prepared-host preconditions, timeout/rollback grace,
+owned cleanup and lost-response reconciliation. They do not contact the host.
 
 Input has exactly `schema:1`, `server_id:9069403`, `public_ipv4:80.68.156.131`,
 `approved` (the frozen `start-application-host.py` input), `local_outer` (the final

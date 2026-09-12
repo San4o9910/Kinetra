@@ -14,6 +14,24 @@ the scanner, disposition boundaries and application caller; this is not yet a
 successful fresh full-image build or live deployment. The proposal JSON and
 historical investigation below are retained unchanged as the approval record.
 
+**Verified after implementation:** real scanner diagnostic
+[34723281493](https://github.com/San4o9910/Kinetra/actions/runs/34723281493)
+completed successfully at control `4af3a456a7e0f7dd526fe00f2eb4f3ca69d4cfe7`.
+It retained both raw HIGH/CRITICAL rows and Grype's exit 2, accepted only the two
+approved CPE records, left zero unresolved HIGH/CRITICAL findings and passed the
+unsuppressed positive controls. This used the authenticated previous source SBOM.
+Fresh full-image qualification
+[34723385107](https://github.com/San4o9910/Kinetra/actions/runs/34723385107)
+was then started at `8a9e7beffc3f61d6544ce6256c425089054265b2` and remains in
+the authenticated Node source build as of 22:58 UTC. Do not treat that pending
+run as successful or deploy unqualified images.
+
+The missing outer HTTPS caller and dormant workflow are prepared, with 17 offline
+tests passing. They authenticate the complete successful local-application
+handoff and preserve the frozen guest's activation/rollback boundaries. HTTPS
+activation is still pending real successful image, database and local-app runs;
+no server mutation was performed while preparing this caller.
+
 ## Verified mail prerequisites
 
 | Check | Actual result | Evidence |
