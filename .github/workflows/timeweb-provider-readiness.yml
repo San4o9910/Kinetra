@@ -1,4 +1,4 @@
-# Refresh auth delivery presence for the free beta; no provider calls or secret values.
+# Refresh Yandex SMTP presence after owner added the two repository secrets.
 name: Kinetra provider configuration presence
 on:
   push:
@@ -13,15 +13,15 @@ jobs:
     steps:
       - name: Report only presence of required provider settings
         env:
-          HAVE_DELIVERY_URL: ${{ secrets.AUTH_TOKEN_DELIVERY_WEBHOOK_URL != '' }}
-          HAVE_DELIVERY_KEY: ${{ secrets.AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET != '' }}
+          HAVE_SMTP_USERNAME: ${{ secrets.AUTH_TOKEN_DELIVERY_SMTP_USERNAME != '' }}
+          HAVE_SMTP_PASSWORD: ${{ secrets.AUTH_TOKEN_DELIVERY_SMTP_PASSWORD != '' }}
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY_PRESENCE'
           import os,json
           assert os.environ['GITHUB_RUN_ATTEMPT']=='1'
-          keys=['HAVE_DELIVERY_URL','HAVE_DELIVERY_KEY']
+          keys=['HAVE_SMTP_USERNAME','HAVE_SMTP_PASSWORD']
           assert all(os.environ[k] in ['true','false'] for k in keys)
           print('KINETRA_PROVIDER_PRESENCE='+json.dumps({k:os.environ[k]=='true' for k in keys},sort_keys=True))
           print('KINETRA_PROVIDER_CHECK=SECRET_PRESENCE_ONLY_NOT_PROVIDER_VALIDATION')

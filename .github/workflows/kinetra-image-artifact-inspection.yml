@@ -38,14 +38,14 @@ jobs:
               with response: data = response.read(8 * 1024 * 1024 + 1)
               assert len(data) <= 8 * 1024 * 1024
               return data if archive else json.loads(data)
-          metadata = fetch('/actions/artifacts/10137613199')
-          assert metadata['name'] == 'kinetra-image-evidence-34439133755-1' and not metadata['expired']
-          assert metadata['workflow_run']['id'] == 34439133755
-          assert metadata['workflow_run']['head_sha'] == '39522fa88d6125fa0788b0df3950bb846f35ab00'
-          archive = fetch('/actions/artifacts/10137613199/zip', archive=True)
+          metadata = fetch('/actions/artifacts/10178655505')
+          assert metadata['name'] == 'kinetra-image-evidence-34536263175-1' and not metadata['expired']
+          assert metadata['workflow_run']['id'] == 34536263175
+          assert metadata['workflow_run']['head_sha'] == '7ae976bee64de542e72cf382939986424ec5e1d3'
+          archive = fetch('/actions/artifacts/10178655505/zip', archive=True)
           assert 'sha256:' + hashlib.sha256(archive).hexdigest() == metadata['digest']
           with zipfile.ZipFile(io.BytesIO(archive)) as zipped:
-              for name in ('upstream-media/db-update.stdout', 'upstream-media/db-update.stderr', 'upstream-media/summary.json'):
+              for name in ('upstream-media/db-status.stdout', 'upstream-media/version.stdout', 'upstream-media/summary.json'):
                   info = zipped.getinfo(name)
                   assert info.file_size <= 32 * 1024 and not info.is_dir()
                   # This isolated scanner received only public source identities and no credentials.
