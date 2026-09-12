@@ -1,0 +1,134 @@
+{
+  "schema_version": 1,
+  "status": "PROPOSED_NOT_ACTIVE",
+  "created": "2026-09-12",
+  "expires": "2026-09-26T00:00:00Z",
+  "purpose": "Review two legacy unbounded CPE findings; this file is not consumed by any gate.",
+  "scope": {
+    "application_commit": "73b665065e00a5b375e90f701373b3e0856a0386",
+    "component": "imagemagick",
+    "version": "7.1.2-30",
+    "purl": "pkg:generic/imagemagick@7.1.2-30",
+    "source_commit": "344e9056f43764bfdf82456faf3bc2feee98a6fe",
+    "source_sha256": "5711b1ae793e23e0540299faa81eb9b15fa5bfe24b0aeb2d37cf0a20151d2ed4",
+    "source_sbom_sha256": "ebb69ea87b5ec9aa929c590bf6ceab0bc6239c38bfb3040e198e6a7bfa925dd7",
+    "namespace": "nvd:cpe",
+    "matcher": "stock-matcher",
+    "match_type": "cpe-match",
+    "version_constraint": "none (unknown)"
+  },
+  "findings": [
+    {
+      "component": "imagemagick",
+      "fix": {
+        "state": "",
+        "versions": []
+      },
+      "id": "CVE-2014-9826",
+      "matches": [
+        {
+          "found": {
+            "cpes": [
+              "cpe:2.3:a:imagemagick:imagemagick:*:*:*:*:*:*:*:*"
+            ],
+            "versionConstraint": "none (unknown)",
+            "vulnerabilityID": "CVE-2014-9826"
+          },
+          "matcher": "stock-matcher",
+          "searchedBy": {
+            "cpes": [
+              "cpe:2.3:a:imagemagick:imagemagick:7.1.2-30:*:*:*:*:*:*:*"
+            ],
+            "namespace": "nvd:cpe",
+            "package": {
+              "name": "imagemagick",
+              "version": "7.1.2-30"
+            }
+          },
+          "type": "cpe-match"
+        }
+      ],
+      "namespace": "nvd:cpe",
+      "severity": "Critical",
+      "source": "https://nvd.nist.gov/vuln/detail/CVE-2014-9826",
+      "version": "7.1.2-30"
+    },
+    {
+      "component": "imagemagick",
+      "fix": {
+        "state": "",
+        "versions": []
+      },
+      "id": "CVE-2017-5506",
+      "matches": [
+        {
+          "found": {
+            "cpes": [
+              "cpe:2.3:a:imagemagick:imagemagick:*:*:*:*:*:*:*:*"
+            ],
+            "versionConstraint": "none (unknown)",
+            "vulnerabilityID": "CVE-2017-5506"
+          },
+          "matcher": "stock-matcher",
+          "searchedBy": {
+            "cpes": [
+              "cpe:2.3:a:imagemagick:imagemagick:7.1.2-30:*:*:*:*:*:*:*"
+            ],
+            "namespace": "nvd:cpe",
+            "package": {
+              "name": "imagemagick",
+              "version": "7.1.2-30"
+            }
+          },
+          "type": "cpe-match"
+        }
+      ],
+      "namespace": "nvd:cpe",
+      "severity": "High",
+      "source": "https://nvd.nist.gov/vuln/detail/CVE-2017-5506",
+      "version": "7.1.2-30"
+    }
+  ],
+  "proposed_handling": "Retain raw findings and their severity; permit a separate exact-identity, expiring fixed-upstream disposition for these two records only. Require zero unresolved HIGH/CRITICAL findings.",
+  "evidence": {
+    "wolfi": {
+      "url": "https://github.com/wolfi-dev/advisories/blob/39f06f99bf82ad5af70979464169fb6b1d63d07f/imagemagick.advisories.yaml",
+      "blob_sha": "d635275b27ffd81e612923c32dee65d6375ecbea",
+      "determinations": {
+        "CVE-2014-9826": "CGA-mmwr-54rv-pjm9",
+        "CVE-2017-5506": "CGA-wmr2-frgj-vwxm"
+      },
+      "reason": "Wolfi records both as false positives because upstream fixed the vulnerable code before Wolfi packaging."
+    },
+    "CVE-2017-5506": {
+      "assessment": "fix confirmed in exact upstream source",
+      "fix_commit": "9a069e0f2e027ec5138f998023cf9cb62c04889f",
+      "fix_is_ancestor": true,
+      "source_path": "MagickCore/profile.c",
+      "source_blob_sha": "fc046994e6ce33b74765d6ad78e07f9fb6717c63",
+      "guards": [
+        "negative EXIF offset rejected",
+        "offset and length overflow rejected"
+      ],
+      "debian_url": "https://security-tracker.debian.org/tracker/CVE-2017-5506"
+    },
+    "CVE-2014-9826": {
+      "assessment": "probable false positive supported by supplier advisories; original Debian patch-to-current-source mapping not independently completed",
+      "source_path": "coders/sun.c",
+      "source_blob_sha": "8e75a07bf5d36948a9b79e6f6081ff5efdc16473",
+      "debian_url": "https://security-tracker.debian.org/tracker/CVE-2014-9826",
+      "debian_fixed_version": "8:6.8.9.9-4",
+      "original_patch_commit": "69490f5cffbda612e15a2985699455bb0b45e276",
+      "scope_caveat": "Kinetra builds raw upstream sources, not Debian/Wolfi packages; distro package status alone does not prove source equivalence."
+    }
+  },
+  "required_invariants": [
+    "No scanner ignore rules, VEX filtering, database editing, severity rewriting, SBOM/CPE removal or raw report rewriting.",
+    "Only the exact two CVE IDs and exact component/source identity are eligible; no wildcard or future-version exceptions.",
+    "Any new HIGH/CRITICAL finding, changed match range, expired disposition, changed source/SBOM hash, missing evidence, or inconsistent counts fails closed.",
+    "Positive controls remain unsuppressed and must detect CVE-2026-8461, CVE-2026-86420 and CVE-2026-86421.",
+    "Original scanner exit code 2 must remain recorded; a separate verified disposition gate must reconcile raw, dispositioned and unresolved counts.",
+    "Full image smoke, Trivy vulnerability/secret scanning, source signatures, fresh database, immutable provenance and staged deployment remain mandatory.",
+    "Before activation, integrate and negatively test the same disposition rules in scanner qualification and downstream launch provenance; preserve every unrelated assertion."
+  ]
+}

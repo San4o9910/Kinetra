@@ -1,5 +1,8 @@
 # Kinetra launch checkpoint — 2026-09-10
 
+**Superseded by:** [2026-09-12 checkpoint](launch-state-20260912.md), including
+the newer SMTP application commit, verified credentials and current image gate.
+
 This is an evidence checkpoint, not a launch acceptance record. The existing
 continuous approval permits corrected checks and deployment on Timeweb 9069403
 (80.68.156.131), hourly billing, at most 2,000 RUB/month. Payments and real user

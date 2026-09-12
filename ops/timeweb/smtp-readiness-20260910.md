@@ -1,5 +1,9 @@
 # SMTP preparation checkpoint — 2026-09-10
 
+**Update:** [2026-09-12 verified checkpoint](launch-state-20260912.md) confirms
+both SMTP secrets, server-to-Yandex TLS/EHLO and a separate successful SMTP login.
+The historical unknown/unchecked statements below describe 2026-09-10 only.
+
 The owner has Yandex and Gmail mailboxes. Yandex is selected for initial Kinetra
 authentication emails. Application commit `73b665065e00a5b375e90f701373b3e0856a0386`
 adds direct SMTP delivery; the former requirement for a separate compatible
