@@ -162,6 +162,9 @@ jobs:
           sparse-checkout: |
             /ops/timeweb/scan-upstream-media.py
             /ops/timeweb/test-scan-upstream-media.py
+            /ops/timeweb/verify-launch-provenance.py
+            /ops/timeweb/test-upstream-disposition.py
+            /ops/timeweb/upstream-disposition.py
 
       - name: Verify upstream versions and build authenticated Node cache
         shell: bash
@@ -535,10 +538,14 @@ jobs:
           set -euo pipefail
           test "$(git -C .kinetra-control rev-parse HEAD)" = "$GITHUB_SHA"
           sha256sum --check --strict <<'SHA256'
-          685eb54d42c5936d2986c6c2f338a2fc78780652f6b42995b70365751b5f8678  .kinetra-control/ops/timeweb/scan-upstream-media.py
-          f2f9fdd6141ae878614a9abe2289d4c21f4cb4fe33513b9d54862792a4cac781  .kinetra-control/ops/timeweb/test-scan-upstream-media.py
+          8128ccad4b8e8d1b5031f561477e5516e968770056b75e3f8d0751cb38edd7c3  .kinetra-control/ops/timeweb/scan-upstream-media.py
+          c4a35c5b13730316bc92c8f1b1ccf1d1b54c1cbaa15718790cb5603a07aec4a8  .kinetra-control/ops/timeweb/test-scan-upstream-media.py
+          ba9d7f7d4a5475de9a4401be60694bcbeab1e62308d2f304454360fc72d2267e  .kinetra-control/ops/timeweb/upstream-disposition.py
+          3655e79c515544934bff25f9c85c46b3b5d26b58eaed1e30afbd19977d2c1273  .kinetra-control/ops/timeweb/test-upstream-disposition.py
+          461f4738f3d0c67890b9c57f0756149c0fa7423918adedf8c7d05f19e5978b46  .kinetra-control/ops/timeweb/verify-launch-provenance.py
           SHA256
-          python3 .kinetra-control/ops/timeweb/test-scan-upstream-media.py
+          PYTHONDONTWRITEBYTECODE=1 python3 .kinetra-control/ops/timeweb/test-scan-upstream-media.py
+          PYTHONDONTWRITEBYTECODE=1 python3 .kinetra-control/ops/timeweb/test-upstream-disposition.py
           python3 .kinetra-control/ops/timeweb/scan-upstream-media.py \
             --sbom "$RUNNER_TEMP/kinetra-image-evidence/source-components.cdx.json"
 
