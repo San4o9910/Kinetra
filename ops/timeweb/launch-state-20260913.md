@@ -1,5 +1,35 @@
 # Kinetra checkpoint — 2026-09-13
 
+## Current blocker — 05:36 UTC
+
+Run `34733519897` completed with failure at 04:31 UTC, **only in the final
+publication privacy assertion**. Source/CPU/media reproduction, Node build,
+both final images, all runtime smoke checks, Trivy package/secret checks and
+the independent upstream scanner passed. Raw upstream HIGH/CRITICAL remains 2,
+both exactly dispositioned under the existing approval, unresolved 0; source
+inventory is the original `ebb69ea87b5ec9aa929c590bf6ceab0bc6239c38bfb3040e198e6a7bfa925dd7`.
+
+Both pushes succeeded, but the package API reports PUBLIC rather than the
+required PRIVATE visibility. Read-only inspection run `34740682638`, job
+`103679745148`, control `21c333376a18192fd985e8a0a04a777e579cc34a`, authenticated
+the exact archive and confirmed both packages belong to this repository and
+are public. The workflow did not change visibility; why the observed creation
+differs from GitHub's documented private default is not established.
+
+Artifact: `10311681518`, SHA-256
+`4783d6fd51bec6c8a9d3c4bfe63d6b2e6c2f0915ecd472323d47b8dd60c05bd7`.
+No full successful image qualification, private publication or host activation
+is accepted. Database/application/HTTPS templates remain dormant. Do not copy
+the qualified-input reader for this failed run and do not rerun the full build
+until the publication policy issue is resolved.
+
+The narrow decision proposal is
+[publication-visibility-decision-20260913.md](publication-visibility-decision-20260913.md).
+No package deletion, visibility mutation, new package, weakened gate or host
+write was performed during diagnosis. Automatic continuation is to be paused
+because the next step needs an owner decision, not another build attempt.
+Earlier progress entries below are historical and superseded by this section.
+
 The owner requested continued work. Continuous fix/deployment authority and all
 existing exclusions remain: fixed Timeweb server 9069403 / 80.68.156.131, no
 merge, paid resources/billing changes, existing-data deletion, real user mail or

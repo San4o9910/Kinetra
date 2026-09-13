@@ -128,7 +128,15 @@
     "reproduction_run": 34733519897,
     "reproduction_job": 103660662186,
     "reproduction_evidence": "GitHub job step Reproduce approved media inventory before the expensive Node build completed successfully; the pinned workflow checks the actual rebuilt inventory against the original ebb69ea8 hash before starting Node.",
-    "full_image_qualification": "PENDING_NODE_BUILD_AND_FINAL_GATES",
+    "full_image_qualification": "FAILED_PUBLICATION_PRIVACY_POSTCHECK",
+    "all_build_runtime_and_security_steps_passed": true,
+    "publication_inspection_run": 34740682638,
+    "publication_inspection_job": 103679745148,
+    "publication_artifact_id": 10311681518,
+    "publication_artifact_sha256": "4783d6fd51bec6c8a9d3c4bfe63d6b2e6c2f0915ecd472323d47b8dd60c05bd7",
+    "actual_package_visibility": "public",
+    "required_package_visibility": "private",
+    "host_activation_performed": false,
     "failure_diagnostics": "Translate the pinned disposition helper's fixed failure category into the scanner gate summary instead of reporting an unspecified error."
   }
 }
