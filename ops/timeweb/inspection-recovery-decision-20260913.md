@@ -1,7 +1,10 @@
 # Kinetra: decision on replacing the unresponsive inspection
 
-Status: OWNER_DECISION_REQUIRED. The replacement is prepared but is not published
-under `.github/workflows/` and has not run.
+Status: OWNER_APPROVED on 2026-09-13. The owner replied “Да” to the explicit
+proposal linked at `d41de3fa518d45858e2454ab3bc27cb55557cf78` in this conversation.
+The exact prepared replacement was published at its active path in commit
+`b9f5b85043d5e04bbed0167c69c6447e9d09ea95`. Await and inspect its actual result;
+this approval does not treat the unresponsive original run as cancelled.
 
 ## Verified facts — 2026-09-13
 
