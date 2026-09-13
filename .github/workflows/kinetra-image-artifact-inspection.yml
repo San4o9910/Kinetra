@@ -1,119 +1,117 @@
-name: Inspect latest sanitized Kinetra application preparation attempt
+name: Inspect preserved Kinetra API state after corrected helper attempt
 on:
   push:
     branches: [ops/timeweb-hourly-preflight-20260909]
     paths: [.github/workflows/kinetra-image-artifact-inspection.yml]
 permissions:
   contents: read
-  actions: read
 jobs:
   inspect:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
           fetch-depth: 1
-      - name: Read only the exact sanitized application-attempt artifact
+      - name: Inspect only nonsecret API preparation state on exact host
         env:
-          GH_TOKEN: ${{ github.token }}
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+          ROOT_SUPPLIED_SERVER_ID: '9069403'
+          ROOT_SUPPLIED_SERVER_IP: 80.68.156.131
         shell: bash
         run: |
           set -euo pipefail
+          sha256sum --check --strict <<'SHA256'
+          3ffc667a66330c323836d1335e78f92940d6ebdc1877cf66048265d774bb3086  ops/timeweb/inspect-host-monitoring.py
+          567d892221925bb438ece6a893360a891ffd4228f8af0a18252b8ba365a682c0  ops/timeweb/inspect-server.py
+          SHA256
           python3 -B - <<'PY_INSPECT'
-          import hashlib, io, json, os, re, stat, urllib.error, urllib.parse, urllib.request, zipfile
+          import importlib.util, json, os, re, signal, stat, sys
 
-          REPOSITORY = 'San4o9910/Kinetra'
-          RUN = 34748921875
-          CONTROL = '5021035f1e56cf935b177bd6a54e3ce95d322a7a'
-          ARTIFACT = 10315336650
-          DIGEST = '1aacc165460f8e134ee99cdba94c0575d50768057218b7a95c8c7bc2fa36bf2b'
-          NAME = 'kinetra-local-attempt-34748921875-1'
-          ALLOWED = {'api-outer.json', 'local-outer.json',
-                     'api-outer.observations.jsonl', 'local-outer.observations.jsonl'}
+          spec = importlib.util.spec_from_file_location('kinetra_state_inspect', 'ops/timeweb/inspect-host-monitoring.py')
+          module = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
 
-          assert os.environ['GITHUB_REPOSITORY'] == REPOSITORY
-          assert os.environ['GITHUB_REF'] == 'refs/heads/ops/timeweb-hourly-preflight-20260909'
-          assert os.environ['GITHUB_RUN_ATTEMPT'] == '1'
+          guest = r'''
+          import hashlib, json, os, pathlib, re, stat, subprocess
+          stage = pathlib.Path('/srv/kinetra-stage')
+          def regular(path, mode=None):
+              if not path.exists() or path.is_symlink(): return False
+              info = path.lstat()
+              return stat.S_ISREG(info.st_mode) and info.st_uid == 0 and (mode is None or stat.S_IMODE(info.st_mode) == mode)
+          def digest(path):
+              return hashlib.sha256(path.read_bytes()).hexdigest() if regular(path) else None
+          attempt_path = stage / 'evidence/application-env-attempt.json'
+          record_path = stage / 'evidence/application-env.json'
+          active_path = stage / 'env/api.env'
+          attempt = None
+          if regular(attempt_path, 0o600):
+              value = json.loads(attempt_path.read_bytes())
+              assert isinstance(value, dict) and set(value) == {'schema','commit','images','previous_api_sha256','candidate_directory'}
+              assert value['schema'] == 1 and re.fullmatch(r'api-preparation-[a-f0-9]{32}', value['candidate_directory'])
+              attempt = {'candidate_directory': value['candidate_directory'],
+                         'commit_matches': value['commit'] == '73b665065e00a5b375e90f701373b3e0856a0386',
+                         'images_match': value['images'] == {
+                           'NODE_IMAGE':'node@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32',
+                           'NGINX_IMAGE':'nginxinc/nginx-unprivileged@sha256:3a4485bf084957d56674ee22db07d77d5a281418815c5852827419d6d629d440',
+                           'BACKEND_IMAGE':'ghcr.io/san4o9910/kinetra-backend@sha256:9138a6408442b847ca771690053870880cee831769919aaf2a2dc858d52e8362',
+                           'FRONTEND_IMAGE':'ghcr.io/san4o9910/kinetra-frontend@sha256:da47e7f576cfb3892b9078e8463cdad855081e032d51645639794736c1098ff2',
+                           'POSTGRES_IMAGE':'postgres:17-bookworm@sha256:7bade6d532592ca8ce7ee32def7399dad2607c4ea5583839fc4352a095a11ea6'}}
+          candidates = []
+          env_dir = stage / 'env'
+          if env_dir.is_dir() and not env_dir.is_symlink():
+              for path in sorted(env_dir.glob('api-preparation-*')):
+                  assert re.fullmatch(r'api-preparation-[a-f0-9]{32}', path.name)
+                  info = path.lstat()
+                  assert stat.S_ISDIR(info.st_mode) and info.st_uid == 0 and stat.S_IMODE(info.st_mode) == 0o700
+                  allowed = {'api.env','production.env','previous-api.env'}
+                  names = {item.name for item in path.iterdir()}
+                  assert names <= allowed
+                  candidates.append({'name': path.name,
+                      'api_env_sha256': digest(path / 'api.env'),
+                      'production_env_sha256': digest(path / 'production.env'),
+                      'previous_api_sha256': digest(path / 'previous-api.env')})
+          assert len(candidates) <= 5
+          proc = subprocess.run(['/usr/bin/docker','ps','-a','--filter','label=com.docker.compose.project=kinetra-production',
+              '--format','{{.Label "com.docker.compose.service"}}={{.State}}'], stdin=subprocess.DEVNULL,
+              stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=15, check=True, text=True)
+          containers = {}
+          for line in proc.stdout.splitlines():
+              service, state = line.split('=', 1)
+              assert service in {'postgres','backend','frontend'} and state in {'created','running','exited','paused','restarting','dead'}
+              assert service not in containers
+              containers[service] = state
+          def systemctl(command):
+              result = subprocess.run(['/usr/bin/systemctl', command, 'caddy.service'], stdin=subprocess.DEVNULL,
+                  stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=10, text=True)
+              value = result.stdout.strip()
+              assert len(value) <= 64 and re.fullmatch(r'[a-zA-Z0-9_-]*', value)
+              return value
+          result = {'schema':1,'result':'PASS_READ_ONLY_INSPECTION','mutations':False,
+              'stage_exists':stage.is_dir() and not stage.is_symlink(),
+              'attempt':attempt,'application_record_exists':regular(record_path,0o600),
+              'application_record_sha256':digest(record_path),'active_api_sha256':digest(active_path),
+              'candidates':candidates,'containers':containers,
+              'caddy_active':systemctl('is-active'),'caddy_enabled':systemctl('is-enabled')}
+          print(json.dumps(result, sort_keys=True))
+          '''
 
-          class NoRedirect(urllib.request.HTTPRedirectHandler):
-              def redirect_request(self, request, file, code, message, headers, new_url):
-                  return None
-          opener = urllib.request.build_opener(NoRedirect)
-
-          def fetch(path, archive=False):
-              req = urllib.request.Request('https://api.github.com/repos/' + REPOSITORY + path,
-                  headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
-                           'Accept': 'application/vnd.github+json'})
-              try:
-                  response = opener.open(req, timeout=30)
-              except urllib.error.HTTPError as error:
-                  if not archive or error.code != 302:
-                      raise RuntimeError('Artifact API read failed') from None
-                  location = error.headers['Location']
-                  parsed = urllib.parse.urlsplit(location)
-                  assert parsed.scheme == 'https' and not parsed.username and not parsed.password
-                  assert parsed.port in (None, 443) and parsed.hostname
-                  assert parsed.hostname.endswith(('.blob.core.windows.net', '.actions.githubusercontent.com'))
-                  response = opener.open(urllib.request.Request(location), timeout=30)
-              with response:
-                  data = response.read(128 * 1024 + 1)
-              assert len(data) <= 128 * 1024
-              return data if archive else json.loads(data)
-
-          metadata = fetch('/actions/artifacts/' + str(ARTIFACT))
-          assert metadata['id'] == ARTIFACT and metadata['name'] == NAME and metadata['expired'] is False
-          assert metadata['size_in_bytes'] <= 64 * 1024
-          assert metadata['digest'] == 'sha256:' + DIGEST
-          assert metadata['workflow_run']['id'] == RUN
-          assert metadata['workflow_run']['head_sha'] == CONTROL
-
-          raw = fetch('/actions/artifacts/' + str(ARTIFACT) + '/zip', archive=True)
-          assert hashlib.sha256(raw).hexdigest() == DIGEST
-
-          def pairs(items):
-              output = {}
-              for key, value in items:
-                  assert key not in output
-                  output[key] = value
-              return output
-          def nonfinite(_value):
-              raise ValueError('nonfinite')
-          def strict(raw_json):
-              return json.loads(raw_json, object_pairs_hook=pairs, parse_constant=nonfinite)
-          sensitive = re.compile(r'(secret|token|password|authorization|credential|smtp|username|email)', re.I)
-          def sanitized(value):
-              if isinstance(value, dict):
-                  return {key: ('<redacted>' if sensitive.search(key) else sanitized(item))
-                          for key, item in value.items()}
-              if isinstance(value, list):
-                  assert len(value) <= 100
-                  return [sanitized(item) for item in value]
-              if isinstance(value, str):
-                  if len(value) > 512 or '@' in value or re.search(r'(?i)bearer\\s|basic\\s', value):
-                      return '<redacted>'
-                  return value
-              assert value is None or type(value) in (bool, int, float)
+          def validate(raw):
+              value = json.loads(raw)
+              assert isinstance(value, dict) and set(value) == {'schema','result','mutations','stage_exists','attempt',
+                  'application_record_exists','application_record_sha256','active_api_sha256','candidates',
+                  'containers','caddy_active','caddy_enabled'}
+              assert value['schema'] == 1 and value['result'] == 'PASS_READ_ONLY_INSPECTION'
+              assert value['mutations'] is False and value['stage_exists'] is True
+              assert isinstance(value['candidates'], list) and isinstance(value['containers'], dict)
+              for key in ('application_record_sha256','active_api_sha256'):
+                  assert value[key] is None or re.fullmatch(r'[a-f0-9]{64}', value[key])
               return value
 
-          result = {}
-          with zipfile.ZipFile(io.BytesIO(raw)) as archive:
-              infos = archive.infolist()
-              names = [item.filename for item in infos]
-              assert names and len(names) == len(set(names)) and set(names) <= ALLOWED
-              for info in infos:
-                  assert not info.is_dir() and '/' not in info.filename and '\\\\' not in info.filename
-                  assert not info.flag_bits & 1 and 0 < info.file_size <= 64 * 1024
-                  mode = (info.external_attr >> 16) & 0o170000
-                  assert mode in (0, stat.S_IFREG)
-                  data = archive.read(info)
-                  if info.filename.endswith('.json'):
-                      result[info.filename] = sanitized(strict(data))
-                  else:
-                      lines = data.splitlines()
-                      assert len(lines) <= 100
-                      result[info.filename] = [sanitized(strict(line)) for line in lines if line]
-          print('KINETRA_SANITIZED_APPLICATION_ATTEMPT=' + json.dumps(result, sort_keys=True))
-          print('KINETRA_APPLICATION_ATTEMPT_INSPECTION=PASS')
+          module.GUEST_PROGRAM = guest
+          module.validate_result = validate
+          signal.signal(signal.SIGTERM, module.inspection.interrupted)
+          signal.signal(signal.SIGINT, module.inspection.interrupted)
+          raise SystemExit(module.main(['--inspect-existing-host-monitoring'], os.environ, module.inspection.Api))
           PY_INSPECT
