@@ -77,7 +77,7 @@ jobs:
           0a1ec78c18632cb03630902c27060a930ec038086711614cac59601b236fdac2  ops/timeweb/recover-api-preparation.py
           33f479cdb1b8215107fb74915bff05718c690fb8f6a5d1692fb7237eaeb92b05  ops/timeweb/recovery-caller.py
           d1aa5e4c1e488d6fe8437bcbbb035c6c2750d1c7163e30fc39bd8dc60f70d42d  ops/timeweb/test-recover-api-candidate.py
-          922625e59fc1fcecf621ff8875f561a5f263a7831ab075b1e28349ca2a8b3e3d  ops/timeweb/authenticate-preserved-api.py
+          02945ce172ec91aadf0dd8ee85a2988c34f893b680b7572f5bfe3dd0b839c9e5  ops/timeweb/authenticate-preserved-api.py
           2658c9b04bfdc076b7cf509570e9518b65f10ec6e0b6df960c3810a3a17a6de7  ops/timeweb/test-preserved-api-auth.py
           650c761d5293bd9871e54b23971b758e6936a6dc0040a205afd9fe6df22d3a01  ops/timeweb/api-resume-evidence-20260913.json
           dcfeda041b41481494de1ae884b3d90c58c54a9bc612c8f1d1224063ae232d71  ops/timeweb/test-activate-local-application-host.py
