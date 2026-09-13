@@ -1,3 +1,35 @@
+## Launch checkpoint — 2026-09-13 18:32 UTC: approved replacement inspected preserved candidate
+
+The owner's explicit “Да” authorized the one replacement proposed in
+`inspection-recovery-decision-20260913.md`. Publication commit
+`b9f5b85043d5e04bbed0167c69c6447e9d09ea95`, run `34774887728`,
+job `103771077391` completed SUCCESS. The guard verified exact original
+`34749066794` still queued with zero jobs/artifacts. Original was not retried
+or cancelled. Approval is recorded in `9b820bc82ea63a28413d062593bde0f53861d3eb`.
+This supersedes the owner-decision hold immediately below.
+
+Actual pinned host inspection returned PASS, server on, PostgreSQL running,
+Caddy inactive/disabled, no application record and no backend/frontend
+containers. Guest/account temporary SSH keys were API_DELETE_CONFIRMED;
+local key was REMOVED.
+
+Preserved candidate: `api-preparation-08115658b05bc897f6bdb8f7a7874938`.
+Attempt matches exact app and all five qualified image identities.
+Active api.env SHA-256:
+`491d26791ac0c3d2074c51eb561c2a38885f0e4d5a160e4e7e80f879c9991f5e`.
+Candidate api.env SHA-256:
+`f83605434b89354008382d5b87f02aab48b6729e86b56bec419c0affd94c2688`.
+Candidate production.env SHA-256:
+`4094b16bdb78990c7e011a4672df1e74f9da84c535bd498efa325cffff4afba4`.
+No previous-api.env exists. Evidence shows candidate files were created,
+but does not yet identify which validation stopped preparation.
+
+Next: diagnose the exact preserved candidate using read-only, network-isolated
+validators with sanitized result categories and owned temporary-container cleanup.
+Do not rerun preparation, overwrite candidate credentials, initialize the database,
+or start the app until the partial state is reconciled and every required gate passes.
+All image/source/SBOM/public-package/host/secret restrictions remain unchanged.
+
 ## Launch checkpoint — 2026-09-13: cancellation conflict requires a narrow decision
 
 The owner attempted normal cancellation of inspection run `34749066794`;
