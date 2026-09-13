@@ -66,7 +66,7 @@ jobs:
               with os.fdopen(fd, 'wb') as stream:
                   stream.write(raw); stream.flush(); os.fchmod(stream.fileno(), mode); os.fsync(stream.fileno())
           state = {'schema':1,'result':'FAIL','phase':'TRANSPORT','category':None,
-                   'guest_temp_cleanup':'NOT_NEEDED','remote_directory':None}
+                   'guest_temp_cleanup':'NOT_NEEDED','remote_directory':None,'exception_type':None,'errno':None,'filename':None}
           folder = None
           lock = None
           approved = None
@@ -108,6 +108,12 @@ jobs:
           except (DiagError, Exception) as error:
               category=str(error)
               state['category']=category if re.fullmatch(r'[A-Z_]{1,90}',category) else 'READ_ONLY_DIAGNOSTIC_FAILED'
+              kind=type(error).__name__
+              state['exception_type']=kind if re.fullmatch(r'[A-Za-z][A-Za-z0-9_]{0,63}',kind) else 'Unknown'
+              number=getattr(error,'errno',None)
+              state['errno']=number if type(number) is int and 0 <= number <= 4096 else None
+              filename=getattr(error,'filename',None)
+              state['filename']=pathlib.Path(filename).name if isinstance(filename,str) and len(filename)<=4096 else None
           finally:
               if lock is not None: os.close(lock)
               if isinstance(approved,dict):
@@ -130,7 +136,7 @@ jobs:
           observed = {}
           def validate_remote(raw, expected, nonce):
               value = json.loads(raw)
-              assert isinstance(value,dict) and set(value)=={'schema','result','phase','category','guest_temp_cleanup','remote_directory'}
+              assert isinstance(value,dict) and set(value)=={'schema','result','phase','category','guest_temp_cleanup','remote_directory','exception_type','errno','filename'}
               assert value['schema']==1 and value['result'] in {'PASS','FAIL'}
               assert isinstance(value['phase'],str) and re.fullmatch(r'[A-Z_]{1,90}',value['phase'])
               assert value['category'] is None or re.fullmatch(r'[A-Z_]{1,90}',value['category'])
@@ -139,7 +145,7 @@ jobs:
               observed.update(value)
               return {'result':'API_ENVIRONMENT_PREPARED_ONLY','guest_temp_cleanup':'REMOVED',
                       'diagnostic_result':value['result'],'diagnostic_phase':value['phase'],
-                      'diagnostic_category':value['category']}
+                      'diagnostic_category':value['category'],'exception_type':value['exception_type'],'errno':value['errno'],'filename':value['filename']}
 
           module.GUEST_LAUNCHER = guest
           module.validate_remote = validate_remote
@@ -152,7 +158,7 @@ jobs:
           assert outer['guest_key_cleanup'] in {'API_DELETE_CONFIRMED','ALREADY_ABSENT'}
           assert outer['account_key_cleanup'] in {'API_DELETE_CONFIRMED','ALREADY_ABSENT'}
           assert outer['local_key_cleanup']=='REMOVED' and outer['guest_temp_cleanup']=='REMOVED'
-          summary={'result':observed['result'],'phase':observed['phase'],'category':observed['category'],
+          summary={'result':observed['result'],'phase':observed['phase'],'category':observed['category'],'exception_type':observed['exception_type'],'errno':observed['errno'],'filename':observed['filename'],
                    'host_key_fingerprint':outer['host_key_fingerprint'],
                    'guest_key_cleanup':outer['guest_key_cleanup'],
                    'account_key_cleanup':outer['account_key_cleanup'],
