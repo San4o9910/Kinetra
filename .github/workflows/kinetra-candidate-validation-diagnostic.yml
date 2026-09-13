@@ -1,4 +1,4 @@
-name: Inspect exact PostgreSQL directory metadata for preserved API failure
+name: Verify preserved API handoff and absent application startup after import failure
 on:
   push:
     branches: [ops/timeweb-hourly-preflight-20260909]
@@ -108,14 +108,24 @@ jobs:
                   'mounted_root':metadata(pathlib.Path(data_mount['Source'])),
                   'volume_name':data_mount['Name'],'volume_bind_matches':True,
                   'postgres_version_17':(stage/'postgres/data/pgdata/PG_VERSION').read_bytes()==b'17\n',
-                  'bootstrap_marker_exists':(stage/'postgres/data/pgdata/.kinetra-bootstrap-complete').is_file()}
+                  'bootstrap_marker_exists':(stage/'postgres/data/pgdata/.kinetra-bootstrap-complete').is_file(),
+                  'application_record_exists':(stage/'evidence/application-env.json').is_file(),
+                  'recovery_complete_exists':(stage/'evidence/application-env-recovery-complete.json').is_file(),
+                  'start_attempt_exists':(stage/'evidence/application-start-attempt.json').exists(),
+                  'start_result_exists':(stage/'evidence/application-start-result.json').exists()}
+          proc=subprocess.run(['/usr/bin/docker','ps','-a','--filter','label=com.docker.compose.project=kinetra-production',
+              '--format','{{.Label "com.docker.compose.service"}}={{.State}}'],stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,
+              stderr=subprocess.DEVNULL,timeout=15,check=True,text=True)
+          lines=proc.stdout.strip().splitlines()
+          assert all(line in {'postgres=running','backend=created','backend=running','backend=exited','frontend=created','frontend=running','frontend=exited'} for line in lines)
+          result['compose_services']=lines
           os.close(descriptor)
           print(json.dumps(result,sort_keys=True))
           '''
           def validate(raw):
               value=json.loads(raw)
               assert set(value)=={'schema','result','mutations','data_root','pgdata','mounted_root','volume_name',
-                  'volume_bind_matches','postgres_version_17','bootstrap_marker_exists'}
+                  'volume_bind_matches','postgres_version_17','bootstrap_marker_exists','application_record_exists','recovery_complete_exists','start_attempt_exists','start_result_exists','compose_services'}
               assert value['schema']==1 and value['result']=='PASS_READ_ONLY_INSPECTION' and value['mutations'] is False
               assert value['volume_name']=='kinetra-production_postgres17_data'
               for name in ('data_root','pgdata','mounted_root'):
@@ -125,6 +135,8 @@ jobs:
                   assert re.fullmatch(r'0o[0-7]{3,4}',row['mode'])
                   assert row['directory'] is True and row['symlink'] is False
               assert all(value[k] is True for k in ('volume_bind_matches','postgres_version_17','bootstrap_marker_exists'))
+              assert all(type(value[k]) is bool for k in ('application_record_exists','recovery_complete_exists','start_attempt_exists','start_result_exists'))
+              assert isinstance(value['compose_services'],list) and len(value['compose_services'])<=3
               return value
 
           module.GUEST_PROGRAM = guest
