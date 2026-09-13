@@ -1,0 +1,130 @@
+{
+  "schema": 1,
+  "scope": "INVESTIGATION_AND_ENVIRONMENT_CORRECTION_ONLY",
+  "application_commit": "73b665065e00a5b375e90f701373b3e0856a0386",
+  "comparison_run": 34733203425,
+  "previous_image_run": 34536263175,
+  "current_image_run": 34723385107,
+  "previous_source_sbom_sha256": "ebb69ea87b5ec9aa929c590bf6ceab0bc6239c38bfb3040e198e6a7bfa925dd7",
+  "current_source_sbom_sha256": "28de11e2eeee8ea03aa27798e5a210abf0b785d0e44503e942e1ec01c74bcab5",
+  "observed_compiler_tuning": {
+    "previous": "-mtune=amdfam10",
+    "current": "-mtune=core2",
+    "evidence": "Actual ImageMagick configure CFLAGS output in both immutable image-job logs",
+    "build_package_versions_identical": true
+  },
+  "upstream_explanation": {
+    "source_archive_sha256": "5711b1ae793e23e0540299faa81eb9b15fa5bfe24b0aeb2d37cf0a20151d2ed4",
+    "path": "m4/ax_gcc_archflag.m4",
+    "behavior": "Autoconf detects host CPU and selects a portable -mtune flag unless explicitly configured.",
+    "url": "https://github.com/ImageMagick/ImageMagick/blob/344e9056f43764bfdf82456faf3bc2feee98a6fe/m4/ax_gcc_archflag.m4"
+  },
+  "comparison": {
+    "build_differences": [
+      {
+        "current": "09a60b8a84c4320eeb549854c1ea901ed8cebe1ffd0bad91e36b6a319882e358",
+        "path": "/components/0/apkSha256",
+        "previous": "75078b61d02b01a200f196d6fd98f1e36c4e80cc2e4beb0ffbdcd8046e499162"
+      },
+      {
+        "current": "14d489abe036d008c28f45cc0eb17ec0d91fe38721233426e5cdf72a967a3d74",
+        "path": "/components/1/apkSha256",
+        "previous": "547a230ed8908297f6c7590871a617a765720c4c025fa20dd872cf7ee66b03f4"
+      },
+      {
+        "current": "16412863a7c0681e9686759b1021a673413c3ebcf896c625fc5dde2a33f5502e",
+        "path": "/components/1/binaryHashes/usr/bin/convert",
+        "previous": "011a70391efb1555d38335ab1ae6e7389c22c7b0666d09e6b1473ec8274c3203"
+      },
+      {
+        "current": "16412863a7c0681e9686759b1021a673413c3ebcf896c625fc5dde2a33f5502e",
+        "path": "/components/1/binaryHashes/usr/bin/identify",
+        "previous": "011a70391efb1555d38335ab1ae6e7389c22c7b0666d09e6b1473ec8274c3203"
+      },
+      {
+        "current": "16412863a7c0681e9686759b1021a673413c3ebcf896c625fc5dde2a33f5502e",
+        "path": "/components/1/binaryHashes/usr/bin/magick",
+        "previous": "011a70391efb1555d38335ab1ae6e7389c22c7b0666d09e6b1473ec8274c3203"
+      }
+    ],
+    "image_scan_summary": {
+      "errors": [],
+      "images": [
+        {
+          "image": "backend",
+          "secret_count": 0,
+          "vulnerability_count": 0
+        },
+        {
+          "image": "frontend",
+          "secret_count": 0,
+          "vulnerability_count": 0
+        }
+      ],
+      "scanner_step_outcome": "success"
+    },
+    "policy_failure": "disposition-source-sbom-mismatch",
+    "production_findings": [
+      {
+        "component": "imagemagick",
+        "id": "CVE-2014-9826",
+        "matches_approved_cpe_record": true,
+        "severity": "Critical",
+        "version": "7.1.2-30"
+      },
+      {
+        "component": "imagemagick",
+        "id": "CVE-2016-7538",
+        "matches_approved_cpe_record": false,
+        "severity": "Medium",
+        "version": "7.1.2-30"
+      },
+      {
+        "component": "imagemagick",
+        "id": "CVE-2017-5506",
+        "matches_approved_cpe_record": true,
+        "severity": "High",
+        "version": "7.1.2-30"
+      },
+      {
+        "component": "imagemagick",
+        "id": "CVE-2023-5341",
+        "matches_approved_cpe_record": false,
+        "severity": "Medium",
+        "version": "7.1.2-30"
+      }
+    ],
+    "registry_inputs": {
+      "current": "NODE_IMAGE\tdocker.io/library/node:22-alpine3.24\tnode@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32\nNGINX_IMAGE\tdocker.io/nginxinc/nginx-unprivileged:1.30.4-alpine-slim\tnginxinc/nginx-unprivileged@sha256:3a4485bf084957d56674ee22db07d77d5a281418815c5852827419d6d629d440\nTRIVY_IMAGE\tdocker.io/aquasec/trivy:0.74.0\taquasec/trivy@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969\nGRYPE_IMAGE\tdocker.io/anchore/grype:v0.118.0\tanchore/grype@sha256:8a93fc48da96bd6ec5981279d099b69de11541dc68fdf222fb9161f8ff284af7\n",
+      "previous": "NODE_IMAGE\tdocker.io/library/node:22-alpine3.24\tnode@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32\nNGINX_IMAGE\tdocker.io/nginxinc/nginx-unprivileged:1.30.4-alpine-slim\tnginxinc/nginx-unprivileged@sha256:3a4485bf084957d56674ee22db07d77d5a281418815c5852827419d6d629d440\nTRIVY_IMAGE\tdocker.io/aquasec/trivy:0.74.0\taquasec/trivy@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969\nGRYPE_IMAGE\tdocker.io/anchore/grype:v0.118.0\tanchore/grype@sha256:8a93fc48da96bd6ec5981279d099b69de11541dc68fdf222fb9161f8ff284af7\n"
+    },
+    "result": "INSPECTION_ONLY",
+    "runtime_apk_changed": false,
+    "schema": 1,
+    "source_differences": [
+      {
+        "current": "16412863a7c0681e9686759b1021a673413c3ebcf896c625fc5dde2a33f5502e",
+        "path": "/components/1/properties/4/value",
+        "previous": "011a70391efb1555d38335ab1ae6e7389c22c7b0666d09e6b1473ec8274c3203"
+      },
+      {
+        "current": "16412863a7c0681e9686759b1021a673413c3ebcf896c625fc5dde2a33f5502e",
+        "path": "/components/1/properties/5/value",
+        "previous": "011a70391efb1555d38335ab1ae6e7389c22c7b0666d09e6b1473ec8274c3203"
+      },
+      {
+        "current": "16412863a7c0681e9686759b1021a673413c3ebcf896c625fc5dde2a33f5502e",
+        "path": "/components/1/properties/6/value",
+        "previous": "011a70391efb1555d38335ab1ae6e7389c22c7b0666d09e6b1473ec8274c3203"
+      }
+    ]
+  },
+  "correction": {
+    "application_source_changed": false,
+    "exception_policy_changed": false,
+    "source_sbom_rewritten": false,
+    "action": "Require reviewed AMD build environment and exact original source SBOM after media build, before compiling Node. Reuse same-run media cache; all final smoke/scanner/publication gates still run.",
+    "reproduction_result": "PENDING_ACTUAL_RUN",
+    "failure_diagnostics": "Translate the pinned disposition helper's fixed failure category into the scanner gate summary instead of reporting an unspecified error."
+  }
+}

@@ -135,6 +135,16 @@ def load_disposition():
     return module
 
 
+def evaluate_disposition(report, *context):
+    policy = load_disposition()
+    try:
+        return policy.evaluate(report, *context)
+    except policy.DispositionError as error:
+        # These categories are fixed by the hash-pinned policy. Keep identity
+        # failures diagnosable without exposing arbitrary exception details.
+        raise GateError(str(error)) from None
+
+
 def validate_report(report, bom, expected, status, control=False, source_context=None):
     require(isinstance(report, dict), "invalid-scan-report")
     descriptor = report.get("descriptor", {})
@@ -190,7 +200,7 @@ def validate_report(report, bom, expected, status, control=False, source_context
         require(all(CONTROL_CVES[name] <= found[name] for name in CONTROL_CVES), "positive-control-coverage-missing")
         require(any(row["severity"] in ("High", "Critical") for row in sanitized), "positive-control-threshold-not-triggered")
     elif source_context is not None:
-        decision = load_disposition().evaluate(report, *source_context)
+        decision = evaluate_disposition(report, *source_context)
         require(decision["result"] == "PASS" and decision["unresolved_high_critical_findings"] == 0,
                 "high-or-critical-upstream-findings")
         require(decision["raw_findings"] == sanitized, "disposition-findings-mismatch")
@@ -458,7 +468,7 @@ def execute(sbom_path, runner, image):
             context = None
             if phase == "production":
                 context = (sbom_path.read_bytes(), os.environ.get("APPROVED_APP_COMMIT", ""))
-                decision = load_disposition().evaluate(report, *context)
+                decision = evaluate_disposition(report, *context)
                 write_json(output / "disposition.json", decision)
                 for key in ("raw_high_critical_findings", "dispositioned_high_critical_findings",
                             "unresolved_high_critical_findings"):

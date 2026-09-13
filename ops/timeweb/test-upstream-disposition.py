@@ -93,6 +93,13 @@ class DispositionTests(unittest.TestCase):
                 with self.assertRaises(policy.DispositionError):
                     policy.evaluate(self.report, raw, app, now=NOW)
 
+    def test_scanner_preserves_specific_identity_failure_without_accepting_it(self):
+        with patch.object(scan, 'load_disposition', return_value=policy):
+            for raw, app, category in ((self.raw + b' ', policy.APP_COMMIT, 'disposition-source-sbom-mismatch'),
+                                       (self.raw, '0' * 40, 'disposition-application-mismatch')):
+                with self.subTest(category=category), self.assertRaisesRegex(scan.GateError, '^' + category + '$'):
+                    scan.evaluate_disposition(self.report, raw, app)
+
     def test_wrong_archive_and_version_fail_even_with_fixture_hash_rebound(self):
         for mutate in (lambda s: s['components'][1].update(version='7.1.2-31'),
                        lambda s: s['components'][1]['externalReferences'][0]['hashes'][0].update(content='0' * 64)):

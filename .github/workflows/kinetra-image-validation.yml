@@ -166,6 +166,41 @@ jobs:
             /ops/timeweb/test-upstream-disposition.py
             /ops/timeweb/upstream-disposition.py
 
+      - name: Match the reviewed source build CPU before compilation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_CPU'
+          import json, os, pathlib
+          raw = pathlib.Path('/proc/cpuinfo').read_text()
+          vendors = sorted({line.split(':', 1)[1].strip() for line in raw.splitlines() if line.startswith('vendor_id')})
+          record = {'vendor_ids': vendors, 'required_vendor': 'AuthenticAMD', 'reviewed_imagemagick_tune': 'amdfam10'}
+          root = pathlib.Path(os.environ['RUNNER_TEMP']) / 'kinetra-image-evidence'
+          (root / 'media-build-cpu.json').write_text(json.dumps(record, indent=2) + '\n')
+          print('KINETRA_MEDIA_BUILD_CPU=' + json.dumps(record, sort_keys=True))
+          if vendors != ['AuthenticAMD']:
+              raise SystemExit('REVIEWED_MEDIA_BUILD_CPU_UNAVAILABLE: no application compilation or publication performed')
+          PY_CPU
+
+      - name: Reproduce approved media inventory before the expensive Node build
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/kinetra-image-evidence"
+          # Use the unchanged authenticated app recipe. Both final targets reuse
+          # this same-run cache; no image source or approved hash is rewritten.
+          docker buildx build --platform linux/amd64 --load --provenance=false --sbom=false \
+            --file deploy/Containerfile --target media-build --tag kinetra-media:prechecked \
+            --build-arg NODE_IMAGE="$NODE_IMAGE" --build-arg NGINX_IMAGE="$NGINX_IMAGE" \
+            --build-arg VCS_REF="$APPROVED_APP_COMMIT" --build-arg VITE_API_URL="$PUBLIC_ORIGIN" \
+            --build-arg VITE_PRIVATE_MEDIA_ORIGIN='' .
+          docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges \
+            --user 1000:1000 --entrypoint cat kinetra-media:prechecked \
+            /media-output/evidence/source-components.cdx.json > "$evidence/prechecked-source-components.cdx.json"
+          printf '%s  %s\n' ebb69ea87b5ec9aa929c590bf6ceab0bc6239c38bfb3040e198e6a7bfa925dd7 \
+            "$evidence/prechecked-source-components.cdx.json" | sha256sum --check --strict
+          echo 'KINETRA_APPROVED_MEDIA_REBUILD_IDENTITY=PASS'
+
       - name: Verify upstream versions and build authenticated Node cache
         shell: bash
         run: |
@@ -191,8 +226,8 @@ jobs:
           docker run --rm --network none "$TRIVY_IMAGE" --version > "$evidence/trivy-version.txt"
           grep -Fx 'Version: 0.74.0' "$evidence/trivy-version.txt"
           # Node -j4 and media -j2 previously competed for the same four CPUs.
-          # Complete the authenticated Node stage first; both final targets reuse
-          # this local cache. Runtime/signature/scan gates still run unchanged.
+          # Media has completed above. Build Node separately so they do not compete;
+          # both final targets reuse the caches. All runtime and scan gates remain.
           docker buildx build --platform linux/amd64 --output type=cacheonly --provenance=false --sbom=false \
             --file deploy/Containerfile --target node-build \
             --build-arg NODE_IMAGE="$NODE_IMAGE" --build-arg NGINX_IMAGE="$NGINX_IMAGE" \
@@ -538,10 +573,10 @@ jobs:
           set -euo pipefail
           test "$(git -C .kinetra-control rev-parse HEAD)" = "$GITHUB_SHA"
           sha256sum --check --strict <<'SHA256'
-          8128ccad4b8e8d1b5031f561477e5516e968770056b75e3f8d0751cb38edd7c3  .kinetra-control/ops/timeweb/scan-upstream-media.py
+          42d0618f56c543b91778bedac8b87c6b5fecd332b79e9e7e21a9af14b85b3e63  .kinetra-control/ops/timeweb/scan-upstream-media.py
           c4a35c5b13730316bc92c8f1b1ccf1d1b54c1cbaa15718790cb5603a07aec4a8  .kinetra-control/ops/timeweb/test-scan-upstream-media.py
           ba9d7f7d4a5475de9a4401be60694bcbeab1e62308d2f304454360fc72d2267e  .kinetra-control/ops/timeweb/upstream-disposition.py
-          3655e79c515544934bff25f9c85c46b3b5d26b58eaed1e30afbd19977d2c1273  .kinetra-control/ops/timeweb/test-upstream-disposition.py
+          85f25de920ccffb1878a56b5be6132c0d3ab99a0d21125112575ba8efffd3c82  .kinetra-control/ops/timeweb/test-upstream-disposition.py
           461f4738f3d0c67890b9c57f0756149c0fa7423918adedf8c7d05f19e5978b46  .kinetra-control/ops/timeweb/verify-launch-provenance.py
           SHA256
           PYTHONDONTWRITEBYTECODE=1 python3 .kinetra-control/ops/timeweb/test-scan-upstream-media.py
