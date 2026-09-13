@@ -1,3 +1,32 @@
+## Launch checkpoint — 2026-09-13: exact candidate recovery accepted, local startup running
+
+Read-only validator diagnostic `34775387238` / job `103772445526`
+identified the actual rejection: data directory must be UID999 mode0700.
+Read-only metadata run `34775554137` / job `103772903044` proved that
+the existing outer volume directory was UID999/GID999 mode1777
+(device2049/inode524370); nested PGDATA was UID999/GID0 mode0700.
+Both inspections had complete owned-object cleanup and no production mutations.
+
+Reviewed correction `11513602f47ede10ec146735179fd8cf05254181`
+adds separate recovery entry points; frozen helpers, validators and all original
+source/image/database gates remain unchanged. It restores only the proven outer
+directory to0700, preserves the candidate and all credentials, requires exact
+old/candidate hashes and refuses repeated recovery or startup evidence.
+See `api-candidate-recovery-20260913.md`.
+
+First publication `f7d94c3bf8c8c13890a295bb547477acad68a60a`,
+run `34776031376`, stopped in offline tests before source authentication,
+Timeweb or any host action: the CI runner was not root but the guest fixtures
+require root ownership. Only the offline invocation was corrected to
+`sudo env -i`; the ten test assertions and production code were unchanged.
+
+Current control `f0d2e6daa8395426bcfa7a6e461464f6b3316dfc`,
+run `34776089449`, job `103774343436` passed all offline tests,
+source/image/database authentication, exact candidate recovery and the following
+live provenance recheck. Local backend/frontend startup is now in progress.
+Do not duplicate or rerun. No complete successful local handoff exists yet;
+wait for the real run result, artifact and all cleanup before HTTPS.
+
 ## Launch checkpoint — 2026-09-13 18:32 UTC: approved replacement inspected preserved candidate
 
 The owner's explicit “Да” authorized the one replacement proposed in
