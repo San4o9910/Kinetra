@@ -1,4 +1,4 @@
-name: Inspect created backend identity and frozen Docker query failure
+name: Validate proposed optional Health lookup on preserved exact backend
 on:
   push:
     branches: [ops/timeweb-hourly-preflight-20260909]
@@ -152,13 +152,26 @@ jobs:
           assert identity['status']=='created' and identity['running'] is False and identity['started_at']=='0001-01-01T00:00:00Z'
           result['created_backend']={'id':ids[0],'nonce':nonce,'status':'created','never_started':True,
               'original_inspect_returncode':p.returncode,'original_inspect_error':safe_error}
+          corrected=template.replace('{{if .State.Health}}','{{if (index .State "Health")}}')
+          assert corrected!=template
+          p=subprocess.run(['/usr/bin/docker','inspect','--type','container','--format',corrected,ids[0]],
+              stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=15,text=True,check=True)
+          fixed=json.loads(p.stdout)
+          assert fixed['id']==ids[0] and fixed['nonce']==nonce and fixed['status']=='created' and fixed['running'] is False and fixed['health'] is None
+          assert fixed['image']==identity['image'] and fixed['project']=='kinetra-production' and fixed['service']=='backend'
+          p=subprocess.run(['/usr/bin/docker','inspect','--type','container','--format',corrected,initialized['postgres_id']],
+              stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=15,text=True,check=True)
+          database=json.loads(p.stdout)
+          assert database['id']==initialized['postgres_id'] and database['service']=='postgres' and database['running'] is True and database['health']=='healthy'
+          result['query_validation']={'created_backend':'PASS_NULL_HEALTH','running_postgres':'PASS_HEALTHY',
+              'mutations':False,'persistent_helper_changed':False}
           os.close(descriptor)
           print(json.dumps(result,sort_keys=True))
           '''
           def validate(raw):
               value=json.loads(raw)
               assert set(value)=={'schema','result','mutations','data_root','pgdata','mounted_root','volume_name',
-                  'volume_bind_matches','postgres_version_17','bootstrap_marker_exists','application_record_exists','recovery_complete_exists','start_attempt_exists','start_result_exists','compose_services','start_checkpoint','created_backend'}
+                  'volume_bind_matches','postgres_version_17','bootstrap_marker_exists','application_record_exists','recovery_complete_exists','start_attempt_exists','start_result_exists','compose_services','start_checkpoint','created_backend','query_validation'}
               assert value['schema']==1 and value['result']=='PASS_READ_ONLY_INSPECTION' and value['mutations'] is False
               assert value['volume_name']=='kinetra-production_postgres17_data'
               for name in ('data_root','pgdata','mounted_root'):
@@ -189,6 +202,8 @@ jobs:
               assert backend['status']=='created' and backend['never_started'] is True
               assert type(backend['original_inspect_returncode']) is int and backend['original_inspect_returncode'] in range(256)
               assert backend['original_inspect_error'] in {'NONE','HEALTH_FIELD_ABSENT','OTHER_INSPECT_ERROR'}
+              assert value['query_validation']=={'created_backend':'PASS_NULL_HEALTH','running_postgres':'PASS_HEALTHY',
+                  'mutations':False,'persistent_helper_changed':False}
               return value
 
           module.GUEST_PROGRAM = guest
