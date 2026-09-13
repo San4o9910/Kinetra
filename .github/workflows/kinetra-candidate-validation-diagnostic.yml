@@ -1,4 +1,4 @@
-name: Diagnose exact preserved Kinetra API candidate
+name: Inspect exact PostgreSQL directory metadata for preserved API failure
 on:
   push:
     branches: [ops/timeweb-hourly-preflight-20260909]
@@ -58,18 +58,78 @@ jobs:
           PY_GUARD
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: 43d411c5d964e71c5c17432ec1628b7256567f3b
+          ref: 096393dae2c1fc977023bd0fccd17b2aa6758ace
           persist-credentials: false
           fetch-depth: 1
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          ref: 73b665065e00a5b375e90f701373b3e0856a0386
-          path: Kinetra
-          persist-credentials: false
-          fetch-depth: 1
-      - name: Diagnose only the exact preserved candidate with frozen isolated validators
+      - name: Inspect only nonsecret API preparation state on exact host
         env:
           TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
           ROOT_SUPPLIED_SERVER_ID: '9069403'
           ROOT_SUPPLIED_SERVER_IP: 80.68.156.131
-        run: python3 -B ops/timeweb/diagnose-preserved-api-candidate.py
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum --check --strict <<'SHA256'
+          3ffc667a66330c323836d1335e78f92940d6ebdc1877cf66048265d774bb3086  ops/timeweb/inspect-host-monitoring.py
+          567d892221925bb438ece6a893360a891ffd4228f8af0a18252b8ba365a682c0  ops/timeweb/inspect-server.py
+          SHA256
+          python3 -B - <<'PY_INSPECT'
+          import importlib.util, json, os, re, signal, stat, sys
+
+          spec = importlib.util.spec_from_file_location('kinetra_state_inspect', 'ops/timeweb/inspect-host-monitoring.py')
+          module = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+
+          guest = r'''
+          import fcntl, json, os, pathlib, stat, subprocess
+          stage=pathlib.Path('/srv/kinetra-stage')
+          lock=stage.parent
+          descriptor=os.open('/run/kinetra-database-stage.lock',os.O_RDONLY|os.O_NOFOLLOW)
+          fcntl.flock(descriptor,fcntl.LOCK_EX|fcntl.LOCK_NB)
+          def metadata(path):
+              info=path.lstat()
+              return {'uid':info.st_uid,'gid':info.st_gid,'mode':oct(stat.S_IMODE(info.st_mode)),
+                      'directory':stat.S_ISDIR(info.st_mode),'symlink':path.is_symlink(),
+                      'device':info.st_dev,'inode':info.st_ino}
+          initialized=json.loads((stage/'evidence/initialization.json').read_bytes())
+          assert initialized['result']=='DATABASE_INITIALIZED_ONLY' and initialized['commit']=='73b665065e00a5b375e90f701373b3e0856a0386'
+          proc=subprocess.run(['/usr/bin/docker','inspect','--format','{{json .Mounts}}',initialized['postgres_id']],
+              stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=15,check=True)
+          mounts=json.loads(proc.stdout)
+          data_mount=next(m for m in mounts if m['Destination']=='/var/lib/postgresql/data')
+          assert data_mount['Type']=='volume' and data_mount['Name']=='kinetra-production_postgres17_data'
+          proc=subprocess.run(['/usr/bin/docker','volume','inspect','--format','{{json .}}',data_mount['Name']],
+              stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=15,check=True)
+          volume=json.loads(proc.stdout)
+          assert volume['Driver']=='local' and volume['Options']=={'device':str(stage/'postgres/data'),'o':'bind','type':'none'}
+          assert volume['Mountpoint']==data_mount['Source']
+          result={'schema':1,'result':'PASS_READ_ONLY_INSPECTION','mutations':False,
+                  'data_root':metadata(stage/'postgres/data'),'pgdata':metadata(stage/'postgres/data/pgdata'),
+                  'mounted_root':metadata(pathlib.Path(data_mount['Source'])),
+                  'volume_name':data_mount['Name'],'volume_bind_matches':True,
+                  'postgres_version_17':(stage/'postgres/data/pgdata/PG_VERSION').read_bytes()==b'17\n',
+                  'bootstrap_marker_exists':(stage/'postgres/data/pgdata/.kinetra-bootstrap-complete').is_file()}
+          os.close(descriptor)
+          print(json.dumps(result,sort_keys=True))
+          '''
+          def validate(raw):
+              value=json.loads(raw)
+              assert set(value)=={'schema','result','mutations','data_root','pgdata','mounted_root','volume_name',
+                  'volume_bind_matches','postgres_version_17','bootstrap_marker_exists'}
+              assert value['schema']==1 and value['result']=='PASS_READ_ONLY_INSPECTION' and value['mutations'] is False
+              assert value['volume_name']=='kinetra-production_postgres17_data'
+              for name in ('data_root','pgdata','mounted_root'):
+                  row=value[name]
+                  assert set(row)=={'uid','gid','mode','directory','symlink','device','inode'}
+                  assert all(type(row[k]) is int and row[k]>=0 for k in ('uid','gid','device','inode'))
+                  assert re.fullmatch(r'0o[0-7]{3,4}',row['mode'])
+                  assert row['directory'] is True and row['symlink'] is False
+              assert all(value[k] is True for k in ('volume_bind_matches','postgres_version_17','bootstrap_marker_exists'))
+              return value
+
+          module.GUEST_PROGRAM = guest
+          module.validate_result = validate
+          signal.signal(signal.SIGTERM, module.inspection.interrupted)
+          signal.signal(signal.SIGINT, module.inspection.interrupted)
+          raise SystemExit(module.main(['--inspect-existing-host-monitoring'], os.environ, module.inspection.Api))
+          PY_INSPECT
