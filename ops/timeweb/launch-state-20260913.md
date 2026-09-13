@@ -1,3 +1,41 @@
+## Launch checkpoint — 09:23 UTC
+
+Fresh image qualification run `34742116241` (job `103683458868`) is
+SUCCESS. Exact source inventory, public-package identity, AMD media
+reproduction, runtime, Trivy and Grype gates passed. Qualified evidence artifact
+`10313848590`, SHA-256
+`45f567dd7b0085168a90fbb7f30bccbf312e7d4f4584ec254f4e9181323e7b4b`.
+
+Read-only image-input run `34747263665` authenticated the artifact and emitted
+the four exact digest references. Database activation run `34747344318`
+completed SUCCESS and retained handoff artifact `10314313956`, SHA-256
+`e789ea40587c5537003348d862b511df80843767144a824952cc06b13ab4f8a2`.
+The approved PostgreSQL container is running; application and Caddy were not
+started by that phase.
+
+Application preparation runs `34747520462` and `34747801755` failed before
+startup with complete temporary-key and guest-directory cleanup. Read-only
+diagnostics isolated the exact cause: `bootstrap-server.py` imports
+`inspect-host-monitoring.py`, but `prepare-api-host.py` did not include that
+already frozen helper in its transferred pinned set. Commit
+`1beeeb124167cff2247a26cfdf9741e51beec31a` added only the missing exact pin and
+propagated the resulting caller hashes. Validation run `34748797786` passed
+all 17 prepare, 19 local-activation, application-caller and HTTPS-caller tests.
+
+The corrected application activation run `34748921875` again stopped in API
+preparation before local startup. It preserved no accepted application handoff;
+temporary key and guest-directory cleanup are confirmed complete. Its sanitized
+attempt artifact is `10315336650`, SHA-256
+`1aacc165460f8e134ee99cdba94c0575d50768057218b7a95c8c7bc2fa36bf2b`;
+read-only artifact inspection run `34748975277` passed. No database
+reinitialization, application startup, HTTPS activation, email, payment, package
+visibility change, deletion or paid-resource action occurred.
+
+Read-only host-state inspection run `34749066794`, control
+`096393dae2c1fc977023bd0fccd17b2aa6758ace`, is queued. Do not cancel,
+duplicate or start another application attempt until this exact inspection
+completes and its logs are reviewed. The queue delay is treated as transient.
+
 # Kinetra checkpoint — 2026-09-13
 
 ## Latest owner decision — public images approved
