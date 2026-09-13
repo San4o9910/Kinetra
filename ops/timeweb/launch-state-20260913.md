@@ -1,3 +1,37 @@
+## Launch checkpoint — 2026-09-13 19:26 UTC: exact Health query failure; decision prepared
+
+Local run `34777104737` / job `103777116383`,
+control `5da9479b63dd7884d6e5484fe33b8dd1f9fff3dc`, FAILED after all source/image/database
+and preserved-API authentication gates passed. All temporary SSH and guest-directory
+cleanup completed. No successful local handoff exists; HTTPS remains unstarted.
+
+Read-only runs `34777288124`, `34777544360`, `34777637820` succeeded and reconciled
+the actual partial state: PostgreSQL running; exact backend
+`460a447fc441071f595dea383b60487aa707e719511792aefa52a3a0b831962a`
+created and never started; frontend absent. Startup nonce
+`9128e22668c33a1552f912415c800939`; failed checkpoint SHA256
+`ad5f14d8c643045b59275b4d0433cd9e96f63c1e4fba22dd1af7f3da7812548a`.
+The original rollback uncertainty is retained as historical failure, not acceptance.
+
+The frozen Docker inspection query actually fails on absent optional Health before
+backend's first start. The one-expression correction was verified read-only on the
+exact backend and healthy PostgreSQL; eight offline regression checks pass.
+Frozen executable helpers have not been changed or bypassed.
+The original start-attempt/result now exist, so original startup must not be rerun.
+
+**OWNER_DECISION_REQUIRED:** see
+[local-start-health-decision-20260913.md](local-start-health-decision-20260913.md)
+for the exact dormant patch and bounded continuation of this existing backend,
+preserving the failed evidence and every acceptance check. This is a new decision
+on frozen startup code and the existing-attempt guard, not a repeat of image-publicity
+or replacement-inspection approval. No container/data deletion is proposed.
+
+Until resolved, preserve backend and PostgreSQL as observed; do not publish another
+activation, clear records, retry preparation/startup or claim local/HTTPS acceptance.
+The launch automation was checked and is already disabled. The old orphan inspection
+`34749066794` remains queued with zero jobs/artifacts; its exact guard passed again.
+All existing image/source/SBOM/CPE/public-package/host/secret constraints remain.
+
 ## Launch checkpoint — 2026-09-13: recovered API retained; local import failure reconciled
 
 Run `34776089449` FAILED in the later local wrapper; its API recovery phase and

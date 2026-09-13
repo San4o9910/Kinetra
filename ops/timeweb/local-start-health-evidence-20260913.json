@@ -1,0 +1,108 @@
+{
+  "schema": 1,
+  "date": "2026-09-13",
+  "decision": "OWNER_DECISION_REQUIRED",
+  "application_run": 34777104737,
+  "application_job": 103777116383,
+  "application_control": "5da9479b63dd7884d6e5484fe33b8dd1f9fff3dc",
+  "application_conclusion": "failure",
+  "attempt_artifact": {
+    "id": 10323746979,
+    "sha256": "8163808721d83b8a57f434961438ab3343a6efb85a5a88e3953db5d8d4845e55"
+  },
+  "verification_run": 34777637820,
+  "verification_job": 103778553003,
+  "verification_control": "7c2316e14cf7a4c6ad0a74f404c03bbde3610f22",
+  "verification_conclusion": "success",
+  "verification_final": {
+    "account_key_cleanup": "API_DELETE_CONFIRMED",
+    "error": null,
+    "guest_key_cleanup": "API_DELETE_CONFIRMED",
+    "host_key_fingerprint": "SHA256:T3RfyVAstE+dyvneeMMYUjIm1Ej+NN3D5Vr9sIyRUG0",
+    "inspection": {
+      "application_record_exists": true,
+      "bootstrap_marker_exists": true,
+      "compose_services": [
+        "backend=created",
+        "postgres=running"
+      ],
+      "created_backend": {
+        "id": "460a447fc441071f595dea383b60487aa707e719511792aefa52a3a0b831962a",
+        "never_started": true,
+        "nonce": "9128e22668c33a1552f912415c800939",
+        "original_inspect_error": "HEALTH_FIELD_ABSENT",
+        "original_inspect_returncode": 1,
+        "status": "created"
+      },
+      "data_root": {
+        "device": 2049,
+        "directory": true,
+        "gid": 999,
+        "inode": 524370,
+        "mode": "0o700",
+        "symlink": false,
+        "uid": 999
+      },
+      "mounted_root": {
+        "device": 2049,
+        "directory": true,
+        "gid": 999,
+        "inode": 524370,
+        "mode": "0o700",
+        "symlink": false,
+        "uid": 999
+      },
+      "mutations": false,
+      "pgdata": {
+        "device": 2049,
+        "directory": true,
+        "gid": 0,
+        "inode": 547799,
+        "mode": "0o700",
+        "symlink": false,
+        "uid": 999
+      },
+      "postgres_version_17": true,
+      "query_validation": {
+        "created_backend": "PASS_NULL_HEALTH",
+        "mutations": false,
+        "persistent_helper_changed": false,
+        "running_postgres": "PASS_HEALTHY"
+      },
+      "recovery_complete_exists": true,
+      "result": "PASS_READ_ONLY_INSPECTION",
+      "schema": 1,
+      "start_attempt_exists": true,
+      "start_checkpoint": {
+        "attempt_recorded": true,
+        "attempted_services": [
+          "backend"
+        ],
+        "error": "CHILD_COMMAND_FAILED",
+        "nonce": "9128e22668c33a1552f912415c800939",
+        "owned_containers": {},
+        "phase": "START_BACKEND",
+        "rollback": {
+          "backend": "UNCONFIRMED_REQUIRES_REVIEW"
+        },
+        "sha256": "ad5f14d8c643045b59275b4d0433cd9e96f63c1e4fba22dd1af7f3da7812548a",
+        "start_attempted_services": [],
+        "uncertain_start_services": []
+      },
+      "start_result_exists": true,
+      "volume_bind_matches": true,
+      "volume_name": "kinetra-production_postgres17_data"
+    },
+    "local_key_cleanup": "REMOVED",
+    "public_ipv4": "80.68.156.131",
+    "result": "PASS_READ_ONLY_HOST_MONITORING_INSPECTION",
+    "server_id": 9069403,
+    "server_status": "on",
+    "ssh_key_id": 772543
+  },
+  "frozen_helper_sha256": "654ae707445717a96b04c1a7b1f9e428e22ff06ccb04f40c68a2bf6b2ae11524",
+  "proposed_helper_sha256": "e7954b99525f9a66f174d4c4729f0c6287b11f3c8cb2432106e4283d87d6e9e4",
+  "frozen_helper_modified": false,
+  "application_local_accepted": false,
+  "https_started": false
+}

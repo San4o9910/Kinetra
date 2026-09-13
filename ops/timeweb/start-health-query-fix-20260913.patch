@@ -1,0 +1,11 @@
+--- a/ops/timeweb/start-application-host.py
++++ b/ops/timeweb/start-application-host.py
+@@ -146,7 +146,7 @@
+ def inspect_container(identifier):
+     require(isinstance(identifier, str) and CID.fullmatch(identifier), "CONTAINER_ID_REQUIRED")
+     # Never fetch Config.Env, health logs, provider secrets or arbitrary labels.
+-    template = '{"id":{{json .Id}},"image":{{json .Config.Image}},"image_id":{{json .Image}},"user":{{json .Config.User}},"project":{{json (index .Config.Labels "com.docker.compose.project")}},"service":{{json (index .Config.Labels "com.docker.compose.service")}},"nonce":{{json (index .Config.Labels "com.kinetra.activation")}},"running":{{json .State.Running}},"status":{{json .State.Status}},"health":{{if .State.Health}}{{json .State.Health.Status}}{{else}}null{{end}},"readonly":{{json .HostConfig.ReadonlyRootfs}},"cap_drop":{{json .HostConfig.CapDrop}},"cap_add":{{json .HostConfig.CapAdd}},"security":{{json .HostConfig.SecurityOpt}},"ports":{{json .NetworkSettings.Ports}},"networks":{{json .NetworkSettings.Networks}},"mounts":{{json .Mounts}},"restart":{{json .HostConfig.RestartPolicy.Name}}}'
++    template = '{"id":{{json .Id}},"image":{{json .Config.Image}},"image_id":{{json .Image}},"user":{{json .Config.User}},"project":{{json (index .Config.Labels "com.docker.compose.project")}},"service":{{json (index .Config.Labels "com.docker.compose.service")}},"nonce":{{json (index .Config.Labels "com.kinetra.activation")}},"running":{{json .State.Running}},"status":{{json .State.Status}},"health":{{if (index .State "Health")}}{{json .State.Health.Status}}{{else}}null{{end}},"readonly":{{json .HostConfig.ReadonlyRootfs}},"cap_drop":{{json .HostConfig.CapDrop}},"cap_add":{{json .HostConfig.CapAdd}},"security":{{json .HostConfig.SecurityOpt}},"ports":{{json .NetworkSettings.Ports}},"networks":{{json .NetworkSettings.Networks}},"mounts":{{json .Mounts}},"restart":{{json .HostConfig.RestartPolicy.Name}}}'
+     return json.loads(command(["/usr/bin/docker", "inspect", "--type", "container", "--format", template, identifier], capture=True))
+ 
+ 
