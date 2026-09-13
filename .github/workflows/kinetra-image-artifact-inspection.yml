@@ -1,4 +1,4 @@
-name: Compare exact Kinetra source rebuild evidence
+name: Inspect sanitized failed Kinetra application attempt
 on:
   push:
     branches: [ops/timeweb-hourly-preflight-20260909]
@@ -15,100 +15,105 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 1
-      - name: Compare authenticated previous and current public build evidence
+      - name: Read only the exact sanitized application-attempt artifact
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          python3 -B - <<'PY_COMPARE'
-          import hashlib, io, json, os, urllib.error, urllib.parse, urllib.request, zipfile
-          assert os.environ['GITHUB_REPOSITORY'] == 'San4o9910/Kinetra'
+          python3 -B - <<'PY_INSPECT'
+          import hashlib, io, json, os, re, stat, urllib.error, urllib.parse, urllib.request, zipfile
+
+          REPOSITORY = 'San4o9910/Kinetra'
+          RUN = 34747520462
+          CONTROL = 'd02385f515344ebf966173183a7b727403d82a7d'
+          ARTIFACT = 10313929743
+          DIGEST = 'ba77171c038931e3e7275c29e4fb51b5e66d4575a93f58181f5c66ae547ac018'
+          NAME = 'kinetra-local-attempt-34747520462-1'
+          ALLOWED = {'api-outer.json', 'local-outer.json',
+                     'api-outer.observations.jsonl', 'local-outer.observations.jsonl'}
+
+          assert os.environ['GITHUB_REPOSITORY'] == REPOSITORY
           assert os.environ['GITHUB_REF'] == 'refs/heads/ops/timeweb-hourly-preflight-20260909'
           assert os.environ['GITHUB_RUN_ATTEMPT'] == '1'
+
           class NoRedirect(urllib.request.HTTPRedirectHandler):
-              def redirect_request(self, request, file, code, message, headers, new_url): return None
+              def redirect_request(self, request, file, code, message, headers, new_url):
+                  return None
           opener = urllib.request.build_opener(NoRedirect)
+
           def fetch(path, archive=False):
-              request = urllib.request.Request('https://api.github.com/repos/San4o9910/Kinetra' + path,
-                  headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json'})
+              req = urllib.request.Request('https://api.github.com/repos/' + REPOSITORY + path,
+                  headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                           'Accept': 'application/vnd.github+json'})
               try:
-                  response = opener.open(request, timeout=30)
+                  response = opener.open(req, timeout=30)
               except urllib.error.HTTPError as error:
-                  if not archive or error.code != 302: raise RuntimeError('Artifact API read failed') from None
-                  location = error.headers['Location']; url = urllib.parse.urlsplit(location)
-                  assert url.scheme == 'https' and not url.username and not url.password and url.port in (None, 443)
-                  assert url.hostname and url.hostname.endswith(('.blob.core.windows.net', '.actions.githubusercontent.com'))
+                  if not archive or error.code != 302:
+                      raise RuntimeError('Artifact API read failed') from None
+                  location = error.headers['Location']
+                  parsed = urllib.parse.urlsplit(location)
+                  assert parsed.scheme == 'https' and not parsed.username and not parsed.password
+                  assert parsed.port in (None, 443) and parsed.hostname
+                  assert parsed.hostname.endswith(('.blob.core.windows.net', '.actions.githubusercontent.com'))
                   response = opener.open(urllib.request.Request(location), timeout=30)
-              with response: data = response.read(8 * 1024 * 1024 + 1)
-              assert len(data) <= 8 * 1024 * 1024
+              with response:
+                  data = response.read(128 * 1024 + 1)
+              assert len(data) <= 128 * 1024
               return data if archive else json.loads(data)
 
-          pins = {
-            'previous': (34536263175, 10178655505, '7ae976bee64de542e72cf382939986424ec5e1d3', 'afb4ee63836152ef6b1dc11f8a22e611edd300d7426acca9e02794f605c551fa'),
-            'current': (34723385107, 10308440912, '8a9e7beffc3f61d6544ce6256c425089054265b2', '170fdd372c6f685cda972f0aabad0cf464b0849597a3914e36d70b01f7ae8bc0'),
-          }
-          evidence = {}
-          for label, (run, artifact, commit, digest) in pins.items():
-              metadata = fetch('/actions/artifacts/' + str(artifact))
-              assert metadata['name'] == 'kinetra-image-evidence-' + str(run) + '-1' and not metadata['expired']
-              assert metadata['workflow_run']['id'] == run and metadata['workflow_run']['head_sha'] == commit
-              assert metadata['digest'] == 'sha256:' + digest
-              raw = fetch('/actions/artifacts/' + str(artifact) + '/zip', archive=True)
-              assert hashlib.sha256(raw).hexdigest() == digest
-              with zipfile.ZipFile(io.BytesIO(raw)) as archive:
-                  assert len(archive.namelist()) == len(set(archive.namelist()))
-                  def member(name):
-                      info = archive.getinfo(name)
-                      assert not info.is_dir() and not info.flag_bits & 1 and info.file_size <= 2 * 1024 * 1024
-                      return archive.read(info)
-                  source_raw = member('source-components.cdx.json')
-                  source = json.loads(source_raw)
-                  inventory = json.loads(member('media-source-verification.json'))
-                  assert inventory['source_components'] == source
-                  evidence[label] = {'run': run, 'artifact': artifact, 'archive_sha256': digest,
-                      'source_sha256': hashlib.sha256(source_raw).hexdigest(), 'source': source, 'source_raw': source_raw.decode('utf-8'),
-                      'registry_inputs': member('registry-inputs.tsv').decode('ascii'),
-                      'builds': inventory['source_builds'], 'runtime_apk_inventory': inventory['runtime_apk_inventory']}
-                  if label == 'current':
-                      evidence[label]['production'] = json.loads(member('upstream-media/production.json'))
-                      evidence[label]['scanner_summary'] = json.loads(member('upstream-media/summary.json'))
-                      evidence[label]['image_scan_summary'] = json.loads(member('scan-summary.json'))
-          assert evidence['previous']['source_sha256'] == 'ebb69ea87b5ec9aa929c590bf6ceab0bc6239c38bfb3040e198e6a7bfa925dd7'
-          assert evidence['current']['source_sha256'] == '28de11e2eeee8ea03aa27798e5a210abf0b785d0e44503e942e1ec01c74bcab5'
-          def differences(a, b, path=''):
-              if type(a) is not type(b): return [{'path': path, 'previous': a, 'current': b}]
-              if isinstance(a, dict):
-                  output = []
-                  for key in sorted(set(a) | set(b)):
-                      output += differences(a.get(key), b.get(key), path + '/' + key)
-                  return output
-              if isinstance(a, list) and len(a) == len(b):
-                  output = []
-                  for index, (x, y) in enumerate(zip(a, b)): output += differences(x, y, path + '/' + str(index))
-                  return output
-              return [] if a == b else [{'path': path, 'previous': a, 'current': b}]
-          import importlib.util
-          helper = 'ops/timeweb/upstream-disposition.py'
-          assert hashlib.sha256(open(helper, 'rb').read()).hexdigest() == 'ba9d7f7d4a5475de9a4401be60694bcbeab1e62308d2f304454360fc72d2267e'
-          spec = importlib.util.spec_from_file_location('policy', helper)
-          policy = importlib.util.module_from_spec(spec); spec.loader.exec_module(policy)
-          try:
-              policy.evaluate(evidence['current']['production'], evidence['current']['source_raw'].encode('utf-8'), policy.APP_COMMIT)
-              failure = 'UNEXPECTED_PASS'
-          except policy.DispositionError as error:
-              failure = str(error)
-          assert failure == 'disposition-source-sbom-mismatch'
-          summary = {'schema': 1, 'result': 'INSPECTION_ONLY', 'policy_failure': failure,
-              'source_differences': differences(evidence['previous']['source'], evidence['current']['source']),
-              'build_differences': differences(evidence['previous']['builds'], evidence['current']['builds']),
-              'registry_inputs': {label: item['registry_inputs'] for label, item in evidence.items()},
-              'runtime_apk_changed': evidence['previous']['runtime_apk_inventory'] != evidence['current']['runtime_apk_inventory'],
-              'image_scan_summary': evidence['current']['image_scan_summary'],
-              'production_findings': [{'id': m['vulnerability']['id'], 'severity': m['vulnerability']['severity'],
-                  'component': m['artifact']['name'], 'version': m['artifact']['version'],
-                  'matches_approved_cpe_record': policy.eligible(m)} for m in evidence['current']['production']['matches']]}
-          print('KINETRA_SOURCE_REBUILD_COMPARISON=' + json.dumps(summary, sort_keys=True))
-          print('KINETRA_PUBLIC_SOURCE_EVIDENCE=' + json.dumps(evidence, sort_keys=True))
-          print('KINETRA_SOURCE_REBUILD_INSPECTION=PASS')
-          PY_COMPARE
+          metadata = fetch('/actions/artifacts/' + str(ARTIFACT))
+          assert metadata['id'] == ARTIFACT and metadata['name'] == NAME and metadata['expired'] is False
+          assert metadata['size_in_bytes'] <= 64 * 1024
+          assert metadata['digest'] == 'sha256:' + DIGEST
+          assert metadata['workflow_run']['id'] == RUN
+          assert metadata['workflow_run']['head_sha'] == CONTROL
+
+          raw = fetch('/actions/artifacts/' + str(ARTIFACT) + '/zip', archive=True)
+          assert hashlib.sha256(raw).hexdigest() == DIGEST
+
+          def pairs(items):
+              output = {}
+              for key, value in items:
+                  assert key not in output
+                  output[key] = value
+              return output
+          def nonfinite(_value):
+              raise ValueError('nonfinite')
+          def strict(raw_json):
+              return json.loads(raw_json, object_pairs_hook=pairs, parse_constant=nonfinite)
+          sensitive = re.compile(r'(secret|token|password|authorization|credential|smtp|username|email)', re.I)
+          def sanitized(value):
+              if isinstance(value, dict):
+                  return {key: ('<redacted>' if sensitive.search(key) else sanitized(item))
+                          for key, item in value.items()}
+              if isinstance(value, list):
+                  assert len(value) <= 100
+                  return [sanitized(item) for item in value]
+              if isinstance(value, str):
+                  if len(value) > 512 or '@' in value or re.search(r'(?i)bearer\\s|basic\\s', value):
+                      return '<redacted>'
+                  return value
+              assert value is None or type(value) in (bool, int, float)
+              return value
+
+          result = {}
+          with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+              infos = archive.infolist()
+              names = [item.filename for item in infos]
+              assert names and len(names) == len(set(names)) and set(names) <= ALLOWED
+              for info in infos:
+                  assert not info.is_dir() and '/' not in info.filename and '\\\\' not in info.filename
+                  assert not info.flag_bits & 1 and 0 < info.file_size <= 64 * 1024
+                  mode = (info.external_attr >> 16) & 0o170000
+                  assert mode in (0, stat.S_IFREG)
+                  data = archive.read(info)
+                  if info.filename.endswith('.json'):
+                      result[info.filename] = sanitized(strict(data))
+                  else:
+                      lines = data.splitlines()
+                      assert len(lines) <= 100
+                      result[info.filename] = [sanitized(strict(line)) for line in lines if line]
+          print('KINETRA_SANITIZED_APPLICATION_ATTEMPT=' + json.dumps(result, sort_keys=True))
+          print('KINETRA_APPLICATION_ATTEMPT_INSPECTION=PASS')
+          PY_INSPECT
