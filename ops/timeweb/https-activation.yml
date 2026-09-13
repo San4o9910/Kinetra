@@ -62,15 +62,15 @@ jobs:
         a19aca3ea953feecdcb9be6e9dcabdfc8b0e2b4f3938184391cdfb2ff3e87c9e  ops/timeweb/bootstrap-server.py
         567d892221925bb438ece6a893360a891ffd4228f8af0a18252b8ba365a682c0  ops/timeweb/inspect-server.py
         f549bdda5c325ce4d36a2be239bb6458f79f5d011d3e5ec61e9158388377377a  ops/timeweb/prepare-api-host.py
-        22b4c0fe509d2b5d96209e4031604a493cf2aa5baeafd4bfdfce4c890b8ff357  ops/timeweb/activate-local-application-host.py
-        f30c6026e238eb411b8591b1234c88f210efd15748c2888f15f87cf34198bc69  ops/timeweb/activate-https-host.py
+        175b0a3f89c34776a34c3a6fc29066bb1040671d2b492098f21aeb9c76abfb7c  ops/timeweb/activate-local-application-host.py
+        8bdaf2246a7cb391d6df57f2e7dd6b2d422f5b36f615a210340613eb398688ca  ops/timeweb/activate-https-host.py
         a23d52b21f7c638f757a723048ee632d37e8f217ae796f97dd92ec3bbb990e2d  ops/timeweb/prepare-caddy.sh
-        6dba697be21ee9429a63a67309a7e359ef5c47e67dc347a20e7a90fc5e7d840a  ops/timeweb/https-caller.py
+        6e6fa0f79c5860f125fb65d33d5ced4d22ce18c2d63bff5f7416f7dc8ba36556  ops/timeweb/https-caller.py
         45130035b0124170fc219eae702e9422fbe1a2134f73b0f5ef0a63a39b120611  ops/timeweb/test-https-caller.py
-        598d82e4d00b54606be8cd6c9ebc872d3a62ebd9786b250cad267a4f1e1df844  ops/timeweb/application-caller.py
+        f251b3fe84b818c831d539bac3b0c489d694159489661c1329a7ec9df2b39495  ops/timeweb/application-caller.py
         61fc0550edbc533938b1850ad17aa6779c1d2fa7122db08296748acfe43924ea  ops/timeweb/verify-launch-provenance.py
         ba9d7f7d4a5475de9a4401be60694bcbeab1e62308d2f304454360fc72d2267e  ops/timeweb/upstream-disposition.py
-        d9825e47848e9703bd75192ed695adb4b12a8eed56e03976b43b345e61064258  ops/timeweb/test-activate-local-application-host.py
+        0a77d61fb392e4440f5ad25fcae3b5f96f30d1ea1a18a07309e044e72a2a9779  ops/timeweb/test-activate-local-application-host.py
         SHA256
         env -i PATH="$PATH" PYTHONDONTWRITEBYTECODE=1 python3 ops/timeweb/test-https-caller.py
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262

@@ -1,0 +1,170 @@
+{
+  "run": {
+    "id": 34776089449,
+    "head_sha": "f0d2e6daa8395426bcfa7a6e461464f6b3316dfc",
+    "head_branch": "ops/timeweb-hourly-preflight-20260909",
+    "path": ".github/workflows/timeweb-application-activation.yml",
+    "event": "push",
+    "status": "completed",
+    "conclusion": "failure",
+    "run_attempt": 1,
+    "repository": {
+      "id": 1339664626,
+      "full_name": "San4o9910/Kinetra"
+    }
+  },
+  "jobs": {
+    "total_count": 1,
+    "jobs": [
+      {
+        "conclusion": "failure",
+        "id": 103774343436,
+        "logs_url": null,
+        "name": "activate-local-application",
+        "run_id": 34776089449,
+        "status": "completed",
+        "steps": [
+          {
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "status": "completed"
+          },
+          {
+            "conclusion": "success",
+            "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+            "number": 2,
+            "status": "completed"
+          },
+          {
+            "conclusion": "success",
+            "name": "Verify reviewed caller and exact control checkout",
+            "number": 3,
+            "status": "completed"
+          },
+          {
+            "conclusion": "success",
+            "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+            "number": 4,
+            "status": "completed"
+          },
+          {
+            "conclusion": "success",
+            "name": "Verify exact application checkout",
+            "number": 5,
+            "status": "completed"
+          },
+          {
+            "conclusion": "success",
+            "name": "Authenticate current source images and successful database handoff",
+            "number": 6,
+            "status": "completed"
+          },
+          {
+            "conclusion": "success",
+            "name": "Recover exact preserved API with only step-local auth provider inputs",
+            "number": 7,
+            "status": "completed"
+          },
+          {
+            "conclusion": "success",
+            "name": "Recheck current source images and database before local startup",
+            "number": 8,
+            "status": "completed"
+          },
+          {
+            "conclusion": "failure",
+            "name": "Start and accept only local backend and frontend",
+            "number": 9,
+            "status": "completed"
+          },
+          {
+            "conclusion": "skipped",
+            "name": "Retain sanitized accepted local handoff",
+            "number": 10,
+            "status": "completed"
+          },
+          {
+            "conclusion": "success",
+            "name": "Retain sanitized attempt observations for reconciliation",
+            "number": 11,
+            "status": "completed"
+          },
+          {
+            "conclusion": "success",
+            "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+            "number": 21,
+            "status": "completed"
+          },
+          {
+            "conclusion": "success",
+            "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+            "number": 22,
+            "status": "completed"
+          },
+          {
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 23,
+            "status": "completed"
+          }
+        ]
+      }
+    ]
+  },
+  "inspection": {
+    "account_key_cleanup": "API_DELETE_CONFIRMED",
+    "error": null,
+    "guest_key_cleanup": "API_DELETE_CONFIRMED",
+    "host_key_fingerprint": "SHA256:T3RfyVAstE+dyvneeMMYUjIm1Ej+NN3D5Vr9sIyRUG0",
+    "inspection": {
+      "application_record_exists": true,
+      "bootstrap_marker_exists": true,
+      "compose_services": [
+        "postgres=running"
+      ],
+      "data_root": {
+        "device": 2049,
+        "directory": true,
+        "gid": 999,
+        "inode": 524370,
+        "mode": "0o700",
+        "symlink": false,
+        "uid": 999
+      },
+      "mounted_root": {
+        "device": 2049,
+        "directory": true,
+        "gid": 999,
+        "inode": 524370,
+        "mode": "0o700",
+        "symlink": false,
+        "uid": 999
+      },
+      "mutations": false,
+      "pgdata": {
+        "device": 2049,
+        "directory": true,
+        "gid": 0,
+        "inode": 547799,
+        "mode": "0o700",
+        "symlink": false,
+        "uid": 999
+      },
+      "postgres_version_17": true,
+      "recovery_complete_exists": true,
+      "result": "PASS_READ_ONLY_INSPECTION",
+      "schema": 1,
+      "start_attempt_exists": false,
+      "start_result_exists": false,
+      "volume_bind_matches": true,
+      "volume_name": "kinetra-production_postgres17_data"
+    },
+    "local_key_cleanup": "REMOVED",
+    "public_ipv4": "80.68.156.131",
+    "result": "PASS_READ_ONLY_HOST_MONITORING_INSPECTION",
+    "server_id": 9069403,
+    "server_status": "on",
+    "ssh_key_id": 772517
+  }
+}

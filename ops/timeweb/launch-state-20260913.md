@@ -1,3 +1,26 @@
+## Launch checkpoint — 2026-09-13: recovered API retained; local import failure reconciled
+
+Run `34776089449` FAILED in the later local wrapper; its API recovery phase and
+subsequent provenance recheck PASSED with full cleanup. Accepted API outer is in
+artifact `10324010735`, SHA256
+`42316ff964771c0aa766a2c2b9ddbdf5490d8268ba4c8355d61e4b0564275eb0`.
+Do not repeat API recovery or treat the overall run as local acceptance.
+
+Read-only run `34776287669`, job `103774897052`,
+control `82109af279cc9ebdbdabb3bc255b0620f678331b` proved at19:00:12 UTC
+that only PostgreSQL is running, API recovery is durable, directory mode0700 is
+restored, and no application startup attempt/result exists. Complete cleanup PASS.
+
+The precise transferred helper set reproduced missing `inspect-host-monitoring.py`.
+Add only this frozen dependency and propagate verified wrapper hash pins, including
+the stale HTTPS dependency literal. All executable HTTPS checks and frozen local
+startup checks remain identical. See `local-start-recovery-20260913.md`.
+
+Next: authenticate the exact successful API phase artifact and independent no-start
+inspection, then resume only local startup through the updated dormant application
+caller. Fresh source/image/database gates and full successful local handoff/cleanup
+are still required before HTTPS. No additional provider secrets are needed.
+
 ## Launch checkpoint — 2026-09-13: exact candidate recovery accepted, local startup running
 
 Read-only validator diagnostic `34775387238` / job `103772445526`

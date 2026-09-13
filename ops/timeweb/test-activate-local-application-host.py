@@ -463,7 +463,8 @@ class PortabilityTests(unittest.TestCase):
         candidate = importlib.util.module_from_spec(spec)
         with patch.object(Path, "lstat", runner_owned), patch.object(os, "geteuid", return_value=1000):
             spec.loader.exec_module(candidate)
-            self.assertEqual(len(candidate.public_helpers()), 6)
+            self.assertEqual(len(candidate.public_helpers()), 7)
+            self.assertIn("inspect-host-monitoring.py", candidate.public_helpers())
             # Importing start-application-host.py here would reject UID1000.
             self.assertFalse(hasattr(candidate, "start_guest"))
 

@@ -36,6 +36,7 @@ import tempfile
 import time
 
 PINS = {
+    "inspect-host-monitoring.py": "3ffc667a66330c323836d1335e78f92940d6ebdc1877cf66048265d774bb3086",
     "start-application-host.py": "654ae707445717a96b04c1a7b1f9e428e22ff06ccb04f40c68a2bf6b2ae11524",
     "activate-application-host.py": "16c9ed2fc47534f86f35e4aa215d824ffbec84fd3c684d5d02157a7e944322c4",
     "initialize-database-host.py": "041f415dedf6b0b6922484281926c8c98c87828506dcb2e1ac6fb324b00b05bb",
