@@ -1,4 +1,4 @@
-name: Diagnose Kinetra pre-candidate handoff without changes
+name: Diagnose exact Kinetra database-to-API handoff
 on:
   push:
     branches: [ops/timeweb-hourly-preflight-20260909]
@@ -14,96 +14,150 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 1
-      - name: Check exact read-only handoff invariants on server 9069403
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 73b665065e00a5b375e90f701373b3e0856a0386
+          path: Kinetra
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Execute only the frozen pre-candidate read checks
         env:
-          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+          APP_CHECKOUT: ${{ github.workspace }}/Kinetra
+          APPROVED_APP_COMMIT: 73b665065e00a5b375e90f701373b3e0856a0386
+          NODE_IMAGE: node@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32
+          NGINX_IMAGE: nginxinc/nginx-unprivileged@sha256:3a4485bf084957d56674ee22db07d77d5a281418815c5852827419d6d629d440
+          BACKEND_IMAGE: ghcr.io/san4o9910/kinetra-backend@sha256:9138a6408442b847ca771690053870880cee831769919aaf2a2dc858d52e8362
+          FRONTEND_IMAGE: ghcr.io/san4o9910/kinetra-frontend@sha256:da47e7f576cfb3892b9078e8463cdad855081e032d51645639794736c1098ff2
+          POSTGRES_IMAGE: postgres:17-bookworm@sha256:7bade6d532592ca8ce7ee32def7399dad2607c4ea5583839fc4352a095a11ea6
           ROOT_SUPPLIED_SERVER_ID: '9069403'
           ROOT_SUPPLIED_SERVER_IP: 80.68.156.131
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+          AUTH_TOKEN_DELIVERY_MODE: smtp
+          AUTH_TOKEN_DELIVERY_SMTP_SERVICE: yandex
+          AUTH_TOKEN_DELIVERY_SMTP_USERNAME: ${{ secrets.AUTH_TOKEN_DELIVERY_SMTP_USERNAME }}
+          AUTH_TOKEN_DELIVERY_SMTP_PASSWORD: ${{ secrets.AUTH_TOKEN_DELIVERY_SMTP_PASSWORD }}
+          AUTH_TOKEN_DELIVERY_APP_ORIGIN: https://80.68.156.131
         shell: bash
         run: |
           set -euo pipefail
           sha256sum --check --strict <<'SHA256'
-          3ffc667a66330c323836d1335e78f92940d6ebdc1877cf66048265d774bb3086  ops/timeweb/inspect-host-monitoring.py
+          6b63573205b874c03d08e6147eec364928630ff094100848a7146382700740ea  ops/timeweb/prepare-api-host.py
+          16c9ed2fc47534f86f35e4aa215d824ffbec84fd3c684d5d02157a7e944322c4  ops/timeweb/activate-application-host.py
+          041f415dedf6b0b6922484281926c8c98c87828506dcb2e1ac6fb324b00b05bb  ops/timeweb/initialize-database-host.py
+          4621b1c0153ab56ae535e245fdb2de4ef2aff4a30ba5b592343a26795f0655ae  ops/timeweb/prepare-database-host.py
+          a19aca3ea953feecdcb9be6e9dcabdfc8b0e2b4f3938184391cdfb2ff3e87c9e  ops/timeweb/bootstrap-server.py
           567d892221925bb438ece6a893360a891ffd4228f8af0a18252b8ba365a682c0  ops/timeweb/inspect-server.py
           SHA256
-          python3 -B - <<'PY_INSPECT'
-          import importlib.util, json, os, re, signal
+          python3 -B - <<'PY_DIAG'
+          import contextlib, importlib.util, io, json, os, re, stat
 
-          spec = importlib.util.spec_from_file_location('kinetra_handoff_inspect', 'ops/timeweb/inspect-host-monitoring.py')
+          spec = importlib.util.spec_from_file_location('kinetra_handoff_diag', 'ops/timeweb/prepare-api-host.py')
           module = importlib.util.module_from_spec(spec)
           spec.loader.exec_module(module)
 
-          guest = r'''
-          import hashlib, json, os, pathlib, re, stat
-          stage = pathlib.Path('/srv/kinetra-stage')
-          expected_commit = '73b665065e00a5b375e90f701373b3e0856a0386'
-          expected_images = {
-            'NODE_IMAGE':'node@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32',
-            'NGINX_IMAGE':'nginxinc/nginx-unprivileged@sha256:3a4485bf084957d56674ee22db07d77d5a281418815c5852827419d6d629d440',
-            'BACKEND_IMAGE':'ghcr.io/san4o9910/kinetra-backend@sha256:9138a6408442b847ca771690053870880cee831769919aaf2a2dc858d52e8362',
-            'FRONTEND_IMAGE':'ghcr.io/san4o9910/kinetra-frontend@sha256:da47e7f576cfb3892b9078e8463cdad855081e032d51645639794736c1098ff2',
-            'POSTGRES_IMAGE':'postgres:17-bookworm@sha256:7bade6d532592ca8ce7ee32def7399dad2607c4ea5583839fc4352a095a11ea6'}
-          def identity(path):
-              if not path.exists() or path.is_symlink(): return None
-              info = path.lstat()
-              kind = 'file' if stat.S_ISREG(info.st_mode) else 'dir' if stat.S_ISDIR(info.st_mode) else 'other'
-              return {'kind':kind,'uid':info.st_uid,'mode':oct(stat.S_IMODE(info.st_mode))}
-          def read_json(path):
-              raw = path.read_bytes()
-              assert len(raw) <= 131072
-              return json.loads(raw)
-          def parse_env(path):
-              values = {}
-              for line in path.read_text('ascii').splitlines():
-                  if not line.strip() or line.lstrip().startswith('#'): continue
-                  match = re.fullmatch(r'([A-Z][A-Z0-9_]*)=(.*)', line)
-                  assert match and match[1] not in values
-                  values[match[1]] = match[2]
-              return values
-          staged = read_json(stage / 'evidence/stage.json')
-          initialized = read_json(stage / 'evidence/initialization.json')
-          source_mismatches = []
-          for name, expected in staged.get('source_hashes', {}).items():
-              path = stage / 'source' / name
-              observed = hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() and not path.is_symlink() else None
-              if observed != expected: source_mismatches.append(name)
-          api = parse_env(stage / 'env/api.env')
-          production = parse_env(stage / 'env/production.env')
-          expected_production = {key:expected_images[key] for key in ('NODE_IMAGE','NGINX_IMAGE','BACKEND_IMAGE','FRONTEND_IMAGE')}
-          expected_production.update(VCS_REF=expected_commit,VITE_API_URL='https://80.68.156.131',
-              VITE_PRIVATE_MEDIA_ORIGIN='',KINETRA_API_ENV_FILE='/srv/kinetra-stage/env/api.env',KINETRA_VIDEO_SCRATCH_DIR='')
-          result = {'schema':1,'result':'PASS_READ_ONLY_INSPECTION','mutations':False,
-            'stage_identity':identity(stage),'lock_identity':identity(pathlib.Path('/run/kinetra-database-stage.lock')),
-            'stage_result':staged.get('result'),'stage_commit_matches':staged.get('commit') == expected_commit,
-            'stage_images_match':staged.get('images') == expected_images,
-            'stage_image_matches':{key:staged.get('images',{}).get(key) == value for key,value in expected_images.items()},
-            'stage_source_count':len(staged.get('source_hashes',{})),'source_mismatches':sorted(source_mismatches),
-            'initialization_result':initialized.get('result'),
-            'initialization_commit_matches':initialized.get('commit') == expected_commit,
-            'initialization_images_match':initialized.get('images') == expected_images,
-            'initialization_image_matches':{key:initialized.get('images',{}).get(key) == value for key,value in expected_images.items()},
-            'migration_count':len(initialized.get('migration_hashes',{})),
-            'api_identity':identity(stage / 'env/api.env'),'api_keys':sorted(api),
-            'api_exact_node_only':api == {'NODE_ENV':'production'},
-            'production_identity':identity(stage / 'env/production.env'),
-            'production_keys':sorted(production),'production_exact':production == expected_production,
-            'attempt_exists':(stage / 'evidence/application-env-attempt.json').exists(),
-            'record_exists':(stage / 'evidence/application-env.json').exists()}
-          print(json.dumps(result, sort_keys=True))
+          guest = "PINS = " + repr(module.PINS) + "\n" + r'''
+          import base64, fcntl, hashlib, importlib.util, json, os, pathlib, re, stat, sys
+          sys.dont_write_bytecode = True
+          class DiagError(Exception): pass
+          def require(condition, category):
+              if not condition: raise DiagError(category)
+          def write_new(path, raw, mode):
+              fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, mode)
+              with os.fdopen(fd, 'wb') as stream:
+                  stream.write(raw); stream.flush(); os.fchmod(stream.fileno(), mode); os.fsync(stream.fileno())
+          state = {'schema':1,'result':'FAIL','phase':'TRANSPORT','category':None,
+                   'guest_temp_cleanup':'NOT_NEEDED','remote_directory':None}
+          folder = None
+          lock = None
+          approved = None
+          try:
+              require(os.geteuid() == 0, 'ROOT_REQUIRED')
+              raw = sys.stdin.buffer.read(1048577)
+              require(len(raw) <= 1048576, 'INPUT_TOO_LARGE')
+              transport = json.loads(raw)
+              require(isinstance(transport,dict) and set(transport)=={'schema','nonce','approved','helpers'}
+                      and transport['schema']==1, 'TRANSPORT_INVALID')
+              nonce = transport['nonce']
+              require(isinstance(nonce,str) and re.fullmatch(r'[a-f0-9]{32}',nonce), 'NONCE_INVALID')
+              require(isinstance(transport['helpers'],dict) and set(transport['helpers'])==set(PINS), 'HELPER_SET_INVALID')
+              run = pathlib.Path('/run')
+              folder = run / ('kinetra-handoff-diagnostic-' + nonce)
+              folder.mkdir(mode=0o700)
+              state.update(guest_temp_cleanup='PENDING',remote_directory=str(folder),phase='STAGE_PUBLIC_HELPERS')
+              for name,digest in PINS.items():
+                  body=base64.b64decode(transport['helpers'][name],validate=True)
+                  require(hashlib.sha256(body).hexdigest()==digest,'HELPER_HASH_MISMATCH')
+                  write_new(folder/name,body,0o644)
+              approved=transport['approved']
+              write_new(folder/'private-input.json',(json.dumps(approved,allow_nan=False)+'\n').encode(),0o600)
+              state['phase']='IMPORT_FROZEN_HELPER'
+              helper_path=folder/'activate-application-host.py'
+              spec=importlib.util.spec_from_file_location('kinetra_guest_handoff_diag',helper_path)
+              helper=importlib.util.module_from_spec(spec);spec.loader.exec_module(helper)
+              state['phase']='VALIDATE_PRIVATE_INPUT'
+              data=helper.validate_input(approved)
+              state['phase']='VERIFY_LOCK'
+              helper.private_read(helper.LOCK)
+              lock=os.open(helper.LOCK,os.O_RDWR|os.O_NOFOLLOW)
+              fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+              state['phase']='READ_INITIALIZED_HANDOFF'
+              handoff=helper.read_handoff(data)
+              state['phase']='CHECK_LIVE_IDENTITY'
+              helper.check_live_identity(data,handoff)
+              state.update(result='PASS',phase='READ_ONLY_HANDOFF_COMPLETE')
+          except (DiagError, Exception) as error:
+              category=str(error)
+              state['category']=category if re.fullmatch(r'[A-Z_]{1,90}',category) else 'READ_ONLY_DIAGNOSTIC_FAILED'
+          finally:
+              if lock is not None: os.close(lock)
+              if isinstance(approved,dict):
+                  providers=approved.get('providers')
+                  if isinstance(providers,dict): providers.clear()
+              if folder is not None:
+                  try:
+                      for path in folder.iterdir():
+                          info=path.lstat()
+                          require(stat.S_ISREG(info.st_mode) and info.st_uid==0,'TEMP_CONTENT_CHANGED')
+                          path.unlink()
+                      folder.rmdir()
+                      state['guest_temp_cleanup']='REMOVED'
+                  except BaseException:
+                      state.update(result='FAIL',category=state['category'] or 'TEMP_CLEANUP_FAILED',
+                                   guest_temp_cleanup='FAILED_RECONCILE')
+              print(json.dumps(state,sort_keys=True))
           '''
 
-          def validate(raw):
+          observed = {}
+          def validate_remote(raw, expected, nonce):
               value = json.loads(raw)
-              assert isinstance(value, dict) and value.get('schema') == 1
-              assert value.get('result') == 'PASS_READ_ONLY_INSPECTION' and value.get('mutations') is False
-              assert isinstance(value.get('stage_image_matches'), dict)
-              assert isinstance(value.get('initialization_image_matches'), dict)
-              assert isinstance(value.get('source_mismatches'), list)
-              return value
+              assert isinstance(value,dict) and set(value)=={'schema','result','phase','category','guest_temp_cleanup','remote_directory'}
+              assert value['schema']==1 and value['result'] in {'PASS','FAIL'}
+              assert isinstance(value['phase'],str) and re.fullmatch(r'[A-Z_]{1,90}',value['phase'])
+              assert value['category'] is None or re.fullmatch(r'[A-Z_]{1,90}',value['category'])
+              assert value['guest_temp_cleanup']=='REMOVED'
+              assert value['remote_directory']=='/run/kinetra-handoff-diagnostic-'+nonce
+              observed.update(value)
+              return {'result':'API_ENVIRONMENT_PREPARED_ONLY','guest_temp_cleanup':'REMOVED',
+                      'diagnostic_result':value['result'],'diagnostic_phase':value['phase'],
+                      'diagnostic_category':value['category']}
 
-          module.GUEST_PROGRAM = guest
-          module.validate_result = validate
-          signal.signal(signal.SIGTERM, module.inspection.interrupted)
-          signal.signal(signal.SIGINT, module.inspection.interrupted)
-          raise SystemExit(module.main(['--inspect-existing-host-monitoring'], os.environ, module.inspection.Api))
-          PY_INSPECT
+          module.GUEST_LAUNCHER = guest
+          module.validate_remote = validate_remote
+          captured = io.StringIO()
+          with contextlib.redirect_stdout(captured), contextlib.redirect_stderr(captured):
+              code = module.main(['--prepare-api-environment','--provider-env'], os.environ, module.inspection.Api)
+          lines = [line for line in captured.getvalue().splitlines() if line.startswith('TIMEWEB_API_PREPARATION=')]
+          assert code == 0 and lines and observed
+          outer = json.loads(lines[-1].split('=',1)[1])
+          assert outer['guest_key_cleanup'] in {'API_DELETE_CONFIRMED','ALREADY_ABSENT'}
+          assert outer['account_key_cleanup'] in {'API_DELETE_CONFIRMED','ALREADY_ABSENT'}
+          assert outer['local_key_cleanup']=='REMOVED' and outer['guest_temp_cleanup']=='REMOVED'
+          summary={'result':observed['result'],'phase':observed['phase'],'category':observed['category'],
+                   'host_key_fingerprint':outer['host_key_fingerprint'],
+                   'guest_key_cleanup':outer['guest_key_cleanup'],
+                   'account_key_cleanup':outer['account_key_cleanup'],
+                   'local_key_cleanup':outer['local_key_cleanup'],
+                   'guest_temp_cleanup':outer['guest_temp_cleanup']}
+          print('KINETRA_READ_ONLY_HANDOFF_DIAGNOSTIC='+json.dumps(summary,sort_keys=True))
+          print('KINETRA_READ_ONLY_HANDOFF_DIAGNOSTIC_EXECUTED=PASS')
+          PY_DIAG
