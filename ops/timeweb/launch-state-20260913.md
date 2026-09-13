@@ -1,3 +1,40 @@
+## Launch checkpoint — 2026-09-13: cancellation conflict requires a narrow decision
+
+The owner attempted normal cancellation of inspection run `34749066794`;
+the supplied screenshot reports `Failed to cancel workflow`. A single supported
+force-cancel attempt was prepared with exact repository/run/workflow/commit/age
+bindings and repeated zero-job/zero-artifact checks. Nine offline boundary tests
+passed before publication.
+
+Recovery control `ee64da2169105c0a1d80d8c665ae7e399d541c99`,
+run `34767192847`, job `103750160885` started immediately. Logs at
+`15:58:56Z` show `PRECONDITIONS_PASS`, then `github-http-409` from
+the force-cancel endpoint. This is not successful cancellation. A subsequent
+live GET still shows original run `34749066794` queued at
+`096393dae2c1fc977023bd0fccd17b2aa6758ace`, attempt 1, zero jobs.
+No host operation or application retry was performed.
+
+**OWNER_DECISION_REQUIRED:** the exact queued inspection cannot currently be
+cancelled through either attempted path. The existing no-duplicate condition
+still forbids silently publishing a replacement. Do not repeat cancellation,
+trigger another diagnostic, or retry application activation automatically.
+
+Concrete proposal and evidence:
+[inspection-recovery-decision-20260913.md](inspection-recovery-decision-20260913.md).
+Prepared dormant replacement:
+[inspection-replacement-20260913.yml](inspection-replacement-20260913.yml).
+It is not present at its active workflow path and has not run. The complete
+host inspection step is unchanged, checkout is pinned to the original control,
+and seven offline guard cases passed. If approved, recheck live runs and publish
+this exact replacement once; inspect actual output and temporary-object cleanup
+before investigating and retrying application preparation.
+
+Automatic continuation is to be paused until the owner resolves this narrow
+exception or GitHub completes/cancels the original run. The original qualification,
+database handoff, source/app identities, public-image approval, CPE/SBOM policy,
+SSH pin, SMTP handling and all prior deployment limits remain in force.
+The application and HTTPS are still unstarted.
+
 ## Launch checkpoint — 09:23 UTC
 
 Fresh image qualification run `34742116241` (job `103683458868`) is
