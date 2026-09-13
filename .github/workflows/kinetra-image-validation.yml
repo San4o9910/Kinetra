@@ -1,6 +1,7 @@
 # Root-reviewed qualified image build after green exact-head and merge-ref CI.
 # GHCR storage/bandwidth is currently free; no paid cloud resource is created.
 # No host, Timeweb, payment, delivery, database or application runtime secrets.
+# Allocation retry after 34742043591 received Intel; all build gates unchanged.
 name: Kinetra qualified production images
 
 on:

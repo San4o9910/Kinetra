@@ -2,6 +2,13 @@
 
 ## Latest owner decision — public images approved
 
+The first new run `34742043591` (control `e587a7bbaab8d1a1693b71bb2d3dd58df8e290e0`)
+passed the live approved-public-package check, then stopped before compilation:
+GitHub allocated `GenuineIntel`, while exact approved media reproduction requires
+`AuthenticAMD`. Actual job `103683269996` logs confirm this category. No build,
+push or host operation occurred in that attempt. A new first-attempt allocation
+is triggered by a comment-only workflow change; every executable check is identical.
+
 The owner answered “Да” to the explicit public-image proposal linked at
 `c2f0f67e61ceb2c02b1418ef886a1e13223a4171`. This supersedes the PRIVATE-only
 publication blocker below, for only the two existing packages and exact app
