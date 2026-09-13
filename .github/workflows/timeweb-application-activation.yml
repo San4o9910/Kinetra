@@ -3,7 +3,7 @@
 # review this caller before publishing as .github/workflows/timeweb-application-activation.yml.
 # Only API environment preparation and local application startup. No HTTPS/boot/jobs.
 # State-specific recovery after verified diagnostics34775387238/34775554137; never repeat initialization.
-name: Recover preserved free-beta API and accept local Kinetra application
+name: Resume verified Kinetra local startup after helper-set fix
 
 on:
   push:
@@ -66,7 +66,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test "$ACTIVATE_LOCAL_APPLICATION" = APPROVED
           sha256sum --check --strict <<'SHA256'
-          598d82e4d00b54606be8cd6c9ebc872d3a62ebd9786b250cad267a4f1e1df844  ops/timeweb/application-caller.py
+          f251b3fe84b818c831d539bac3b0c489d694159489661c1329a7ec9df2b39495  ops/timeweb/application-caller.py
           61fc0550edbc533938b1850ad17aa6779c1d2fa7122db08296748acfe43924ea  ops/timeweb/verify-launch-provenance.py
           444528e29fa1b280a78989727911a9f6c5025f285a30bed5af0f31fc0ea396c8  ops/timeweb/test-application-caller.py
           ba9d7f7d4a5475de9a4401be60694bcbeab1e62308d2f304454360fc72d2267e  ops/timeweb/upstream-disposition.py
@@ -75,11 +75,16 @@ jobs:
           c4a35c5b13730316bc92c8f1b1ccf1d1b54c1cbaa15718790cb5603a07aec4a8  ops/timeweb/test-scan-upstream-media.py
           8326af893a6b25d65394841584f3d9b12b264868a592addc7c1f4cdff42128ae  ops/timeweb/recover-api-candidate-host.py
           0a1ec78c18632cb03630902c27060a930ec038086711614cac59601b236fdac2  ops/timeweb/recover-api-preparation.py
-          de3a10148df70d68d6b64b05b11250b44b4324c709a691970c214f1d98e736cd  ops/timeweb/recovery-caller.py
+          33f479cdb1b8215107fb74915bff05718c690fb8f6a5d1692fb7237eaeb92b05  ops/timeweb/recovery-caller.py
           d1aa5e4c1e488d6fe8437bcbbb035c6c2750d1c7163e30fc39bd8dc60f70d42d  ops/timeweb/test-recover-api-candidate.py
+          922625e59fc1fcecf621ff8875f561a5f263a7831ab075b1e28349ca2a8b3e3d  ops/timeweb/authenticate-preserved-api.py
+          c0d9406c9669f20c42867ec653de43a6d84a10127d9aa1b6695cb11fb5588d40  ops/timeweb/test-preserved-api-auth.py
+          650c761d5293bd9871e54b23971b758e6936a6dc0040a205afd9fe6df22d3a01  ops/timeweb/api-resume-evidence-20260913.json
+          0a77d61fb392e4440f5ad25fcae3b5f96f30d1ea1a18a07309e044e72a2a9779  ops/timeweb/test-activate-local-application-host.py
           SHA256
           # Guest fixtures require root ownership, matching the real guest; no tokens enter tests.
-          sudo env -i PATH="$PATH" python3 -B ops/timeweb/test-recover-api-candidate.py
+          sudo env -i PATH="$PATH" python3 -B ops/timeweb/test-preserved-api-auth.py
+          env -i PATH="$PATH" python3 -B ops/timeweb/test-activate-local-application-host.py
           PYTHONDONTWRITEBYTECODE=1 python3 ops/timeweb/test-upstream-disposition.py
           env -i PATH="$PATH" python3 ops/timeweb/test-application-caller.py
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -105,19 +110,14 @@ jobs:
         run: |
           set -euo pipefail
           python3 ops/timeweb/application-caller.py --authenticate-database
-      - name: Recover exact preserved API with only step-local auth provider inputs
+      - name: Authenticate successful preserved API phase and independently verified absence of startup
         shell: bash
         env:
           APP_CHECKOUT: ${{ github.workspace }}/Kinetra
-          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
-          AUTH_TOKEN_DELIVERY_MODE: smtp
-          AUTH_TOKEN_DELIVERY_SMTP_SERVICE: yandex
-          AUTH_TOKEN_DELIVERY_SMTP_USERNAME: ${{ secrets.AUTH_TOKEN_DELIVERY_SMTP_USERNAME }}
-          AUTH_TOKEN_DELIVERY_SMTP_PASSWORD: ${{ secrets.AUTH_TOKEN_DELIVERY_SMTP_PASSWORD }}
-          AUTH_TOKEN_DELIVERY_APP_ORIGIN: https://80.68.156.131
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          python3 ops/timeweb/recovery-caller.py --recover-api
+          python3 -B ops/timeweb/authenticate-preserved-api.py --authenticate-preserved-api
       - name: Recheck current source images and database before local startup
         shell: bash
         env:
