@@ -1,4 +1,4 @@
-name: Inspect Kinetra Timeweb API before application retry
+name: Inspect Kinetra API preparation state without changes
 on:
   push:
     branches: [ops/timeweb-hourly-preflight-20260909]
@@ -8,46 +8,110 @@ permissions:
 jobs:
   inspect:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
           fetch-depth: 1
-      - name: Read only exact existing server identity
+      - name: Inspect only nonsecret API preparation state on exact host
         env:
           TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+          ROOT_SUPPLIED_SERVER_ID: '9069403'
+          ROOT_SUPPLIED_SERVER_IP: 80.68.156.131
         shell: bash
         run: |
           set -euo pipefail
           sha256sum --check --strict <<'SHA256'
-          6b63573205b874c03d08e6147eec364928630ff094100848a7146382700740ea  ops/timeweb/prepare-api-host.py
+          3ffc667a66330c323836d1335e78f92940d6ebdc1877cf66048265d774bb3086  ops/timeweb/inspect-host-monitoring.py
           567d892221925bb438ece6a893360a891ffd4228f8af0a18252b8ba365a682c0  ops/timeweb/inspect-server.py
           SHA256
           python3 -B - <<'PY_INSPECT'
-          import importlib.util, os, re, sys, time
-          spec = importlib.util.spec_from_file_location('kinetra_api_inspect', 'ops/timeweb/prepare-api-host.py')
+          import importlib.util, json, os, re, signal, stat, sys
+
+          spec = importlib.util.spec_from_file_location('kinetra_state_inspect', 'ops/timeweb/inspect-host-monitoring.py')
           module = importlib.util.module_from_spec(spec)
           spec.loader.exec_module(module)
-          token = os.environ.pop('TIMEWEB_CLOUD_TOKEN', '')
-          try:
-              module.require(token and len(token) <= 16384 and not any(ch.isspace() for ch in token),
-                             'TIMEWEB_SECRET_MISSING_OR_INVALID')
-              api = module.inspection.Api(token, 9069403, time.monotonic() + 120)
-              token = ''
-              server = module.inspection.validate_server(api.request('GET', '/servers/9069403'),
-                                                         9069403, '80.68.156.131')
-              module.require(server['server_status'] == 'on', 'EXISTING_SERVER_NOT_ON')
-              print('KINETRA_TIMEWEB_READ_ONLY=' + __import__('json').dumps({
-                  'server_id': 9069403, 'public_ipv4': '80.68.156.131',
-                  'server_status': server['server_status'], 'result': 'PASS'
-              }, sort_keys=True))
-          except (module.Error, module.activation.Error) as error:
-              category = str(error)
-              if not re.fullmatch(r'[A-Z_]{1,90}', category):
-                  category = 'TIMEWEB_READ_FAILED'
-              print('KINETRA_TIMEWEB_READ_ONLY=FAIL:' + category, file=sys.stderr)
-              raise SystemExit(1)
-          finally:
-              token = ''
+
+          guest = r'''
+          import hashlib, json, os, pathlib, re, stat, subprocess
+          stage = pathlib.Path('/srv/kinetra-stage')
+          def regular(path, mode=None):
+              if not path.exists() or path.is_symlink(): return False
+              info = path.lstat()
+              return stat.S_ISREG(info.st_mode) and info.st_uid == 0 and (mode is None or stat.S_IMODE(info.st_mode) == mode)
+          def digest(path):
+              return hashlib.sha256(path.read_bytes()).hexdigest() if regular(path) else None
+          attempt_path = stage / 'evidence/application-env-attempt.json'
+          record_path = stage / 'evidence/application-env.json'
+          active_path = stage / 'env/api.env'
+          attempt = None
+          if regular(attempt_path, 0o600):
+              value = json.loads(attempt_path.read_bytes())
+              assert isinstance(value, dict) and set(value) == {'schema','commit','images','previous_api_sha256','candidate_directory'}
+              assert value['schema'] == 1 and re.fullmatch(r'api-preparation-[a-f0-9]{32}', value['candidate_directory'])
+              attempt = {'candidate_directory': value['candidate_directory'],
+                         'commit_matches': value['commit'] == '73b665065e00a5b375e90f701373b3e0856a0386',
+                         'images_match': value['images'] == {
+                           'NODE_IMAGE':'node@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32',
+                           'NGINX_IMAGE':'nginxinc/nginx-unprivileged@sha256:3a4485bf084957d56674ee22db07d77d5a281418815c5852827419d6d629d440',
+                           'BACKEND_IMAGE':'ghcr.io/san4o9910/kinetra-backend@sha256:9138a6408442b847ca771690053870880cee831769919aaf2a2dc858d52e8362',
+                           'FRONTEND_IMAGE':'ghcr.io/san4o9910/kinetra-frontend@sha256:da47e7f576cfb3892b9078e8463cdad855081e032d51645639794736c1098ff2',
+                           'POSTGRES_IMAGE':'postgres:17-bookworm@sha256:7bade6d532592ca8ce7ee32def7399dad2607c4ea5583839fc4352a095a11ea6'}}
+          candidates = []
+          env_dir = stage / 'env'
+          if env_dir.is_dir() and not env_dir.is_symlink():
+              for path in sorted(env_dir.glob('api-preparation-*')):
+                  assert re.fullmatch(r'api-preparation-[a-f0-9]{32}', path.name)
+                  info = path.lstat()
+                  assert stat.S_ISDIR(info.st_mode) and info.st_uid == 0 and stat.S_IMODE(info.st_mode) == 0o700
+                  allowed = {'api.env','production.env','previous-api.env'}
+                  names = {item.name for item in path.iterdir()}
+                  assert names <= allowed
+                  candidates.append({'name': path.name,
+                      'api_env_sha256': digest(path / 'api.env'),
+                      'production_env_sha256': digest(path / 'production.env'),
+                      'previous_api_sha256': digest(path / 'previous-api.env')})
+          assert len(candidates) <= 5
+          proc = subprocess.run(['/usr/bin/docker','ps','-a','--filter','label=com.docker.compose.project=kinetra-production',
+              '--format','{{.Label "com.docker.compose.service"}}={{.State}}'], stdin=subprocess.DEVNULL,
+              stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=15, check=True, text=True)
+          containers = {}
+          for line in proc.stdout.splitlines():
+              service, state = line.split('=', 1)
+              assert service in {'postgres','backend','frontend'} and state in {'created','running','exited','paused','restarting','dead'}
+              assert service not in containers
+              containers[service] = state
+          def systemctl(command):
+              result = subprocess.run(['/usr/bin/systemctl', command, 'caddy.service'], stdin=subprocess.DEVNULL,
+                  stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=10, text=True)
+              value = result.stdout.strip()
+              assert len(value) <= 64 and re.fullmatch(r'[a-zA-Z0-9_-]*', value)
+              return value
+          result = {'schema':1,'result':'PASS_READ_ONLY_INSPECTION','mutations':False,
+              'stage_exists':stage.is_dir() and not stage.is_symlink(),
+              'attempt':attempt,'application_record_exists':regular(record_path,0o600),
+              'application_record_sha256':digest(record_path),'active_api_sha256':digest(active_path),
+              'candidates':candidates,'containers':containers,
+              'caddy_active':systemctl('is-active'),'caddy_enabled':systemctl('is-enabled')}
+          print(json.dumps(result, sort_keys=True))
+          '''
+
+          def validate(raw):
+              value = json.loads(raw)
+              assert isinstance(value, dict) and set(value) == {'schema','result','mutations','stage_exists','attempt',
+                  'application_record_exists','application_record_sha256','active_api_sha256','candidates',
+                  'containers','caddy_active','caddy_enabled'}
+              assert value['schema'] == 1 and value['result'] == 'PASS_READ_ONLY_INSPECTION'
+              assert value['mutations'] is False and value['stage_exists'] is True
+              assert isinstance(value['candidates'], list) and isinstance(value['containers'], dict)
+              for key in ('application_record_sha256','active_api_sha256'):
+                  assert value[key] is None or re.fullmatch(r'[a-f0-9]{64}', value[key])
+              return value
+
+          module.GUEST_PROGRAM = guest
+          module.validate_result = validate
+          signal.signal(signal.SIGTERM, module.inspection.interrupted)
+          signal.signal(signal.SIGINT, module.inspection.interrupted)
+          raise SystemExit(module.main(['--inspect-existing-host-monitoring'], os.environ, module.inspection.Api))
           PY_INSPECT
