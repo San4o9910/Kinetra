@@ -1,4 +1,4 @@
-name: Inspect Kinetra API preparation state without changes
+name: Diagnose Kinetra pre-candidate handoff without changes
 on:
   push:
     branches: [ops/timeweb-hourly-preflight-20260909]
@@ -14,7 +14,7 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 1
-      - name: Inspect only nonsecret API preparation state on exact host
+      - name: Check exact read-only handoff invariants on server 9069403
         env:
           TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
           ROOT_SUPPLIED_SERVER_ID: '9069403'
@@ -27,86 +27,78 @@ jobs:
           567d892221925bb438ece6a893360a891ffd4228f8af0a18252b8ba365a682c0  ops/timeweb/inspect-server.py
           SHA256
           python3 -B - <<'PY_INSPECT'
-          import importlib.util, json, os, re, signal, stat, sys
+          import importlib.util, json, os, re, signal
 
-          spec = importlib.util.spec_from_file_location('kinetra_state_inspect', 'ops/timeweb/inspect-host-monitoring.py')
+          spec = importlib.util.spec_from_file_location('kinetra_handoff_inspect', 'ops/timeweb/inspect-host-monitoring.py')
           module = importlib.util.module_from_spec(spec)
           spec.loader.exec_module(module)
 
           guest = r'''
-          import hashlib, json, os, pathlib, re, stat, subprocess
+          import hashlib, json, os, pathlib, re, stat
           stage = pathlib.Path('/srv/kinetra-stage')
-          def regular(path, mode=None):
-              if not path.exists() or path.is_symlink(): return False
+          expected_commit = '73b665065e00a5b375e90f701373b3e0856a0386'
+          expected_images = {
+            'NODE_IMAGE':'node@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32',
+            'NGINX_IMAGE':'nginxinc/nginx-unprivileged@sha256:3a4485bf084957d56674ee22db07d77d5a281418815c5852827419d6d629d440',
+            'BACKEND_IMAGE':'ghcr.io/san4o9910/kinetra-backend@sha256:9138a6408442b847ca771690053870880cee831769919aaf2a2dc858d52e8362',
+            'FRONTEND_IMAGE':'ghcr.io/san4o9910/kinetra-frontend@sha256:da47e7f576cfb3892b9078e8463cdad855081e032d51645639794736c1098ff2',
+            'POSTGRES_IMAGE':'postgres:17-bookworm@sha256:7bade6d532592ca8ce7ee32def7399dad2607c4ea5583839fc4352a095a11ea6'}
+          def identity(path):
+              if not path.exists() or path.is_symlink(): return None
               info = path.lstat()
-              return stat.S_ISREG(info.st_mode) and info.st_uid == 0 and (mode is None or stat.S_IMODE(info.st_mode) == mode)
-          def digest(path):
-              return hashlib.sha256(path.read_bytes()).hexdigest() if regular(path) else None
-          attempt_path = stage / 'evidence/application-env-attempt.json'
-          record_path = stage / 'evidence/application-env.json'
-          active_path = stage / 'env/api.env'
-          attempt = None
-          if regular(attempt_path, 0o600):
-              value = json.loads(attempt_path.read_bytes())
-              assert isinstance(value, dict) and set(value) == {'schema','commit','images','previous_api_sha256','candidate_directory'}
-              assert value['schema'] == 1 and re.fullmatch(r'api-preparation-[a-f0-9]{32}', value['candidate_directory'])
-              attempt = {'candidate_directory': value['candidate_directory'],
-                         'commit_matches': value['commit'] == '73b665065e00a5b375e90f701373b3e0856a0386',
-                         'images_match': value['images'] == {
-                           'NODE_IMAGE':'node@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32',
-                           'NGINX_IMAGE':'nginxinc/nginx-unprivileged@sha256:3a4485bf084957d56674ee22db07d77d5a281418815c5852827419d6d629d440',
-                           'BACKEND_IMAGE':'ghcr.io/san4o9910/kinetra-backend@sha256:9138a6408442b847ca771690053870880cee831769919aaf2a2dc858d52e8362',
-                           'FRONTEND_IMAGE':'ghcr.io/san4o9910/kinetra-frontend@sha256:da47e7f576cfb3892b9078e8463cdad855081e032d51645639794736c1098ff2',
-                           'POSTGRES_IMAGE':'postgres:17-bookworm@sha256:7bade6d532592ca8ce7ee32def7399dad2607c4ea5583839fc4352a095a11ea6'}}
-          candidates = []
-          env_dir = stage / 'env'
-          if env_dir.is_dir() and not env_dir.is_symlink():
-              for path in sorted(env_dir.glob('api-preparation-*')):
-                  assert re.fullmatch(r'api-preparation-[a-f0-9]{32}', path.name)
-                  info = path.lstat()
-                  assert stat.S_ISDIR(info.st_mode) and info.st_uid == 0 and stat.S_IMODE(info.st_mode) == 0o700
-                  allowed = {'api.env','production.env','previous-api.env'}
-                  names = {item.name for item in path.iterdir()}
-                  assert names <= allowed
-                  candidates.append({'name': path.name,
-                      'api_env_sha256': digest(path / 'api.env'),
-                      'production_env_sha256': digest(path / 'production.env'),
-                      'previous_api_sha256': digest(path / 'previous-api.env')})
-          assert len(candidates) <= 5
-          proc = subprocess.run(['/usr/bin/docker','ps','-a','--filter','label=com.docker.compose.project=kinetra-production',
-              '--format','{{.Label "com.docker.compose.service"}}={{.State}}'], stdin=subprocess.DEVNULL,
-              stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=15, check=True, text=True)
-          containers = {}
-          for line in proc.stdout.splitlines():
-              service, state = line.split('=', 1)
-              assert service in {'postgres','backend','frontend'} and state in {'created','running','exited','paused','restarting','dead'}
-              assert service not in containers
-              containers[service] = state
-          def systemctl(command):
-              result = subprocess.run(['/usr/bin/systemctl', command, 'caddy.service'], stdin=subprocess.DEVNULL,
-                  stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=10, text=True)
-              value = result.stdout.strip()
-              assert len(value) <= 64 and re.fullmatch(r'[a-zA-Z0-9_-]*', value)
-              return value
+              kind = 'file' if stat.S_ISREG(info.st_mode) else 'dir' if stat.S_ISDIR(info.st_mode) else 'other'
+              return {'kind':kind,'uid':info.st_uid,'mode':oct(stat.S_IMODE(info.st_mode))}
+          def read_json(path):
+              raw = path.read_bytes()
+              assert len(raw) <= 131072
+              return json.loads(raw)
+          def parse_env(path):
+              values = {}
+              for line in path.read_text('ascii').splitlines():
+                  if not line.strip() or line.lstrip().startswith('#'): continue
+                  match = re.fullmatch(r'([A-Z][A-Z0-9_]*)=(.*)', line)
+                  assert match and match[1] not in values
+                  values[match[1]] = match[2]
+              return values
+          staged = read_json(stage / 'evidence/stage.json')
+          initialized = read_json(stage / 'evidence/initialization.json')
+          source_mismatches = []
+          for name, expected in staged.get('source_hashes', {}).items():
+              path = stage / 'source' / name
+              observed = hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() and not path.is_symlink() else None
+              if observed != expected: source_mismatches.append(name)
+          api = parse_env(stage / 'env/api.env')
+          production = parse_env(stage / 'env/production.env')
+          expected_production = {key:expected_images[key] for key in ('NODE_IMAGE','NGINX_IMAGE','BACKEND_IMAGE','FRONTEND_IMAGE')}
+          expected_production.update(VCS_REF=expected_commit,VITE_API_URL='https://80.68.156.131',
+              VITE_PRIVATE_MEDIA_ORIGIN='',KINETRA_API_ENV_FILE='/srv/kinetra-stage/env/api.env',KINETRA_VIDEO_SCRATCH_DIR='')
           result = {'schema':1,'result':'PASS_READ_ONLY_INSPECTION','mutations':False,
-              'stage_exists':stage.is_dir() and not stage.is_symlink(),
-              'attempt':attempt,'application_record_exists':regular(record_path,0o600),
-              'application_record_sha256':digest(record_path),'active_api_sha256':digest(active_path),
-              'candidates':candidates,'containers':containers,
-              'caddy_active':systemctl('is-active'),'caddy_enabled':systemctl('is-enabled')}
+            'stage_identity':identity(stage),'lock_identity':identity(pathlib.Path('/run/kinetra-database-stage.lock')),
+            'stage_result':staged.get('result'),'stage_commit_matches':staged.get('commit') == expected_commit,
+            'stage_images_match':staged.get('images') == expected_images,
+            'stage_image_matches':{key:staged.get('images',{}).get(key) == value for key,value in expected_images.items()},
+            'stage_source_count':len(staged.get('source_hashes',{})),'source_mismatches':sorted(source_mismatches),
+            'initialization_result':initialized.get('result'),
+            'initialization_commit_matches':initialized.get('commit') == expected_commit,
+            'initialization_images_match':initialized.get('images') == expected_images,
+            'initialization_image_matches':{key:initialized.get('images',{}).get(key) == value for key,value in expected_images.items()},
+            'migration_count':len(initialized.get('migration_hashes',{})),
+            'api_identity':identity(stage / 'env/api.env'),'api_keys':sorted(api),
+            'api_exact_node_only':api == {'NODE_ENV':'production'},
+            'production_identity':identity(stage / 'env/production.env'),
+            'production_keys':sorted(production),'production_exact':production == expected_production,
+            'attempt_exists':(stage / 'evidence/application-env-attempt.json').exists(),
+            'record_exists':(stage / 'evidence/application-env.json').exists()}
           print(json.dumps(result, sort_keys=True))
           '''
 
           def validate(raw):
               value = json.loads(raw)
-              assert isinstance(value, dict) and set(value) == {'schema','result','mutations','stage_exists','attempt',
-                  'application_record_exists','application_record_sha256','active_api_sha256','candidates',
-                  'containers','caddy_active','caddy_enabled'}
-              assert value['schema'] == 1 and value['result'] == 'PASS_READ_ONLY_INSPECTION'
-              assert value['mutations'] is False and value['stage_exists'] is True
-              assert isinstance(value['candidates'], list) and isinstance(value['containers'], dict)
-              for key in ('application_record_sha256','active_api_sha256'):
-                  assert value[key] is None or re.fullmatch(r'[a-f0-9]{64}', value[key])
+              assert isinstance(value, dict) and value.get('schema') == 1
+              assert value.get('result') == 'PASS_READ_ONLY_INSPECTION' and value.get('mutations') is False
+              assert isinstance(value.get('stage_image_matches'), dict)
+              assert isinstance(value.get('initialization_image_matches'), dict)
+              assert isinstance(value.get('source_mismatches'), list)
               return value
 
           module.GUEST_PROGRAM = guest
