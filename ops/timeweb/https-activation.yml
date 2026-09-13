@@ -70,7 +70,7 @@ jobs:
         f251b3fe84b818c831d539bac3b0c489d694159489661c1329a7ec9df2b39495  ops/timeweb/application-caller.py
         61fc0550edbc533938b1850ad17aa6779c1d2fa7122db08296748acfe43924ea  ops/timeweb/verify-launch-provenance.py
         ba9d7f7d4a5475de9a4401be60694bcbeab1e62308d2f304454360fc72d2267e  ops/timeweb/upstream-disposition.py
-        0a77d61fb392e4440f5ad25fcae3b5f96f30d1ea1a18a07309e044e72a2a9779  ops/timeweb/test-activate-local-application-host.py
+        dcfeda041b41481494de1ae884b3d90c58c54a9bc612c8f1d1224063ae232d71  ops/timeweb/test-activate-local-application-host.py
         SHA256
         env -i PATH="$PATH" PYTHONDONTWRITEBYTECODE=1 python3 ops/timeweb/test-https-caller.py
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262

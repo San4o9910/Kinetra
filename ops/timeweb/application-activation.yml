@@ -80,7 +80,7 @@ jobs:
           922625e59fc1fcecf621ff8875f561a5f263a7831ab075b1e28349ca2a8b3e3d  ops/timeweb/authenticate-preserved-api.py
           2658c9b04bfdc076b7cf509570e9518b65f10ec6e0b6df960c3810a3a17a6de7  ops/timeweb/test-preserved-api-auth.py
           650c761d5293bd9871e54b23971b758e6936a6dc0040a205afd9fe6df22d3a01  ops/timeweb/api-resume-evidence-20260913.json
-          0a77d61fb392e4440f5ad25fcae3b5f96f30d1ea1a18a07309e044e72a2a9779  ops/timeweb/test-activate-local-application-host.py
+          dcfeda041b41481494de1ae884b3d90c58c54a9bc612c8f1d1224063ae232d71  ops/timeweb/test-activate-local-application-host.py
           SHA256
           # Model guest fixture ownership independently from the unprivileged runner checkout.
           env -i PATH="$PATH" python3 -B ops/timeweb/test-preserved-api-auth.py

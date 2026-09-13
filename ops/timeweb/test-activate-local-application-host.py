@@ -405,7 +405,15 @@ class LauncherTests(unittest.TestCase):
 
         fake.communicate, fake.poll, fake.wait = communicate, lambda: None if fake.running else fake.returncode, wait
         actual_path = Path
+        actual_lstat = Path.lstat
+        def root_fixture_lstat(path):
+            info = actual_lstat(path)
+            if self.root in (path, *path.parents):
+                return os.stat_result((*info[:4], 0, *info[5:]))
+            return info
         with patch.object(self.ns["pathlib"], "Path", side_effect=lambda path: self.root if path == "/run" else actual_path(path)), \
+             patch.object(actual_path, "lstat", root_fixture_lstat), \
+             patch.object(self.ns["os"], "geteuid", return_value=0), \
              patch.object(self.ns["sys"], "stdin", SimpleNamespace(buffer=io.BytesIO(json.dumps(self.data).encode()))), \
              patch.object(self.ns["subprocess"], "Popen", side_effect=spawn) as popen, \
              patch.object(self.ns["os"], "killpg") as killpg, \
