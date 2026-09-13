@@ -1,0 +1,144 @@
+# Owner attempted normal cancellation of this exact queued inspection; GitHub failed.
+# Recovery is limited to the same run while it has no jobs or artifacts.
+name: Recover stalled Kinetra inspection cancellation
+on:
+  push:
+    branches: [ops/timeweb-hourly-preflight-20260909]
+    paths: [.github/workflows/kinetra-cancel-stalled-inspection.yml]
+permissions: {}
+concurrency:
+  group: kinetra-cancel-inspection-34749066794
+  cancel-in-progress: false
+jobs:
+  cancel-stalled-inspection:
+    if: github.repository == 'San4o9910/Kinetra'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel only the exact unstarted inspection after failed normal cancellation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_CANCEL'
+          import datetime, json, os, sys, time, urllib.error, urllib.request
+
+          REPO = 'San4o9910/Kinetra'
+          RUN = 34749066794
+          ROOT = 'https://api.github.com/repos/' + REPO
+          RUN_PATH = '/actions/runs/' + str(RUN)
+          EXPECTED_SHA = '096393dae2c1fc977023bd0fccd17b2aa6758ace'
+          EXPECTED_BRANCH = 'ops/timeweb-hourly-preflight-20260909'
+
+          class Stop(Exception):
+              pass
+
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  raise Stop('unexpected-api-redirect')
+
+          def report(result, **fields):
+              print('KINETRA_INSPECTION_CANCEL=' + json.dumps(
+                  dict(schema=1, run_id=RUN, result=result, **fields), sort_keys=True), flush=True)
+
+          def request(path, method='GET'):
+              allowed = {RUN_PATH, RUN_PATH + '/jobs?filter=all&per_page=100',
+                         RUN_PATH + '/artifacts?per_page=100'}
+              if method == 'POST':
+                  if path != RUN_PATH + '/force-cancel':
+                      raise Stop('unexpected-write-target')
+              elif method != 'GET' or path not in allowed:
+                  raise Stop('unexpected-read-target')
+              req = urllib.request.Request(ROOT + path, method=method, headers={
+                  'Accept': 'application/vnd.github+json',
+                  'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                  'X-GitHub-Api-Version': '2022-11-28',
+                  'User-Agent': 'kinetra-scoped-inspection-recovery'})
+              try:
+                  with urllib.request.build_opener(NoRedirect).open(req, timeout=20) as response:
+                      code = response.status
+                      payload = response.read(2_000_001)
+              except urllib.error.HTTPError as exc:
+                  raise Stop('github-http-' + str(exc.code)) from None
+              except urllib.error.URLError:
+                  raise Stop('github-network-error') from None
+              if len(payload) > 2_000_000:
+                  raise Stop('github-response-too-large')
+              return code, json.loads(payload) if payload else None
+
+          def identity(value):
+              expected = {'id': RUN, 'head_sha': EXPECTED_SHA, 'head_branch': EXPECTED_BRANCH,
+                  'path': '.github/workflows/kinetra-image-artifact-inspection.yml',
+                  'workflow_id': 354615253, 'event': 'push', 'run_attempt': 1,
+                  'created_at': '2026-09-13T09:10:29Z'}
+              if any(value.get(key) != item for key, item in expected.items()):
+                  raise Stop('target-identity-changed')
+              if value.get('repository', {}).get('id') != 1339664626:
+                  raise Stop('repository-identity-changed')
+              if value.get('repository', {}).get('full_name') != REPO:
+                  raise Stop('repository-name-changed')
+
+          def unstarted(value):
+              identity(value)
+              if value.get('status') != 'queued' or value.get('conclusion') is not None:
+                  raise Stop('target-no-longer-unstarted-queued')
+              if value.get('updated_at') != '2026-09-13T09:10:29Z':
+                  raise Stop('target-progress-changed')
+              created = datetime.datetime.fromisoformat(value['created_at'].replace('Z', '+00:00'))
+              if (datetime.datetime.now(datetime.timezone.utc) - created).total_seconds() < 3600:
+                  raise Stop('target-not-stalled')
+
+          def empty_evidence():
+              for suffix, key in [('/jobs?filter=all&per_page=100', 'jobs'),
+                                  ('/artifacts?per_page=100', 'artifacts')]:
+                  code, result = request(RUN_PATH + suffix)
+                  if code != 200 or result.get('total_count') != 0 or result.get(key) != []:
+                      raise Stop('target-has-' + key)
+
+          def main():
+              code, target = request(RUN_PATH)
+              if code != 200:
+                  raise Stop('unexpected-get-status')
+              identity(target)
+              if target.get('status') == 'completed':
+                  report('NO_ACTION_TARGET_COMPLETED', conclusion=target.get('conclusion'))
+                  return
+              unstarted(target)
+              empty_evidence()
+              # Re-read immediately before the single, exact cancellation request.
+              code, target = request(RUN_PATH)
+              if code != 200:
+                  raise Stop('unexpected-get-status')
+              unstarted(target)
+              empty_evidence()
+              report('PRECONDITIONS_PASS', status='queued', jobs=0, artifacts=0)
+              code, unused = request(RUN_PATH + '/force-cancel', 'POST')
+              if code != 202:
+                  raise Stop('unexpected-force-cancel-status')
+              report('FORCE_CANCEL_ACCEPTED', http_status=code)
+              for attempt in range(6):
+                  code, current = request(RUN_PATH)
+                  if code != 200:
+                      raise Stop('unexpected-get-status')
+                  identity(current)
+                  if current.get('status') == 'completed':
+                      if current.get('conclusion') != 'cancelled':
+                          raise Stop('completed-with-different-conclusion')
+                      empty_evidence()
+                      report('CANCELLED_CONFIRMED', status='completed', conclusion='cancelled', jobs=0)
+                      return
+                  time.sleep(5)
+              raise Stop('cancellation-not-yet-confirmed')
+
+          try:
+              main()
+          except Stop as exc:
+              report('STOP', reason=str(exc))
+              sys.exit(1)
+          except Exception:
+              report('STOP', reason='unexpected-recovery-error')
+              sys.exit(1)
+          PY_CANCEL
