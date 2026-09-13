@@ -2,6 +2,7 @@
 # Fill REVIEW_REQUIRED from actual green current CI/image/database evidence;
 # review this caller before publishing as .github/workflows/timeweb-application-activation.yml.
 # Only API environment preparation and local application startup. No HTTPS/boot/jobs.
+# Bounded retry after 34747520462 failed before SSH/host mutation; pre-host and Timeweb GET diagnostics passed.
 name: Prepare free-beta API and accept local Kinetra application
 
 on:
