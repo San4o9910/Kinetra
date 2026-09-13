@@ -1,4 +1,4 @@
-name: Validate proposed optional Health lookup on preserved exact backend
+name: Recheck exact backend after owner approved preserved continuation
 on:
   push:
     branches: [ops/timeweb-hourly-preflight-20260909]
