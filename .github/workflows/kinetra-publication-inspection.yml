@@ -1,0 +1,82 @@
+name: Inspect Kinetra publication metadata without changes
+'on':
+  push:
+    branches: [ops/timeweb-hourly-preflight-20260909]
+    paths: [.github/workflows/kinetra-publication-inspection.yml]
+permissions:
+  contents: read
+  actions: read
+  packages: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Read exact failed publication artifact and current package metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -B - <<'PY'
+          import hashlib, io, json, os, sys, urllib.error, urllib.parse, urllib.request, zipfile
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, request, file, code, message, headers, new_url): return None
+          opener = urllib.request.build_opener(NoRedirect)
+          def api(path, archive=False):
+              request = urllib.request.Request('https://api.github.com' + path,
+                  headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                           'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28'})
+              try:
+                  response = opener.open(request, timeout=30)
+              except urllib.error.HTTPError as error:
+                  if not archive or error.code != 302: raise
+                  location = error.headers['Location']; url = urllib.parse.urlsplit(location)
+                  assert url.scheme == 'https' and not url.username and not url.password and url.port in (None, 443)
+                  assert url.hostname and url.hostname.endswith(('.blob.core.windows.net', '.actions.githubusercontent.com'))
+                  response = opener.open(urllib.request.Request(location), timeout=30)
+              with response: body = response.read(8 * 1024 * 1024 + 1)
+              assert len(body) <= 8 * 1024 * 1024
+              return body if archive else json.loads(body)
+          def main():
+              assert os.environ['GITHUB_REPOSITORY'] == 'San4o9910/Kinetra'
+              assert os.environ['GITHUB_REF'] == 'refs/heads/ops/timeweb-hourly-preflight-20260909'
+              assert os.environ['GITHUB_RUN_ATTEMPT'] == '1'
+              prefix = '/repos/San4o9910/Kinetra'
+              artifact = api(prefix + '/actions/artifacts/10311681518')
+              assert artifact['id'] == 10311681518 and artifact['expired'] is False
+              assert artifact['name'] == 'kinetra-image-evidence-34733519897-1'
+              assert artifact['workflow_run']['id'] == 34733519897
+              assert artifact['workflow_run']['head_sha'] == 'cbeb9be9dc94ce7966ae208472224b7904381e6b'
+              digest = '4783d6fd51bec6c8a9d3c4bfe63d6b2e6c2f0915ecd472323d47b8dd60c05bd7'
+              assert artifact['digest'] == 'sha256:' + digest
+              raw = api(prefix + '/actions/artifacts/10311681518/zip', archive=True)
+              assert hashlib.sha256(raw).hexdigest() == digest
+              with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+                  names = archive.namelist()
+                  assert len(names) == len(set(names)) and len(names) <= 150
+                  def member(name):
+                      info = archive.getinfo(name)
+                      assert not info.is_dir() and not info.flag_bits & 1 and info.file_size <= 2 * 1024 * 1024
+                      return archive.read(info)
+                  evidence = {'archive_sha256': digest, 'published_images': member('published-images.env').decode('ascii'),
+                      'source_sbom_sha256': hashlib.sha256(member('source-components.cdx.json')).hexdigest(),
+                      'image_scan_summary': json.loads(member('scan-summary.json')),
+                      'disposition': json.loads(member('upstream-media/disposition.json')),
+                      'package_visibility_file_present': 'package-visibility.json' in names}
+                  assert evidence['source_sbom_sha256'] == 'ebb69ea87b5ec9aa929c590bf6ceab0bc6239c38bfb3040e198e6a7bfa925dd7'
+                  print('KINETRA_PUBLICATION_ARTIFACT=' + json.dumps(evidence, sort_keys=True))
+              for name in ('kinetra-backend', 'kinetra-frontend'):
+                  package = api('/users/San4o9910/packages/container/' + name)
+                  repository = package.get('repository') or {}
+                  output = {key: package.get(key) for key in ('id', 'name', 'package_type', 'visibility', 'html_url', 'created_at', 'updated_at')}
+                  output['repository'] = {key: repository.get(key) for key in ('id', 'full_name', 'private')}
+                  output['owner_login'] = (package.get('owner') or {}).get('login')
+                  print('KINETRA_CURRENT_PACKAGE_METADATA=' + json.dumps(output, sort_keys=True))
+              print('KINETRA_PUBLICATION_INSPECTION=PASS')
+          try:
+              main()
+          except BaseException:
+              print('KINETRA_PUBLICATION_INSPECTION=FAIL', file=sys.stderr)
+              sys.exit(1)
+          PY
