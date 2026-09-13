@@ -1,7 +1,10 @@
 # Decision: frozen Health query and exact preserved local-start continuation
 
-Status: OWNER_DECISION_REQUIRED. This is a new, narrower decision than the approved
-replacement inspection. No activation change or retry is published by this proposal.
+Status: OWNER_APPROVED on 2026-09-13. The owner replied «да» to the exact
+proposal at 3fe71151ff3d590c0cb03c367693a87ef0f2d4a6 in this conversation.
+Implement and test the bounded Health correction and preserved-backend continuation
+below, then continue sequential local/HTTPS acceptance within the existing limits.
+The historical diagnosis and explanation of the requested decision are retained.
 
 ## Verified state — 2026-09-13
 
