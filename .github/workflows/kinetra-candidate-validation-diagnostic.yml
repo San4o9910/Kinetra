@@ -1,4 +1,4 @@
-name: Inspect exact local startup failure checkpoint without restarting
+name: Inspect created backend identity and frozen Docker query failure
 on:
   push:
     branches: [ops/timeweb-hourly-preflight-20260909]
@@ -131,13 +131,34 @@ jobs:
               result['start_checkpoint']={k:value[k] for k in ('phase','error','nonce','attempt_recorded',
                   'attempted_services','start_attempted_services','uncertain_start_services','owned_containers','rollback')}
               result['start_checkpoint']['sha256']=hashlib.sha256(raw).hexdigest()
+          assert result['start_checkpoint']['sha256']=='ad5f14d8c643045b59275b4d0433cd9e96f63c1e4fba22dd1af7f3da7812548a'
+          nonce=result['start_checkpoint']['nonce']
+          args=['/usr/bin/docker','container','ls','--all','--quiet','--no-trunc','--filter',
+              'label=com.docker.compose.project=kinetra-production','--filter','label=com.docker.compose.service=backend',
+              '--filter','label=com.kinetra.activation='+nonce]
+          p=subprocess.run(args,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=15,text=True)
+          assert p.returncode==0
+          ids=p.stdout.splitlines();assert len(ids)==1 and re.fullmatch(r'[a-f0-9]{64}',ids[0])
+          template='{"id":{{json .Id}},"image":{{json .Config.Image}},"image_id":{{json .Image}},"user":{{json .Config.User}},"project":{{json (index .Config.Labels "com.docker.compose.project")}},"service":{{json (index .Config.Labels "com.docker.compose.service")}},"nonce":{{json (index .Config.Labels "com.kinetra.activation")}},"running":{{json .State.Running}},"status":{{json .State.Status}},"health":{{if .State.Health}}{{json .State.Health.Status}}{{else}}null{{end}},"readonly":{{json .HostConfig.ReadonlyRootfs}},"cap_drop":{{json .HostConfig.CapDrop}},"cap_add":{{json .HostConfig.CapAdd}},"security":{{json .HostConfig.SecurityOpt}},"ports":{{json .NetworkSettings.Ports}},"networks":{{json .NetworkSettings.Networks}},"mounts":{{json .Mounts}},"restart":{{json .HostConfig.RestartPolicy.Name}}}'
+          p=subprocess.run(['/usr/bin/docker','inspect','--type','container','--format',template,ids[0]],
+              stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=15,text=True)
+          safe_error='NONE' if p.returncode==0 else 'HEALTH_FIELD_ABSENT' if 'map has no entry for key "Health"' in p.stderr else 'OTHER_INSPECT_ERROR'
+          safe_template='{"id":{{json .Id}},"image":{{json .Config.Image}},"project":{{json (index .Config.Labels "com.docker.compose.project")}},"service":{{json (index .Config.Labels "com.docker.compose.service")}},"nonce":{{json (index .Config.Labels "com.kinetra.activation")}},"running":{{json .State.Running}},"status":{{json .State.Status}},"started_at":{{json .State.StartedAt}}}'
+          q=subprocess.run(['/usr/bin/docker','inspect','--type','container','--format',safe_template,ids[0]],
+              stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=15,text=True,check=True)
+          identity=json.loads(q.stdout)
+          assert identity['id']==ids[0] and identity['project']=='kinetra-production' and identity['service']=='backend' and identity['nonce']==nonce
+          assert identity['image']=='ghcr.io/san4o9910/kinetra-backend@sha256:9138a6408442b847ca771690053870880cee831769919aaf2a2dc858d52e8362'
+          assert identity['status']=='created' and identity['running'] is False and identity['started_at']=='0001-01-01T00:00:00Z'
+          result['created_backend']={'id':ids[0],'nonce':nonce,'status':'created','never_started':True,
+              'original_inspect_returncode':p.returncode,'original_inspect_error':safe_error}
           os.close(descriptor)
           print(json.dumps(result,sort_keys=True))
           '''
           def validate(raw):
               value=json.loads(raw)
               assert set(value)=={'schema','result','mutations','data_root','pgdata','mounted_root','volume_name',
-                  'volume_bind_matches','postgres_version_17','bootstrap_marker_exists','application_record_exists','recovery_complete_exists','start_attempt_exists','start_result_exists','compose_services','start_checkpoint'}
+                  'volume_bind_matches','postgres_version_17','bootstrap_marker_exists','application_record_exists','recovery_complete_exists','start_attempt_exists','start_result_exists','compose_services','start_checkpoint','created_backend'}
               assert value['schema']==1 and value['result']=='PASS_READ_ONLY_INSPECTION' and value['mutations'] is False
               assert value['volume_name']=='kinetra-production_postgres17_data'
               for name in ('data_root','pgdata','mounted_root'):
@@ -162,6 +183,12 @@ jobs:
                   assert all(re.fullmatch(r'[a-f0-9]{64}',cid) for cid in item['owned_containers'].values())
                   assert set(item['rollback'])<={'backend','frontend'}
                   assert all(v in {'NO_CONTAINER_OBSERVED','CREATED_NOT_STARTED','STOPPED','UNCONFIRMED_REQUIRES_REVIEW'} for v in item['rollback'].values())
+              backend=value['created_backend']
+              assert set(backend)=={'id','nonce','status','never_started','original_inspect_returncode','original_inspect_error'}
+              assert re.fullmatch(r'[a-f0-9]{64}',backend['id']) and backend['nonce']==item['nonce']
+              assert backend['status']=='created' and backend['never_started'] is True
+              assert type(backend['original_inspect_returncode']) is int and backend['original_inspect_returncode'] in range(256)
+              assert backend['original_inspect_error'] in {'NONE','HEALTH_FIELD_ABSENT','OTHER_INSPECT_ERROR'}
               return value
 
           module.GUEST_PROGRAM = guest
