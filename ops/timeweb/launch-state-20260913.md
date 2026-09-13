@@ -55,3 +55,20 @@ Detailed evidence: [source-rebuild-analysis-20260913.json](source-rebuild-analys
 Application remains `73b665065e00a5b375e90f701373b3e0856a0386`, Draft PR21 unmerged.
 Prepared database/application/HTTPS callers remain dormant until actual fresh
 qualification succeeds. Do not blindly repeat first host initialization/start.
+
+## Corrected execution
+
+Correction control: `cbeb9be9dc94ce7966ae208472224b7904381e6b`.
+Real scanner [34733519894](https://github.com/San4o9910/Kinetra/actions/runs/34733519894),
+job `103660661920`, completed successfully. Actual logs confirm all 38 tests,
+unchanged approved source inventory, raw HIGH/CRITICAL 2, dispositioned 2,
+unresolved 0, and successful unsuppressed positive controls. The original
+production and positive-control exit codes remain 2.
+
+Fresh full qualification
+[34733519897](https://github.com/San4o9910/Kinetra/actions/runs/34733519897),
+job `103660662186`, is running. Current source gates, registry resolution and the
+reviewed AMD CPU precondition passed. The media rebuild and exact prior-SBOM
+precheck are still in progress as of 02:40 UTC. Do not start another image run or
+change its workflow while it runs. No corrected full-image PASS, publication or
+host activation is claimed by this checkpoint.
