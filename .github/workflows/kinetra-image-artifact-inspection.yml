@@ -1,51 +1,119 @@
-name: Verify Kinetra API helper dependency correction
+name: Inspect latest sanitized Kinetra application preparation attempt
 on:
   push:
     branches: [ops/timeweb-hourly-preflight-20260909]
     paths: [.github/workflows/kinetra-image-artifact-inspection.yml]
 permissions:
   contents: read
+  actions: read
 jobs:
-  verify:
+  inspect:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
           fetch-depth: 1
-      - name: Verify exact corrected dependency chain and offline tests
+      - name: Read only the exact sanitized application-attempt artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          sha256sum --check --strict <<'SHA256'
-          f549bdda5c325ce4d36a2be239bb6458f79f5d011d3e5ec61e9158388377377a  ops/timeweb/prepare-api-host.py
-          22b4c0fe509d2b5d96209e4031604a493cf2aa5baeafd4bfdfce4c890b8ff357  ops/timeweb/activate-local-application-host.py
-          598d82e4d00b54606be8cd6c9ebc872d3a62ebd9786b250cad267a4f1e1df844  ops/timeweb/application-caller.py
-          6dba697be21ee9429a63a67309a7e359ef5c47e67dc347a20e7a90fc5e7d840a  ops/timeweb/https-caller.py
-          e7fc66bb036a348e9e8e670f18263e5dbae0b97fabe8ee6cf9a18e585f0f1665  ops/timeweb/test-prepare-api-host.py
-          d9825e47848e9703bd75192ed695adb4b12a8eed56e03976b43b345e61064258  ops/timeweb/test-activate-local-application-host.py
-          444528e29fa1b280a78989727911a9f6c5025f285a30bed5af0f31fc0ea396c8  ops/timeweb/test-application-caller.py
-          45130035b0124170fc219eae702e9422fbe1a2134f73b0f5ef0a63a39b120611  ops/timeweb/test-https-caller.py
-          SHA256
-          python3 -m py_compile ops/timeweb/prepare-api-host.py ops/timeweb/activate-local-application-host.py ops/timeweb/application-caller.py ops/timeweb/https-caller.py
-          sudo env PYTHONDONTWRITEBYTECODE=1 python3 ops/timeweb/test-prepare-api-host.py
-          sudo env PYTHONDONTWRITEBYTECODE=1 python3 ops/timeweb/test-activate-local-application-host.py
-          env -i PATH="$PATH" PYTHONDONTWRITEBYTECODE=1 python3 ops/timeweb/test-application-caller.py
-          env -i PATH="$PATH" PYTHONDONTWRITEBYTECODE=1 python3 ops/timeweb/test-https-caller.py
-          python3 - <<'PY_VERIFY'
-          import ast, hashlib
-          files = {
-              'prepare': ('ops/timeweb/prepare-api-host.py', 'f549bdda5c325ce4d36a2be239bb6458f79f5d011d3e5ec61e9158388377377a'),
-              'local': ('ops/timeweb/activate-local-application-host.py', '22b4c0fe509d2b5d96209e4031604a493cf2aa5baeafd4bfdfce4c890b8ff357'),
-              'caller': ('ops/timeweb/application-caller.py', '598d82e4d00b54606be8cd6c9ebc872d3a62ebd9786b250cad267a4f1e1df844'),
-              'https': ('ops/timeweb/https-caller.py', '6dba697be21ee9429a63a67309a7e359ef5c47e67dc347a20e7a90fc5e7d840a'),
-          }
-          for path, expected in files.values():
-              raw=open(path,'rb').read()
-              assert hashlib.sha256(raw).hexdigest()==expected
-              ast.parse(raw, filename=path)
-          source=open(files['prepare'][0],encoding='utf-8').read()
-          assert source.count('"inspect-host-monitoring.py": "3ffc667a66330c323836d1335e78f92940d6ebdc1877cf66048265d774bb3086"') == 1
-          print('KINETRA_API_HELPER_DEPENDENCY_CORRECTION=PASS')
-          PY_VERIFY
+          python3 -B - <<'PY_INSPECT'
+          import hashlib, io, json, os, re, stat, urllib.error, urllib.parse, urllib.request, zipfile
+
+          REPOSITORY = 'San4o9910/Kinetra'
+          RUN = 34748921875
+          CONTROL = '5021035f1e56cf935b177bd6a54e3ce95d322a7a'
+          ARTIFACT = 10315336650
+          DIGEST = '1aacc165460f8e134ee99cdba94c0575d50768057218b7a95c8c7bc2fa36bf2b'
+          NAME = 'kinetra-local-attempt-34748921875-1'
+          ALLOWED = {'api-outer.json', 'local-outer.json',
+                     'api-outer.observations.jsonl', 'local-outer.observations.jsonl'}
+
+          assert os.environ['GITHUB_REPOSITORY'] == REPOSITORY
+          assert os.environ['GITHUB_REF'] == 'refs/heads/ops/timeweb-hourly-preflight-20260909'
+          assert os.environ['GITHUB_RUN_ATTEMPT'] == '1'
+
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, request, file, code, message, headers, new_url):
+                  return None
+          opener = urllib.request.build_opener(NoRedirect)
+
+          def fetch(path, archive=False):
+              req = urllib.request.Request('https://api.github.com/repos/' + REPOSITORY + path,
+                  headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                           'Accept': 'application/vnd.github+json'})
+              try:
+                  response = opener.open(req, timeout=30)
+              except urllib.error.HTTPError as error:
+                  if not archive or error.code != 302:
+                      raise RuntimeError('Artifact API read failed') from None
+                  location = error.headers['Location']
+                  parsed = urllib.parse.urlsplit(location)
+                  assert parsed.scheme == 'https' and not parsed.username and not parsed.password
+                  assert parsed.port in (None, 443) and parsed.hostname
+                  assert parsed.hostname.endswith(('.blob.core.windows.net', '.actions.githubusercontent.com'))
+                  response = opener.open(urllib.request.Request(location), timeout=30)
+              with response:
+                  data = response.read(128 * 1024 + 1)
+              assert len(data) <= 128 * 1024
+              return data if archive else json.loads(data)
+
+          metadata = fetch('/actions/artifacts/' + str(ARTIFACT))
+          assert metadata['id'] == ARTIFACT and metadata['name'] == NAME and metadata['expired'] is False
+          assert metadata['size_in_bytes'] <= 64 * 1024
+          assert metadata['digest'] == 'sha256:' + DIGEST
+          assert metadata['workflow_run']['id'] == RUN
+          assert metadata['workflow_run']['head_sha'] == CONTROL
+
+          raw = fetch('/actions/artifacts/' + str(ARTIFACT) + '/zip', archive=True)
+          assert hashlib.sha256(raw).hexdigest() == DIGEST
+
+          def pairs(items):
+              output = {}
+              for key, value in items:
+                  assert key not in output
+                  output[key] = value
+              return output
+          def nonfinite(_value):
+              raise ValueError('nonfinite')
+          def strict(raw_json):
+              return json.loads(raw_json, object_pairs_hook=pairs, parse_constant=nonfinite)
+          sensitive = re.compile(r'(secret|token|password|authorization|credential|smtp|username|email)', re.I)
+          def sanitized(value):
+              if isinstance(value, dict):
+                  return {key: ('<redacted>' if sensitive.search(key) else sanitized(item))
+                          for key, item in value.items()}
+              if isinstance(value, list):
+                  assert len(value) <= 100
+                  return [sanitized(item) for item in value]
+              if isinstance(value, str):
+                  if len(value) > 512 or '@' in value or re.search(r'(?i)bearer\\s|basic\\s', value):
+                      return '<redacted>'
+                  return value
+              assert value is None or type(value) in (bool, int, float)
+              return value
+
+          result = {}
+          with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+              infos = archive.infolist()
+              names = [item.filename for item in infos]
+              assert names and len(names) == len(set(names)) and set(names) <= ALLOWED
+              for info in infos:
+                  assert not info.is_dir() and '/' not in info.filename and '\\\\' not in info.filename
+                  assert not info.flag_bits & 1 and 0 < info.file_size <= 64 * 1024
+                  mode = (info.external_attr >> 16) & 0o170000
+                  assert mode in (0, stat.S_IFREG)
+                  data = archive.read(info)
+                  if info.filename.endswith('.json'):
+                      result[info.filename] = sanitized(strict(data))
+                  else:
+                      lines = data.splitlines()
+                      assert len(lines) <= 100
+                      result[info.filename] = [sanitized(strict(line)) for line in lines if line]
+          print('KINETRA_SANITIZED_APPLICATION_ATTEMPT=' + json.dumps(result, sort_keys=True))
+          print('KINETRA_APPLICATION_ATTEMPT_INSPECTION=PASS')
+          PY_INSPECT
