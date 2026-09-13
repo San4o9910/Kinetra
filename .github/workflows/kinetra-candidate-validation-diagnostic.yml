@@ -1,4 +1,4 @@
-name: Inspect approved continuation checkpoint and retained containers
+name: Inspect exact stopped frontend shell and CSP asset policy
 on:
   push:
     branches: [ops/timeweb-hourly-preflight-20260909]
@@ -81,7 +81,8 @@ jobs:
           spec.loader.exec_module(module)
 
           guest = r'''
-          import fcntl,hashlib,json,os,pathlib,re,stat,subprocess
+          import fcntl,hashlib,io,json,os,pathlib,re,stat,subprocess,tarfile
+          from html.parser import HTMLParser
           stage=pathlib.Path('/srv/kinetra-stage')
           fd=os.open('/run/kinetra-database-stage.lock',os.O_RDONLY|os.O_NOFOLLOW)
           fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
@@ -110,12 +111,35 @@ jobs:
           services=p.stdout.splitlines()
           assert len(services)==3 and all(s in {'postgres=running','backend=created','backend=running','backend=exited','frontend=created','frontend=running','frontend=exited'} for s in services)
           result={'schema':1,'result':'PASS_READ_ONLY_INSPECTION','mutations':False,'records':records,'containers':rows,'services':services}
+          def read_frontend_file(path):
+              p=subprocess.run(['/usr/bin/docker','cp','c47ad815087ec8f3b310ac59f565babfb03af5b43102f56ac24678ac1c36d206:'+path,'-'],
+                  stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=15,check=True)
+              assert len(p.stdout)<=131072
+              with tarfile.open(fileobj=io.BytesIO(p.stdout),mode='r:*') as t:
+                  members=t.getmembers();assert len(members)==1 and members[0].isfile() and members[0].size<=65536
+                  return t.extractfile(members[0]).read()
+          shell=read_frontend_file('/usr/share/nginx/html/index.html')
+          theme=read_frontend_file('/usr/share/nginx/html/theme-init.js')
+          config=read_frontend_file('/etc/nginx/nginx.conf')
+          class Assets(HTMLParser):
+              def __init__(self):super().__init__();self.items=[]
+              def handle_starttag(self,tag,attrs):
+                  v=dict(attrs)
+                  if tag=='script' and v.get('src') is not None:self.items.append({'kind':'script','url':v['src']})
+                  if tag=='link' and v.get('rel')=='stylesheet':self.items.append({'kind':'stylesheet','url':v.get('href','')})
+          parser=Assets();parser.feed(shell.decode('utf8'))
+          assert len(parser.items)<=20 and all(len(x['url'])<=2048 for x in parser.items)
+          policy=re.findall(r'add_header Content-Security-Policy "([^"\\n]+)" always;',config.decode('utf8'))
+          assert len(policy)==1
+          result['frontend_assets']={'index_sha256':hashlib.sha256(shell).hexdigest(),
+              'theme_sha256':hashlib.sha256(theme).hexdigest(),'nginx_sha256':hashlib.sha256(config).hexdigest(),
+              'references':parser.items,'csp':policy[0]}
           os.close(fd)
           print(json.dumps(result,sort_keys=True))
           '''
           def validate(raw):
               v=json.loads(raw)
-              assert set(v)=={'schema','result','mutations','records','containers','services'}
+              assert set(v)=={'schema','result','mutations','records','containers','services','frontend_assets'}
               assert v['schema']==1 and v['result']=='PASS_READ_ONLY_INSPECTION' and v['mutations'] is False
               assert set(v['records'])=={'original','failed_archive','continuation_attempt','continuation_result'}
               for row in v['records'].values():
@@ -139,6 +163,14 @@ jobs:
                   assert type(row['running']) is bool and row['status'] in {'created','running','exited'} and row['health'] in {None,'starting','healthy','unhealthy'}
                   assert re.fullmatch(r'[0-9TZ:.-]{20,40}',row['started'])
               assert len(v['services'])==3 and all(x in {'postgres=running','backend=created','backend=running','backend=exited','frontend=created','frontend=running','frontend=exited'} for x in v['services'])
+              a=v['frontend_assets']
+              assert set(a)=={'index_sha256','theme_sha256','nginx_sha256','references','csp'}
+              assert all(re.fullmatch(r'[a-f0-9]{64}',a[k]) for k in ('index_sha256','theme_sha256','nginx_sha256'))
+              assert isinstance(a['references'],list) and len(a['references'])<=20
+              for row in a['references']:
+                  assert set(row)=={'kind','url'} and row['kind'] in {'script','stylesheet'}
+                  assert isinstance(row['url'],str) and len(row['url'])<=2048 and not re.search(r'[\\x00-\\x20\\x7f]',row['url'])
+              assert isinstance(a['csp'],str) and len(a['csp'])<=2048 and not re.search(r'[\\x00-\\x1f\\x7f]',a['csp'])
               return v
 
           module.GUEST_PROGRAM = guest
