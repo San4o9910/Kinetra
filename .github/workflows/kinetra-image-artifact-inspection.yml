@@ -30,7 +30,7 @@ jobs:
           SHA256
           python3 -m py_compile ops/timeweb/prepare-api-host.py ops/timeweb/activate-local-application-host.py ops/timeweb/application-caller.py ops/timeweb/https-caller.py
           sudo env PYTHONDONTWRITEBYTECODE=1 python3 ops/timeweb/test-prepare-api-host.py
-          PYTHONDONTWRITEBYTECODE=1 python3 ops/timeweb/test-activate-local-application-host.py
+          sudo env PYTHONDONTWRITEBYTECODE=1 python3 ops/timeweb/test-activate-local-application-host.py
           env -i PATH="$PATH" PYTHONDONTWRITEBYTECODE=1 python3 ops/timeweb/test-application-caller.py
           env -i PATH="$PATH" PYTHONDONTWRITEBYTECODE=1 python3 ops/timeweb/test-https-caller.py
           python3 - <<'PY_VERIFY'
