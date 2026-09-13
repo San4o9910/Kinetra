@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import base64,copy,importlib.util,json,pathlib,tempfile,unittest
+import os
+from unittest.mock import patch
 HERE=pathlib.Path(__file__).resolve().parent
 def load(name,path=None):
     s=importlib.util.spec_from_file_location(name,path or HERE/(name+'.py'))
@@ -43,7 +45,16 @@ class AuthTests(unittest.TestCase):
             with tempfile.TemporaryDirectory(prefix='kinetra-helper-contract-') as folder:
                 for name,body in m.public_helpers().items():
                     path=pathlib.Path(folder,name);path.write_bytes(base64.b64decode(body));path.chmod(0o644)
-                load('guest_import_'+wrapper,pathlib.Path(folder,guest))
-                pathlib.Path(folder,'inspect-host-monitoring.py').unlink()
-                with self.assertRaises(FileNotFoundError):load('missing_'+wrapper,pathlib.Path(folder,guest))
+                # Model only root ownership of our private guest fixture. The
+                # runner-owned checkout retains its actual owner and guards.
+                original_lstat=pathlib.Path.lstat
+                def guest_owned(path,*args,**kwargs):
+                    info=original_lstat(path,*args,**kwargs)
+                    if pathlib.Path(folder) in (path,*path.parents):
+                        return os.stat_result((*info[:4],0,0,*info[6:]))
+                    return info
+                with patch.object(pathlib.Path,'lstat',guest_owned):
+                    load('guest_import_'+wrapper,pathlib.Path(folder,guest))
+                    pathlib.Path(folder,'inspect-host-monitoring.py').unlink()
+                    with self.assertRaises(FileNotFoundError):load('missing_'+wrapper,pathlib.Path(folder,guest))
 if __name__=='__main__':unittest.main()

@@ -78,12 +78,12 @@ jobs:
           33f479cdb1b8215107fb74915bff05718c690fb8f6a5d1692fb7237eaeb92b05  ops/timeweb/recovery-caller.py
           d1aa5e4c1e488d6fe8437bcbbb035c6c2750d1c7163e30fc39bd8dc60f70d42d  ops/timeweb/test-recover-api-candidate.py
           922625e59fc1fcecf621ff8875f561a5f263a7831ab075b1e28349ca2a8b3e3d  ops/timeweb/authenticate-preserved-api.py
-          c0d9406c9669f20c42867ec653de43a6d84a10127d9aa1b6695cb11fb5588d40  ops/timeweb/test-preserved-api-auth.py
+          2658c9b04bfdc076b7cf509570e9518b65f10ec6e0b6df960c3810a3a17a6de7  ops/timeweb/test-preserved-api-auth.py
           650c761d5293bd9871e54b23971b758e6936a6dc0040a205afd9fe6df22d3a01  ops/timeweb/api-resume-evidence-20260913.json
           0a77d61fb392e4440f5ad25fcae3b5f96f30d1ea1a18a07309e044e72a2a9779  ops/timeweb/test-activate-local-application-host.py
           SHA256
-          # Guest fixtures require root ownership, matching the real guest; no tokens enter tests.
-          sudo env -i PATH="$PATH" python3 -B ops/timeweb/test-preserved-api-auth.py
+          # Model guest fixture ownership independently from the unprivileged runner checkout.
+          env -i PATH="$PATH" python3 -B ops/timeweb/test-preserved-api-auth.py
           env -i PATH="$PATH" python3 -B ops/timeweb/test-activate-local-application-host.py
           PYTHONDONTWRITEBYTECODE=1 python3 ops/timeweb/test-upstream-disposition.py
           env -i PATH="$PATH" python3 ops/timeweb/test-application-caller.py
