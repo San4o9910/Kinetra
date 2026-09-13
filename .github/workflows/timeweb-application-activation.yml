@@ -78,7 +78,8 @@ jobs:
           de3a10148df70d68d6b64b05b11250b44b4324c709a691970c214f1d98e736cd  ops/timeweb/recovery-caller.py
           d1aa5e4c1e488d6fe8437bcbbb035c6c2750d1c7163e30fc39bd8dc60f70d42d  ops/timeweb/test-recover-api-candidate.py
           SHA256
-          env -i PATH="$PATH" python3 -B ops/timeweb/test-recover-api-candidate.py
+          # Guest fixtures require root ownership, matching the real guest; no tokens enter tests.
+          sudo env -i PATH="$PATH" python3 -B ops/timeweb/test-recover-api-candidate.py
           PYTHONDONTWRITEBYTECODE=1 python3 ops/timeweb/test-upstream-disposition.py
           env -i PATH="$PATH" python3 ops/timeweb/test-application-caller.py
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
