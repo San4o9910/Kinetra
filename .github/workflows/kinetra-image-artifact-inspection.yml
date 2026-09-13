@@ -1,4 +1,4 @@
-name: Diagnose Kinetra API preparation before any host access
+name: Inspect Kinetra Timeweb API before application retry
 on:
   push:
     branches: [ops/timeweb-hourly-preflight-20260909]
@@ -14,81 +14,40 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 1
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          ref: 73b665065e00a5b375e90f701373b3e0856a0386
-          path: Kinetra
-          persist-credentials: false
-          fetch-depth: 1
-      - name: Validate exact pre-host inputs without network or writes
+      - name: Read only exact existing server identity
         env:
-          APP_CHECKOUT: ${{ github.workspace }}/Kinetra
-          APPROVED_APP_COMMIT: 73b665065e00a5b375e90f701373b3e0856a0386
-          NODE_IMAGE: node@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32
-          NGINX_IMAGE: nginxinc/nginx-unprivileged@sha256:3a4485bf084957d56674ee22db07d77d5a281418815c5852827419d6d629d440
-          BACKEND_IMAGE: ghcr.io/san4o9910/kinetra-backend@sha256:9138a6408442b847ca771690053870880cee831769919aaf2a2dc858d52e8362
-          FRONTEND_IMAGE: ghcr.io/san4o9910/kinetra-frontend@sha256:da47e7f576cfb3892b9078e8463cdad855081e032d51645639794736c1098ff2
-          POSTGRES_IMAGE: postgres:17-bookworm@sha256:7bade6d532592ca8ce7ee32def7399dad2607c4ea5583839fc4352a095a11ea6
           TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
-          AUTH_TOKEN_DELIVERY_MODE: smtp
-          AUTH_TOKEN_DELIVERY_SMTP_SERVICE: yandex
-          AUTH_TOKEN_DELIVERY_SMTP_USERNAME: ${{ secrets.AUTH_TOKEN_DELIVERY_SMTP_USERNAME }}
-          AUTH_TOKEN_DELIVERY_SMTP_PASSWORD: ${{ secrets.AUTH_TOKEN_DELIVERY_SMTP_PASSWORD }}
-          AUTH_TOKEN_DELIVERY_APP_ORIGIN: https://80.68.156.131
         shell: bash
         run: |
           set -euo pipefail
           sha256sum --check --strict <<'SHA256'
           6b63573205b874c03d08e6147eec364928630ff094100848a7146382700740ea  ops/timeweb/prepare-api-host.py
-          16c9ed2fc47534f86f35e4aa215d824ffbec84fd3c684d5d02157a7e944322c4  ops/timeweb/activate-application-host.py
-          041f415dedf6b0b6922484281926c8c98c87828506dcb2e1ac6fb324b00b05bb  ops/timeweb/initialize-database-host.py
-          4621b1c0153ab56ae535e245fdb2de4ef2aff4a30ba5b592343a26795f0655ae  ops/timeweb/prepare-database-host.py
-          a19aca3ea953feecdcb9be6e9dcabdfc8b0e2b4f3938184391cdfb2ff3e87c9e  ops/timeweb/bootstrap-server.py
           567d892221925bb438ece6a893360a891ffd4228f8af0a18252b8ba365a682c0  ops/timeweb/inspect-server.py
           SHA256
-          python3 -B - <<'PY_DIAG'
-          import importlib.util, os, re, sys
-          path = 'ops/timeweb/prepare-api-host.py'
-          spec = importlib.util.spec_from_file_location('kinetra_prepare_diag', path)
+          python3 -B - <<'PY_INSPECT'
+          import importlib.util, os, re, sys, time
+          spec = importlib.util.spec_from_file_location('kinetra_api_inspect', 'ops/timeweb/prepare-api-host.py')
           module = importlib.util.module_from_spec(spec)
           spec.loader.exec_module(module)
-          providers = {}
+          token = os.environ.pop('TIMEWEB_CLOUD_TOKEN', '')
           try:
-              assert os.environ['GITHUB_REPOSITORY'] == 'San4o9910/Kinetra'
-              assert os.environ['GITHUB_REF'] == 'refs/heads/ops/timeweb-hourly-preflight-20260909'
-              assert os.environ['GITHUB_RUN_ATTEMPT'] == '1'
-              provider_environment = {key: os.environ.get(key, '') for key in module.activation.PROVIDER_ENV_KEYS}
-              if any(provider_environment[key] for key in module.activation.PAYMENT_PROVIDER_KEYS):
-                  raise module.Error('PAYMENT_PROVIDER_INPUTS_NOT_ALLOWED')
-              providers = {key: provider_environment[key] for key in module.activation.AUTH_PROVIDER_KEYS}
-              providers = module.provider_input(['--prepare-api-environment', '--provider-env'], providers)
-              module.activation.validate_providers(providers)
-              print('KINETRA_PROVIDER_INPUT_VALIDATION=PASS')
-              token = os.environ.get('TIMEWEB_CLOUD_TOKEN', '')
               module.require(token and len(token) <= 16384 and not any(ch.isspace() for ch in token),
                              'TIMEWEB_SECRET_MISSING_OR_INVALID')
-              print('KINETRA_TIMEWEB_TOKEN_SHAPE=PASS')
-              metadata = module.stage.metadata(os.environ)
-              print('KINETRA_PRE_API_METADATA=PASS')
-              files = module.stage.source_bundle(os.environ['APP_CHECKOUT'], metadata['commit'])
-              print('KINETRA_PRE_API_SOURCE_BUNDLE=PASS')
-              migrations = module.initialization.migration_hashes(os.environ['APP_CHECKOUT'], metadata['commit'])
-              print('KINETRA_PRE_API_MIGRATIONS=PASS')
-              data = {'schema': 1, 'server_id': module.inspection.SERVER_ID,
-                      'public_ipv4': module.inspection.PUBLIC_IPV4, **metadata,
-                      'source_hashes': {name: entry['sha256'] for name, entry in files.items()},
-                      'migration_hashes': migrations, 'providers': providers}
-              module.activation.validate_input(data)
-              print('KINETRA_PRE_API_GUEST_INPUT=PASS')
-              module.public_helpers()
-              print('KINETRA_PRE_API_HELPERS=PASS')
-              print('KINETRA_PRE_API_DIAGNOSTIC=PASS')
+              api = module.inspection.Api(token, 9069403, time.monotonic() + 120)
+              token = ''
+              server = module.inspection.validate_server(api.request('GET', '/servers/9069403'),
+                                                         9069403, '80.68.156.131')
+              module.require(server['server_status'] == 'on', 'EXISTING_SERVER_NOT_ON')
+              print('KINETRA_TIMEWEB_READ_ONLY=' + __import__('json').dumps({
+                  'server_id': 9069403, 'public_ipv4': '80.68.156.131',
+                  'server_status': server['server_status'], 'result': 'PASS'
+              }, sort_keys=True))
           except (module.Error, module.activation.Error) as error:
               category = str(error)
               if not re.fullmatch(r'[A-Z_]{1,90}', category):
-                  category = 'PRIVATE_VALIDATION_ERROR'
-              print('KINETRA_PRE_API_DIAGNOSTIC=FAIL:' + category, file=sys.stderr)
+                  category = 'TIMEWEB_READ_FAILED'
+              print('KINETRA_TIMEWEB_READ_ONLY=FAIL:' + category, file=sys.stderr)
               raise SystemExit(1)
           finally:
-              providers.clear()
-          PY_DIAG
+              token = ''
+          PY_INSPECT
