@@ -370,7 +370,8 @@ class GuestLauncherTests(unittest.TestCase):
             "sys": SimpleNamespace(stdin=SimpleNamespace(buffer=io.BytesIO(json.dumps(data).encode())))}
         if cleanup_failure: changes["cleanup_owned"] = Mock(side_effect=OSError("retained fixture"))
         with patch.dict(self.namespace, changes), patch.object(self.namespace["subprocess"], "Popen", side_effect=popen) as call, \
-             patch.object(self.namespace["resource"], "setrlimit"), patch.object(self.namespace["os"], "umask"), contextlib.redirect_stdout(output):
+             patch.object(self.namespace["resource"], "setrlimit"), patch.object(self.namespace["os"], "umask"), \
+             patch.object(self.namespace["os"], "geteuid", return_value=0), contextlib.redirect_stdout(output):
             code = self.namespace["main"]()
         for secret in PROVIDERS.values(): self.assertNotIn(secret, output.getvalue())
         return code, json.loads(output.getvalue()), captured, call
