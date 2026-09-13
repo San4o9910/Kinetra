@@ -1,9 +1,23 @@
 #!/usr/bin/env python3
-"""Read-only launch gate with the owner-approved two-CPE disposition change.
+"""Read-only launch gate with approved CPE and public-package scope.
 
 No host/provider operations. Unrelated original assertions are retained.
 GitHub readers also authenticate the prior database handoff.
 """
+
+
+def verify_approved_public_package(package, target, app):
+    """September 13 owner approval: only these existing project packages."""
+    assert app == '73b665065e00a5b375e90f701373b3e0856a0386'
+    approved_ids = {'backend': 15042113, 'frontend': 15042114}
+    assert target in approved_ids and isinstance(package, dict)
+    assert type(package.get('id')) is int and package['id'] == approved_ids[target]
+    assert package.get('name') == 'kinetra-' + target
+    assert package.get('package_type') == 'container' and package.get('visibility') == 'public'
+    assert isinstance(package.get('owner'), dict) and package['owner'].get('login') == 'San4o9910'
+    repository = package.get('repository')
+    assert isinstance(repository, dict) and repository.get('full_name') == 'San4o9910/Kinetra'
+    assert type(repository.get('id')) is int and repository['id'] == 1339664626
 
 
 def load_disposition():
@@ -243,7 +257,7 @@ def verify_source_and_images():
             assert len(images) == 1 and manifest['config']['digest'] == images[0]['Id']
             assert images[0]['Config']['Labels']['org.opencontainers.image.revision'] == app
             assert images[0]['Os'] == 'linux' and images[0]['Architecture'] == 'amd64'
-    # Live package metadata must still identify private packages owned by this project.
+    # Live metadata must identify the two owner-approved public project packages.
     for target in ('backend', 'frontend'):
         request = urllib.request.Request('https://api.github.com/users/San4o9910/packages/container/kinetra-' + target,
             headers={'Authorization': 'Bearer ' + env['GH_TOKEN'], 'Accept': 'application/vnd.github+json',
@@ -252,7 +266,7 @@ def verify_source_and_images():
             body = response.read(1024 * 1024 + 1)
         assert len(body) <= 1024 * 1024
         package = json.loads(body)
-        assert package['visibility'] == 'private' and package['repository']['full_name'] == repo
+        verify_approved_public_package(package, target, app)
     print('KINETRA_DATABASE_SOURCE_AND_IMAGE_PROVENANCE=PASS')
     return api, successful_run
 

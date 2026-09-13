@@ -72,7 +72,7 @@ jobs:
           c4a35c5b13730316bc92c8f1b1ccf1d1b54c1cbaa15718790cb5603a07aec4a8  ops/timeweb/test-scan-upstream-media.py
           ba9d7f7d4a5475de9a4401be60694bcbeab1e62308d2f304454360fc72d2267e  ops/timeweb/upstream-disposition.py
           85f25de920ccffb1878a56b5be6132c0d3ab99a0d21125112575ba8efffd3c82  ops/timeweb/test-upstream-disposition.py
-          461f4738f3d0c67890b9c57f0756149c0fa7423918adedf8c7d05f19e5978b46  ops/timeweb/verify-launch-provenance.py
+          61fc0550edbc533938b1850ad17aa6779c1d2fa7122db08296748acfe43924ea  ops/timeweb/verify-launch-provenance.py
           SHA256
           PYTHONDONTWRITEBYTECODE=1 python3 ops/timeweb/test-upstream-disposition.py
           PYTHONDONTWRITEBYTECODE=1 python3 ops/timeweb/test-scan-upstream-media.py

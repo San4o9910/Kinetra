@@ -1,5 +1,30 @@
 # Kinetra checkpoint — 2026-09-13
 
+## Latest owner decision — public images approved
+
+The owner answered “Да” to the explicit public-image proposal linked at
+`c2f0f67e61ceb2c02b1418ef886a1e13223a4171`. This supersedes the PRIVATE-only
+publication blocker below, for only the two existing packages and exact app
+listed in `public-image-approval-20260913.json`. No other approval is widened.
+
+The publication and live provenance gates now require PUBLIC visibility plus
+exact package IDs, owner, names and repository identity. A new read-only check
+runs before media/Node compilation; publication rechecks before and after push.
+All original build/runtime/scan/source gates remain, as does the exact CPE policy.
+The frozen host helpers are unchanged. Only dependency hash pins changed in the
+application/HTTPS callers and dormant activation workflows.
+
+Local verification passed: 15 application-caller tests (including public package
+scope mutations and the preserved original gate digest), 17 HTTPS-caller tests,
+and 14 CPE-disposition tests. Fresh full qualification must succeed before any
+host stage. The earlier failed run is not accepted for deployment. The dormant
+qualified-input reader must be filled with the actual new run/control identity.
+
+A new image run is being prepared; do not launch duplicate workflows. Actual run
+IDs and results will be added after publication. Automatic continuation may be
+resumed with this approval and the current checkpoint; its older PRIVATE-only
+prompt must be updated first. Database, application and HTTPS remain unstarted.
+
 ## Current blocker — 05:36 UTC
 
 Run `34733519897` completed with failure at 04:31 UTC, **only in the final

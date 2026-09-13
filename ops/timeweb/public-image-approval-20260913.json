@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "decision": "OWNER_APPROVED",
+  "date": "2026-09-13",
+  "evidence": "Owner replied Да to the explicit public-image proposal and continuation question in this conversation.",
+  "proposal_commit": "c2f0f67e61ceb2c02b1418ef886a1e13223a4171",
+  "proposal_path": "ops/timeweb/publication-visibility-decision-20260913.md",
+  "application_commit": "73b665065e00a5b375e90f701373b3e0856a0386",
+  "repository": "San4o9910/Kinetra",
+  "repository_id": 1339664626,
+  "expected_visibility": "public",
+  "packages": {
+    "kinetra-backend": 15042113,
+    "kinetra-frontend": 15042114
+  },
+  "full_fresh_qualification_required": true,
+  "failed_run_34733519897_accepted_for_deployment": false,
+  "source_sbom_sha256": "ebb69ea87b5ec9aa929c590bf6ceab0bc6239c38bfb3040e198e6a7bfa925dd7",
+  "cpe_policy_changed": false,
+  "frozen_host_checks_changed": false,
+  "new_permissions": [
+    "Use the two existing public packages for this exact application and update the explicit expected visibility checks."
+  ],
+  "existing_exclusions": [
+    "No merge PR21",
+    "No new paid resources or billing changes",
+    "No existing-data or package deletion",
+    "No payments",
+    "No real user messages or email",
+    "Only existing server 9069403 / 80.68.156.131"
+  ]
+}

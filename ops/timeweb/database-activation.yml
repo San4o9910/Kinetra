@@ -64,9 +64,9 @@ jobs:
           041f415dedf6b0b6922484281926c8c98c87828506dcb2e1ac6fb324b00b05bb  ops/timeweb/initialize-database-host.py
           29e2c69ee0e507574183a4f5a8bbd3c0ae306d0a0ed0b46dcb3043889e1b1dac  ops/timeweb/test-prepare-database-host.py
           5e26395c85ef64b99f045b5ba46bc92d72ffc595f0cb5640a571a599ad8ccea5  ops/timeweb/test-initialize-database-host.py
-          f5d31335b0c7667480d2da9938e5604d1d2cdda5c5ef6df3880c41b979c2038e  ops/timeweb/application-caller.py
-          461f4738f3d0c67890b9c57f0756149c0fa7423918adedf8c7d05f19e5978b46  ops/timeweb/verify-launch-provenance.py
-          b2b9b584612a4821e981f55e8318cafab872a481367af1a8697fb966d60f2345  ops/timeweb/test-application-caller.py
+          82c8b50a18ce2827d84335d312f91f28643a3cf7df62160e647345f096cb3039  ops/timeweb/application-caller.py
+          61fc0550edbc533938b1850ad17aa6779c1d2fa7122db08296748acfe43924ea  ops/timeweb/verify-launch-provenance.py
+          444528e29fa1b280a78989727911a9f6c5025f285a30bed5af0f31fc0ea396c8  ops/timeweb/test-application-caller.py
           ba9d7f7d4a5475de9a4401be60694bcbeab1e62308d2f304454360fc72d2267e  ops/timeweb/upstream-disposition.py
           85f25de920ccffb1878a56b5be6132c0d3ab99a0d21125112575ba8efffd3c82  ops/timeweb/test-upstream-disposition.py
           42d0618f56c543b91778bedac8b87c6b5fecd332b79e9e7e21a9af14b85b3e63  ops/timeweb/scan-upstream-media.py

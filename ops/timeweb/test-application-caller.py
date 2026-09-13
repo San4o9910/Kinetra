@@ -85,7 +85,7 @@ class CallerTests(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()):
             caller.authenticate_database(self.env, local, self.api, self.successful_run)
 
-    def test_original_gate_preserved_except_grype_serialization_and_approved_disposition(self):
+    def test_original_gate_preserved_except_verified_serialization_and_owner_approvals(self):
         source = Path(__file__).with_name("verify-launch-provenance.py").read_text()
         body = textwrap.dedent(source.split("def verify_source_and_images():\n", 1)[1].split("\n    return api, successful_run", 1)[0])
         corrected = "assert re.fullmatch(r'v?6(?:\\.\\d+){0,2}', db_status['schemaVersion'])"
@@ -114,7 +114,37 @@ class CallerTests(unittest.TestCase):
         body = body.replace("finding['severity'] in ('Unknown', 'Negligible', 'Low', 'Medium', 'High', 'Critical')", "finding['severity'] in ('Unknown', 'Negligible', 'Low', 'Medium')")
         self.assertEqual(body.count("match['vulnerability']['severity'] in ('Unknown', 'Negligible', 'Low', 'Medium', 'High', 'Critical')"), 1)
         body = body.replace("match['vulnerability']['severity'] in ('Unknown', 'Negligible', 'Low', 'Medium', 'High', 'Critical')", "match['vulnerability']['severity'] in ('Unknown', 'Negligible', 'Low', 'Medium')")
+        # September 13 approval replaces only the package visibility condition.
+        # The new validator also binds the existing package IDs and owner.
+        approved = "verify_approved_public_package(package, target, app)"
+        prior = "assert package['visibility'] == 'private' and package['repository']['full_name'] == repo"
+        self.assertEqual(body.count(approved), 1)
+        body = body.replace(approved, prior)
+        body = body.replace("# Live metadata must identify the two owner-approved public project packages.",
+                            "# Live package metadata must still identify private packages owned by this project.")
         self.assertEqual(hashlib.sha256(body.encode()).hexdigest(), "338cbbb5e3068f4f3e2ca917ef4dc57166be0e7438d7635304b0ad78ac748f7c")
+
+    def test_publication_approval_accepts_only_exact_existing_packages_and_application(self):
+        verifier = module('verify-launch-provenance.py')
+        app = '73b665065e00a5b375e90f701373b3e0856a0386'
+        for target, package_id in (('backend', 15042113), ('frontend', 15042114)):
+            package = {'id': package_id, 'name': 'kinetra-' + target, 'package_type': 'container',
+                'visibility': 'public', 'owner': {'login': 'San4o9910'},
+                'repository': {'id': 1339664626, 'full_name': 'San4o9910/Kinetra'}}
+            verifier.verify_approved_public_package(package, target, app)
+            mutations = [('id', package_id + 10), ('name', 'unapproved-package'), ('package_type', 'npm'),
+                ('visibility', 'private'), ('visibility', 'internal'), ('owner', {'login': 'another-owner'}),
+                ('owner', None), ('repository', {'id': 1339664626, 'full_name': 'San4o9910/another-project'}),
+                ('repository', {'id': 1, 'full_name': 'San4o9910/Kinetra'}), ('repository', None)]
+            for field, value in mutations:
+                with self.subTest(target=target, field=field, value=value):
+                    changed = copy.deepcopy(package); changed[field] = value
+                    with self.assertRaises(AssertionError):
+                        verifier.verify_approved_public_package(changed, target, app)
+            with self.assertRaises(AssertionError):
+                verifier.verify_approved_public_package(package, target, 'a' * 40)
+            with self.assertRaises(AssertionError):
+                verifier.verify_approved_public_package(package, 'unapproved-target', app)
 
     def test_verified_database_run_and_exact_artifact_create_private_receipt(self):
         self.authenticate()

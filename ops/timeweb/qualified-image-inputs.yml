@@ -1,4 +1,4 @@
-# DORMANT read-only evidence reader. After run 34733519897 succeeds, copy to
+# DORMANT read-only evidence reader. Fill the new successful public-image run, then copy to
 # .github/workflows/kinetra-qualified-image-inputs.yml and publish on the control branch.
 # No Timeweb/SMTP credentials or host operations. Never execute artifact contents.
 name: Read verified Kinetra deployment image inputs
@@ -17,9 +17,9 @@ env:
   APPROVED_MERGE_COMMIT: 2f5d388dea92ed4994131d0b5e77734189de026c
   APPROVED_HEAD_RUN: '34535162371'
   APPROVED_MERGE_RUN: '34535166746'
-  APPROVED_IMAGE_RUN: '34733519897'
-  APPROVED_IMAGE_CONTROL_COMMIT: cbeb9be9dc94ce7966ae208472224b7904381e6b
-  APPROVED_IMAGE_WORKFLOW_SHA256: c8ba9f610e9a4166da102adaed52697acc0e266d3983a3040c9570c513617d4d
+  APPROVED_IMAGE_RUN: REVIEW_REQUIRED
+  APPROVED_IMAGE_CONTROL_COMMIT: REVIEW_REQUIRED
+  APPROVED_IMAGE_WORKFLOW_SHA256: 47e0e87959eefe9f37d022e627ce46586b61544260c3d476fb154ff740da3147
 jobs:
   inspect-qualified-inputs:
     runs-on: ubuntu-24.04
@@ -40,7 +40,7 @@ jobs:
           test "$GITHUB_RUN_ATTEMPT" = 1
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           sha256sum --check --strict <<'SHA256'
-          461f4738f3d0c67890b9c57f0756149c0fa7423918adedf8c7d05f19e5978b46  ops/timeweb/verify-launch-provenance.py
+          61fc0550edbc533938b1850ad17aa6779c1d2fa7122db08296748acfe43924ea  ops/timeweb/verify-launch-provenance.py
           ba9d7f7d4a5475de9a4401be60694bcbeab1e62308d2f304454360fc72d2267e  ops/timeweb/upstream-disposition.py
           SHA256
           python3 -B - <<'PY'
@@ -109,7 +109,7 @@ jobs:
                       assert re.fullmatch(re.escape('ghcr.io/san4o9910/kinetra-' + name.removesuffix('_IMAGE').lower()) + r'@sha256:[a-f0-9]{64}', reference)
                       env[name] = reference
               # Reuse the unchanged complete gate: current CI/PR, workflow hash,
-              # exact archive/manifests, every scan, approved CPE scope and private packages.
+              # exact archive/manifests, every scan, approved CPE scope and approved public packages.
               spec = importlib.util.spec_from_file_location('provenance', 'ops/timeweb/verify-launch-provenance.py')
               verifier = importlib.util.module_from_spec(spec); spec.loader.exec_module(verifier)
               verifier.verify_source_and_images()
