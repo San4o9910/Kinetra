@@ -35,8 +35,8 @@ the additional two records are Medium. Raw reports remain unchanged.
 Actual ImageMagick configure output selected `-mtune=amdfam10` in the approved
 build and `-mtune=core2` in the rejected build. The authenticated upstream
 `m4/ax_gcc_archflag.m4` automatically selects this portable optimization from
-the host CPU. Exact rebuild reproduction is still required; the observed flag
-difference alone does not prove binary equivalence.
+the host CPU. The observed flag difference alone did not prove binary equivalence;
+the actual corrected rebuild result is recorded below.
 
 The workflow correction requires the reviewed AMD build environment, then builds
 the unchanged media stage and checks its actual source inventory against the
@@ -49,7 +49,7 @@ The scanner now reports fixed policy failure categories precisely while still
 rejecting them. Fourteen exception-boundary tests and 24 scanner tests passed.
 The comparison of old/new workflow steps verified that all previous gates remain
 unchanged apart from helper pins and a cache-order comment. Full corrected
-qualification remains pending actual execution.
+qualification remains pending completion of the running job.
 
 Detailed evidence: [source-rebuild-analysis-20260913.json](source-rebuild-analysis-20260913.json).
 Application remains `73b665065e00a5b375e90f701373b3e0856a0386`, Draft PR21 unmerged.
@@ -68,7 +68,24 @@ production and positive-control exit codes remain 2.
 Fresh full qualification
 [34733519897](https://github.com/San4o9910/Kinetra/actions/runs/34733519897),
 job `103660662186`, is running. Current source gates, registry resolution and the
-reviewed AMD CPU precondition passed. The media rebuild and exact prior-SBOM
-precheck are still in progress as of 02:40 UTC. Do not start another image run or
-change its workflow while it runs. No corrected full-image PASS, publication or
-host activation is claimed by this checkpoint.
+reviewed AMD CPU precondition passed. As of 03:02 UTC, the actual media rebuild
+and exact prior-SBOM precheck have both completed successfully. This confirms
+reproduction of the original approved source inventory without changing the
+application or exception scope. The authenticated Node cache build is now in
+progress. Do not start another image run or change its workflow while it runs.
+No corrected full-image PASS, publication or host activation is claimed.
+
+## Next action after qualification
+
+`qualified-image-inputs.yml` is a dormant, read-only reader pinned to this exact
+image run, control commit and workflow hash. After full qualification succeeds,
+copy it to `.github/workflows/kinetra-qualified-image-inputs.yml` and publish.
+It authenticates the matching artifact archive, discovers only the four public
+image references, then calls the unchanged complete launch-provenance verifier
+before printing `KINETRA_VERIFIED_IMAGE_INPUTS`. No host or SMTP secret is used.
+Use that verified JSON to fill the database activation template; the separately
+reviewed PostgreSQL candidate remains
+`postgres:17-bookworm@sha256:7bade6d532592ca8ce7ee32def7399dad2607c4ea5583839fc4352a095a11ea6`.
+Actual PostgreSQL host checks remain required. Follow database, local application
+and HTTPS handoffs in order. The existing automatic continuation remains enabled;
+it must consult this checkpoint and live runs to avoid duplicate host actions.

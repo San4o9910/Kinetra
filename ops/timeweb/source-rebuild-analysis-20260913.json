@@ -124,7 +124,11 @@
     "exception_policy_changed": false,
     "source_sbom_rewritten": false,
     "action": "Require reviewed AMD build environment and exact original source SBOM after media build, before compiling Node. Reuse same-run media cache; all final smoke/scanner/publication gates still run.",
-    "reproduction_result": "PENDING_ACTUAL_RUN",
+    "reproduction_result": "APPROVED_SOURCE_SBOM_REPRODUCED",
+    "reproduction_run": 34733519897,
+    "reproduction_job": 103660662186,
+    "reproduction_evidence": "GitHub job step Reproduce approved media inventory before the expensive Node build completed successfully; the pinned workflow checks the actual rebuilt inventory against the original ebb69ea8 hash before starting Node.",
+    "full_image_qualification": "PENDING_NODE_BUILD_AND_FINAL_GATES",
     "failure_diagnostics": "Translate the pinned disposition helper's fixed failure category into the scanner gate summary instead of reporting an unspecified error."
   }
 }

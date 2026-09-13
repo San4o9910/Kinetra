@@ -1,0 +1,128 @@
+# DORMANT read-only evidence reader. After run 34733519897 succeeds, copy to
+# .github/workflows/kinetra-qualified-image-inputs.yml and publish on the control branch.
+# No Timeweb/SMTP credentials or host operations. Never execute artifact contents.
+name: Read verified Kinetra deployment image inputs
+'on':
+  push:
+    branches: [ops/timeweb-hourly-preflight-20260909]
+    paths: [.github/workflows/kinetra-qualified-image-inputs.yml]
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+  packages: read
+env:
+  APPROVED_APP_COMMIT: 73b665065e00a5b375e90f701373b3e0856a0386
+  APPROVED_BASE_COMMIT: ea0412a20baa87b7a00c4ce466d204d12fb052cc
+  APPROVED_MERGE_COMMIT: 2f5d388dea92ed4994131d0b5e77734189de026c
+  APPROVED_HEAD_RUN: '34535162371'
+  APPROVED_MERGE_RUN: '34535166746'
+  APPROVED_IMAGE_RUN: '34733519897'
+  APPROVED_IMAGE_CONTROL_COMMIT: cbeb9be9dc94ce7966ae208472224b7904381e6b
+  APPROVED_IMAGE_WORKFLOW_SHA256: c8ba9f610e9a4166da102adaed52697acc0e266d3983a3040c9570c513617d4d
+jobs:
+  inspect-qualified-inputs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Authenticate the completed image artifact and all launch provenance
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = San4o9910/Kinetra
+          test "$GITHUB_REF" = refs/heads/ops/timeweb-hourly-preflight-20260909
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          sha256sum --check --strict <<'SHA256'
+          461f4738f3d0c67890b9c57f0756149c0fa7423918adedf8c7d05f19e5978b46  ops/timeweb/verify-launch-provenance.py
+          ba9d7f7d4a5475de9a4401be60694bcbeab1e62308d2f304454360fc72d2267e  ops/timeweb/upstream-disposition.py
+          SHA256
+          python3 -B - <<'PY'
+          import hashlib, importlib.util, io, json, os, re, sys
+          import urllib.error, urllib.parse, urllib.request, zipfile
+          env = os.environ
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, request, file, code, message, headers, new_url): return None
+          opener = urllib.request.build_opener(NoRedirect)
+          def api(path, archive=False):
+              request = urllib.request.Request('https://api.github.com/repos/San4o9910/Kinetra' + path,
+                  headers={'Authorization': 'Bearer ' + env['GH_TOKEN'], 'Accept': 'application/vnd.github+json',
+                           'X-GitHub-Api-Version': '2022-11-28'})
+              try:
+                  response = opener.open(request, timeout=30)
+              except urllib.error.HTTPError as error:
+                  if not archive or error.code != 302: raise
+                  location = error.headers['Location']; url = urllib.parse.urlsplit(location)
+                  assert url.scheme == 'https' and not url.username and not url.password and url.port in (None, 443)
+                  assert url.hostname and url.hostname.endswith(('.blob.core.windows.net', '.actions.githubusercontent.com'))
+                  response = opener.open(urllib.request.Request(location), timeout=30)
+              with response:
+                  limit = (64 if archive else 4) * 1024 * 1024
+                  body = response.read(limit + 1)
+              assert len(body) <= limit
+              return body if archive else json.loads(body)
+          def main():
+              run_id = env['APPROVED_IMAGE_RUN']
+              run = api('/actions/runs/' + run_id)
+              assert run['repository']['full_name'] == 'San4o9910/Kinetra'
+              assert run['head_sha'] == env['APPROVED_IMAGE_CONTROL_COMMIT']
+              assert run['head_branch'] == 'ops/timeweb-hourly-preflight-20260909'
+              assert run['path'] == '.github/workflows/kinetra-image-validation.yml'
+              assert run['event'] == 'push' and run['run_attempt'] == 1
+              assert run['status'] == 'completed' and run['conclusion'] == 'success'
+              listing = api('/actions/runs/' + run_id + '/artifacts?per_page=100')
+              assert listing['total_count'] == len(listing['artifacts'])
+              artifacts = [item for item in listing['artifacts'] if item['name'] == 'kinetra-image-evidence-' + run_id + '-1']
+              assert len(artifacts) == 1
+              artifact = artifacts[0]
+              assert artifact['expired'] is False and type(artifact['id']) is int and artifact['id'] > 0
+              assert artifact['workflow_run']['id'] == int(run_id)
+              assert artifact['workflow_run']['head_sha'] == env['APPROVED_IMAGE_CONTROL_COMMIT']
+              assert 0 < artifact['size_in_bytes'] <= 64 * 1024 * 1024
+              assert re.fullmatch(r'sha256:[a-f0-9]{64}', artifact['digest'])
+              env['APPROVED_IMAGE_ARTIFACT_ID'] = str(artifact['id'])
+              env['APPROVED_IMAGE_ARTIFACT_SHA256'] = artifact['digest'].removeprefix('sha256:')
+              raw = api('/actions/artifacts/' + str(artifact['id']) + '/zip', archive=True)
+              assert hashlib.sha256(raw).hexdigest() == env['APPROVED_IMAGE_ARTIFACT_SHA256']
+              with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+                  names = archive.namelist()
+                  assert len(names) == len(set(names)) and len(names) <= 150
+                  def member(name):
+                      info = archive.getinfo(name)
+                      assert not info.is_dir() and not info.flag_bits & 1 and info.file_size <= 16 * 1024
+                      return archive.read(info).decode('ascii')
+                  rows = [line.split('\t') for line in member('registry-inputs.tsv').splitlines()]
+                  assert len(rows) == 4 and all(len(row) == 3 for row in rows)
+                  assert {row[0] for row in rows} == {'NODE_IMAGE', 'NGINX_IMAGE', 'TRIVY_IMAGE', 'GRYPE_IMAGE'}
+                  for name, tag, reference in rows:
+                      if name in ('NODE_IMAGE', 'NGINX_IMAGE'): env[name] = reference
+                  refs = [line.split('=', 1) for line in member('published-images.env').splitlines()]
+                  assert len(refs) == 2 and all(len(row) == 2 for row in refs)
+                  assert {row[0] for row in refs} == {'BACKEND_IMAGE', 'FRONTEND_IMAGE'}
+                  for name, reference in refs:
+                      assert re.fullmatch(re.escape('ghcr.io/san4o9910/kinetra-' + name.removesuffix('_IMAGE').lower()) + r'@sha256:[a-f0-9]{64}', reference)
+                      env[name] = reference
+              # Reuse the unchanged complete gate: current CI/PR, workflow hash,
+              # exact archive/manifests, every scan, approved CPE scope and private packages.
+              spec = importlib.util.spec_from_file_location('provenance', 'ops/timeweb/verify-launch-provenance.py')
+              verifier = importlib.util.module_from_spec(spec); spec.loader.exec_module(verifier)
+              verifier.verify_source_and_images()
+              keys = ('APPROVED_APP_COMMIT', 'APPROVED_BASE_COMMIT', 'APPROVED_MERGE_COMMIT',
+                  'APPROVED_HEAD_RUN', 'APPROVED_MERGE_RUN', 'APPROVED_IMAGE_RUN',
+                  'APPROVED_IMAGE_CONTROL_COMMIT', 'APPROVED_IMAGE_WORKFLOW_SHA256',
+                  'APPROVED_IMAGE_ARTIFACT_ID', 'APPROVED_IMAGE_ARTIFACT_SHA256',
+                  'NODE_IMAGE', 'NGINX_IMAGE', 'BACKEND_IMAGE', 'FRONTEND_IMAGE')
+              print('KINETRA_VERIFIED_IMAGE_INPUTS=' + json.dumps({key: env[key] for key in keys}, sort_keys=True))
+              print('KINETRA_QUALIFIED_IMAGE_INPUTS=PASS')
+          try:
+              main()
+          except BaseException:
+              print('KINETRA_QUALIFIED_IMAGE_INPUTS=FAIL', file=sys.stderr)
+              sys.exit(1)
+          PY
