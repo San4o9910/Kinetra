@@ -129,7 +129,7 @@ jobs:
                   if tag=='link' and v.get('rel')=='stylesheet':self.items.append({'kind':'stylesheet','url':v.get('href','')})
           parser=Assets();parser.feed(shell.decode('utf8'))
           assert len(parser.items)<=20 and all(len(x['url'])<=2048 for x in parser.items)
-          policy=re.findall(r'add_header Content-Security-Policy "([^"\\n]+)" always;',config.decode('utf8'))
+          policy=re.findall(r'add_header Content-Security-Policy "([^"\n]+)" always;',config.decode('utf8'))
           assert len(policy)==1
           result['frontend_assets']={'index_sha256':hashlib.sha256(shell).hexdigest(),
               'theme_sha256':hashlib.sha256(theme).hexdigest(),'nginx_sha256':hashlib.sha256(config).hexdigest(),
@@ -169,8 +169,8 @@ jobs:
               assert isinstance(a['references'],list) and len(a['references'])<=20
               for row in a['references']:
                   assert set(row)=={'kind','url'} and row['kind'] in {'script','stylesheet'}
-                  assert isinstance(row['url'],str) and len(row['url'])<=2048 and not re.search(r'[\\x00-\\x20\\x7f]',row['url'])
-              assert isinstance(a['csp'],str) and len(a['csp'])<=2048 and not re.search(r'[\\x00-\\x1f\\x7f]',a['csp'])
+                  assert isinstance(row['url'],str) and len(row['url'])<=2048 and not re.search(r'[\x00-\x20\x7f]',row['url'])
+              assert isinstance(a['csp'],str) and len(a['csp'])<=2048 and not re.search(r'[\x00-\x1f\x7f]',a['csp'])
               return v
 
           module.GUEST_PROGRAM = guest
