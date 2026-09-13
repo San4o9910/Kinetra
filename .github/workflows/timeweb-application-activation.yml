@@ -2,8 +2,8 @@
 # Fill REVIEW_REQUIRED from actual green current CI/image/database evidence;
 # review this caller before publishing as .github/workflows/timeweb-application-activation.yml.
 # Only API environment preparation and local application startup. No HTTPS/boot/jobs.
-# State-specific recovery after verified diagnostics34775387238/34775554137; never repeat initialization.
-name: Resume verified Kinetra local startup after helper-set fix
+# Owner approval c124b95ba62ff4a72491622dc92601dab4f89b6d; exact created-backend continuation only.
+name: Continue exact preserved Kinetra backend after approved Health fix
 
 on:
   push:
@@ -66,7 +66,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test "$ACTIVATE_LOCAL_APPLICATION" = APPROVED
           sha256sum --check --strict <<'SHA256'
-          f251b3fe84b818c831d539bac3b0c489d694159489661c1329a7ec9df2b39495  ops/timeweb/application-caller.py
+          a8cbec10bf8267d18dbda507817b39b36511c2edbd5a7dd1a2889d062943dfec  ops/timeweb/application-caller.py
           61fc0550edbc533938b1850ad17aa6779c1d2fa7122db08296748acfe43924ea  ops/timeweb/verify-launch-provenance.py
           444528e29fa1b280a78989727911a9f6c5025f285a30bed5af0f31fc0ea396c8  ops/timeweb/test-application-caller.py
           ba9d7f7d4a5475de9a4401be60694bcbeab1e62308d2f304454360fc72d2267e  ops/timeweb/upstream-disposition.py
@@ -75,13 +75,23 @@ jobs:
           c4a35c5b13730316bc92c8f1b1ccf1d1b54c1cbaa15718790cb5603a07aec4a8  ops/timeweb/test-scan-upstream-media.py
           8326af893a6b25d65394841584f3d9b12b264868a592addc7c1f4cdff42128ae  ops/timeweb/recover-api-candidate-host.py
           0a1ec78c18632cb03630902c27060a930ec038086711614cac59601b236fdac2  ops/timeweb/recover-api-preparation.py
-          33f479cdb1b8215107fb74915bff05718c690fb8f6a5d1692fb7237eaeb92b05  ops/timeweb/recovery-caller.py
+          63afde60c658cae65837516b84e6f5583978d96e33dba8558fb75233d1dae547  ops/timeweb/recovery-caller.py
           d1aa5e4c1e488d6fe8437bcbbb035c6c2750d1c7163e30fc39bd8dc60f70d42d  ops/timeweb/test-recover-api-candidate.py
-          02945ce172ec91aadf0dd8ee85a2988c34f893b680b7572f5bfe3dd0b839c9e5  ops/timeweb/authenticate-preserved-api.py
+          9e40c2c3de2bea16147df4d0af0ffde7912c5bfe7d87914a51aae08049b29240  ops/timeweb/authenticate-preserved-api.py
           2658c9b04bfdc076b7cf509570e9518b65f10ec6e0b6df960c3810a3a17a6de7  ops/timeweb/test-preserved-api-auth.py
           650c761d5293bd9871e54b23971b758e6936a6dc0040a205afd9fe6df22d3a01  ops/timeweb/api-resume-evidence-20260913.json
           dcfeda041b41481494de1ae884b3d90c58c54a9bc612c8f1d1224063ae232d71  ops/timeweb/test-activate-local-application-host.py
+          7e288a7066cce17be60e6cf8bbd49631dc1cd943e694c2fa67cdb003bea402bd  ops/timeweb/resume-created-application-host.py
+          21380c6e56b078c4a1847fe595ecb2709363b88d9612c2e8c5f34305bf37777c  ops/timeweb/resume-local-application-host.py
+          4cd08ae4a25ecad494be01181eb36efccc0dae6ac520440eef717c12842a7b1d  ops/timeweb/resume-application-caller.py
+          7087e81f96f91243532ec117b1c69a4e241789966e701c9d840ca795faf06a24  ops/timeweb/authenticate-created-backend.py
+          85eb4e5dd0e06639f521962fbd7ff0ca466f37899c8f05ad35435511c415b71e  ops/timeweb/test-resume-created-backend.py
+          6a0ddc54997eb134f0f9f2a570bf2e36c677baa7a7191eb5c072400d8722fbf0  ops/timeweb/created-backend-inspection-20260913.json
+          ab621a94e6c697c35464c72d75532ab3beaa3645b059f258d035bf55802d35ee  ops/timeweb/test-start-health-query-proposal.py
+          c83c167618b97c01a543e70c9af218969264106432d32437e0695fc977ab471d  ops/timeweb/start-health-query-fix-20260913.patch
           SHA256
+          sudo env -i PATH="$PATH" python3 -B ops/timeweb/test-resume-created-backend.py
+          env -i PATH="$PATH" python3 -B ops/timeweb/test-start-health-query-proposal.py
           # Model guest fixture ownership independently from the unprivileged runner checkout.
           env -i PATH="$PATH" python3 -B ops/timeweb/test-preserved-api-auth.py
           env -i PATH="$PATH" python3 -B ops/timeweb/test-activate-local-application-host.py
@@ -110,14 +120,14 @@ jobs:
         run: |
           set -euo pipefail
           python3 ops/timeweb/application-caller.py --authenticate-database
-      - name: Authenticate successful preserved API phase and independently verified absence of startup
+      - name: Authenticate preserved API and exact failed startup with fresh backend inspection
         shell: bash
         env:
           APP_CHECKOUT: ${{ github.workspace }}/Kinetra
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          python3 -B ops/timeweb/authenticate-preserved-api.py --authenticate-preserved-api
+          python3 -B ops/timeweb/authenticate-created-backend.py --authenticate-created-backend
       - name: Recheck current source images and database before local startup
         shell: bash
         env:
@@ -133,7 +143,7 @@ jobs:
           TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
         run: |
           set -euo pipefail
-          python3 ops/timeweb/application-caller.py --start-local
+          python3 -B ops/timeweb/resume-application-caller.py --resume-exact-created-backend
       - name: Retain sanitized accepted local handoff
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
