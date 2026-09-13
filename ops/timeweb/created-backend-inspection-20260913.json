@@ -1,0 +1,86 @@
+{
+  "account_key_cleanup": "API_DELETE_CONFIRMED",
+  "error": null,
+  "guest_key_cleanup": "API_DELETE_CONFIRMED",
+  "host_key_fingerprint": "SHA256:T3RfyVAstE+dyvneeMMYUjIm1Ej+NN3D5Vr9sIyRUG0",
+  "inspection": {
+    "application_record_exists": true,
+    "bootstrap_marker_exists": true,
+    "compose_services": [
+      "backend=created",
+      "postgres=running"
+    ],
+    "created_backend": {
+      "id": "460a447fc441071f595dea383b60487aa707e719511792aefa52a3a0b831962a",
+      "never_started": true,
+      "nonce": "9128e22668c33a1552f912415c800939",
+      "original_inspect_error": "HEALTH_FIELD_ABSENT",
+      "original_inspect_returncode": 1,
+      "status": "created"
+    },
+    "data_root": {
+      "device": 2049,
+      "directory": true,
+      "gid": 999,
+      "inode": 524370,
+      "mode": "0o700",
+      "symlink": false,
+      "uid": 999
+    },
+    "mounted_root": {
+      "device": 2049,
+      "directory": true,
+      "gid": 999,
+      "inode": 524370,
+      "mode": "0o700",
+      "symlink": false,
+      "uid": 999
+    },
+    "mutations": false,
+    "pgdata": {
+      "device": 2049,
+      "directory": true,
+      "gid": 0,
+      "inode": 547799,
+      "mode": "0o700",
+      "symlink": false,
+      "uid": 999
+    },
+    "postgres_version_17": true,
+    "query_validation": {
+      "created_backend": "PASS_NULL_HEALTH",
+      "mutations": false,
+      "persistent_helper_changed": false,
+      "running_postgres": "PASS_HEALTHY"
+    },
+    "recovery_complete_exists": true,
+    "result": "PASS_READ_ONLY_INSPECTION",
+    "schema": 1,
+    "start_attempt_exists": true,
+    "start_checkpoint": {
+      "attempt_recorded": true,
+      "attempted_services": [
+        "backend"
+      ],
+      "error": "CHILD_COMMAND_FAILED",
+      "nonce": "9128e22668c33a1552f912415c800939",
+      "owned_containers": {},
+      "phase": "START_BACKEND",
+      "rollback": {
+        "backend": "UNCONFIRMED_REQUIRES_REVIEW"
+      },
+      "sha256": "ad5f14d8c643045b59275b4d0433cd9e96f63c1e4fba22dd1af7f3da7812548a",
+      "start_attempted_services": [],
+      "uncertain_start_services": []
+    },
+    "start_result_exists": true,
+    "volume_bind_matches": true,
+    "volume_name": "kinetra-production_postgres17_data"
+  },
+  "local_key_cleanup": "REMOVED",
+  "public_ipv4": "80.68.156.131",
+  "result": "PASS_READ_ONLY_HOST_MONITORING_INSPECTION",
+  "server_id": 9069403,
+  "server_status": "on",
+  "ssh_key_id": 772571
+}

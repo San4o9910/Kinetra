@@ -55,19 +55,19 @@ jobs:
         set -euo pipefail
         test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
         sha256sum --check --strict <<'SHA256'
-        654ae707445717a96b04c1a7b1f9e428e22ff06ccb04f40c68a2bf6b2ae11524  ops/timeweb/start-application-host.py
+        e7954b99525f9a66f174d4c4729f0c6287b11f3c8cb2432106e4283d87d6e9e4  ops/timeweb/start-application-host.py
         16c9ed2fc47534f86f35e4aa215d824ffbec84fd3c684d5d02157a7e944322c4  ops/timeweb/activate-application-host.py
         041f415dedf6b0b6922484281926c8c98c87828506dcb2e1ac6fb324b00b05bb  ops/timeweb/initialize-database-host.py
         4621b1c0153ab56ae535e245fdb2de4ef2aff4a30ba5b592343a26795f0655ae  ops/timeweb/prepare-database-host.py
         a19aca3ea953feecdcb9be6e9dcabdfc8b0e2b4f3938184391cdfb2ff3e87c9e  ops/timeweb/bootstrap-server.py
         567d892221925bb438ece6a893360a891ffd4228f8af0a18252b8ba365a682c0  ops/timeweb/inspect-server.py
         f549bdda5c325ce4d36a2be239bb6458f79f5d011d3e5ec61e9158388377377a  ops/timeweb/prepare-api-host.py
-        175b0a3f89c34776a34c3a6fc29066bb1040671d2b492098f21aeb9c76abfb7c  ops/timeweb/activate-local-application-host.py
-        8bdaf2246a7cb391d6df57f2e7dd6b2d422f5b36f615a210340613eb398688ca  ops/timeweb/activate-https-host.py
+        d49dd17b2977bdd6b0dfcc5022955e4375d76574ffc7b0b80f0b3e9fd4d0a72e  ops/timeweb/activate-local-application-host.py
+        3245b2d3cb1f5bf30265dce6f62d2cfa1545bd4dd1fbf1b51288c6d8fb726d2e  ops/timeweb/activate-https-host.py
         a23d52b21f7c638f757a723048ee632d37e8f217ae796f97dd92ec3bbb990e2d  ops/timeweb/prepare-caddy.sh
-        6e6fa0f79c5860f125fb65d33d5ced4d22ce18c2d63bff5f7416f7dc8ba36556  ops/timeweb/https-caller.py
+        c4be0eb2eed4af2b8d3aedd1cf610b101ad2f5068fb6381ab560acfb07ea47f3  ops/timeweb/https-caller.py
         45130035b0124170fc219eae702e9422fbe1a2134f73b0f5ef0a63a39b120611  ops/timeweb/test-https-caller.py
-        f251b3fe84b818c831d539bac3b0c489d694159489661c1329a7ec9df2b39495  ops/timeweb/application-caller.py
+        a8cbec10bf8267d18dbda507817b39b36511c2edbd5a7dd1a2889d062943dfec  ops/timeweb/application-caller.py
         61fc0550edbc533938b1850ad17aa6779c1d2fa7122db08296748acfe43924ea  ops/timeweb/verify-launch-provenance.py
         ba9d7f7d4a5475de9a4401be60694bcbeab1e62308d2f304454360fc72d2267e  ops/timeweb/upstream-disposition.py
         dcfeda041b41481494de1ae884b3d90c58c54a9bc612c8f1d1224063ae232d71  ops/timeweb/test-activate-local-application-host.py

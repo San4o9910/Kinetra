@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Dormant, explicit local-only application activation on the fixed existing host.
+"""Owner-approved exact preserved-backend continuation on the fixed existing host.
 
-CLI: --activate-local-application --private-input /absolute/owner0600/input.json
+CLI: --resume-created-local-application --private-input /absolute/owner0600/input.json
 Input has schema=1, approved (frozen guest input), provenance, database_outer,
 api_outer. Provenance keys below bind canonical JSON SHA256 (sorted keys, compact
 separators, ensure_ascii=True, no newline), exact commits, run/artifact IDs and
@@ -36,6 +36,7 @@ import tempfile
 import time
 
 PINS = {
+    "resume-created-application-host.py": "7e288a7066cce17be60e6cf8bbd49631dc1cd943e694c2fa67cdb003bea402bd",
     "inspect-host-monitoring.py": "3ffc667a66330c323836d1335e78f92940d6ebdc1877cf66048265d774bb3086",
     "start-application-host.py": "e7954b99525f9a66f174d4c4729f0c6287b11f3c8cb2432106e4283d87d6e9e4",
     "activate-application-host.py": "16c9ed2fc47534f86f35e4aa215d824ffbec84fd3c684d5d02157a7e944322c4",
@@ -86,7 +87,7 @@ def canonical_hash(value):
 
 
 def private_input(argv):
-    require(len(argv) == 3 and argv[:2] == ["--activate-local-application", "--private-input"], "EXPLICIT_LOCAL_ACTIVATION_ARGUMENTS_REQUIRED")
+    require(len(argv) == 3 and argv[:2] == ["--resume-created-local-application", "--private-input"], "EXPLICIT_LOCAL_ACTIVATION_ARGUMENTS_REQUIRED")
     path = Path(argv[2])
     require(path.is_absolute() and path.resolve() == path, "PRIVATE_INPUT_PATH_INVALID")
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
@@ -308,8 +309,8 @@ def main():
         # indeterminate outcome. Never report an application as stopped by guess.
         state.update(activation_outcome='UNKNOWN_RECONCILE', approved_input_sha256=canonical_hash(approved),
                      commit=approved['commit'], images=approved['images'])
-        child = subprocess.Popen(['/usr/bin/python3', '-B', str(folder / 'start-application-host.py'),
-            '--start-validated-local-application', '--private-input', str(private)],
+        child = subprocess.Popen(['/usr/bin/python3', '-B', str(folder / 'resume-created-application-host.py'),
+            '--resume-exact-created-application', '--private-input', str(private)],
             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
             env={'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LC_ALL': 'C'}, start_new_session=True)
         output, _ = child.communicate(timeout=900)

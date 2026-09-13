@@ -1,3 +1,22 @@
+## Launch checkpoint — 2026-09-13: owner-approved exact continuation implemented
+
+The owner replied «да» to proposal3fe71151ff3d590c0cb03c367693a87ef0f2d4a6.
+Approval is recorded in c124b95ba62ff4a72491622dc92601dab4f89b6d and supersedes
+the decision-required hold immediately below. Do not request this approval again.
+
+Fresh inspection34778863835/job103782050733 (control99511c096a6842dc8902794211157718d7e5d59f)
+PASS: same never-started backend and failed checkpoint, PostgreSQL running, all cleanup
+complete. The exact Health correction and separate bounded continuation are implemented;
+see [preserved-backend-continuation-20260913.md](preserved-backend-continuation-20260913.md).
+17 continuation boundary tests and all related caller/Health tests PASS.
+
+Next: publish the reviewed resume caller once, authenticate real source/image/database,
+successful API phase and exact failed-start/inspection evidence, then run the explicit
+continuation. Preserve original failures and credentials. No container/data deletion.
+Require actual complete local PASS and cleanup before HTTPS. On any partial failure,
+inspect actual continuation records and live identities; never rerun blindly.
+No successful new local handoff, HTTPS or user readiness is claimed yet.
+
 ## Launch checkpoint — 2026-09-13 19:26 UTC: exact Health query failure; decision prepared
 
 Local run `34777104737` / job `103777116383`,

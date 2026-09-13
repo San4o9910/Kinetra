@@ -19,7 +19,8 @@ FROZEN = "654ae707445717a96b04c1a7b1f9e428e22ff06ccb04f40c68a2bf6b2ae11524"
 PROPOSED = "e7954b99525f9a66f174d4c4729f0c6287b11f3c8cb2432106e4283d87d6e9e4"
 OLD = '{{if .State.Health}}'
 NEW = '{{if (index .State "Health")}}'
-SOURCE = (ROOT / "start-application-host.py").read_text()
+INSTALLED = (ROOT / "start-application-host.py").read_text()
+SOURCE = INSTALLED.replace(NEW, OLD) if NEW in INSTALLED else INSTALLED
 FIXED = SOURCE.replace(OLD, NEW)
 
 

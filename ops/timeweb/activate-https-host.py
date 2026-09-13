@@ -29,8 +29,8 @@ import sys
 import time
 
 HELPER_HASHES = {
-    "start-application-host.py": "654ae707445717a96b04c1a7b1f9e428e22ff06ccb04f40c68a2bf6b2ae11524",
-    "activate-local-application-host.py": "175b0a3f89c34776a34c3a6fc29066bb1040671d2b492098f21aeb9c76abfb7c",
+    "start-application-host.py": "e7954b99525f9a66f174d4c4729f0c6287b11f3c8cb2432106e4283d87d6e9e4",
+    "activate-local-application-host.py": "d49dd17b2977bdd6b0dfcc5022955e4375d76574ffc7b0b80f0b3e9fd4d0a72e",
     "prepare-caddy.sh": "a23d52b21f7c638f757a723048ee632d37e8f217ae796f97dd92ec3bbb990e2d",
 }
 for name, digest in HELPER_HASHES.items():
