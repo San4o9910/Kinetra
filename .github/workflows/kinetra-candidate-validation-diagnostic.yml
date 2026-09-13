@@ -1,4 +1,4 @@
-name: Verify preserved API handoff and absent application startup after import failure
+name: Inspect exact local startup failure checkpoint without restarting
 on:
   push:
     branches: [ops/timeweb-hourly-preflight-20260909]
@@ -81,7 +81,7 @@ jobs:
           spec.loader.exec_module(module)
 
           guest = r'''
-          import fcntl, json, os, pathlib, stat, subprocess
+          import fcntl, hashlib, json, os, pathlib, re, stat, subprocess
           stage=pathlib.Path('/srv/kinetra-stage')
           lock=stage.parent
           descriptor=os.open('/run/kinetra-database-stage.lock',os.O_RDONLY|os.O_NOFOLLOW)
@@ -119,13 +119,25 @@ jobs:
           lines=proc.stdout.strip().splitlines()
           assert all(line in {'postgres=running','backend=created','backend=running','backend=exited','frontend=created','frontend=running','frontend=exited'} for line in lines)
           result['compose_services']=lines
+          checkpoint=stage/'evidence/application-start-result.json'
+          result['start_checkpoint']=None
+          if checkpoint.exists():
+              info=checkpoint.lstat()
+              assert stat.S_ISREG(info.st_mode) and info.st_uid==0 and stat.S_IMODE(info.st_mode)==0o600 and info.st_size<=65536
+              raw=checkpoint.read_bytes();value=json.loads(raw)
+              assert value['result']=='CHECKPOINT_ONLY' and value['requires_matching_outer_success'] is True
+              assert re.fullmatch(r'[A-Z_]{1,90}',value['phase'])
+              assert value['error'] is None or re.fullmatch(r'[A-Z_]{1,90}',value['error'])
+              result['start_checkpoint']={k:value[k] for k in ('phase','error','nonce','attempt_recorded',
+                  'attempted_services','start_attempted_services','uncertain_start_services','owned_containers','rollback')}
+              result['start_checkpoint']['sha256']=hashlib.sha256(raw).hexdigest()
           os.close(descriptor)
           print(json.dumps(result,sort_keys=True))
           '''
           def validate(raw):
               value=json.loads(raw)
               assert set(value)=={'schema','result','mutations','data_root','pgdata','mounted_root','volume_name',
-                  'volume_bind_matches','postgres_version_17','bootstrap_marker_exists','application_record_exists','recovery_complete_exists','start_attempt_exists','start_result_exists','compose_services'}
+                  'volume_bind_matches','postgres_version_17','bootstrap_marker_exists','application_record_exists','recovery_complete_exists','start_attempt_exists','start_result_exists','compose_services','start_checkpoint'}
               assert value['schema']==1 and value['result']=='PASS_READ_ONLY_INSPECTION' and value['mutations'] is False
               assert value['volume_name']=='kinetra-production_postgres17_data'
               for name in ('data_root','pgdata','mounted_root'):
@@ -137,6 +149,19 @@ jobs:
               assert all(value[k] is True for k in ('volume_bind_matches','postgres_version_17','bootstrap_marker_exists'))
               assert all(type(value[k]) is bool for k in ('application_record_exists','recovery_complete_exists','start_attempt_exists','start_result_exists'))
               assert isinstance(value['compose_services'],list) and len(value['compose_services'])<=3
+              item=value['start_checkpoint']
+              if item is not None:
+                  assert set(item)=={'phase','error','nonce','attempt_recorded','attempted_services','start_attempted_services',
+                      'uncertain_start_services','owned_containers','rollback','sha256'}
+                  assert re.fullmatch(r'[A-Z_]{1,90}',item['phase']) and (item['error'] is None or re.fullmatch(r'[A-Z_]{1,90}',item['error']))
+                  assert item['nonce'] is None or re.fullmatch(r'[a-f0-9]{32}',item['nonce'])
+                  assert re.fullmatch(r'[a-f0-9]{64}',item['sha256']) and type(item['attempt_recorded']) is bool
+                  for key in ('attempted_services','start_attempted_services','uncertain_start_services'):
+                      assert isinstance(item[key],list) and len(item[key])<=2 and set(item[key])<={'backend','frontend'}
+                  assert isinstance(item['owned_containers'],dict) and set(item['owned_containers'])<={'backend','frontend'}
+                  assert all(re.fullmatch(r'[a-f0-9]{64}',cid) for cid in item['owned_containers'].values())
+                  assert set(item['rollback'])<={'backend','frontend'}
+                  assert all(v in {'NO_CONTAINER_OBSERVED','CREATED_NOT_STARTED','STOPPED','UNCONFIRMED_REQUIRES_REVIEW'} for v in item['rollback'].values())
               return value
 
           module.GUEST_PROGRAM = guest
