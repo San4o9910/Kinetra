@@ -25,8 +25,8 @@ import time
 import zipfile
 import io
 
-PINS = {'start-application-host.py': '654ae707445717a96b04c1a7b1f9e428e22ff06ccb04f40c68a2bf6b2ae11524', 'activate-application-host.py': '16c9ed2fc47534f86f35e4aa215d824ffbec84fd3c684d5d02157a7e944322c4', 'initialize-database-host.py': '041f415dedf6b0b6922484281926c8c98c87828506dcb2e1ac6fb324b00b05bb', 'prepare-database-host.py': '4621b1c0153ab56ae535e245fdb2de4ef2aff4a30ba5b592343a26795f0655ae', 'bootstrap-server.py': 'a19aca3ea953feecdcb9be6e9dcabdfc8b0e2b4f3938184391cdfb2ff3e87c9e', 'inspect-server.py': '567d892221925bb438ece6a893360a891ffd4228f8af0a18252b8ba365a682c0', 'prepare-api-host.py': '6b63573205b874c03d08e6147eec364928630ff094100848a7146382700740ea', 'activate-local-application-host.py': '54779ce7be566e633247d9338ef94d2ddebf43ff9169e429fd72cc6ffb9135e2', 'activate-https-host.py': 'f30c6026e238eb411b8591b1234c88f210efd15748c2888f15f87cf34198bc69', 'prepare-caddy.sh': 'a23d52b21f7c638f757a723048ee632d37e8f217ae796f97dd92ec3bbb990e2d'}
-CALLER_SHA256 = "82c8b50a18ce2827d84335d312f91f28643a3cf7df62160e647345f096cb3039"
+PINS = {'start-application-host.py': '654ae707445717a96b04c1a7b1f9e428e22ff06ccb04f40c68a2bf6b2ae11524', 'activate-application-host.py': '16c9ed2fc47534f86f35e4aa215d824ffbec84fd3c684d5d02157a7e944322c4', 'initialize-database-host.py': '041f415dedf6b0b6922484281926c8c98c87828506dcb2e1ac6fb324b00b05bb', 'prepare-database-host.py': '4621b1c0153ab56ae535e245fdb2de4ef2aff4a30ba5b592343a26795f0655ae', 'bootstrap-server.py': 'a19aca3ea953feecdcb9be6e9dcabdfc8b0e2b4f3938184391cdfb2ff3e87c9e', 'inspect-server.py': '567d892221925bb438ece6a893360a891ffd4228f8af0a18252b8ba365a682c0', 'prepare-api-host.py': 'f549bdda5c325ce4d36a2be239bb6458f79f5d011d3e5ec61e9158388377377a', 'activate-local-application-host.py': '22b4c0fe509d2b5d96209e4031604a493cf2aa5baeafd4bfdfce4c890b8ff357', 'activate-https-host.py': 'f30c6026e238eb411b8591b1234c88f210efd15748c2888f15f87cf34198bc69', 'prepare-caddy.sh': 'a23d52b21f7c638f757a723048ee632d37e8f217ae796f97dd92ec3bbb990e2d'}
+CALLER_SHA256 = "598d82e4d00b54606be8cd6c9ebc872d3a62ebd9786b250cad267a4f1e1df844"
 
 
 def load_caller():

@@ -43,7 +43,7 @@ PINS = {
     "bootstrap-server.py": "a19aca3ea953feecdcb9be6e9dcabdfc8b0e2b4f3938184391cdfb2ff3e87c9e",
     "inspect-server.py": "567d892221925bb438ece6a893360a891ffd4228f8af0a18252b8ba365a682c0",
 }
-LOCAL_PINS = {**PINS, "prepare-api-host.py": "6b63573205b874c03d08e6147eec364928630ff094100848a7146382700740ea"}
+LOCAL_PINS = {**PINS, "prepare-api-host.py": "f549bdda5c325ce4d36a2be239bb6458f79f5d011d3e5ec61e9158388377377a"}
 
 
 def public_helpers():

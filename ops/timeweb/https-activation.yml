@@ -61,13 +61,13 @@ jobs:
         4621b1c0153ab56ae535e245fdb2de4ef2aff4a30ba5b592343a26795f0655ae  ops/timeweb/prepare-database-host.py
         a19aca3ea953feecdcb9be6e9dcabdfc8b0e2b4f3938184391cdfb2ff3e87c9e  ops/timeweb/bootstrap-server.py
         567d892221925bb438ece6a893360a891ffd4228f8af0a18252b8ba365a682c0  ops/timeweb/inspect-server.py
-        6b63573205b874c03d08e6147eec364928630ff094100848a7146382700740ea  ops/timeweb/prepare-api-host.py
-        54779ce7be566e633247d9338ef94d2ddebf43ff9169e429fd72cc6ffb9135e2  ops/timeweb/activate-local-application-host.py
+        f549bdda5c325ce4d36a2be239bb6458f79f5d011d3e5ec61e9158388377377a  ops/timeweb/prepare-api-host.py
+        22b4c0fe509d2b5d96209e4031604a493cf2aa5baeafd4bfdfce4c890b8ff357  ops/timeweb/activate-local-application-host.py
         f30c6026e238eb411b8591b1234c88f210efd15748c2888f15f87cf34198bc69  ops/timeweb/activate-https-host.py
         a23d52b21f7c638f757a723048ee632d37e8f217ae796f97dd92ec3bbb990e2d  ops/timeweb/prepare-caddy.sh
-        c377e5510019723462d7fcd117bd7aa4c6a376b1ed33c38d952f83d444bf395c  ops/timeweb/https-caller.py
+        6dba697be21ee9429a63a67309a7e359ef5c47e67dc347a20e7a90fc5e7d840a  ops/timeweb/https-caller.py
         45130035b0124170fc219eae702e9422fbe1a2134f73b0f5ef0a63a39b120611  ops/timeweb/test-https-caller.py
-        82c8b50a18ce2827d84335d312f91f28643a3cf7df62160e647345f096cb3039  ops/timeweb/application-caller.py
+        598d82e4d00b54606be8cd6c9ebc872d3a62ebd9786b250cad267a4f1e1df844  ops/timeweb/application-caller.py
         61fc0550edbc533938b1850ad17aa6779c1d2fa7122db08296748acfe43924ea  ops/timeweb/verify-launch-provenance.py
         ba9d7f7d4a5475de9a4401be60694bcbeab1e62308d2f304454360fc72d2267e  ops/timeweb/upstream-disposition.py
         d9825e47848e9703bd75192ed695adb4b12a8eed56e03976b43b345e61064258  ops/timeweb/test-activate-local-application-host.py

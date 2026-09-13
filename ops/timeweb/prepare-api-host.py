@@ -28,6 +28,7 @@ PINS = {
     "prepare-database-host.py": "4621b1c0153ab56ae535e245fdb2de4ef2aff4a30ba5b592343a26795f0655ae",
     "bootstrap-server.py": "a19aca3ea953feecdcb9be6e9dcabdfc8b0e2b4f3938184391cdfb2ff3e87c9e",
     "inspect-server.py": "567d892221925bb438ece6a893360a891ffd4228f8af0a18252b8ba365a682c0",
+    "inspect-host-monitoring.py": "3ffc667a66330c323836d1335e78f92940d6ebdc1877cf66048265d774bb3086",
 }
 
 
