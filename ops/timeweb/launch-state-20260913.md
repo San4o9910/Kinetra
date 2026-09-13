@@ -1,3 +1,54 @@
+## Launch checkpoint — 2026-09-13 20:15 UTC: Health fixed; local asset gate needs a narrow decision
+
+Owner approval c124b95ba62ff4a72491622dc92601dab4f89b6d was implemented in
+9fb986087d6a5e018512fddab4ff701b8b6516a0. The approved continuation actually ran:
+34779526000/job103783858959, control1940f0b72edfdc8dbc286789086cec00163a2d3b,
+attempt1, workflow SHA256a5d8308c30ba7cffd40849ec0738c6f84ee31ffaac3616eaf268fa0bfd8de5b4.
+Offline tests and all source/image/database/API/previous-failure/inspection gates PASS.
+
+Both app containers started. Backend healthy/readiness and frontend runtime/nginx,
+local shell HTTP/security headers/core CSP gates passed. LOCAL_ACCEPTANCE then
+failed with UNREVIEWED_ASSET_ORIGIN. Later asset/API/final gates did not complete.
+The actual run remains FAILURE. Full temporary cleanup succeeded (key772577).
+Artifact10324610731, kinetra-local-attempt-34779526000-1,
+SHA2563a482c172c4f54ec82667e4c541f51c94db8e0b21e9cabd4a597099492b590bc.
+There is no accepted local handoff and HTTPS is unstarted.
+
+Original ownership-bound rollback confirmed STOPPED for exact backend
+460a447fc441071f595dea383b60487aa707e719511792aefa52a3a0b831962a and frontend
+c47ad815087ec8f3b310ac59f565babfb03af5b43102f56ac24678ac1c36d206.
+PostgreSQL remains running. Original failed records/archive are byte-identical.
+Nonce9128e22668c33a1552f912415c800939; continuation-result SHA256
+72ee16fdc09a163e0d311401c56f43c1e766b4e6e57442ddd7f68e98ada9be5b.
+Both containers have now started, so NEVER rerun the never-started continuation.
+
+Read-only reconciliation34779750372 and corrected built-file inspection34780143497
+(job103785543396, control5f836991c0d0c73c593b81b63b7740503c624c25) SUCCESS with
+complete cleanup. Inspection34779895771 had a regex escaping error and complete
+cleanup; the correction changed only diagnostic parsers. Exact built HTML contains
+the pre-existing blocked Google Fonts stylesheet and same-origin /theme-init.js,
+which the frozen /assets/-only parser rejects. nginx CSP already blocks external
+styles/fonts. Theme and nginx bytes match the exact approved source.
+
+Prepared dormant asset-check patch and 16 passing offline boundary tests, including
+HTTPS correspondence. No frozen asset acceptance code has been changed yet.
+Actual identities and cleanup are in local-asset-inspection-20260913.json.
+Concrete next decision:
+[local-asset-continuation-decision-20260913.md](local-asset-continuation-decision-20260913.md).
+
+**OWNER_DECISION_REQUIRED:** authorize only the exact qualified-shell/theme/CSP
+parser correction and one explicit continuation of these two stopped containers,
+preserving all old records, other assertions and successful prior handoffs.
+Previous Health approval is completed and must not be requested again. Its scope
+preserved frozen final assertions and forbade retry after a partial continuation.
+Prepare/test the new state-specific helper after this narrow decision; do not
+clear attempts, delete containers, rerun preparation, initialize/migrate or start
+HTTPS from failed evidence. Existing automation is already disabled.
+
+Source/app/image/public-package/SBOM/CPE/host/SSH/secret/cost/no-message restrictions
+remain unchanged. No public availability or user readiness is claimed.
+The sections below are historical checkpoints; this top section supersedes them.
+
 ## Launch checkpoint — 2026-09-13: owner-approved exact continuation implemented
 
 The owner replied «да» to proposal3fe71151ff3d590c0cb03c367693a87ef0f2d4a6.

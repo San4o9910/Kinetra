@@ -1,0 +1,85 @@
+--- a/ops/timeweb/start-application-host.py
++++ b/ops/timeweb/start-application-host.py
+@@ -243,17 +243,41 @@
+         connection.close()
+ 
+ 
++QUALIFIED_SHELL_SHA256 = '6195327372c93442ceffdfc872b34f39296bf8e5cbc602a397b78df489f60f19'
++QUALIFIED_THEME_SHA256 = 'd9988fba5a56d7bd81528b74156f5ce65a8d07f649b9eef77104e81ae768788b'
++QUALIFIED_CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: https:; media-src 'self' blob: https:; connect-src 'self' https: wss:; font-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
++BLOCKED_FONT_STYLESHEET = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap'
++
++
+ class Assets(HTMLParser):
+-    def __init__(self):
++    def __init__(self, csp, shell):
+         super().__init__()
++        require(sha256(shell) == QUALIFIED_SHELL_SHA256, "QUALIFIED_SHELL_CHANGED")
++        # Exact qualified policy also excludes style-src-elem overrides and duplicates.
++        require(csp == QUALIFIED_CSP, "QUALIFIED_ASSET_CSP_CHANGED")
+         self.paths = set()
++        self.blocked_font_links = 0
+ 
+     def handle_starttag(self, tag, attrs):
+         attributes = dict(attrs)
+         path = attributes.get("src") if tag == "script" else attributes.get("href") if tag == "link" and attributes.get("rel") == "stylesheet" else None
+         if path is not None:
+-            require(re.fullmatch(r"/assets/[A-Za-z0-9_./-]+\.(?:js|css)", path) and ".." not in path, "UNREVIEWED_ASSET_ORIGIN")
++            if tag == "link" and path == BLOCKED_FONT_STYLESHEET:
++                # This exact pre-existing link remains blocked by the checked CSP.
++                # It is never fetched or counted as an accepted application asset.
++                self.blocked_font_links += 1
++                require(self.blocked_font_links == 1, "DUPLICATE_BLOCKED_FONT_LINK")
++                return
++            if not (tag == "script" and path == "/theme-init.js"):
++                require(re.fullmatch(r"/assets/[A-Za-z0-9_./-]+\.(?:js|css)", path) and ".." not in path, "UNREVIEWED_ASSET_ORIGIN")
+             self.paths.add(path)
++
++    def verify_complete(self):
++        require(self.blocked_font_links == 1 and "/theme-init.js" in self.paths,
++                "QUALIFIED_SHELL_REFERENCES_CHANGED")
++        bundled = self.paths - {"/theme-init.js"}
++        require(2 <= len(bundled) <= 12 and any(p.endswith(".js") for p in bundled)
++                and any(p.endswith(".css") for p in bundled), "REAL_BUILT_ASSETS_REQUIRED")
+ 
+ 
+ def local_acceptance():
+@@ -265,13 +289,15 @@
+     directives = [item.strip() for item in csp.split(";") if item.strip()]
+     require(all(item in directives for item in ("default-src 'self'", "script-src 'self'", "object-src 'none'", "frame-ancestors 'none'", "base-uri 'self'", "form-action 'self'"))
+             and len({item.split()[0] for item in directives}) == len(directives), "LOCAL_CSP_REJECTED")
+-    parser = Assets()
++    parser = Assets(csp, body)
+     parser.feed(body.decode("utf8"))
++    parser.verify_complete()
+     require(2 <= len(parser.paths) <= 12 and any(path.endswith(".js") for path in parser.paths) and any(path.endswith(".css") for path in parser.paths), "REAL_BUILT_ASSETS_REQUIRED")
+     results = {"/": {"status": status, "sha256": sha256(body)}}
+     for path in sorted(parser.paths):
+         status, headers, body = local_get(path)
+         require(status == 200 and body and "text/html" not in headers.get("content-type", ""), "LOCAL_BUILT_ASSET_FAILED")
++        if path == "/theme-init.js": require(sha256(body) == QUALIFIED_THEME_SHA256, "QUALIFIED_THEME_CHANGED")
+         results[path] = {"status": status, "sha256": sha256(body)}
+     for path, expected in (("/health", 200), ("/ready", 404), ("/api/v1/me", 401)):
+         status, headers, body = local_get(path)
+--- a/ops/timeweb/activate-https-host.py
++++ b/ops/timeweb/activate-https-host.py
+@@ -290,8 +290,9 @@
+     directives = [item.strip() for item in headers.get("content-security-policy", "").split(";") if item.strip()]
+     require(all(item in directives for item in ("default-src 'self'", "script-src 'self'", "object-src 'none'", "frame-ancestors 'none'", "base-uri 'self'", "form-action 'self'"))
+             and len({item.split()[0] for item in directives}) == len(directives), "HTTPS_CSP_REJECTED")
+-    parser = local.Assets()
++    parser = local.Assets(headers.get("content-security-policy", ""), body)
+     parser.feed(body.decode("utf8"))
++    parser.verify_complete()
+     require(parser.paths == set(expected) - {"/", "/health", "/ready", "/api/v1/me"}, "HTTPS_ASSET_SET_CHANGED")
+     results = {"/": {"status": status, "sha256": sha256(body)}}
+     for path in sorted(set(expected) - {"/"}):
+@@ -300,6 +301,8 @@
+         if path == "/api/v1/me": require("no-store" in headers.get("cache-control", "").split(","), "HTTPS_API_NO_STORE_REQUIRED")
+         if path == "/health": require(json.loads(body).get("status") == "ok", "HTTPS_API_HEALTH_FAILED")
+         if path.startswith("/assets/"): require(body and "text/html" not in headers.get("content-type", ""), "HTTPS_BUILT_ASSET_FAILED")
++        if path == "/theme-init.js":
++            require(body and "text/html" not in headers.get("content-type", "") and sha256(body) == local.QUALIFIED_THEME_SHA256, "HTTPS_QUALIFIED_THEME_CHANGED")
+         results[path] = {"status": status, "sha256": sha256(body)}
+     require(results == expected, "HTTPS_LOCAL_APPLICATION_MISMATCH")
+     connection = http.client.HTTPConnection(PUBLIC_IP, 80, timeout=5)
