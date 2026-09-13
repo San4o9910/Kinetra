@@ -23,7 +23,7 @@ jobs:
           22b4c0fe509d2b5d96209e4031604a493cf2aa5baeafd4bfdfce4c890b8ff357  ops/timeweb/activate-local-application-host.py
           598d82e4d00b54606be8cd6c9ebc872d3a62ebd9786b250cad267a4f1e1df844  ops/timeweb/application-caller.py
           6dba697be21ee9429a63a67309a7e359ef5c47e67dc347a20e7a90fc5e7d840a  ops/timeweb/https-caller.py
-          2492f4f12d84d009e07eb425584464ff8343c0198079095b4b62d5d2f879b69f  ops/timeweb/test-prepare-api-host.py
+          51138875302c90ada0ddce03a432ee2210ae245d2b40e2985e10df41878ef0ad  ops/timeweb/test-prepare-api-host.py
           d9825e47848e9703bd75192ed695adb4b12a8eed56e03976b43b345e61064258  ops/timeweb/test-activate-local-application-host.py
           444528e29fa1b280a78989727911a9f6c5025f285a30bed5af0f31fc0ea396c8  ops/timeweb/test-application-caller.py
           45130035b0124170fc219eae702e9422fbe1a2134f73b0f5ef0a63a39b120611  ops/timeweb/test-https-caller.py
