@@ -1,4 +1,4 @@
-name: Recheck exact backend after owner approved preserved continuation
+name: Inspect approved continuation checkpoint and retained containers
 on:
   push:
     branches: [ops/timeweb-hourly-preflight-20260909]
@@ -81,130 +81,65 @@ jobs:
           spec.loader.exec_module(module)
 
           guest = r'''
-          import fcntl, hashlib, json, os, pathlib, re, stat, subprocess
+          import fcntl,hashlib,json,os,pathlib,re,stat,subprocess
           stage=pathlib.Path('/srv/kinetra-stage')
-          lock=stage.parent
-          descriptor=os.open('/run/kinetra-database-stage.lock',os.O_RDONLY|os.O_NOFOLLOW)
-          fcntl.flock(descriptor,fcntl.LOCK_EX|fcntl.LOCK_NB)
-          def metadata(path):
-              info=path.lstat()
-              return {'uid':info.st_uid,'gid':info.st_gid,'mode':oct(stat.S_IMODE(info.st_mode)),
-                      'directory':stat.S_ISDIR(info.st_mode),'symlink':path.is_symlink(),
-                      'device':info.st_dev,'inode':info.st_ino}
-          initialized=json.loads((stage/'evidence/initialization.json').read_bytes())
-          assert initialized['result']=='DATABASE_INITIALIZED_ONLY' and initialized['commit']=='73b665065e00a5b375e90f701373b3e0856a0386'
-          proc=subprocess.run(['/usr/bin/docker','inspect','--format','{{json .Mounts}}',initialized['postgres_id']],
-              stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=15,check=True)
-          mounts=json.loads(proc.stdout)
-          data_mount=next(m for m in mounts if m['Destination']=='/var/lib/postgresql/data')
-          assert data_mount['Type']=='volume' and data_mount['Name']=='kinetra-production_postgres17_data'
-          proc=subprocess.run(['/usr/bin/docker','volume','inspect','--format','{{json .}}',data_mount['Name']],
-              stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=15,check=True)
-          volume=json.loads(proc.stdout)
-          assert volume['Driver']=='local' and volume['Options']=={'device':str(stage/'postgres/data'),'o':'bind','type':'none'}
-          assert volume['Mountpoint']==data_mount['Source']
-          result={'schema':1,'result':'PASS_READ_ONLY_INSPECTION','mutations':False,
-                  'data_root':metadata(stage/'postgres/data'),'pgdata':metadata(stage/'postgres/data/pgdata'),
-                  'mounted_root':metadata(pathlib.Path(data_mount['Source'])),
-                  'volume_name':data_mount['Name'],'volume_bind_matches':True,
-                  'postgres_version_17':(stage/'postgres/data/pgdata/PG_VERSION').read_bytes()==b'17\n',
-                  'bootstrap_marker_exists':(stage/'postgres/data/pgdata/.kinetra-bootstrap-complete').is_file(),
-                  'application_record_exists':(stage/'evidence/application-env.json').is_file(),
-                  'recovery_complete_exists':(stage/'evidence/application-env-recovery-complete.json').is_file(),
-                  'start_attempt_exists':(stage/'evidence/application-start-attempt.json').exists(),
-                  'start_result_exists':(stage/'evidence/application-start-result.json').exists()}
-          proc=subprocess.run(['/usr/bin/docker','ps','-a','--filter','label=com.docker.compose.project=kinetra-production',
-              '--format','{{.Label "com.docker.compose.service"}}={{.State}}'],stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,
-              stderr=subprocess.DEVNULL,timeout=15,check=True,text=True)
-          lines=proc.stdout.strip().splitlines()
-          assert all(line in {'postgres=running','backend=created','backend=running','backend=exited','frontend=created','frontend=running','frontend=exited'} for line in lines)
-          result['compose_services']=lines
-          checkpoint=stage/'evidence/application-start-result.json'
-          result['start_checkpoint']=None
-          if checkpoint.exists():
-              info=checkpoint.lstat()
-              assert stat.S_ISREG(info.st_mode) and info.st_uid==0 and stat.S_IMODE(info.st_mode)==0o600 and info.st_size<=65536
-              raw=checkpoint.read_bytes();value=json.loads(raw)
-              assert value['result']=='CHECKPOINT_ONLY' and value['requires_matching_outer_success'] is True
-              assert re.fullmatch(r'[A-Z_]{1,90}',value['phase'])
-              assert value['error'] is None or re.fullmatch(r'[A-Z_]{1,90}',value['error'])
-              result['start_checkpoint']={k:value[k] for k in ('phase','error','nonce','attempt_recorded',
-                  'attempted_services','start_attempted_services','uncertain_start_services','owned_containers','rollback')}
-              result['start_checkpoint']['sha256']=hashlib.sha256(raw).hexdigest()
-          assert result['start_checkpoint']['sha256']=='ad5f14d8c643045b59275b4d0433cd9e96f63c1e4fba22dd1af7f3da7812548a'
-          nonce=result['start_checkpoint']['nonce']
-          args=['/usr/bin/docker','container','ls','--all','--quiet','--no-trunc','--filter',
-              'label=com.docker.compose.project=kinetra-production','--filter','label=com.docker.compose.service=backend',
-              '--filter','label=com.kinetra.activation='+nonce]
-          p=subprocess.run(args,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=15,text=True)
-          assert p.returncode==0
-          ids=p.stdout.splitlines();assert len(ids)==1 and re.fullmatch(r'[a-f0-9]{64}',ids[0])
-          template='{"id":{{json .Id}},"image":{{json .Config.Image}},"image_id":{{json .Image}},"user":{{json .Config.User}},"project":{{json (index .Config.Labels "com.docker.compose.project")}},"service":{{json (index .Config.Labels "com.docker.compose.service")}},"nonce":{{json (index .Config.Labels "com.kinetra.activation")}},"running":{{json .State.Running}},"status":{{json .State.Status}},"health":{{if .State.Health}}{{json .State.Health.Status}}{{else}}null{{end}},"readonly":{{json .HostConfig.ReadonlyRootfs}},"cap_drop":{{json .HostConfig.CapDrop}},"cap_add":{{json .HostConfig.CapAdd}},"security":{{json .HostConfig.SecurityOpt}},"ports":{{json .NetworkSettings.Ports}},"networks":{{json .NetworkSettings.Networks}},"mounts":{{json .Mounts}},"restart":{{json .HostConfig.RestartPolicy.Name}}}'
-          p=subprocess.run(['/usr/bin/docker','inspect','--type','container','--format',template,ids[0]],
-              stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=15,text=True)
-          safe_error='NONE' if p.returncode==0 else 'HEALTH_FIELD_ABSENT' if 'map has no entry for key "Health"' in p.stderr else 'OTHER_INSPECT_ERROR'
-          safe_template='{"id":{{json .Id}},"image":{{json .Config.Image}},"project":{{json (index .Config.Labels "com.docker.compose.project")}},"service":{{json (index .Config.Labels "com.docker.compose.service")}},"nonce":{{json (index .Config.Labels "com.kinetra.activation")}},"running":{{json .State.Running}},"status":{{json .State.Status}},"started_at":{{json .State.StartedAt}}}'
-          q=subprocess.run(['/usr/bin/docker','inspect','--type','container','--format',safe_template,ids[0]],
-              stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=15,text=True,check=True)
-          identity=json.loads(q.stdout)
-          assert identity['id']==ids[0] and identity['project']=='kinetra-production' and identity['service']=='backend' and identity['nonce']==nonce
-          assert identity['image']=='ghcr.io/san4o9910/kinetra-backend@sha256:9138a6408442b847ca771690053870880cee831769919aaf2a2dc858d52e8362'
-          assert identity['status']=='created' and identity['running'] is False and identity['started_at']=='0001-01-01T00:00:00Z'
-          result['created_backend']={'id':ids[0],'nonce':nonce,'status':'created','never_started':True,
-              'original_inspect_returncode':p.returncode,'original_inspect_error':safe_error}
-          corrected=template.replace('{{if .State.Health}}','{{if (index .State "Health")}}')
-          assert corrected!=template
-          p=subprocess.run(['/usr/bin/docker','inspect','--type','container','--format',corrected,ids[0]],
-              stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=15,text=True,check=True)
-          fixed=json.loads(p.stdout)
-          assert fixed['id']==ids[0] and fixed['nonce']==nonce and fixed['status']=='created' and fixed['running'] is False and fixed['health'] is None
-          assert fixed['image']==identity['image'] and fixed['project']=='kinetra-production' and fixed['service']=='backend'
-          p=subprocess.run(['/usr/bin/docker','inspect','--type','container','--format',corrected,initialized['postgres_id']],
-              stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=15,text=True,check=True)
-          database=json.loads(p.stdout)
-          assert database['id']==initialized['postgres_id'] and database['service']=='postgres' and database['running'] is True and database['health']=='healthy'
-          result['query_validation']={'created_backend':'PASS_NULL_HEALTH','running_postgres':'PASS_HEALTHY',
-              'mutations':False,'persistent_helper_changed':False}
-          os.close(descriptor)
+          fd=os.open('/run/kinetra-database-stage.lock',os.O_RDONLY|os.O_NOFOLLOW)
+          fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
+          nonce='9128e22668c33a1552f912415c800939'
+          files={'original':'application-start-result.json',
+              'failed_archive':'application-start-failed-'+nonce+'.json',
+              'continuation_attempt':'application-continuation-attempt-'+nonce+'.json',
+              'continuation_result':'application-continuation-result-'+nonce+'.json'}
+          records={}
+          for name,filename in files.items():
+              p=stage/'evidence'/filename
+              if not p.exists():records[name]=None;continue
+              info=p.lstat();assert stat.S_ISREG(info.st_mode) and info.st_uid==0 and stat.S_IMODE(info.st_mode)==0o600 and info.st_size<=131072
+              raw=p.read_bytes();v=json.loads(raw)
+              row={'sha256':hashlib.sha256(raw).hexdigest()}
+              for key in ('result','phase','error','nonce','attempt_recorded','attempted_services','start_attempted_services','uncertain_start_services','owned_containers','rollback'):
+                  if key in v:row[key]=v[key]
+              records[name]=row
+          template='{"id":{{json .Id}},"service":{{json (index .Config.Labels "com.docker.compose.service")}},"nonce":{{json (index .Config.Labels "com.kinetra.activation")}},"running":{{json .State.Running}},"status":{{json .State.Status}},"health":{{if (index .State "Health")}}{{json .State.Health.Status}}{{else}}null{{end}},"started":{{json .State.StartedAt}}}'
+          rows=[]
+          for cid in ('460a447fc441071f595dea383b60487aa707e719511792aefa52a3a0b831962a','c47ad815087ec8f3b310ac59f565babfb03af5b43102f56ac24678ac1c36d206'):
+              p=subprocess.run(['/usr/bin/docker','inspect','--type','container','--format',template,cid],stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,text=True,timeout=15,check=True)
+              v=json.loads(p.stdout);assert v['id']==cid and v['nonce']==nonce;rows.append(v)
+          p=subprocess.run(['/usr/bin/docker','ps','-a','--format','{{.Label "com.docker.compose.service"}}={{.State}}'],
+              stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,text=True,timeout=15,check=True)
+          services=p.stdout.splitlines()
+          assert len(services)==3 and all(s in {'postgres=running','backend=created','backend=running','backend=exited','frontend=created','frontend=running','frontend=exited'} for s in services)
+          result={'schema':1,'result':'PASS_READ_ONLY_INSPECTION','mutations':False,'records':records,'containers':rows,'services':services}
+          os.close(fd)
           print(json.dumps(result,sort_keys=True))
           '''
           def validate(raw):
-              value=json.loads(raw)
-              assert set(value)=={'schema','result','mutations','data_root','pgdata','mounted_root','volume_name',
-                  'volume_bind_matches','postgres_version_17','bootstrap_marker_exists','application_record_exists','recovery_complete_exists','start_attempt_exists','start_result_exists','compose_services','start_checkpoint','created_backend','query_validation'}
-              assert value['schema']==1 and value['result']=='PASS_READ_ONLY_INSPECTION' and value['mutations'] is False
-              assert value['volume_name']=='kinetra-production_postgres17_data'
-              for name in ('data_root','pgdata','mounted_root'):
-                  row=value[name]
-                  assert set(row)=={'uid','gid','mode','directory','symlink','device','inode'}
-                  assert all(type(row[k]) is int and row[k]>=0 for k in ('uid','gid','device','inode'))
-                  assert re.fullmatch(r'0o[0-7]{3,4}',row['mode'])
-                  assert row['directory'] is True and row['symlink'] is False
-              assert all(value[k] is True for k in ('volume_bind_matches','postgres_version_17','bootstrap_marker_exists'))
-              assert all(type(value[k]) is bool for k in ('application_record_exists','recovery_complete_exists','start_attempt_exists','start_result_exists'))
-              assert isinstance(value['compose_services'],list) and len(value['compose_services'])<=3
-              item=value['start_checkpoint']
-              if item is not None:
-                  assert set(item)=={'phase','error','nonce','attempt_recorded','attempted_services','start_attempted_services',
-                      'uncertain_start_services','owned_containers','rollback','sha256'}
-                  assert re.fullmatch(r'[A-Z_]{1,90}',item['phase']) and (item['error'] is None or re.fullmatch(r'[A-Z_]{1,90}',item['error']))
-                  assert item['nonce'] is None or re.fullmatch(r'[a-f0-9]{32}',item['nonce'])
-                  assert re.fullmatch(r'[a-f0-9]{64}',item['sha256']) and type(item['attempt_recorded']) is bool
-                  for key in ('attempted_services','start_attempted_services','uncertain_start_services'):
-                      assert isinstance(item[key],list) and len(item[key])<=2 and set(item[key])<={'backend','frontend'}
-                  assert isinstance(item['owned_containers'],dict) and set(item['owned_containers'])<={'backend','frontend'}
-                  assert all(re.fullmatch(r'[a-f0-9]{64}',cid) for cid in item['owned_containers'].values())
-                  assert set(item['rollback'])<={'backend','frontend'}
-                  assert all(v in {'NO_CONTAINER_OBSERVED','CREATED_NOT_STARTED','STOPPED','UNCONFIRMED_REQUIRES_REVIEW'} for v in item['rollback'].values())
-              backend=value['created_backend']
-              assert set(backend)=={'id','nonce','status','never_started','original_inspect_returncode','original_inspect_error'}
-              assert re.fullmatch(r'[a-f0-9]{64}',backend['id']) and backend['nonce']==item['nonce']
-              assert backend['status']=='created' and backend['never_started'] is True
-              assert type(backend['original_inspect_returncode']) is int and backend['original_inspect_returncode'] in range(256)
-              assert backend['original_inspect_error'] in {'NONE','HEALTH_FIELD_ABSENT','OTHER_INSPECT_ERROR'}
-              assert value['query_validation']=={'created_backend':'PASS_NULL_HEALTH','running_postgres':'PASS_HEALTHY',
-                  'mutations':False,'persistent_helper_changed':False}
-              return value
+              v=json.loads(raw)
+              assert set(v)=={'schema','result','mutations','records','containers','services'}
+              assert v['schema']==1 and v['result']=='PASS_READ_ONLY_INSPECTION' and v['mutations'] is False
+              assert set(v['records'])=={'original','failed_archive','continuation_attempt','continuation_result'}
+              for row in v['records'].values():
+                  if row is None:continue
+                  assert set(row)<={'sha256','result','phase','error','nonce','attempt_recorded','attempted_services','start_attempted_services','uncertain_start_services','owned_containers','rollback'}
+                  assert re.fullmatch(r'[a-f0-9]{64}',row['sha256'])
+                  for k in ('result','phase','error'):
+                      if row.get(k) is not None:assert re.fullmatch(r'[A-Z_]{1,90}',row[k])
+                  if 'nonce' in row:assert row['nonce']=='9128e22668c33a1552f912415c800939'
+                  for k in ('attempted_services','start_attempted_services','uncertain_start_services'):
+                      if k in row:assert isinstance(row[k],list) and len(row[k])<=2 and set(row[k])<={'backend','frontend'}
+                  if 'attempt_recorded' in row:assert type(row['attempt_recorded']) is bool
+                  if 'owned_containers' in row:
+                      assert set(row['owned_containers'])<={'backend','frontend'} and all(re.fullmatch(r'[a-f0-9]{64}',x) for x in row['owned_containers'].values())
+                  if 'rollback' in row:
+                      assert set(row['rollback'])<={'backend','frontend'} and all(x in {'NO_CONTAINER_OBSERVED','CREATED_NOT_STARTED','STOPPED','UNCONFIRMED_REQUIRES_REVIEW'} for x in row['rollback'].values())
+              assert len(v['containers'])==2
+              for row in v['containers']:
+                  assert set(row)=={'id','service','nonce','running','status','health','started'}
+                  assert re.fullmatch(r'[a-f0-9]{64}',row['id']) and row['service'] in {'backend','frontend'} and row['nonce']=='9128e22668c33a1552f912415c800939'
+                  assert type(row['running']) is bool and row['status'] in {'created','running','exited'} and row['health'] in {None,'starting','healthy','unhealthy'}
+                  assert re.fullmatch(r'[0-9TZ:.-]{20,40}',row['started'])
+              assert len(v['services'])==3 and all(x in {'postgres=running','backend=created','backend=running','backend=exited','frontend=created','frontend=running','frontend=exited'} for x in v['services'])
+              return v
 
           module.GUEST_PROGRAM = guest
           module.validate_result = validate
