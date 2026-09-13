@@ -2,8 +2,8 @@
 # Fill REVIEW_REQUIRED from actual green current CI/image/database evidence;
 # review this caller before publishing as .github/workflows/timeweb-application-activation.yml.
 # Only API environment preparation and local application startup. No HTTPS/boot/jobs.
-# Bounded retry after 34747520462 failed before SSH/host mutation; pre-host and Timeweb GET diagnostics passed.
-name: Prepare free-beta API and accept local Kinetra application
+# State-specific recovery after verified diagnostics34775387238/34775554137; never repeat initialization.
+name: Recover preserved free-beta API and accept local Kinetra application
 
 on:
   push:
@@ -73,7 +73,12 @@ jobs:
           85f25de920ccffb1878a56b5be6132c0d3ab99a0d21125112575ba8efffd3c82  ops/timeweb/test-upstream-disposition.py
           42d0618f56c543b91778bedac8b87c6b5fecd332b79e9e7e21a9af14b85b3e63  ops/timeweb/scan-upstream-media.py
           c4a35c5b13730316bc92c8f1b1ccf1d1b54c1cbaa15718790cb5603a07aec4a8  ops/timeweb/test-scan-upstream-media.py
+          8326af893a6b25d65394841584f3d9b12b264868a592addc7c1f4cdff42128ae  ops/timeweb/recover-api-candidate-host.py
+          0a1ec78c18632cb03630902c27060a930ec038086711614cac59601b236fdac2  ops/timeweb/recover-api-preparation.py
+          de3a10148df70d68d6b64b05b11250b44b4324c709a691970c214f1d98e736cd  ops/timeweb/recovery-caller.py
+          d1aa5e4c1e488d6fe8437bcbbb035c6c2750d1c7163e30fc39bd8dc60f70d42d  ops/timeweb/test-recover-api-candidate.py
           SHA256
+          env -i PATH="$PATH" python3 -B ops/timeweb/test-recover-api-candidate.py
           PYTHONDONTWRITEBYTECODE=1 python3 ops/timeweb/test-upstream-disposition.py
           env -i PATH="$PATH" python3 ops/timeweb/test-application-caller.py
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -99,7 +104,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 ops/timeweb/application-caller.py --authenticate-database
-      - name: Prepare API with only step-local auth provider inputs
+      - name: Recover exact preserved API with only step-local auth provider inputs
         shell: bash
         env:
           APP_CHECKOUT: ${{ github.workspace }}/Kinetra
@@ -111,7 +116,7 @@ jobs:
           AUTH_TOKEN_DELIVERY_APP_ORIGIN: https://80.68.156.131
         run: |
           set -euo pipefail
-          python3 ops/timeweb/application-caller.py --prepare-api
+          python3 ops/timeweb/recovery-caller.py --recover-api
       - name: Recheck current source images and database before local startup
         shell: bash
         env:
