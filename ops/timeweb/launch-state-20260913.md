@@ -27,10 +27,19 @@ and 14 CPE-disposition tests. Fresh full qualification must succeed before any
 host stage. The earlier failed run is not accepted for deployment. The dormant
 qualified-input reader must be filled with the actual new run/control identity.
 
-A new image run is being prepared; do not launch duplicate workflows. Actual run
-IDs and results will be added after publication. Automatic continuation may be
-resumed with this approval and the current checkpoint; its older PRIVATE-only
-prompt must be updated first. Database, application and HTTPS remain unstarted.
+New image run [34742116241](https://github.com/San4o9910/Kinetra/actions/runs/34742116241),
+job `103683458868`, control `074db3062f601a4ad12896219cc041d71b6b355f`, is in progress.
+The live public-package and AMD CPU checks have both passed; actual media
+reproduction is in progress. Workflow SHA-256 is
+`971b921d5f309b4cc20c6ca552e4df6084d454b749dd11a70fc5676bddd7ad49`.
+The independent scanner run `34742043642` completed successfully under control
+`e587a7bbaab8d1a1693b71bb2d3dd58df8e290e0`. No final image qualification/publication
+success is claimed yet. Do not cancel or duplicate the running build.
+
+The dormant qualified-input reader is now bound to this new run/control/workflow.
+It still requires full actual success before publication at its active path.
+Automatic continuation is being resumed with the new PUBLIC approval; the old
+PRIVATE-only prompt is superseded. Database, application and HTTPS remain unstarted.
 
 ## Current blocker — 05:36 UTC
 
