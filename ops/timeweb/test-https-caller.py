@@ -291,6 +291,32 @@ class HttpsCallerTests(unittest.TestCase):
         self.assertEqual(record['remote_directory'], state['remote_directory'])
         self.assertEqual(record['account_key_cleanup'], 'API_DELETE_CONFIRMED')
 
+    def test_guest_failure_phase_and_attempt_status_survive_failed_capture(self):
+        state = {'result': 'FAIL', 'activation_outcome': 'FAILED_OBSERVED',
+                 'activation': {'start': {'phase': 'VERIFY_LOCAL_HANDOFF',
+                    'error': 'PREPARED_CADDY_IDENTITY_CHANGED', 'rollback': 'NOT_NEEDED',
+                    'attempt_recorded': False, 'start_attempted': False,
+                    'private': 'offline-secret'}}}
+        def callback():
+            print('TIMEWEB_HTTPS_ACTIVATION=' + json.dumps(state))
+            return 1
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            with self.assertRaises(module.Error):
+                module.capture_https(callback, 'TIMEWEB_HTTPS_ACTIVATION=', self.root / 'failure.json')
+        record = json.loads((self.root / 'failure.observations.jsonl').read_text())
+        self.assertEqual(record['guest_error'], 'PREPARED_CADDY_IDENTITY_CHANGED')
+        self.assertEqual(record['guest_phase'], 'VERIFY_LOCAL_HANDOFF')
+        self.assertEqual(record['guest_rollback'], 'NOT_NEEDED')
+        self.assertIs(record['guest_start_attempted'], False)
+        self.assertIs(record['guest_attempt_recorded'], False)
+        self.assertNotIn('offline-secret', output.getvalue())
+
+    def test_guest_diagnostic_fields_reject_unstructured_private_values(self):
+        record = module.https_progress({'result': 'FAIL', 'activation': {'start': {
+            'phase': '/private/path', 'error': 'token=offline-secret', 'rollback': {'private': True},
+            'attempt_recorded': 0, 'start_attempted': 'false'}}})
+        self.assertFalse(any(key.startswith('guest_') for key in record))
+
 class HttpsLauncherTests(unittest.TestCase):
     def setUp(self):
         self.ns = {"__name__": "offline_launcher"}

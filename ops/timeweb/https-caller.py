@@ -470,6 +470,15 @@ def https_progress(state):
         for key in ('nonce', 'owned_invocation'):
             value = activation['start'].get(key)
             if isinstance(value, str) and re.fullmatch(r'[a-f0-9]{32}', value): result[key] = value
+    if isinstance(activation, dict) and isinstance(activation.get('start'), dict):
+        guest = activation['start']
+        for key in ('phase', 'error', 'rollback'):
+            value = guest.get(key)
+            if isinstance(value, str) and re.fullmatch(r'[A-Z_]{1,90}', value):
+                result['guest_' + key] = value
+        for key in ('attempt_recorded', 'start_attempted'):
+            if type(guest.get(key)) is bool:
+                result['guest_' + key] = guest[key]
     return result
 
 
