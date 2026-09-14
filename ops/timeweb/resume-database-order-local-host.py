@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Dormant, explicit local-only application activation on the fixed existing host.
 
-CLI: --activate-local-application --private-input /absolute/owner0600/input.json
+CLI: --resume-database-order-local-application --private-input /absolute/owner0600/input.json
 Input has schema=1, approved (frozen guest input), provenance, database_outer,
 api_outer. Provenance keys below bind canonical JSON SHA256 (sorted keys, compact
 separators, ensure_ascii=True, no newline), exact commits, run/artifact IDs and
@@ -36,6 +36,7 @@ import tempfile
 import time
 
 PINS = {
+    "resume-database-order-application-host.py": "47b89d794ca48691481ff4f1be652b7064435552dda4f2986494e5e8621e5d02",
     "inspect-host-monitoring.py": "3ffc667a66330c323836d1335e78f92940d6ebdc1877cf66048265d774bb3086",
     "start-application-host.py": "1d93f744398488e9f319e7d558a7c1d3e2c9b782d36d7b430fd3ec1709b51eaa",
     "activate-application-host.py": "16c9ed2fc47534f86f35e4aa215d824ffbec84fd3c684d5d02157a7e944322c4",
@@ -86,7 +87,7 @@ def canonical_hash(value):
 
 
 def private_input(argv):
-    require(len(argv) == 3 and argv[:2] == ["--activate-local-application", "--private-input"], "EXPLICIT_LOCAL_ACTIVATION_ARGUMENTS_REQUIRED")
+    require(len(argv) == 3 and argv[:2] == ["--resume-database-order-local-application", "--private-input"], "EXPLICIT_LOCAL_ACTIVATION_ARGUMENTS_REQUIRED")
     path = Path(argv[2])
     require(path.is_absolute() and path.resolve() == path, "PRIVATE_INPUT_PATH_INVALID")
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
@@ -309,8 +310,8 @@ def main():
         # indeterminate outcome. Never report an application as stopped by guess.
         state.update(activation_outcome='UNKNOWN_RECONCILE', approved_input_sha256=canonical_hash(approved),
                      commit=approved['commit'], images=approved['images'])
-        child = subprocess.Popen(['/usr/bin/python3', '-B', str(folder / 'start-application-host.py'),
-            '--start-validated-local-application', '--private-input', str(private)],
+        child = subprocess.Popen(['/usr/bin/python3', '-B', str(folder / 'resume-database-order-application-host.py'),
+            '--resume-database-order-application', '--private-input', str(private)],
             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
             env={'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LC_ALL': 'C'}, start_new_session=True)
         output, _ = child.communicate(timeout=900)

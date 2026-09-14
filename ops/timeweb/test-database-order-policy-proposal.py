@@ -44,6 +44,25 @@ class DatabaseOrderProposal(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.before = {name: (ROOT / name).read_text() for name in MANIFEST['files']}
+        if 'def stable_database_observation(' in cls.before['start-application-host.py']:
+            # Reconstruct exact frozen proposal inputs only inside this test.
+            pins = json.loads((ROOT / 'database-order-implementation-pins.json').read_text())
+            normalized = {}
+            for name, source in cls.before.items():
+                for before_hash, after_hash in pins.items():
+                    source = source.replace(after_hash, before_hash)
+                normalized[name] = source
+            with tempfile.TemporaryDirectory() as folder:
+                destination = Path(folder) / 'ops/timeweb'
+                destination.mkdir(parents=True)
+                for name, source in normalized.items():
+                    (destination / name).write_text(source)
+                subprocess.run(['git', 'apply', '--reverse', str((ROOT / 'database-order-policy-fix-20260914.patch').resolve())],
+                               cwd=folder, check=True, capture_output=True)
+                cls.before = {name: (destination / name).read_text() for name in normalized}
+            for name, source in cls.before.items():
+                if SHA(source.encode()) != MANIFEST['files'][name]['before_sha256']:
+                    raise AssertionError('Frozen proposal base changed: ' + name)
         with tempfile.TemporaryDirectory() as folder:
             destination = Path(folder) / 'ops/timeweb'
             destination.mkdir(parents=True)

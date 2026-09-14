@@ -51,12 +51,19 @@ class AssetPolicyProposal(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.before={name:(ROOT/name).read_text() for name in BEFORE}
+        if 'def stable_database_observation(' in cls.before['start-application-host.py']:
+            import importlib.util
+            spec = importlib.util.spec_from_file_location('database_order_proposal_fixture', ROOT / 'test-database-order-policy-proposal.py')
+            fixture = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(fixture)
+            fixture.DatabaseOrderProposal.setUpClass()
+            cls.before = {name: fixture.DatabaseOrderProposal.before[name] for name in BEFORE}
         if SHA(cls.before['start-application-host.py'].encode()) == AFTER['start-application-host.py']:
             # Reconstruct the exact previously reviewed base after application.
             # Dependency pins are checked by their wrappers, not silently omitted.
             normalized=cls.before['activate-https-host.py']
             normalized=normalized.replace(AFTER['start-application-host.py'], BEFORE['start-application-host.py'])
-            normalized=normalized.replace(SHA((ROOT/'activate-local-application-host.py').read_bytes()),
+            normalized=normalized.replace('15ec9b76a81687ebc58957fc318b580e1f9a1ec5f9caecc333081de83a947f39',
                 'd49dd17b2977bdd6b0dfcc5022955e4375d76574ffc7b0b80f0b3e9fd4d0a72e')
             cls.before['activate-https-host.py']=normalized
             with tempfile.TemporaryDirectory() as folder:

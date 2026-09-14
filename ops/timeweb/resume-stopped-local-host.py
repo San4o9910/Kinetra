@@ -36,9 +36,9 @@ import tempfile
 import time
 
 PINS = {
-    "resume-stopped-application-host.py": "22421f0929e91cdfa843604cf9c58e954badbaa600682115f4a65289f7196035",
+    "resume-stopped-application-host.py": "991bfd765345d04cbd031a5bfd93f9cdbbbbe4e4fcab3368c4dbbe30498f08fd",
     "inspect-host-monitoring.py": "3ffc667a66330c323836d1335e78f92940d6ebdc1877cf66048265d774bb3086",
-    "start-application-host.py": "8de4fdccd73c8c1d5666fa46806d47125f0aec49e73c6f4a1bf00db36584427d",
+    "start-application-host.py": "1d93f744398488e9f319e7d558a7c1d3e2c9b782d36d7b430fd3ec1709b51eaa",
     "activate-application-host.py": "16c9ed2fc47534f86f35e4aa215d824ffbec84fd3c684d5d02157a7e944322c4",
     "initialize-database-host.py": "041f415dedf6b0b6922484281926c8c98c87828506dcb2e1ac6fb324b00b05bb",
     "prepare-database-host.py": "4621b1c0153ab56ae535e245fdb2de4ef2aff4a30ba5b592343a26795f0655ae",

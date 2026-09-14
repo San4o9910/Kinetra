@@ -29,8 +29,8 @@ import sys
 import time
 
 HELPER_HASHES = {
-    "start-application-host.py": "8de4fdccd73c8c1d5666fa46806d47125f0aec49e73c6f4a1bf00db36584427d",
-    "activate-local-application-host.py": "15ec9b76a81687ebc58957fc318b580e1f9a1ec5f9caecc333081de83a947f39",
+    "start-application-host.py": "1d93f744398488e9f319e7d558a7c1d3e2c9b782d36d7b430fd3ec1709b51eaa",
+    "activate-local-application-host.py": "fa721ac338095fa2f087fb7de5780a875cbc616fd384490a6fd84ada7e0735cd",
     "prepare-caddy.sh": "a23d52b21f7c638f757a723048ee632d37e8f217ae796f97dd92ec3bbb990e2d",
 }
 for name, digest in HELPER_HASHES.items():
@@ -224,7 +224,7 @@ def check_application(data, handoff):
     local.database_readonly_handoff(postgres_id, approved["migration_hashes"])
     local.backend_ready(accepted["owned_containers"]["backend"])
     require(local.local_acceptance() == accepted["local_http"], "LOCAL_APPLICATION_ACCEPTANCE_CHANGED")
-    return database
+    return local.stable_database_observation(database)
 
 
 def tls_context():

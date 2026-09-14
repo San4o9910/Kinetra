@@ -153,6 +153,23 @@ def inspect_container(identifier):
     return json.loads(command(["/usr/bin/docker", "inspect", "--type", "container", "--format", template, identifier], capture=True))
 
 
+def stable_database_observation(info):
+    """Compare complete mount records independently of Docker's array order."""
+    require(isinstance(info, dict), "DATABASE_OBSERVATION_REQUIRED")
+    mounts = info.get("mounts")
+    require(isinstance(mounts, list) and bool(mounts)
+            and all(isinstance(mount, dict) for mount in mounts), "DATABASE_MOUNTS_REQUIRED")
+    destinations = [mount.get("Destination") for mount in mounts]
+    require(all(isinstance(value, str) and value.startswith("/") for value in destinations)
+            and len(set(destinations)) == len(destinations), "DATABASE_MOUNT_DESTINATIONS_INVALID")
+    result = dict(info)
+    # Retain every field, value and mount. Do not reduce the observations to
+    # selected destinations, hashes, a set, or a database-volume-only summary.
+    result["mounts"] = sorted(mounts, key=lambda mount: json.dumps(
+        mount, sort_keys=True, separators=(",", ":"), allow_nan=False))
+    return result
+
+
 def candidate_ids(service, nonce):
     require(service in {"backend", "frontend"} and re.fullmatch(r"[a-f0-9]{32}", nonce), "OWNERSHIP_SCOPE_INVALID")
     values = command(["/usr/bin/docker", "container", "ls", "--all", "--quiet", "--no-trunc",
@@ -502,7 +519,7 @@ def activate(data, state):
     postgres_id = handoff["initialized"]["postgres_id"]
     database_readonly_handoff(postgres_id, data["migration_hashes"])
     resumed_check_live_identity(data, handoff)
-    database_before = inspect_container(postgres_id)
+    database_before = stable_database_observation(inspect_container(postgres_id))
     db_network_id = database_before["networks"][PROJECT + "_database"]["NetworkID"]
     check_hashes(data)
     state["nonce"] = OLD_NONCE
@@ -548,7 +565,7 @@ def activate(data, state):
         require(info.get("running") is True and (service != "backend" or info.get("health") == "healthy"), "APPLICATION_EXITED_DURING_ACCEPTANCE")
     identifiers = command(["/usr/bin/docker", "container", "ls", "--all", "--quiet", "--no-trunc"], capture=True).splitlines()
     require(set(identifiers) == {postgres_id, *state["owned_containers"].values()}, "UNEXPECTED_PERSISTENT_CONTAINER")
-    database = inspect_container(postgres_id)
+    database = stable_database_observation(inspect_container(postgres_id))
     require(database.get("running") is True and database.get("health") == "healthy" and database.get("restart") == "no", "DATABASE_STATE_CHANGED")
     require(all(database.get(key) == database_before.get(key) for key in (
         "id", "image", "image_id", "user", "project", "service", "readonly", "cap_drop", "cap_add", "security", "ports", "networks", "mounts", "restart"

@@ -1,3 +1,28 @@
+## 2026-09-14: owner approved publication and one database-order continuation
+
+Owner replied «Да» to public publication and one new preserved-container attempt,
+then HTTPS after successful acceptance. Approval commit
+cd9ac715de899a312c6ab611579a8489d6f6ec96. Do not request this permission again.
+
+The previous local code was unavailable after an exec-server failure. The same
+approved change is reconstructed from immutable repository files and recorded
+edits, including full comparison semantics, preserved records and rollback.
+Fresh offline GitHub verification is required before host execution; previous
+184 local test results do not substitute for testing this reconstructed commit.
+
+Current independently verified inspection: run34831545942/job103935793896,
+control9948dec879bb8f96094387e8ce6dfadaff5791fa, SUCCESS and complete cleanup.
+Database running, both preserved application containers stopped, all prior
+records retained; only mount order varies. The minimal receipt binds the full
+real log output. No new raw host inventory is published.
+
+Code and dormant database-order-application-activation.yml are ready for the
+isolated offline preflight. Do not republish the old consumed stopped workflow.
+After fresh offline PASS, authenticate current source/image/database/API/failed
+attempt/inspection provenance and perform the one new exact continuation.
+Only complete local PASS and cleanup permit the HTTPS stage. No PR21 merge,
+payments, user messages, new paid resources, or existing data deletion.
+
 ## Launch checkpoint — 2026-09-14: asset acceptance passed; database mount comparison proposal awaits decision
 
 The exact owner-approved asset correction and one stopped-container continuation

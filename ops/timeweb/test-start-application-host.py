@@ -122,7 +122,10 @@ class LocalActivationTests(unittest.TestCase):
         return code, json.loads(output.getvalue())
 
     def fake_runtime(self):
-        self.containers = {PG: {"networks": {start.PROJECT + "_database": {"NetworkID": DB_NETWORK}}, "running": True, "health": "healthy", "restart": "no"}}
+        # Explicit synthetic Docker mount records; actual permutations are tested separately.
+        self.containers = {PG: {"networks": {start.PROJECT + "_database": {"NetworkID": DB_NETWORK}}, "running": True, "health": "healthy", "restart": "no",
+            "mounts": [{"Type": "volume", "Source": "/fixture/database", "Destination": "/var/lib/postgresql/data", "RW": True},
+                       {"Type": "bind", "Source": "/fixture/config", "Destination": "/etc/kinetra-postgres", "RW": False}]}}
         self.stopped = []
         def inspect(identifier): return copy.deepcopy(self.containers[identifier])
         def command(arguments, **options):

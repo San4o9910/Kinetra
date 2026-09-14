@@ -1,0 +1,193 @@
+# DORMANT REVIEW COPY: this path is not a GitHub Actions workflow.
+# Fill REVIEW_REQUIRED from actual green current CI/image/database evidence;
+# review this caller before publishing as .github/workflows/timeweb-application-activation.yml.
+# Only API environment preparation and local application startup. No HTTPS/boot/jobs.
+# Owner approval cd9ac715de899a312c6ab611579a8489d6f6ec96; one new database-order continuation only.
+name: Continue preserved Kinetra containers after database mount order correction
+
+on:
+  push:
+    branches: [ops/timeweb-hourly-preflight-20260909]
+    paths: [.github/workflows/timeweb-application-activation.yml]
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+  packages: read
+
+concurrency:
+  group: kinetra-timeweb-hourly-provision
+  cancel-in-progress: false
+
+env:
+  ACTIVATE_LOCAL_APPLICATION: APPROVED
+  APPROVED_APP_COMMIT: 73b665065e00a5b375e90f701373b3e0856a0386
+  APPROVED_BASE_COMMIT: ea0412a20baa87b7a00c4ce466d204d12fb052cc
+  APPROVED_MERGE_COMMIT: 2f5d388dea92ed4994131d0b5e77734189de026c
+  APPROVED_HEAD_RUN: '34535162371'
+  APPROVED_MERGE_RUN: '34535166746'
+  APPROVED_IMAGE_RUN: '34742116241'
+  APPROVED_IMAGE_CONTROL_COMMIT: 074db3062f601a4ad12896219cc041d71b6b355f
+  APPROVED_IMAGE_WORKFLOW_SHA256: 971b921d5f309b4cc20c6ca552e4df6084d454b749dd11a70fc5676bddd7ad49
+  APPROVED_IMAGE_ARTIFACT_ID: '10313848590'
+  APPROVED_IMAGE_ARTIFACT_SHA256: 45f567dd7b0085168a90fbb7f30bccbf312e7d4f4584ec254f4e9181323e7b4b
+  APPROVED_DATABASE_RUN: '34747344318'
+  APPROVED_DATABASE_CONTROL_COMMIT: 05ee5f7f7557ab689e19cf7024e75e813ace2284
+  APPROVED_DATABASE_WORKFLOW_SHA256: cb01e5c531dcb5ade89682b97ea776c7d2b33053dddfd9d358b4f7f56ecd7fc0
+  APPROVED_DATABASE_ARTIFACT_ID: '10314313956'
+  APPROVED_DATABASE_ARTIFACT_SHA256: e789ea40587c5537003348d862b511df80843767144a824952cc06b13ab4f8a2
+  NODE_IMAGE: node@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32
+  NGINX_IMAGE: nginxinc/nginx-unprivileged@sha256:3a4485bf084957d56674ee22db07d77d5a281418815c5852827419d6d629d440
+  BACKEND_IMAGE: ghcr.io/san4o9910/kinetra-backend@sha256:9138a6408442b847ca771690053870880cee831769919aaf2a2dc858d52e8362
+  FRONTEND_IMAGE: ghcr.io/san4o9910/kinetra-frontend@sha256:da47e7f576cfb3892b9078e8463cdad855081e032d51645639794736c1098ff2
+  POSTGRES_IMAGE: postgres:17-bookworm@sha256:7bade6d532592ca8ce7ee32def7399dad2607c4ea5583839fc4352a095a11ea6
+  ROOT_SUPPLIED_SERVER_ID: '9069403'
+  ROOT_SUPPLIED_SERVER_IP: 80.68.156.131
+
+jobs:
+  activate-local-application:
+    runs-on: ubuntu-24.04
+    # Includes separate 30min API preparation and 60min local wrapper bounds,
+    # authenticated evidence checks, and graceful cleanup/artifact allowance.
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify reviewed caller and exact control checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = San4o9910/Kinetra
+          test "$GITHUB_REF" = refs/heads/ops/timeweb-hourly-preflight-20260909
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$ACTIVATE_LOCAL_APPLICATION" = APPROVED
+          sha256sum --check --strict <<'SHA256'
+          177b05d5e67f772a36976705a18114971dce9b860f88fcea98cec88f3eab792b  ops/timeweb/application-caller.py
+          61fc0550edbc533938b1850ad17aa6779c1d2fa7122db08296748acfe43924ea  ops/timeweb/verify-launch-provenance.py
+          444528e29fa1b280a78989727911a9f6c5025f285a30bed5af0f31fc0ea396c8  ops/timeweb/test-application-caller.py
+          ba9d7f7d4a5475de9a4401be60694bcbeab1e62308d2f304454360fc72d2267e  ops/timeweb/upstream-disposition.py
+          85f25de920ccffb1878a56b5be6132c0d3ab99a0d21125112575ba8efffd3c82  ops/timeweb/test-upstream-disposition.py
+          42d0618f56c543b91778bedac8b87c6b5fecd332b79e9e7e21a9af14b85b3e63  ops/timeweb/scan-upstream-media.py
+          c4a35c5b13730316bc92c8f1b1ccf1d1b54c1cbaa15718790cb5603a07aec4a8  ops/timeweb/test-scan-upstream-media.py
+          8326af893a6b25d65394841584f3d9b12b264868a592addc7c1f4cdff42128ae  ops/timeweb/recover-api-candidate-host.py
+          0a1ec78c18632cb03630902c27060a930ec038086711614cac59601b236fdac2  ops/timeweb/recover-api-preparation.py
+          4e208f091fdfd93d52cc3dcda253e3d89aa9ec7ca055b174ccf5badab29e181f  ops/timeweb/recovery-caller.py
+          d1aa5e4c1e488d6fe8437bcbbb035c6c2750d1c7163e30fc39bd8dc60f70d42d  ops/timeweb/test-recover-api-candidate.py
+          fa5e88de564c833872adbb5e824bac26190ab12f6d2e8d50b48d0bcce430e8f6  ops/timeweb/authenticate-preserved-api.py
+          2658c9b04bfdc076b7cf509570e9518b65f10ec6e0b6df960c3810a3a17a6de7  ops/timeweb/test-preserved-api-auth.py
+          650c761d5293bd9871e54b23971b758e6936a6dc0040a205afd9fe6df22d3a01  ops/timeweb/api-resume-evidence-20260913.json
+          dcfeda041b41481494de1ae884b3d90c58c54a9bc612c8f1d1224063ae232d71  ops/timeweb/test-activate-local-application-host.py
+          47b89d794ca48691481ff4f1be652b7064435552dda4f2986494e5e8621e5d02  ops/timeweb/resume-database-order-application-host.py
+          2f5ab436874d81fc90f03ed4af809ab017d55cdbf42742aa76e7738b89a8fb80  ops/timeweb/resume-database-order-local-host.py
+          96893d4ab3d2f67eb873194502256cc875fbd6346a0ad376f1fc42602b2c00c1  ops/timeweb/resume-database-order-caller.py
+          8c1aa7e259cebefd51de666f5c56ee48725f042e5eaec7cba481e1e2a5c20c08  ops/timeweb/authenticate-database-order.py
+          521a98000f70c4498cc8661a3558f89a92833f5303a2c23ca4df8a79e5ad49a4  ops/timeweb/test-resume-database-order.py
+          6a0ddc54997eb134f0f9f2a570bf2e36c677baa7a7191eb5c072400d8722fbf0  ops/timeweb/created-backend-inspection-20260913.json
+          aacdd6f28ee44ac076e4b29a539f73f4110918345633051fc83a189ecff914ba  ops/timeweb/test-start-health-query-proposal.py
+          c83c167618b97c01a543e70c9af218969264106432d32437e0695fc977ab471d  ops/timeweb/start-health-query-fix-20260913.patch
+          03f428e112eecab5bbc91f2157145a00c9fcf34e84f75d10b0cf216aa311f85d  ops/timeweb/test-local-asset-policy-proposal.py
+          e8612a9bb5d1648a85ef71eb04f47dbc6df18f1540b2a5d887ed99300ec62081  ops/timeweb/local-asset-policy-fix-20260913.patch
+          8d8369984a27c8577c194cb25d11c19be0d1189ff415da229282503364a65b9c  ops/timeweb/local-asset-inspection-20260913.json
+          d9988fba5a56d7bd81528b74156f5ce65a8d07f649b9eef77104e81ae768788b  ops/timeweb/qualified-theme-init-20260913.js
+          79ce5ac47646669e9541d27836fc66062072c1f4325219010f73ac8b623f0cf7  ops/timeweb/stopped-containers-inspection-20260914.json
+          1095fed3e681c779007cb8829be9ccb5d3d16c1d2c16e88d033fe577fd7f98eb  ops/timeweb/test-start-application-host.py
+          e0973d2451b2941e4cb826948770608345c28438622607deb4b49729f319ec56  ops/timeweb/test-activate-https-host.py
+          45130035b0124170fc219eae702e9422fbe1a2134f73b0f5ef0a63a39b120611  ops/timeweb/test-https-caller.py
+          0408627ac8ab7f7a45dd9c4ad3f4c0205e0355390cc12cfbe6ad566cdd6e2210  ops/timeweb/test-database-order-policy-proposal.py
+          475d56f37d9dcf46b4826cf93a6da5f86d9f5054695183a8ced1d00d831a516c  ops/timeweb/database-order-policy-fix-20260914.patch
+          7ea21d8e4a085b29bb51421494e8e4ab5c87f51ecbede976629f16a58c69e87b  ops/timeweb/database-order-policy-proposal-20260914.json
+          9e1ff80209f7fa6fd017bd1d9553dc85459eb58340bed58232f541977dd49c4a  ops/timeweb/database-order-implementation-pins.json
+          c07fcb5af63f5cd80563516f47726996f70c0e1b4c7471ad1145d5cce49dbd1c  ops/timeweb/database-order-current-inspection-20260914.json
+          SHA256
+          sudo env -i PATH="$PATH" python3 -B ops/timeweb/test-resume-database-order.py
+          env -i PATH="$PATH" python3 -B ops/timeweb/test-start-health-query-proposal.py
+          env -i PATH="$PATH" python3 -B ops/timeweb/test-local-asset-policy-proposal.py
+          env -i PATH="$PATH" python3 -B ops/timeweb/test-database-order-policy-proposal.py
+          sudo env -i PATH="$PATH" python3 -B - <<'PY_ROOT_FIXTURES'
+          import os, pathlib, shutil, subprocess, tempfile
+          with tempfile.TemporaryDirectory(prefix='kinetra-root-guest-tests-', dir='/root') as folder:
+              target=pathlib.Path(folder)/'timeweb'
+              shutil.copytree('ops/timeweb',target,ignore=shutil.ignore_patterns('__pycache__'))
+              for name in ('test-start-application-host.py','test-activate-https-host.py'):
+                  subprocess.run(['python3','-B',str(target/name)],check=True,env={'PATH':os.environ['PATH']})
+          PY_ROOT_FIXTURES
+          env -i PATH="$PATH" python3 -B ops/timeweb/test-https-caller.py
+          # Model guest fixture ownership independently from the unprivileged runner checkout.
+          env -i PATH="$PATH" python3 -B ops/timeweb/test-preserved-api-auth.py
+          env -i PATH="$PATH" python3 -B ops/timeweb/test-activate-local-application-host.py
+          PYTHONDONTWRITEBYTECODE=1 python3 ops/timeweb/test-upstream-disposition.py
+          env -i PATH="$PATH" python3 ops/timeweb/test-application-caller.py
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.APPROVED_APP_COMMIT }}
+          path: Kinetra
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify exact application checkout
+        shell: bash
+        env:
+          APP_CHECKOUT: ${{ github.workspace }}/Kinetra
+        run: |
+          set -euo pipefail
+          test "$(git -C "$APP_CHECKOUT" rev-parse HEAD)" = "$APPROVED_APP_COMMIT"
+          git -C "$APP_CHECKOUT" diff --exit-code
+          (cd "$APP_CHECKOUT" && sha256sum --check --quiet MANIFEST.sha256)
+      - name: Authenticate current source images and successful database handoff
+        shell: bash
+        env:
+          APP_CHECKOUT: ${{ github.workspace }}/Kinetra
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 ops/timeweb/application-caller.py --authenticate-database
+      - name: Authenticate preserved API and exact failed continuation with fresh stopped-container inspection
+        shell: bash
+        env:
+          APP_CHECKOUT: ${{ github.workspace }}/Kinetra
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 -B ops/timeweb/authenticate-database-order.py --authenticate-database-order
+      - name: Recheck current source images and database before local startup
+        shell: bash
+        env:
+          APP_CHECKOUT: ${{ github.workspace }}/Kinetra
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 ops/timeweb/application-caller.py --recheck-provenance
+      - name: Start and accept only local backend and frontend
+        shell: bash
+        env:
+          APP_CHECKOUT: ${{ github.workspace }}/Kinetra
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 -B ops/timeweb/resume-database-order-caller.py --resume-database-order-containers
+      - name: Retain sanitized accepted local handoff
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: kinetra-local-handoff-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/kinetra-launch-caller-${{ github.run_id }}-1/accepted-local-handoff.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Retain sanitized attempt observations for reconciliation
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: kinetra-local-attempt-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/kinetra-launch-caller-${{ github.run_id }}-1/api-outer.json
+            ${{ runner.temp }}/kinetra-launch-caller-${{ github.run_id }}-1/local-outer.json
+            ${{ runner.temp }}/kinetra-launch-caller-${{ github.run_id }}-1/api-outer.observations.jsonl
+            ${{ runner.temp }}/kinetra-launch-caller-${{ github.run_id }}-1/local-outer.observations.jsonl
+          if-no-files-found: ignore
+          retention-days: 14
+
+# Failure is not an instruction to repeat preparation/start. Private local
+# failure records and the durable host attempt remain for state-specific review.
+# Caddy, HTTP certificate requests, boot policy and production writes are excluded.

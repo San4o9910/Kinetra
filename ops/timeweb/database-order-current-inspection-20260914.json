@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "run_id": 34831545942,
+  "job_id": 103935793896,
+  "control": "9948dec879bb8f96094387e8ce6dfadaff5791fa",
+  "run_url": "https://github.com/San4o9910/Kinetra/actions/runs/34831545942",
+  "canonical_output_sha256": "c294f5eb04a4ded3e04527c4edc38964dd811273f08593bc2197b3fd255ff911",
+  "result": "PASS_READ_ONLY_HOST_MONITORING_INSPECTION",
+  "database_running": true,
+  "application_containers_running": false,
+  "prior_container_ids_and_history_unchanged": true,
+  "prior_records_unchanged": true,
+  "only_mount_order_varied": true,
+  "full_observations_equal_after_mount_order_normalization": true,
+  "guest_key_cleanup": "API_DELETE_CONFIRMED",
+  "account_key_cleanup": "API_DELETE_CONFIRMED",
+  "local_key_cleanup": "REMOVED",
+  "persistent_application_or_database_mutations": false,
+  "detail": "Full observations remain in the linked GitHub job logs. No raw new host inventory is included."
+}

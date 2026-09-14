@@ -25,7 +25,7 @@ REPOSITORY = "San4o9910/Kinetra"
 CONTROL_REF = "refs/heads/ops/timeweb-hourly-preflight-20260909"
 DATABASE_WORKFLOW = ".github/workflows/timeweb-database-initialization.yml"
 PINS = {
-    "activate-local-application-host.py": "15ec9b76a81687ebc58957fc318b580e1f9a1ec5f9caecc333081de83a947f39",
+    "activate-local-application-host.py": "fa721ac338095fa2f087fb7de5780a875cbc616fd384490a6fd84ada7e0735cd",
     "verify-launch-provenance.py": "61fc0550edbc533938b1850ad17aa6779c1d2fa7122db08296748acfe43924ea",
 }
 SOURCE_ENV = ("APPROVED_APP_COMMIT", "APPROVED_BASE_COMMIT", "APPROVED_MERGE_COMMIT", "APPROVED_HEAD_RUN",

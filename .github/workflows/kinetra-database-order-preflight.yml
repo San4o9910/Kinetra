@@ -1,0 +1,55 @@
+name: Verify approved database-order continuation before host execution
+on:
+  push:
+    branches: [ops/timeweb-hourly-preflight-20260909]
+    paths: [.github/workflows/kinetra-database-order-preflight.yml]
+permissions:
+  contents: read
+concurrency:
+  group: kinetra-database-order-offline-preflight
+  cancel-in-progress: false
+jobs:
+  offline:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Validate published source, pins and offline continuation tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = San4o9910/Kinetra
+          test "$GITHUB_REF" = refs/heads/ops/timeweb-hourly-preflight-20260909
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          sudo env -i PATH="$PATH" python3 -B - <<'PY'
+          import ast,hashlib,json,os,pathlib,re,shutil,subprocess,tempfile
+          root=pathlib.Path('ops/timeweb')
+          for path in root.glob('*.py'):
+              ast.parse(path.read_text(),filename=str(path))
+          for name in ('database-order-application-activation.yml','https-activation.yml'):
+              for digest,filename in re.findall(r'([a-f0-9]{64})  ops/timeweb/([^\s]+)',(root/name).read_text()):
+                  assert hashlib.sha256((root/filename).read_bytes()).hexdigest()==digest,filename
+          names=['test-database-order-policy-proposal.py','test-resume-database-order.py',
+              'test-resume-stopped-containers.py','test-local-asset-policy-proposal.py',
+              'test-start-health-query-proposal.py','test-start-application-host.py',
+              'test-activate-local-application-host.py','test-activate-https-host.py',
+              'test-https-caller.py','test-application-caller.py','test-preserved-api-auth.py']
+          total=0
+          with tempfile.TemporaryDirectory(prefix='kinetra-order-offline-',dir='/root') as folder:
+              target=pathlib.Path(folder)/'timeweb'
+              shutil.copytree(root,target,ignore=shutil.ignore_patterns('__pycache__'))
+              for name in names:
+                  result=subprocess.run(['python3','-B',str(target/name)],capture_output=True,text=True,
+                      env={'PATH':os.environ['PATH']},timeout=120)
+                  output=result.stdout+result.stderr
+                  print(name,output,flush=True)
+                  assert result.returncode==0,name
+                  count=re.search(r'Ran (\d+) tests?',output)
+                  assert count,name
+                  total+=int(count[1])
+          assert total==184,total
+          print('KINETRA_DATABASE_ORDER_OFFLINE=PASS_184_TESTS_NO_HOST_ACCESS',flush=True)
+          PY

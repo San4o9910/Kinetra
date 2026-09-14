@@ -8,14 +8,15 @@ import base64,hashlib,importlib.util,io,json,os,stat,sys,zipfile
 from pathlib import Path
 
 API_READER_SHA='fa5e88de564c833872adbb5e824bac26190ab12f6d2e8d50b48d0bcce430e8f6'
-FAILED_RUN=34779526000
-FAILED_CONTROL='1940f0b72edfdc8dbc286789086cec00163a2d3b'
-FAILED_WORKFLOW_SHA='a5d8308c30ba7cffd40849ec0738c6f84ee31ffaac3616eaf268fa0bfd8de5b4'
-ARTIFACT=10324610731
-ARTIFACT_SHA='3a482c172c4f54ec82667e4c541f51c94db8e0b21e9cabd4a597099492b590bc'
-INSPECTION_RUN=34815492692
-INSPECTION_CONTROL='865ab9f2a3f64b9e8938f8333d9e2cd3a8f6181e'
-INSPECTION_JOB=103885177890
+FAILED_RUN=34816449431
+FAILED_CONTROL='369891effdfce1077c2d4740782fef6b354159e1'
+FAILED_WORKFLOW_SHA='b25f542342bf463b3bd3f5c3846c0e7272f11329ee67ca7c1b90220b93d27ff7'
+ARTIFACT=10337085613
+ARTIFACT_SHA='489933664f4af6042303af710f2e9c7083431e884c13ac86832347739bdbf578'
+INSPECTION_RUN=34831545942
+INSPECTION_CONTROL='9948dec879bb8f96094387e8ce6dfadaff5791fa'
+INSPECTION_JOB=103935793896
+INSPECTION_SHA256='c294f5eb04a4ded3e04527c4edc38964dd811273f08593bc2197b3fd255ff911'
 BACKEND_ID='460a447fc441071f595dea383b60487aa707e719511792aefa52a3a0b831962a'
 FRONTEND_ID='c47ad815087ec8f3b310ac59f565babfb03af5b43102f56ac24678ac1c36d206'
 NONCE='9128e22668c33a1552f912415c800939'
@@ -29,12 +30,12 @@ def verify_failed_run(run,jobs,require):
             and run['repository']['full_name']=='San4o9910/Kinetra','EXACT_FAILED_START_RUN_REQUIRED')
     require(jobs['total_count']==1 and len(jobs['jobs'])==1,'EXACT_FAILED_START_JOB_REQUIRED')
     job=jobs['jobs'][0]
-    require(job['id']==103783858959 and job['name']=='activate-local-application'
+    require(job['id']==103888017101 and job['name']=='activate-local-application'
             and job['status']=='completed' and job['conclusion']=='failure','EXACT_FAILED_START_JOB_REQUIRED')
     steps={s['name']:s for s in job['steps']}
     for name in ('Verify reviewed caller and exact control checkout','Verify exact application checkout',
                  'Authenticate current source images and successful database handoff',
-                 'Authenticate preserved API and exact failed startup with fresh backend inspection',
+                 'Authenticate preserved API and exact failed continuation with fresh stopped-container inspection',
                  'Recheck current source images and database before local startup',
                  'Retain sanitized attempt observations for reconciliation'):
         require(steps[name]['status']=='completed' and steps[name]['conclusion']=='success','SUCCESSFUL_PRIOR_GATES_REQUIRED')
@@ -44,7 +45,7 @@ def verify_failed_run(run,jobs,require):
 def verify_inspection(value,require):
     # Exact sanitized live state, including every original record, file hash,
     # stopped-container StartedAt and complete temporary-object cleanup.
-    require(hashlib.sha256(json.dumps(value,sort_keys=True,separators=(',',':')).encode()).hexdigest()=="82f446a7c10d095b4cdf838249812e79ad95dbf73f20434c13a56997158d121c",
+    require(hashlib.sha256(json.dumps(value,sort_keys=True,separators=(',',':')).encode()).hexdigest()==INSPECTION_SHA256,
             'EXACT_SUCCESSFUL_STOPPED_INSPECTION_REQUIRED')
 
 
@@ -77,8 +78,8 @@ def authenticate(env,c,local,api,successful_run,preserved):
         observations=[c.strict_json(line) for line in z.read('local-outer.observations.jsonl').splitlines()]
     c.require(2<=len(observations)<=8,'FAILED_START_OBSERVATIONS_REQUIRED')
     final=observations[-1]
-    expected={'server_id':9069403,'public_ipv4':'80.68.156.131','result':'FAIL','ssh_key_id':772577,
-        'remote_directory':'/run/kinetra-local-activation-501744680610025ad48e220a0ecb0f13',
+    expected={'server_id':9069403,'public_ipv4':'80.68.156.131','result':'FAIL','ssh_key_id':772851,
+        'remote_directory':'/run/kinetra-local-activation-ae6581dd8e92bd1bcc73e82a186f31b9',
         'guest_key_cleanup':'API_DELETE_CONFIRMED','account_key_cleanup':'API_DELETE_CONFIRMED',
         'local_key_cleanup':'REMOVED','guest_temp_cleanup':'REMOVED','owned_containers':{'backend':BACKEND_ID,'frontend':FRONTEND_ID}}
     c.require(final==expected,'FAILED_START_COMPLETE_CLEANUP_REQUIRED')
@@ -92,11 +93,11 @@ def authenticate(env,c,local,api,successful_run,preserved):
         if marker in line and line.split(marker,1)[1].startswith('{')]
     c.require(len(observations)==2,'EXACT_INSPECTION_OBSERVATIONS_REQUIRED')
     verify_inspection(observations[-1],c.require)
-    c.write_json(path/'stopped-containers-authentication.json',{'schema':1,'result':'EXACT_STOPPED_CONTAINERS_AUTHENTICATED',
+    c.write_json(path/'database-order-authentication.json',{'schema':1,'result':'EXACT_DATABASE_ORDER_CONTINUATION_AUTHENTICATED',
         'current_control':env['GITHUB_SHA'],'current_run':env['GITHUB_RUN_ID'],'failed_run':FAILED_RUN,
         'inspection_run':INSPECTION_RUN,'backend_id':BACKEND_ID,'frontend_id':FRONTEND_ID,'checkpoint_sha256':CHECKPOINT_SHA,
         'api_outer_sha256':c.digest(c.read_json(path/'api-outer.json'))})
-    print('KINETRA_STOPPED_CONTAINERS_AUTHENTICATED=PASS_EXACT_FAILED_STATE_ONLY')
+    print('KINETRA_DATABASE_ORDER_AUTHENTICATED=PASS_EXACT_FAILED_STATE_ONLY')
 
 def main():
     p=Path(__file__).with_name('authenticate-preserved-api.py')
@@ -105,7 +106,7 @@ def main():
     preserved=importlib.util.module_from_spec(spec);spec.loader.exec_module(preserved)
     c=preserved.load_caller()
     try:
-        c.require(sys.argv[1:]==['--authenticate-stopped-containers'],'EXPLICIT_CREATED_BACKEND_AUTH_REQUIRED')
+        c.require(sys.argv[1:]==['--authenticate-database-order'],'EXPLICIT_CREATED_BACKEND_AUTH_REQUIRED')
         c.execution(os.environ);local=c.load('activate-local-application-host.py')
         c.require(not any(os.environ.get(n) for n in (*local.prepare.activation.PROVIDER_ENV_KEYS,'TIMEWEB_CLOUD_TOKEN')),
             'AUTHENTICATION_STEP_MUST_HAVE_ONLY_GITHUB_TOKEN')
@@ -114,6 +115,6 @@ def main():
         return 0
     except BaseException as error:
         category=str(error) if isinstance(error,c.CallerError) else 'CREATED_BACKEND_AUTHENTICATION_FAILED'
-        print('KINETRA_STOPPED_CONTAINERS_AUTHENTICATION=FAIL:'+category,file=sys.stderr);return 1
+        print('KINETRA_DATABASE_ORDER_AUTHENTICATION=FAIL:'+category,file=sys.stderr);return 1
 
 if __name__=='__main__':raise SystemExit(main())
