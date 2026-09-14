@@ -101,8 +101,14 @@ jobs:
           sudo env -i PATH="$PATH" python3 -B ops/timeweb/test-resume-stopped-containers.py
           env -i PATH="$PATH" python3 -B ops/timeweb/test-start-health-query-proposal.py
           env -i PATH="$PATH" python3 -B ops/timeweb/test-local-asset-policy-proposal.py
-          sudo env -i PATH="$PATH" python3 -B ops/timeweb/test-start-application-host.py
-          sudo env -i PATH="$PATH" python3 -B ops/timeweb/test-activate-https-host.py
+          sudo env -i PATH="$PATH" python3 -B - <<'PY_ROOT_FIXTURES'
+          import os, pathlib, shutil, subprocess, tempfile
+          with tempfile.TemporaryDirectory(prefix='kinetra-root-guest-tests-', dir='/root') as folder:
+              target=pathlib.Path(folder)/'timeweb'
+              shutil.copytree('ops/timeweb',target,ignore=shutil.ignore_patterns('__pycache__'))
+              for name in ('test-start-application-host.py','test-activate-https-host.py'):
+                  subprocess.run(['python3','-B',str(target/name)],check=True,env={'PATH':os.environ['PATH']})
+          PY_ROOT_FIXTURES
           env -i PATH="$PATH" python3 -B ops/timeweb/test-https-caller.py
           # Model guest fixture ownership independently from the unprivileged runner checkout.
           env -i PATH="$PATH" python3 -B ops/timeweb/test-preserved-api-auth.py
