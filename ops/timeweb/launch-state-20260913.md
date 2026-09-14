@@ -1,3 +1,18 @@
+## Launch checkpoint — 2026-09-14: approved stopped-container continuation implemented
+
+Owner approval1be0c7f18c7a9ee2d3835ce22cf7deefbd98e969 is recorded and implemented.
+Fresh inspection34815492692/job103885177890 (control865ab9f2a3f64b9e8938f8333d9e2cd3a8f6181e)
+SUCCESS with complete cleanup key772837; exact original stopped state unchanged.
+See stopped-container-continuation-20260914.md for code, tests and evidence.
+
+Exact asset patch and its local/HTTPS result contract are applied. Separate stopped
+continuation preserves all prior failures, verifies exact IDs/StartedAt/configured
+sandbox and records an exclusive new attempt before starting existing containers.
+All relevant local tests PASS. Next publish stopped-application-activation.yml once,
+authenticate real current and historical evidence, then execute the explicit
+continuation. Only actual full local PASS and cleanup permit HTTPS. No current
+local/HTTPS acceptance is claimed yet. Previous decision-required hold is superseded.
+
 ## Launch checkpoint — 2026-09-14: exact asset correction and stopped-container continuation approved
 
 Owner replied «Да» to the exact proposal at a6a7eb6a1616c05632a7cc75676451642de6bd0d.

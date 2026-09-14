@@ -26,6 +26,14 @@ IMAGES = {
 }
 
 
+# Synthetic transport fixture with the four reviewed reference kinds. Its hash
+# is patched only in these offline tests; production remains bound to real HTML.
+FIXTURE_SHELL = ('<link rel="stylesheet" href="'+start.BLOCKED_FONT_STYLESHEET.replace('&','&amp;')+'">'
+    '<script src="/theme-init.js"></script><script src="/assets/index-123.js"></script>'
+    '<link rel="stylesheet" href="/assets/index-123.css">').encode()
+FIXTURE_THEME = Path(__file__).with_name('qualified-theme-init-20260913.js').read_bytes()
+
+
 class LocalActivationTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
@@ -36,6 +44,7 @@ class LocalActivationTests(unittest.TestCase):
         self.stack = contextlib.ExitStack()
         self.addCleanup(self.stack.close)
         self.stack.enter_context(patch.object(start, "STAGE", self.stage))
+        self.stack.enter_context(patch.object(start, "QUALIFIED_SHELL_SHA256", start.sha256(FIXTURE_SHELL)))
         self.stack.enter_context(patch.object(start.preparation, "STAGE", self.stage))
         self.stack.enter_context(patch.object(start, "LOCK", self.root / "lock"))
         self.stack.enter_context(patch.object(start.resource, "setrlimit"))
@@ -166,7 +175,8 @@ class LocalActivationTests(unittest.TestCase):
     def http(path):
         if path == "/":
             return 200, {"content-type": "text/html", "x-content-type-options": "nosniff", "x-frame-options": "DENY", "referrer-policy": "no-referrer",
-                         "content-security-policy": "default-src 'self'; script-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"}, b'<script src="/assets/index-123.js"></script><link rel="stylesheet" href="/assets/index-123.css">'
+                         "content-security-policy": start.QUALIFIED_CSP}, FIXTURE_SHELL
+        if path == "/theme-init.js": return 200, {"content-type": "application/javascript"}, FIXTURE_THEME
         if path.startswith("/assets/"): return 200, {"content-type": "text/css" if path.endswith("css") else "application/javascript"}, b"fixture asset"
         if path == "/health": return 200, {}, b'{"status":"ok"}'
         if path == "/ready": return 404, {}, b"not found"
@@ -234,7 +244,7 @@ class LocalActivationTests(unittest.TestCase):
         self.assertIn("BROWSER_ACCEPTANCE", state["remaining"])
         self.assertEqual(self.containers[PG]["restart"], "no")
         self.assertEqual(self.stopped, [])
-        self.assertEqual(set(state["local_http"]), {"/", "/assets/index-123.js", "/assets/index-123.css", "/health", "/ready", "/api/v1/me"})
+        self.assertEqual(set(state["local_http"]), {"/", "/theme-init.js", "/assets/index-123.js", "/assets/index-123.css", "/health", "/ready", "/api/v1/me"})
 
     def test_compose_timeout_after_create_preserves_stopped_owned_container(self):
         self.fake_runtime()
@@ -342,7 +352,7 @@ class LocalActivationTests(unittest.TestCase):
             status, headers, body = self.http(path)
             return status, headers, body.replace(b"/assets/index-123.js", b"https://foreign.invalid/tracker.js")
         with patch.object(start, "local_get", side_effect=external):
-            with self.assertRaisesRegex(start.Error, "UNREVIEWED_ASSET_ORIGIN"): start.local_acceptance()
+            with self.assertRaisesRegex(start.Error, "QUALIFIED_SHELL_CHANGED"): start.local_acceptance()
         def uncached(path):
             status, headers, body = self.http(path)
             return status, {} if path == "/api/v1/me" else headers, body

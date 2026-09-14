@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Dormant guest-only local activation; never starts Caddy or changes DB policy.
+"""Explicit owner-approved continuation of two exact preserved stopped containers.
+
+Never initializes the database, regenerates credentials or deletes containers.
+Original failed evidence is durably archived and all final checks are retained.
+Never starts Caddy or changes DB policy.
 
 The outer caller must verify current CI/image provenance, both successful host
 handoffs including SSH-key cleanup, fixed Timeweb identity and pinned SSH.
@@ -21,6 +25,7 @@ from pathlib import Path
 import re
 import resource
 import secrets
+import shutil
 import signal
 import stat
 import sys
@@ -128,9 +133,7 @@ def read_handoff(data):
     require(parse_env(private_read(STAGE / "env/production.env")) == expected, "PUBLIC_METADATA_CHANGED")
     values = parse_env(api)
     require(all(values.get(key) == "false" for key in ("CHAT_ENABLED", "CHAT_PHOTO_UPLOADS_ENABLED", "TRAINER_VIDEO_UPLOADS_ENABLED")), "MEDIA_FLAGS_MUST_REMAIN_DISABLED")
-    for name in ("application-start-attempt.json", "application-start-result.json"):
-        path = STAGE / "evidence" / name
-        require(not path.exists() and not path.is_symlink(), "EXISTING_ACTIVATION_ATTEMPT_PRESERVED")
+    validate_resume_records(data)
     return {"staged": staged, "initialized": initialized, "prepared": prepared}
 
 
@@ -336,39 +339,192 @@ def rollback(data, state):
             state["rollback"][service] = "UNCONFIRMED_REQUIRES_REVIEW"
 
 
+
+# Owner approved this exact continuation at c124b95ba62ff4a72491622dc92601dab4f89b6d.
+# It does not alter the original fresh-start entrypoint or grant arbitrary retries.
+BACKEND_ID = "460a447fc441071f595dea383b60487aa707e719511792aefa52a3a0b831962a"
+OLD_NONCE = "9128e22668c33a1552f912415c800939"
+FAILED_CHECKPOINT_SHA = "ad5f14d8c643045b59275b4d0433cd9e96f63c1e4fba22dd1af7f3da7812548a"
+BACKEND_REF = "ghcr.io/san4o9910/kinetra-backend@sha256:9138a6408442b847ca771690053870880cee831769919aaf2a2dc858d52e8362"
+RESUME_ATTEMPT = "application-assets-attempt-" + OLD_NONCE + ".json"
+RESUME_RESULT = "application-assets-result-" + OLD_NONCE + ".json"
+FAILED_ARCHIVE = "application-start-failed-" + OLD_NONCE + ".json"
+ATTEMPT_ARCHIVE = "application-start-original-attempt-" + OLD_NONCE + ".json"
+
+FRONTEND_ID = "c47ad815087ec8f3b310ac59f565babfb03af5b43102f56ac24678ac1c36d206"
+FRONTEND_REF = "ghcr.io/san4o9910/kinetra-frontend@sha256:da47e7f576cfb3892b9078e8463cdad855081e032d51645639794736c1098ff2"
+PRESERVED_IDS = {"backend": BACKEND_ID, "frontend": FRONTEND_ID}
+STARTED_AT = {"backend": "2026-09-13T20:04:12.951170708Z", "frontend": "2026-09-13T20:04:20.381560242Z"}
+OLD_CONTINUATION_ATTEMPT = "application-continuation-attempt-" + OLD_NONCE + ".json"
+OLD_CONTINUATION_RESULT = "application-continuation-result-" + OLD_NONCE + ".json"
+OLD_ATTEMPT_SHA = "655db5eacc192aea6146040c9c814ec77d5b58876eb8d6a34e12e99c4bbcb572"
+OLD_RESULT_SHA = "72ee16fdc09a163e0d311401c56f43c1e766b4e6e57442ddd7f68e98ada9be5b"
+OWNER_APPROVAL = "1be0c7f18c7a9ee2d3835ce22cf7deefbd98e969"
+
+def verify_stopped_container(service):
+    identifier = PRESERVED_IDS[service]
+    info = inspect_container(identifier)
+    require(info.get("id") == identifier and info.get("image") == (BACKEND_REF if service == "backend" else FRONTEND_REF)
+            and info.get("project") == PROJECT and info.get("service") == service
+            and info.get("nonce") == OLD_NONCE and info.get("running") is False
+            and info.get("status") == "exited", "EXACT_STOPPED_CONTAINER_REQUIRED")
+    value = json.loads(command(["/usr/bin/docker", "inspect", "--type", "container", "--format",
+        '{"started":{{json .State.StartedAt}},"ports":{{json .HostConfig.PortBindings}}}', identifier], capture=True))
+    require(value.get("started") == STARTED_AT[service], "PRESERVED_START_HISTORY_CHANGED")
+    expected_ports = {} if service == "backend" else {"8080/tcp": [{"HostIp": "127.0.0.1", "HostPort": "8080"}]}
+    require((value.get("ports") or {}) == expected_ports, "STOPPED_PORT_CONFIGURATION_CHANGED")
+    return info, value
+
+def verify_stopped_runtime(service, data, network_id, database_network_id):
+    info, configured = verify_stopped_container(service)
+    # Docker removes live port bindings on stop. Check actual configured bindings
+    # before start; the original live-port assertion runs again after Docker start.
+    check_runtime(dict(info, ports=configured["ports"]), service, data, OLD_NONCE, network_id, database_network_id)
+
+def preserved_records(data):
+    require(data["commit"] == "73b665065e00a5b375e90f701373b3e0856a0386"
+            and data["images"]["BACKEND_IMAGE"] == BACKEND_REF
+            and data["images"]["FRONTEND_IMAGE"] == FRONTEND_REF, "EXACT_RESUME_APPLICATION_REQUIRED")
+    evidence = STAGE / "evidence"
+    names = ("application-start-result.json", "application-start-attempt.json", FAILED_ARCHIVE,
+             ATTEMPT_ARCHIVE, OLD_CONTINUATION_ATTEMPT, OLD_CONTINUATION_RESULT)
+    records = {name: private_read(evidence / name) for name in names}
+    require(sha256(records["application-start-result.json"]) == FAILED_CHECKPOINT_SHA
+            and records[FAILED_ARCHIVE] == records["application-start-result.json"], "ORIGINAL_FAILED_ARCHIVE_CHANGED")
+    require(json.loads(records["application-start-attempt.json"]) == dict(data, nonce=OLD_NONCE, phase="START_BACKEND")
+            and records[ATTEMPT_ARCHIVE] == records["application-start-attempt.json"], "ORIGINAL_START_ATTEMPT_CHANGED")
+    require(sha256(records[OLD_CONTINUATION_ATTEMPT]) == OLD_ATTEMPT_SHA
+            and sha256(records[OLD_CONTINUATION_RESULT]) == OLD_RESULT_SHA, "PREVIOUS_CONTINUATION_CHANGED")
+    require(json.loads(records[OLD_CONTINUATION_ATTEMPT]).get("approved") == data, "PREVIOUS_CONTINUATION_INPUT_CHANGED")
+    value = json.loads(records[OLD_CONTINUATION_RESULT])
+    expected = {"result": "CHECKPOINT_ONLY", "requires_matching_outer_success": True,
+        "phase": "LOCAL_ACCEPTANCE", "error": "UNREVIEWED_ASSET_ORIGIN", "nonce": OLD_NONCE,
+        "attempt_recorded": True, "attempted_services": ["backend", "frontend"],
+        "start_attempted_services": ["backend", "frontend"], "uncertain_start_services": [],
+        "owned_containers": PRESERVED_IDS, "rollback": {"backend": "STOPPED", "frontend": "STOPPED"}}
+    require(all(value.get(k) == v for k, v in expected.items()), "CONFIRMED_PREVIOUS_ROLLBACK_REQUIRED")
+    for key in ("commit", "images", "handoff_hashes", "configuration_hashes"):
+        require(value.get(key) == data[key], "FAILED_START_INPUT_CHANGED")
+    return records
+
+def validate_resume_records(data):
+    records = preserved_records(data)
+    evidence = STAGE / "evidence"
+    for name in (RESUME_ATTEMPT, RESUME_RESULT, "https-start-attempt.json", "https-start-result.json"):
+        path = evidence / name
+        require(not path.exists() and not path.is_symlink(), "EXISTING_CONTINUATION_OR_HTTPS_PRESERVED")
+    for path in evidence.iterdir():
+        require(not path.name.startswith("application-assets-") and
+                (not path.name.startswith("application-continuation-") or path.name in {OLD_CONTINUATION_ATTEMPT, OLD_CONTINUATION_RESULT}),
+                "OTHER_CONTINUATION_PRESERVED")
+    for service in PRESERVED_IDS: verify_stopped_container(service)
+    return records
+
+def record_continuation(data, state):
+    records = validate_resume_records(data)
+    evidence = STAGE / "evidence"
+    record = {"schema": 1, "owner_approval": OWNER_APPROVAL, "container_ids": PRESERVED_IDS,
+              "nonce": OLD_NONCE, "approved": data, "prior_sha256": {name: sha256(raw) for name,raw in records.items()}}
+    write_new(evidence / RESUME_ATTEMPT, (json.dumps(record, sort_keys=True) + "\n").encode())
+    state["attempt_recorded"] = True
+    sync_directory(evidence)
+    require(all(private_read(evidence / name) == raw for name,raw in records.items()), "DURABLE_PRIOR_RECORDS_REQUIRED")
+
+def persist_continuation_checkpoint(state, data):
+    evidence = STAGE / "evidence"
+    checkpoint = dict(state, result="CHECKPOINT_ONLY", requires_matching_outer_success=True,
+        checkpoint_kind="LOCAL_OBSERVATIONS_NOT_AN_ACTIVATION_HANDOFF", commit=data["commit"], images=data["images"],
+        handoff_hashes=data["handoff_hashes"], configuration_hashes=data["configuration_hashes"])
+    raw = (json.dumps(checkpoint, sort_keys=True) + "\n").encode()
+    write_new(evidence / RESUME_RESULT, raw)
+    sync_directory(evidence)
+    if state["result"] == "APPLICATION_LOCAL_ACCEPTED_ONLY":
+        previous = preserved_records(data)
+        attempted = json.loads(private_read(evidence / RESUME_ATTEMPT))
+        require(attempted == {"schema": 1, "owner_approval": OWNER_APPROVAL, "container_ids": PRESERVED_IDS,
+                "nonce": OLD_NONCE, "approved": data, "prior_sha256": {name:sha256(value) for name,value in previous.items()}},
+                "EXACT_DURABLE_ASSET_ATTEMPT_REQUIRED")
+        install = evidence / ("application-assets-install-" + OLD_NONCE + ".json")
+        write_new(install, raw)
+        sync_directory(evidence)
+        os.replace(install, evidence / "application-start-result.json")
+        sync_directory(evidence)
+        require(private_read(evidence / "application-start-result.json") == raw, "CONTINUATION_CHECKPOINT_NOT_DURABLE")
+
+
+def resumed_final_isolation(postgres_id, image, network_id):
+    identifiers = command(['/usr/bin/docker', 'container', 'ls', '--all', '--quiet', '--no-trunc'], capture=True).splitlines()
+    if len(identifiers) != 3 or set(identifiers) != {postgres_id, BACKEND_ID, FRONTEND_ID}: raise Error('UNEXPECTED_RETAINED_CONTAINER')
+    for service in PRESERVED_IDS: verify_stopped_container(service)
+    ports = command(['/usr/bin/docker', 'port', postgres_id], capture=True)
+    if ports.strip(): raise Error('POSTGRES_PORT_PUBLICATION_REFUSED')
+    networks = json.loads(command(['/usr/bin/docker', 'inspect', '--format', '{{json .NetworkSettings.Networks}}', postgres_id], capture=True))
+    if set(networks) != {'kinetra-production_database'}: raise Error('POSTGRES_NETWORK_ISOLATION_INVALID')
+    private = json.loads(command(['/usr/bin/docker', 'network', 'inspect', '--format', '{{json .}}', 'kinetra-production_database'], capture=True))
+    if private.get('Internal') is not True or private.get('Labels', {}).get('com.docker.compose.project') != 'kinetra-production' or set(private.get('Containers', {})) != {postgres_id}:
+        raise Error('POSTGRES_NETWORK_ISOLATION_INVALID')
+    actual_image = command(['/usr/bin/docker', 'inspect', '--format', '{{.Config.Image}}', postgres_id], capture=True).strip()
+    if actual_image != image: raise Error('POSTGRES_IMAGE_IDENTITY_INVALID')
+    restart = command(['/usr/bin/docker', 'inspect', '--format', '{{.HostConfig.RestartPolicy.Name}}', postgres_id], capture=True).strip()
+    if restart != 'no': raise Error('POSTGRES_AUTOMATIC_RESTART_REFUSED')
+    volumes = command(['/usr/bin/docker', 'volume', 'ls', '--quiet'], capture=True).splitlines()
+    if volumes != ['kinetra-production_postgres17_data']: raise Error('POSTGRES_VOLUME_SCOPE_INVALID')
+    volume = json.loads(command(['/usr/bin/docker', 'volume', 'inspect', '--format', '{{json .}}', volumes[0]], capture=True))
+    if volume.get('Driver') != 'local' or volume.get('Options') != {'type': 'none', 'o': 'bind', 'device': str(STAGE / 'postgres/data')} or volume.get('Labels', {}).get('com.docker.compose.project') != 'kinetra-production':
+        raise Error('POSTGRES_VOLUME_IDENTITY_INVALID')
+    preparation.shared['validate_network'](network_id)
+    listeners = command(['/usr/bin/ss', '-H', '-lnt'], capture=True)
+    if any(len(row.split()) >= 4 and row.split()[3].rsplit(':', 1)[-1] in {'5432', '8080'} for row in listeners.splitlines()):
+        raise Error('UNEXPECTED_PUBLIC_DATABASE_OR_APP_LISTENER')
+
+def resumed_check_live_identity(data, handoff):
+    require(os.geteuid() == 0, "ROOT_REQUIRED")
+    ip_command = shutil.which("ip", path="/usr/sbin:/usr/bin:/sbin:/bin")
+    require(ip_command is not None, "HOST_ADDRESS_TOOL_MISSING")
+    addresses = command([ip_command, "-4", "-o", "address", "show"], capture=True)
+    require(re.search(r"\binet " + re.escape(PUBLIC_IP) + r"/\d+\b", addresses), "ASSIGNED_HOST_ADDRESS_MISMATCH")
+    for property_name, expected in (("ActiveState", "inactive"), ("UnitFileState", "disabled")):
+        require(command(["/usr/bin/systemctl", "show", "--property=" + property_name, "--value", "caddy.service"], capture=True).strip() == expected,
+                "CADDY_MUST_REMAIN_PREPARED_INACTIVE")
+    resumed_final_isolation(handoff["initialized"]["postgres_id"], data["images"]["POSTGRES_IMAGE"], handoff["staged"]["network_id"])
+    database_state = json.loads(command(["/usr/bin/docker", "inspect", "--format", "{{json .State}}",
+                                       handoff["initialized"]["postgres_id"]], capture=True))
+    require(database_state.get("Running") is True and database_state.get("Health", {}).get("Status") == "healthy",
+            "INITIALIZED_DATABASE_MUST_BE_HEALTHY")
+    for key in ("BACKEND_IMAGE", "FRONTEND_IMAGE"):
+        revision = command(["/usr/bin/docker", "image", "inspect", "--format", '{{index .Config.Labels "org.opencontainers.image.revision"}}', data["images"][key]], capture=True).strip()
+        require(revision == data["commit"], "LOCAL_QUALIFIED_IMAGE_MISMATCH")
+
 def activate(data, state):
     handoff = read_handoff(data)
-    preparation.check_live_identity(data, handoff)
+    resumed_check_live_identity(data, handoff)
     preparation.validate_candidate(data["images"]["BACKEND_IMAGE"], STAGE / "env/production.env", STAGE / "env/api.env")
     postgres_id = handoff["initialized"]["postgres_id"]
     database_readonly_handoff(postgres_id, data["migration_hashes"])
-    preparation.check_live_identity(data, handoff)
+    resumed_check_live_identity(data, handoff)
     database_before = inspect_container(postgres_id)
     db_network_id = database_before["networks"][PROJECT + "_database"]["NetworkID"]
     check_hashes(data)
-    state["nonce"] = secrets.token_hex(16)
+    state["nonce"] = OLD_NONCE
     state["phase"] = "START_BACKEND"
-    attempt = dict(data, nonce=state["nonce"], phase=state["phase"])
-    write_new(STAGE / "evidence/application-start-attempt.json", (json.dumps(attempt, sort_keys=True) + "\n").encode())
-    state["attempt_recorded"] = True
-    sync_directory(STAGE / "evidence")
-    override = STAGE / "evidence" / ("application-" + state["nonce"] + ".compose.json")
-    write_new(override, (json.dumps({"services": {name: {"labels": {SERVICE_LABEL: state["nonce"]}} for name in ("backend", "frontend")}}) + "\n").encode())
-    sync_directory(STAGE / "evidence")
+    override = STAGE / "evidence" / ("application-" + OLD_NONCE + ".compose.json")
+    expected = (json.dumps({"services": {name: {"labels": {SERVICE_LABEL: OLD_NONCE}} for name in ("backend", "frontend")}}) + "\n").encode()
+    require(private_read(override) == expected, "ORIGINAL_COMPOSE_OVERRIDE_CHANGED")
+    for service in PRESERVED_IDS:
+        verify_stopped_runtime(service, data, handoff["staged"]["network_id"], db_network_id)
+    record_continuation(data, state)
     compose(["config", "--quiet"], override)
     for service in ("backend", "frontend"):
         state["phase"] = "START_" + service.upper()
         check_hashes(data)
         state["attempted_services"].append(service)
-        # Create first without starting: even an indeterminate Compose timeout
-        # cannot leave a running service whose ID this invocation never learned.
-        compose(["up", "--no-start", "--no-deps", "--no-build", "--pull", "never", service], override, timeout=120)
+        verify_stopped_container(service)
         identifiers = candidate_ids(service, state["nonce"])
-        require(len(identifiers) == 1, "CREATED_CONTAINER_ID_REQUIRED")
+        require(identifiers == [PRESERVED_IDS[service]], "EXACT_PRESERVED_CONTAINER_ID_REQUIRED")
         info = inspect_container(identifiers[0])
-        check_owned(info, service, data, state["nonce"])
+        check_owned(info, service, data, state["nonce"], PRESERVED_IDS[service])
         state["owned_containers"][service] = info["id"]
-        require(info.get("running") is False and info.get("status") == "created", "CREATED_APPLICATION_MUST_NOT_ALREADY_RUN")
+        require(info.get("running") is False and info.get("status") == "exited", "PRESERVED_APPLICATION_MUST_BE_STOPPED")
         state["start_attempted_services"].append(service)
         try:
             command(["/usr/bin/docker", "start", info["id"]], timeout=60)
@@ -418,7 +574,7 @@ def main(argv=None):
              "remaining": ["CADDY_IDENTITY_AND_HTTPS", "DATABASE_PERSISTENT_POLICY", "BOOT_ENABLEMENT", "BROWSER_ACCEPTANCE", "BACKUP_AND_USER_LAUNCH"]}
     lock, data = None, None
     try:
-        require(len(argv) == 3 and argv[:2] == ["--start-validated-local-application", "--private-input"], "EXPLICIT_LOCAL_ACTIVATION_REQUIRED")
+        require(len(argv) == 3 and argv[:2] == ["--resume-exact-stopped-application", "--private-input"], "EXPLICIT_LOCAL_ACTIVATION_REQUIRED")
         data = validate_input(json.loads(private_read(Path(argv[2]))))
         require(os.geteuid() == 0, "ROOT_REQUIRED")
         resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
@@ -436,14 +592,7 @@ def main(argv=None):
     finally:
         if state["attempt_recorded"]:
             try:
-                # Never persist authoritative acceptance before final fsync.
-                # Even if the file is written and fsync then fails/rolls back,
-                # it remains explicitly unsuitable as a next-phase handoff.
-                record = dict(state, result="CHECKPOINT_ONLY", requires_matching_outer_success=True,
-                              checkpoint_kind="LOCAL_OBSERVATIONS_NOT_AN_ACTIVATION_HANDOFF",
-                              commit=data["commit"], images=data["images"], handoff_hashes=data["handoff_hashes"], configuration_hashes=data["configuration_hashes"])
-                write_new(STAGE / "evidence/application-start-result.json", (json.dumps(record, sort_keys=True) + "\n").encode())
-                sync_directory(STAGE / "evidence")
+                persist_continuation_checkpoint(state, data)
             except BaseException:
                 state["result"], state["error"] = "FAIL", "ACTIVATION_RESULT_NOT_DURABLE"
                 if data is not None and state["attempted_services"]: rollback(data, state)

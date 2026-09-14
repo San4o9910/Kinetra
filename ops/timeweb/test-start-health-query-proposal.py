@@ -20,6 +20,12 @@ PROPOSED = "e7954b99525f9a66f174d4c4729f0c6287b11f3c8cb2432106e4283d87d6e9e4"
 OLD = '{{if .State.Health}}'
 NEW = '{{if (index .State "Health")}}'
 INSTALLED = (ROOT / "start-application-host.py").read_text()
+if "QUALIFIED_SHELL_SHA256 =" in INSTALLED:
+    import importlib.util
+    spec=importlib.util.spec_from_file_location('approved_asset_proposal', ROOT/'test-local-asset-policy-proposal.py')
+    proposal=importlib.util.module_from_spec(spec);spec.loader.exec_module(proposal)
+    proposal.AssetPolicyProposal.setUpClass()
+    INSTALLED=proposal.AssetPolicyProposal.before['start-application-host.py']
 SOURCE = INSTALLED.replace(NEW, OLD) if NEW in INSTALLED else INSTALLED
 FIXED = SOURCE.replace(OLD, NEW)
 

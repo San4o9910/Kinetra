@@ -10,7 +10,7 @@ import signal
 import sys
 
 PINS={
-    'application-caller.py':'a8cbec10bf8267d18dbda507817b39b36511c2edbd5a7dd1a2889d062943dfec',
+    'application-caller.py':'3e2fd87da7f72677dbc008f2086c1e7a3da3ef3b43616ccf89381cf3d641138b',
     'recover-api-preparation.py':'0a1ec78c18632cb03630902c27060a930ec038086711614cac59601b236fdac2',
 }
 def load(name):

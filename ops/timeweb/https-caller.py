@@ -25,8 +25,8 @@ import time
 import zipfile
 import io
 
-PINS = {'inspect-host-monitoring.py': '3ffc667a66330c323836d1335e78f92940d6ebdc1877cf66048265d774bb3086', 'start-application-host.py': 'e7954b99525f9a66f174d4c4729f0c6287b11f3c8cb2432106e4283d87d6e9e4', 'activate-application-host.py': '16c9ed2fc47534f86f35e4aa215d824ffbec84fd3c684d5d02157a7e944322c4', 'initialize-database-host.py': '041f415dedf6b0b6922484281926c8c98c87828506dcb2e1ac6fb324b00b05bb', 'prepare-database-host.py': '4621b1c0153ab56ae535e245fdb2de4ef2aff4a30ba5b592343a26795f0655ae', 'bootstrap-server.py': 'a19aca3ea953feecdcb9be6e9dcabdfc8b0e2b4f3938184391cdfb2ff3e87c9e', 'inspect-server.py': '567d892221925bb438ece6a893360a891ffd4228f8af0a18252b8ba365a682c0', 'prepare-api-host.py': 'f549bdda5c325ce4d36a2be239bb6458f79f5d011d3e5ec61e9158388377377a', 'activate-local-application-host.py': 'd49dd17b2977bdd6b0dfcc5022955e4375d76574ffc7b0b80f0b3e9fd4d0a72e', 'activate-https-host.py': '3245b2d3cb1f5bf30265dce6f62d2cfa1545bd4dd1fbf1b51288c6d8fb726d2e', 'prepare-caddy.sh': 'a23d52b21f7c638f757a723048ee632d37e8f217ae796f97dd92ec3bbb990e2d'}
-CALLER_SHA256 = "a8cbec10bf8267d18dbda507817b39b36511c2edbd5a7dd1a2889d062943dfec"
+PINS = {'inspect-host-monitoring.py': '3ffc667a66330c323836d1335e78f92940d6ebdc1877cf66048265d774bb3086', 'start-application-host.py': '8de4fdccd73c8c1d5666fa46806d47125f0aec49e73c6f4a1bf00db36584427d', 'activate-application-host.py': '16c9ed2fc47534f86f35e4aa215d824ffbec84fd3c684d5d02157a7e944322c4', 'initialize-database-host.py': '041f415dedf6b0b6922484281926c8c98c87828506dcb2e1ac6fb324b00b05bb', 'prepare-database-host.py': '4621b1c0153ab56ae535e245fdb2de4ef2aff4a30ba5b592343a26795f0655ae', 'bootstrap-server.py': 'a19aca3ea953feecdcb9be6e9dcabdfc8b0e2b4f3938184391cdfb2ff3e87c9e', 'inspect-server.py': '567d892221925bb438ece6a893360a891ffd4228f8af0a18252b8ba365a682c0', 'prepare-api-host.py': 'f549bdda5c325ce4d36a2be239bb6458f79f5d011d3e5ec61e9158388377377a', 'activate-local-application-host.py': '15ec9b76a81687ebc58957fc318b580e1f9a1ec5f9caecc333081de83a947f39', 'activate-https-host.py': '2b5f18934603b06b599df710619c995f78b4c63c33dd5810a8322dd0f3fff9b4', 'prepare-caddy.sh': 'a23d52b21f7c638f757a723048ee632d37e8f217ae796f97dd92ec3bbb990e2d'}
+CALLER_SHA256 = "3e2fd87da7f72677dbc008f2086c1e7a3da3ef3b43616ccf89381cf3d641138b"
 
 
 def load_caller():
@@ -190,12 +190,13 @@ def validate_https(value):
         http = https['http']
         require(isinstance(http, dict) and 6 <= len(http) <= 16 and {'/', '/health', '/ready', '/api/v1/me'} <= set(http), 'HTTPS_HTTP_EVIDENCE_INVALID')
         for path, entry in http.items():
-            require(path in {'/', '/health', '/ready', '/api/v1/me'} or isinstance(path, str) and len(path) <= 240
+            require(path in {'/', '/health', '/ready', '/api/v1/me', '/theme-init.js'} or isinstance(path, str) and len(path) <= 240
                     and re.fullmatch(r'/assets/[A-Za-z0-9_./-]+\.(?:js|css)', path) and '..' not in path, 'HTTPS_HTTP_PATH_INVALID')
             require(isinstance(entry, dict) and set(entry) == {'status', 'sha256'} and type(entry['status']) is int
                     and entry['status'] == {'/ready': 404, '/api/v1/me': 401}.get(path, 200)
                     and isinstance(entry['sha256'], str) and re.fullmatch(r'[a-f0-9]{64}', entry['sha256']), 'HTTPS_HTTP_ENTRY_INVALID')
-        require(any(p.endswith('.js') for p in http) and any(p.endswith('.css') for p in http), 'HTTPS_ASSET_EVIDENCE_MISSING')
+            if path == '/theme-init.js': require(entry['sha256'] == 'd9988fba5a56d7bd81528b74156f5ce65a8d07f649b9eef77104e81ae768788b', 'QUALIFIED_THEME_EVIDENCE_CHANGED')
+        require(any(p.startswith('/assets/') and p.endswith('.js') for p in http) and any(p.endswith('.css') for p in http), 'HTTPS_ASSET_EVIDENCE_MISSING')
     if value['result'] == 'HTTPS_ACCEPTED_ONLY':
         require(value['error'] is None and value['phase'] == 'HTTPS_ACCEPTANCE_COMPLETE'
                 and value['attempt_recorded'] and value['start_attempted'] and value['owned_invocation'] is not None

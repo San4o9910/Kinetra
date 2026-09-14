@@ -1,0 +1,131 @@
+{
+  "account_key_cleanup": "API_DELETE_CONFIRMED",
+  "error": null,
+  "guest_key_cleanup": "API_DELETE_CONFIRMED",
+  "host_key_fingerprint": "SHA256:T3RfyVAstE+dyvneeMMYUjIm1Ej+NN3D5Vr9sIyRUG0",
+  "inspection": {
+    "containers": [
+      {
+        "health": "unhealthy",
+        "id": "460a447fc441071f595dea383b60487aa707e719511792aefa52a3a0b831962a",
+        "nonce": "9128e22668c33a1552f912415c800939",
+        "running": false,
+        "service": "backend",
+        "started": "2026-09-13T20:04:12.951170708Z",
+        "status": "exited"
+      },
+      {
+        "health": null,
+        "id": "c47ad815087ec8f3b310ac59f565babfb03af5b43102f56ac24678ac1c36d206",
+        "nonce": "9128e22668c33a1552f912415c800939",
+        "running": false,
+        "service": "frontend",
+        "started": "2026-09-13T20:04:20.381560242Z",
+        "status": "exited"
+      }
+    ],
+    "frontend_assets": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: https:; media-src 'self' blob: https:; connect-src 'self' https: wss:; font-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+      "index_sha256": "6195327372c93442ceffdfc872b34f39296bf8e5cbc602a397b78df489f60f19",
+      "nginx_sha256": "c42be326f3455609704914785d7452808512cc2afb049607006f164532e74d26",
+      "references": [
+        {
+          "kind": "stylesheet",
+          "url": "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+        },
+        {
+          "kind": "script",
+          "url": "/theme-init.js"
+        },
+        {
+          "kind": "script",
+          "url": "/assets/index-BWzIO3Fz.js"
+        },
+        {
+          "kind": "stylesheet",
+          "url": "/assets/index-BUHqTTi2.css"
+        }
+      ],
+      "theme_sha256": "d9988fba5a56d7bd81528b74156f5ce65a8d07f649b9eef77104e81ae768788b"
+    },
+    "mutations": false,
+    "records": {
+      "continuation_attempt": {
+        "nonce": "9128e22668c33a1552f912415c800939",
+        "sha256": "655db5eacc192aea6146040c9c814ec77d5b58876eb8d6a34e12e99c4bbcb572"
+      },
+      "continuation_result": {
+        "attempt_recorded": true,
+        "attempted_services": [
+          "backend",
+          "frontend"
+        ],
+        "error": "UNREVIEWED_ASSET_ORIGIN",
+        "nonce": "9128e22668c33a1552f912415c800939",
+        "owned_containers": {
+          "backend": "460a447fc441071f595dea383b60487aa707e719511792aefa52a3a0b831962a",
+          "frontend": "c47ad815087ec8f3b310ac59f565babfb03af5b43102f56ac24678ac1c36d206"
+        },
+        "phase": "LOCAL_ACCEPTANCE",
+        "result": "CHECKPOINT_ONLY",
+        "rollback": {
+          "backend": "STOPPED",
+          "frontend": "STOPPED"
+        },
+        "sha256": "72ee16fdc09a163e0d311401c56f43c1e766b4e6e57442ddd7f68e98ada9be5b",
+        "start_attempted_services": [
+          "backend",
+          "frontend"
+        ],
+        "uncertain_start_services": []
+      },
+      "failed_archive": {
+        "attempt_recorded": true,
+        "attempted_services": [
+          "backend"
+        ],
+        "error": "CHILD_COMMAND_FAILED",
+        "nonce": "9128e22668c33a1552f912415c800939",
+        "owned_containers": {},
+        "phase": "START_BACKEND",
+        "result": "CHECKPOINT_ONLY",
+        "rollback": {
+          "backend": "UNCONFIRMED_REQUIRES_REVIEW"
+        },
+        "sha256": "ad5f14d8c643045b59275b4d0433cd9e96f63c1e4fba22dd1af7f3da7812548a",
+        "start_attempted_services": [],
+        "uncertain_start_services": []
+      },
+      "original": {
+        "attempt_recorded": true,
+        "attempted_services": [
+          "backend"
+        ],
+        "error": "CHILD_COMMAND_FAILED",
+        "nonce": "9128e22668c33a1552f912415c800939",
+        "owned_containers": {},
+        "phase": "START_BACKEND",
+        "result": "CHECKPOINT_ONLY",
+        "rollback": {
+          "backend": "UNCONFIRMED_REQUIRES_REVIEW"
+        },
+        "sha256": "ad5f14d8c643045b59275b4d0433cd9e96f63c1e4fba22dd1af7f3da7812548a",
+        "start_attempted_services": [],
+        "uncertain_start_services": []
+      }
+    },
+    "result": "PASS_READ_ONLY_INSPECTION",
+    "schema": 1,
+    "services": [
+      "frontend=exited",
+      "backend=exited",
+      "postgres=running"
+    ]
+  },
+  "local_key_cleanup": "REMOVED",
+  "public_ipv4": "80.68.156.131",
+  "result": "PASS_READ_ONLY_HOST_MONITORING_INSPECTION",
+  "server_id": 9069403,
+  "server_status": "on",
+  "ssh_key_id": 772837
+}

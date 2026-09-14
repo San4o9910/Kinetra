@@ -493,9 +493,10 @@ class PublicBoundaryTests(unittest.TestCase):
     def setUp(self):
         self.stack = contextlib.ExitStack()
         self.addCleanup(self.stack.close)
-        paths = ("/", "/assets/index-123.js", "/assets/index-123.css", "/health", "/ready", "/api/v1/me")
+        paths = ("/", "/theme-init.js", "/assets/index-123.js", "/assets/index-123.css", "/health", "/ready", "/api/v1/me")
         self.replies = {path: list((*fixtures.LocalActivationTests.http(path), dict(CERTIFICATE))) for path in paths}
         self.expected = {path: {"status": reply[0], "sha256": https.sha256(reply[2])} for path, reply in self.replies.items()}
+        self.stack.enter_context(patch.object(https.local, "QUALIFIED_SHELL_SHA256", https.sha256(fixtures.FIXTURE_SHELL)))
         self.stack.enter_context(patch.object(https, "command", side_effect=AssertionError("host command forbidden")))
         self.stack.enter_context(patch.object(https, "wait_for_certificate", side_effect=lambda: self.replies["/"]))
         self.stack.enter_context(patch.object(https, "https_get", side_effect=lambda path: self.replies[path]))

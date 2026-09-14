@@ -29,8 +29,8 @@ import sys
 import time
 
 HELPER_HASHES = {
-    "start-application-host.py": "e7954b99525f9a66f174d4c4729f0c6287b11f3c8cb2432106e4283d87d6e9e4",
-    "activate-local-application-host.py": "d49dd17b2977bdd6b0dfcc5022955e4375d76574ffc7b0b80f0b3e9fd4d0a72e",
+    "start-application-host.py": "8de4fdccd73c8c1d5666fa46806d47125f0aec49e73c6f4a1bf00db36584427d",
+    "activate-local-application-host.py": "15ec9b76a81687ebc58957fc318b580e1f9a1ec5f9caecc333081de83a947f39",
     "prepare-caddy.sh": "a23d52b21f7c638f757a723048ee632d37e8f217ae796f97dd92ec3bbb990e2d",
 }
 for name, digest in HELPER_HASHES.items():
@@ -290,8 +290,9 @@ def public_acceptance(expected):
     directives = [item.strip() for item in headers.get("content-security-policy", "").split(";") if item.strip()]
     require(all(item in directives for item in ("default-src 'self'", "script-src 'self'", "object-src 'none'", "frame-ancestors 'none'", "base-uri 'self'", "form-action 'self'"))
             and len({item.split()[0] for item in directives}) == len(directives), "HTTPS_CSP_REJECTED")
-    parser = local.Assets()
+    parser = local.Assets(headers.get("content-security-policy", ""), body)
     parser.feed(body.decode("utf8"))
+    parser.verify_complete()
     require(parser.paths == set(expected) - {"/", "/health", "/ready", "/api/v1/me"}, "HTTPS_ASSET_SET_CHANGED")
     results = {"/": {"status": status, "sha256": sha256(body)}}
     for path in sorted(set(expected) - {"/"}):
@@ -300,6 +301,8 @@ def public_acceptance(expected):
         if path == "/api/v1/me": require("no-store" in headers.get("cache-control", "").split(","), "HTTPS_API_NO_STORE_REQUIRED")
         if path == "/health": require(json.loads(body).get("status") == "ok", "HTTPS_API_HEALTH_FAILED")
         if path.startswith("/assets/"): require(body and "text/html" not in headers.get("content-type", ""), "HTTPS_BUILT_ASSET_FAILED")
+        if path == "/theme-init.js":
+            require(body and "text/html" not in headers.get("content-type", "") and sha256(body) == local.QUALIFIED_THEME_SHA256, "HTTPS_QUALIFIED_THEME_CHANGED")
         results[path] = {"status": status, "sha256": sha256(body)}
     require(results == expected, "HTTPS_LOCAL_APPLICATION_MISMATCH")
     connection = http.client.HTTPConnection(PUBLIC_IP, 80, timeout=5)

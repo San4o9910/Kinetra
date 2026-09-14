@@ -51,6 +51,19 @@ class AssetPolicyProposal(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.before={name:(ROOT/name).read_text() for name in BEFORE}
+        if SHA(cls.before['start-application-host.py'].encode()) == AFTER['start-application-host.py']:
+            # Reconstruct the exact previously reviewed base after application.
+            # Dependency pins are checked by their wrappers, not silently omitted.
+            normalized=cls.before['activate-https-host.py']
+            normalized=normalized.replace(AFTER['start-application-host.py'], BEFORE['start-application-host.py'])
+            normalized=normalized.replace(SHA((ROOT/'activate-local-application-host.py').read_bytes()),
+                'd49dd17b2977bdd6b0dfcc5022955e4375d76574ffc7b0b80f0b3e9fd4d0a72e')
+            cls.before['activate-https-host.py']=normalized
+            with tempfile.TemporaryDirectory() as folder:
+                dest=Path(folder)/'ops/timeweb';dest.mkdir(parents=True)
+                for name,content in cls.before.items(): (dest/name).write_text(content)
+                subprocess.run(['git','apply','--reverse',str((ROOT/'local-asset-policy-fix-20260913.patch').resolve())],cwd=folder,check=True,capture_output=True)
+                cls.before={name:(dest/name).read_text() for name in BEFORE}
         with tempfile.TemporaryDirectory() as folder:
             dest=Path(folder)/'ops/timeweb';dest.mkdir(parents=True)
             for name,content in cls.before.items(): (dest/name).write_text(content)
