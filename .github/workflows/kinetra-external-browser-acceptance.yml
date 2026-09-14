@@ -1,0 +1,75 @@
+name: Anonymous external browser acceptance on existing Kinetra HTTPS
+on:
+  push:
+    branches: [ops/timeweb-hourly-preflight-20260909]
+    paths: [.github/workflows/kinetra-external-browser-acceptance.yml]
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: kinetra-anonymous-external-acceptance
+  cancel-in-progress: false
+env:
+  APPROVED_HTTPS_RUN: "34845206322"
+  APPROVED_HTTPS_COMMIT: "6797463b77314927eb9f2e3e6c323e22d513b342"
+  APPROVED_HTTPS_ARTIFACT_ID: "10347472238"
+  APPROVED_HTTPS_ARTIFACT_SHA256: "35437e48bf0da2eb9993a8dff811cafae74293579035fb0be50de53f2899a75f"
+jobs:
+  anonymous-browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Require exact completed HTTPS acceptance and retained handoff
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          test "$GITHUB_REF" = refs/heads/ops/timeweb-hourly-preflight-20260909
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python3 -B - <<'PY'
+          import json,os,urllib.request
+          base='https://api.github.com/repos/San4o9910/Kinetra'
+          def get(path):
+              request=urllib.request.Request(base+path,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
+              with urllib.request.urlopen(request,timeout=20) as response:
+                  return json.load(response)
+          run=get('/actions/runs/'+os.environ['APPROVED_HTTPS_RUN'])
+          assert run['repository']['id']==1339664626 and run['event']=='push' and run['run_attempt']==1
+          assert run['status']=='completed' and run['conclusion']=='success'
+          assert run['head_sha']==os.environ['APPROVED_HTTPS_COMMIT']
+          assert run['path']=='.github/workflows/timeweb-https-activation.yml'
+          assert run['head_branch']=='ops/timeweb-hourly-preflight-20260909'
+          jobs=get('/actions/runs/'+str(run['id'])+'/jobs')['jobs']
+          assert len(jobs)==1 and jobs[0]['name']=='activate-https' and jobs[0]['conclusion']=='success'
+          artifact=get('/actions/artifacts/'+os.environ['APPROVED_HTTPS_ARTIFACT_ID'])
+          assert not artifact['expired'] and artifact['workflow_run']['id']==run['id']
+          assert artifact['workflow_run']['head_sha']==run['head_sha']
+          assert artifact['name']=='kinetra-https-handoff-'+str(run['id'])+'-1'
+          assert artifact['digest']=='sha256:'+os.environ['APPROVED_HTTPS_ARTIFACT_SHA256']
+          print('KINETRA_EXTERNAL_HTTPS_PREREQUISITE=PASS')
+          PY
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Open anonymous desktop and mobile login without form actions
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s  %s\n' 'b046b77ce55d16936921203a06b2de87e7aedb548562855b600c84e019b5d75a' 'ops/timeweb/anonymous-browser-acceptance.mjs' | sha256sum --check --strict
+          node --check ops/timeweb/anonymous-browser-acceptance.mjs
+          browser_bin="$(command -v google-chrome)"
+          test -x "$browser_bin"
+          env -i PATH="$PATH" CHROME_BIN="$browser_bin" GITHUB_RUN_ID="$GITHUB_RUN_ID" ACCEPTANCE_OUTPUT="$RUNNER_TEMP/kinetra-external-acceptance" node ops/timeweb/anonymous-browser-acceptance.mjs
+      - name: Retain anonymous acceptance and screenshots
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: kinetra-external-browser-${{ github.run_id }}-1
+          path: ${{ runner.temp }}/kinetra-external-acceptance/
+          if-no-files-found: error
+          retention-days: 14
