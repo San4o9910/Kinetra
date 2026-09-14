@@ -1,4 +1,4 @@
-name: Inspect exact stopped frontend shell and CSP asset policy
+name: Reconcile approved stopped-container continuation on September 14
 on:
   push:
     branches: [ops/timeweb-hourly-preflight-20260909]
