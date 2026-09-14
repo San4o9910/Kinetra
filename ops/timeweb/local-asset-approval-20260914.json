@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "status": "APPROVED",
+  "decision_date": "2026-09-14",
+  "owner_response": "Да",
+  "proposal_commit": "a6a7eb6a1616c05632a7cc75676451642de6bd0d",
+  "proposal_path": "ops/timeweb/local-asset-continuation-decision-20260913.md",
+  "patch_sha256": "e8612a9bb5d1648a85ef71eb04f47dbc6df18f1540b2a5d887ed99300ec62081",
+  "scope": "Apply exact qualified-shell/theme/CSP acceptance patch; one separately authenticated continuation of the exact two stopped containers; preserve failed records and remaining gates; HTTPS only after full successful local handoff and cleanup.",
+  "backend_id": "460a447fc441071f595dea383b60487aa707e719511792aefa52a3a0b831962a",
+  "frontend_id": "c47ad815087ec8f3b310ac59f565babfb03af5b43102f56ac24678ac1c36d206",
+  "nonce": "9128e22668c33a1552f912415c800939",
+  "server_id": 9069403,
+  "public_ipv4": "80.68.156.131"
+}

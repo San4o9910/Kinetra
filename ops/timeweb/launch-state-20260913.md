@@ -1,3 +1,13 @@
+## Launch checkpoint — 2026-09-14: exact asset correction and stopped-container continuation approved
+
+Owner replied «Да» to the exact proposal at a6a7eb6a1616c05632a7cc75676451642de6bd0d.
+See local-asset-approval-20260914.json. This supersedes the decision-required hold
+immediately below. Do not ask for this permission again. Implement the exact patch,
+reconcile fresh actual host state, authenticate real prior run/artifact/inspection,
+and execute one separately guarded continuation of the two preserved stopped
+containers. All other restrictions, failed records and successful handoffs remain.
+HTTPS requires actual local PASS and complete cleanup. No new acceptance claimed yet.
+
 ## Launch checkpoint — 2026-09-13 20:15 UTC: Health fixed; local asset gate needs a narrow decision
 
 Owner approval c124b95ba62ff4a72491622dc92601dab4f89b6d was implemented in
