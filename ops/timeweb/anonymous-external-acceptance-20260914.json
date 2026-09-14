@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "origin": "https://80.68.156.131",
+  "run": "34846350686",
+  "checks": [
+    "trusted_ip_certificate",
+    "https_shell",
+    "/health:200",
+    "/ready:404",
+    "/api/v1/me:401",
+    "http_redirect_308",
+    "qualified_external_font_blocked_by_csp",
+    "real_javascript_css_loaded",
+    "anonymous_refresh_401_without_credentials",
+    "no_uncaught_browser_exceptions"
+  ],
+  "viewports": [
+    {
+      "name": "desktop",
+      "width": 1440,
+      "height": 1000,
+      "loginRendered": true,
+      "noHorizontalOverflow": true,
+      "emptySubmitDisabled": true
+    },
+    {
+      "name": "mobile",
+      "width": 390,
+      "height": 844,
+      "loginRendered": true,
+      "noHorizontalOverflow": true,
+      "emptySubmitDisabled": true
+    }
+  ],
+  "certificate": {
+    "trusted": true,
+    "fingerprint": "41:1C:CD:A9:D9:0E:9F:31:69:A6:D6:D1:0F:73:37:17:31:3D:18:56:76:33:DE:D9:6C:AE:5B:BC:AC:CC:52:92",
+    "validTo": "Sep 21 03:48:48 2026 GMT"
+  },
+  "result": "PASS_ANONYMOUS_EXTERNAL_ONLY",
+  "control_commit": "8ce2e5d72178d8d15684dfc2b4954f178e5a2ed3",
+  "job_id": 103983126285,
+  "artifact_id": 10348153766,
+  "artifact_sha256": "4a2b22f39247fdd05fa140ea07c49c0e068af227fa43dfe7ae9a0e9c53421c41",
+  "https_run": 34845206322,
+  "full_user_launch_accepted": false
+}
