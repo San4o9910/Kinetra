@@ -156,7 +156,7 @@ def unit_properties():
         key, separator, value = line.partition("=")
         require(separator and key in names and key not in result, "CADDY_UNIT_OUTPUT_INVALID")
         result[key] = value
-    require(set(result) == set(names), "CADDY_UNIT_OUTPUT_INCOMPLETE")
+    require(set(result) == set(names), "CADDY_UNIT_MISSING_" + "_".join(sorted(set(names) - set(result))).upper())
     return result
 
 

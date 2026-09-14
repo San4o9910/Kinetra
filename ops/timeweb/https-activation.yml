@@ -63,9 +63,9 @@ jobs:
         567d892221925bb438ece6a893360a891ffd4228f8af0a18252b8ba365a682c0  ops/timeweb/inspect-server.py
         f549bdda5c325ce4d36a2be239bb6458f79f5d011d3e5ec61e9158388377377a  ops/timeweb/prepare-api-host.py
         fa721ac338095fa2f087fb7de5780a875cbc616fd384490a6fd84ada7e0735cd  ops/timeweb/activate-local-application-host.py
-        2d50cd63164278a3d5905cdce9f35c6cac6e3c3f7b395e7590b346904b699594  ops/timeweb/activate-https-host.py
+        c728d610186ba9f7b568b7ab551b89aeabe2e6a0c966343f7653fa2b4bf3320a  ops/timeweb/activate-https-host.py
         a23d52b21f7c638f757a723048ee632d37e8f217ae796f97dd92ec3bbb990e2d  ops/timeweb/prepare-caddy.sh
-        e3b5ceb975cbc18eb8ce0fb2f9fd4d74138e945c14fe6bbebd0ccb901144c6e3  ops/timeweb/https-caller.py
+        d7a404d31fc05a43ce5e52c52ccbc06de2d1464324bd2643a7f5e441e48c7425  ops/timeweb/https-caller.py
         220b37d1ac4ecd8745b10695abdbaaaa94877ef70598f83bfe1496023eab6518  ops/timeweb/test-https-caller.py
         177b05d5e67f772a36976705a18114971dce9b860f88fcea98cec88f3eab792b  ops/timeweb/application-caller.py
         61fc0550edbc533938b1850ad17aa6779c1d2fa7122db08296748acfe43924ea  ops/timeweb/verify-launch-provenance.py
