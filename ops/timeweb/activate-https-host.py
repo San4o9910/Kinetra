@@ -156,7 +156,21 @@ def unit_properties():
         key, separator, value = line.partition("=")
         require(separator and key in names and key not in result, "CADDY_UNIT_OUTPUT_INVALID")
         result[key] = value
-    require(set(result) == set(names), "CADDY_UNIT_MISSING_" + "_".join(sorted(set(names) - set(result))).upper())
+    # systemctl's custom printers omit empty structured arrays even with
+    # --all (systemd v255 systemctl-show.c). Confirm typed empty values over
+    # D-Bus instead of treating an omitted property as absent configuration.
+    omitted_arrays = {"EnvironmentFiles": "a(sb)",
+        **{key: "a(sasbttttuii)" for key in
+           ("ExecCondition", "ExecStartPre", "ExecStartPost", "ExecStop", "ExecStopPost")}}
+    missing = set(names) - set(result)
+    require(missing <= set(omitted_arrays), "CADDY_UNIT_OUTPUT_INCOMPLETE")
+    for key in sorted(missing):
+        raw = command(["/usr/bin/busctl", "--system", "get-property",
+            "org.freedesktop.systemd1", "/org/freedesktop/systemd1/unit/caddy_2eservice",
+            "org.freedesktop.systemd1.Service", key], capture=True).strip()
+        require(raw == omitted_arrays[key] + " 0", "CADDY_OMITTED_PROPERTY_NOT_EMPTY")
+        result[key] = ""
+    require(set(result) == set(names), "CADDY_UNIT_OUTPUT_INCOMPLETE")
     return result
 
 

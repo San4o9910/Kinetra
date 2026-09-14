@@ -23,6 +23,7 @@ def load(name, filename):
 
 https = load("https_activation_under_test", "activate-https-host.py")
 CHECK_APPLICATION = https.check_application
+UNIT_PROPERTIES = https.unit_properties
 fixtures = load("https_local_fixture_supplier", "test-start-application-host.py")
 INVOCATION = "8" * 32
 CERTIFICATE = {"sha256": "9" * 64, "ip_san": https.PUBLIC_IP, "not_before": 1,
@@ -598,6 +599,67 @@ class DynamicResponseTests(unittest.TestCase):
             for values in cases:
                 with self.subTest(path=path), self.assertRaises(https.Error):
                     https.dynamic_response_hash(path, *values)
+
+
+class UnitPropertyDecodingTests(unittest.TestCase):
+    def setUp(self):
+        self.fixture = CaddyIdentityTests()
+        self.fixture.setUp()
+        self.addCleanup(self.fixture.doCleanups)
+        self.omitted = {"EnvironmentFiles", "ExecCondition", "ExecStartPre", "ExecStartPost", "ExecStop", "ExecStopPost"}
+        self.properties = dict(self.fixture.properties)
+        self.bus_calls = []
+
+    def command(self, args, **kwargs):
+        if args[0] == "/usr/bin/systemctl":
+            return "\n".join(key + "=" + value for key, value in self.properties.items() if key not in self.omitted) + "\n"
+        self.assertEqual(args[:-1], ["/usr/bin/busctl", "--system", "get-property",
+            "org.freedesktop.systemd1", "/org/freedesktop/systemd1/unit/caddy_2eservice",
+            "org.freedesktop.systemd1.Service"])
+        self.bus_calls.append(args[-1])
+        return ("a(sb)" if args[-1] == "EnvironmentFiles" else "a(sasbttttuii)") + " 0\n"
+
+    def test_omitted_structured_arrays_require_typed_empty_dbus_evidence(self):
+        with patch.object(https, "command", side_effect=self.command):
+            self.assertEqual(UNIT_PROPERTIES(), self.properties)
+        self.assertEqual(set(self.bus_calls), self.omitted)
+
+    def test_complete_printed_properties_need_no_dbus_fallback(self):
+        self.omitted = set()
+        with patch.object(https, "command", side_effect=self.command):
+            self.assertEqual(UNIT_PROPERTIES(), self.properties)
+        self.assertEqual(self.bus_calls, [])
+
+    def test_nonempty_or_wrong_type_fallback_is_rejected(self):
+        real_command = self.command
+        for response in ('a(sb) 1 "/private" false', 'as 0', 'a(sasbttttuii) 1', ''):
+            def command(args, **kwargs):
+                return real_command(args, **kwargs) if args[0] == "/usr/bin/systemctl" else response
+            with self.subTest(response=response), patch.object(https, "command", side_effect=command):
+                with self.assertRaisesRegex(https.Error, "CADDY_OMITTED_PROPERTY_NOT_EMPTY"):
+                    UNIT_PROPERTIES()
+
+    def test_missing_scalar_or_required_command_remains_incomplete(self):
+        for key in ("LoadState", "User", "ExecStart", "ExecReload"):
+            self.omitted.add(key)
+            with self.subTest(key=key), patch.object(https, "command", side_effect=self.command):
+                with self.assertRaisesRegex(https.Error, "CADDY_UNIT_OUTPUT_INCOMPLETE"):
+                    UNIT_PROPERTIES()
+            self.omitted.remove(key)
+        self.assertEqual(self.bus_calls, [])
+
+    def test_duplicate_property_or_dbus_failure_is_not_normalized(self):
+        raw = self.command(["/usr/bin/systemctl"])
+        with patch.object(https, "command", return_value=raw + "User=caddy\n"):
+            with self.assertRaisesRegex(https.Error, "CADDY_UNIT_OUTPUT_INVALID"):
+                UNIT_PROPERTIES()
+        def failed(args, **kwargs):
+            if args[0] == "/usr/bin/systemctl":
+                return raw
+            raise https.Error("HOST_COMMAND_FAILED")
+        with patch.object(https, "command", side_effect=failed):
+            with self.assertRaisesRegex(https.Error, "HOST_COMMAND_FAILED"):
+                UNIT_PROPERTIES()
 
 if __name__ == "__main__":
     unittest.main()
