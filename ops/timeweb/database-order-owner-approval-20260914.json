@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "date": "2026-09-14",
+  "owner_response": "Да",
+  "approved_request": "Опубликовать подготовленное исправление в публичном San4o9910/Kinetra и выполнить одну новую попытку запуска сохранённых контейнеров, затем включить HTTPS после успешных проверок.",
+  "scope": [
+    "public_code_publication",
+    "full_mount_order_comparison_fix",
+    "one_exact_preserved_container_continuation",
+    "https_after_local_success_and_cleanup",
+    "anonymous_external_acceptance"
+  ],
+  "preserve": [
+    "existing_data",
+    "all_prior_attempt_records",
+    "all_other_acceptance_gates",
+    "same_Timeweb_server",
+    "no_new_paid_resources",
+    "no_PR21_merge",
+    "no_user_messages",
+    "no_payments"
+  ],
+  "source_decision": "ops/timeweb/database-order-continuation-decision-20260914.md",
+  "environment_note": "Prior local prepared commit is unavailable after exec-server handshake failure. Reconstruct the approved code from immutable repository sources and retained task changes, then verify it in an isolated GitHub Actions job before any host start."
+}
