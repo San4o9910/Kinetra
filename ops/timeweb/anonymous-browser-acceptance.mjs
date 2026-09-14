@@ -29,7 +29,7 @@ const get=url=>new Promise((resolve,reject)=>{
   req.on('timeout',()=>req.destroy(new Error('GET_TIMEOUT')));
   req.on('error',reject);
 });
-let chrome,profile,ws;
+let chrome,profile,ws,phase='external_http';
 try{
   await mkdir(output,{recursive:true});
   const shell=await get(ORIGIN+'/');
@@ -47,13 +47,14 @@ try{
   const redirect=await get('http://80.68.156.131/');
   assert.equal(redirect.status,308);assert.equal(redirect.headers.location,ORIGIN+'/');
   report.checks.push('http_redirect_308');
+  phase='browser_start';
   profile=await mkdtemp(join(tmpdir(),'kinetra-anonymous-'));
   chrome=spawn(process.env.CHROME_BIN,['--headless=new','--disable-gpu','--no-first-run',
     '--no-default-browser-check','--disable-background-networking','--remote-debugging-port=0',
     '--user-data-dir='+profile,'about:blank'],{stdio:['ignore','ignore','pipe']});
   const debuggerUrl=await new Promise((resolve,reject)=>{
     let text='';const timer=setTimeout(()=>reject(new Error('CHROME_START_TIMEOUT')),15000);
-    chrome.once('error',reject);chrome.once('exit',()=>reject(new Error('CHROME_EARLY_EXIT')));
+    chrome.once('error',reject);chrome.once('exit',()=>reject(new Error('CHROME_EARLY_EXIT: '+text.slice(-1600))));
     chrome.stderr.on('data',part=>{text=(text+part.toString()).slice(-8192);const match=text.match(/DevTools listening on (ws:\/\/[^\s]+)/);
       if(match){clearTimeout(timer);resolve(match[1]);}});
   });
@@ -88,12 +89,14 @@ try{
     if(value.id){const entry=pending.get(value.id);if(entry){clearTimeout(entry.timer);pending.delete(value.id);value.error?entry.reject(new Error('CDP_'+value.error.message)):entry.resolve(value.result);}}
     else if(value.sessionId===session)event(value).catch(error=>eventErrors.push(error.message));
   });
+  phase='browser_target';
   const target=await send('Target.createTarget',{url:'about:blank'},null);
   session=(await send('Target.attachToTarget',{targetId:target.targetId,flatten:true},null)).sessionId;
   await send('Page.enable');await send('Runtime.enable');await send('Network.enable');
   await send('Network.setCacheDisabled',{cacheDisabled:true});
   await send('Fetch.enable',{patterns:[{urlPattern:'*',requestStage:'Request'}]});
   await send('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});
+  phase='page_navigation';
   const nav=await send('Page.navigate',{url:ORIGIN+'/'});
   assert(!nav.errorText,nav.errorText);
   async function evaluate(expression){
@@ -105,7 +108,8 @@ try{
     loaded=await evaluate("Boolean(document.querySelector('[data-testid=\"login-screen\"]'))");
     if(loaded)break;await pause(200);
   }
-  assert(loaded,'LOGIN_SCREEN_NOT_RENDERED');
+  assert(loaded,'LOGIN_SCREEN_NOT_RENDERED:'+JSON.stringify({blocked,eventErrors,failures,responses:responses.map(x=>({url:x.url,status:x.status}))}));
+  phase='responsive_login';
   for(const [name,width,height,mobile] of [['desktop',1440,1000,false],['mobile',390,844,true]]){
     await send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile});
     await pause(250);
@@ -138,8 +142,11 @@ try{
   report.result='PASS_ANONYMOUS_EXTERNAL_ONLY';
   await writeFile(join(output,'acceptance.json'),JSON.stringify(report,null,2)+'\n');
   console.log('KINETRA_EXTERNAL_ACCEPTANCE='+JSON.stringify(report));
+}catch(error){
+  console.error('KINETRA_EXTERNAL_FAILURE='+JSON.stringify({phase,name:error.name,message:error.message.slice(0,2400)}));
+  throw error;
 }finally{
   clearTimeout(deadline);if(ws)ws.close();
   if(chrome&&chrome.exitCode===null){chrome.kill('SIGTERM');await Promise.race([once(chrome,'exit'),pause(5000)]);if(chrome.exitCode===null)chrome.kill('SIGKILL');}
-  if(profile)await rm(profile,{recursive:true,force:true});
+  if(profile)await rm(profile,{recursive:true,force:true,maxRetries:10,retryDelay:200}).catch(error=>{console.error('KINETRA_EXTERNAL_PROFILE_CLEANUP='+error.code);process.exitCode=1;});
 }
