@@ -1,0 +1,310 @@
+{
+  "schema": "kinetra-stopped-containers-result-v1",
+  "application": "73b665065e00a5b375e90f701373b3e0856a0386",
+  "owner_approval": "1be0c7f18c7a9ee2d3835ce22cf7deefbd98e969",
+  "run_id": 34816449431,
+  "control": "369891effdfce1077c2d4740782fef6b354159e1",
+  "workflow": ".github/workflows/timeweb-application-activation.yml",
+  "workflow_sha256": "b25f542342bf463b3bd3f5c3846c0e7272f11329ee67ca7c1b90220b93d27ff7",
+  "jobs": [
+    {
+      "conclusion": "failure",
+      "id": 103888017101,
+      "logs_url": null,
+      "name": "activate-local-application",
+      "run_id": 34816449431,
+      "status": "completed",
+      "steps": [
+        {
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "status": "completed"
+        },
+        {
+          "conclusion": "success",
+          "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "number": 2,
+          "status": "completed"
+        },
+        {
+          "conclusion": "success",
+          "name": "Verify reviewed caller and exact control checkout",
+          "number": 3,
+          "status": "completed"
+        },
+        {
+          "conclusion": "success",
+          "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "number": 4,
+          "status": "completed"
+        },
+        {
+          "conclusion": "success",
+          "name": "Verify exact application checkout",
+          "number": 5,
+          "status": "completed"
+        },
+        {
+          "conclusion": "success",
+          "name": "Authenticate current source images and successful database handoff",
+          "number": 6,
+          "status": "completed"
+        },
+        {
+          "conclusion": "success",
+          "name": "Authenticate preserved API and exact failed continuation with fresh stopped-container inspection",
+          "number": 7,
+          "status": "completed"
+        },
+        {
+          "conclusion": "success",
+          "name": "Recheck current source images and database before local startup",
+          "number": 8,
+          "status": "completed"
+        },
+        {
+          "conclusion": "failure",
+          "name": "Start and accept only local backend and frontend",
+          "number": 9,
+          "status": "completed"
+        },
+        {
+          "conclusion": "skipped",
+          "name": "Retain sanitized accepted local handoff",
+          "number": 10,
+          "status": "completed"
+        },
+        {
+          "conclusion": "success",
+          "name": "Retain sanitized attempt observations for reconciliation",
+          "number": 11,
+          "status": "completed"
+        },
+        {
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "number": 21,
+          "status": "completed"
+        },
+        {
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "number": 22,
+          "status": "completed"
+        },
+        {
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 23,
+          "status": "completed"
+        }
+      ]
+    }
+  ],
+  "artifacts": [
+    {
+      "id": 10337085613,
+      "node_id": "MDg6QXJ0aWZhY3QxMDMzNzA4NTYxMw==",
+      "name": "kinetra-local-attempt-34816449431-1",
+      "size_in_bytes": 3400,
+      "url": "https://api.github.com/repos/San4o9910/Kinetra/actions/artifacts/10337085613",
+      "archive_download_url": "https://api.github.com/repos/San4o9910/Kinetra/actions/artifacts/10337085613/zip",
+      "expired": false,
+      "digest": "sha256:489933664f4af6042303af710f2e9c7083431e884c13ac86832347739bdbf578",
+      "created_at": "2026-09-14T07:09:33Z",
+      "updated_at": "2026-09-14T07:09:33Z",
+      "expires_at": "2026-09-28T07:09:32Z",
+      "workflow_run": {
+        "id": 34816449431,
+        "repository_id": 1339664626,
+        "head_repository_id": 1339664626,
+        "head_branch": "ops/timeweb-hourly-preflight-20260909",
+        "head_sha": "369891effdfce1077c2d4740782fef6b354159e1"
+      }
+    }
+  ],
+  "final_outer_progress": {
+    "account_key_cleanup": "API_DELETE_CONFIRMED",
+    "guest_key_cleanup": "API_DELETE_CONFIRMED",
+    "guest_temp_cleanup": "REMOVED",
+    "local_key_cleanup": "REMOVED",
+    "owned_containers": {
+      "backend": "460a447fc441071f595dea383b60487aa707e719511792aefa52a3a0b831962a",
+      "frontend": "c47ad815087ec8f3b310ac59f565babfb03af5b43102f56ac24678ac1c36d206"
+    },
+    "public_ipv4": "80.68.156.131",
+    "remote_directory": "/run/kinetra-local-activation-ae6581dd8e92bd1bcc73e82a186f31b9",
+    "result": "FAIL",
+    "server_id": 9069403,
+    "ssh_key_id": 772851
+  },
+  "host_reconciliation": {
+    "run_id": 34816598509,
+    "job_id": 103888449025,
+    "control": "5b77cdb2f36b591885e81719772554681fc7cf9f",
+    "outer": {
+      "account_key_cleanup": "API_DELETE_CONFIRMED",
+      "error": null,
+      "guest_key_cleanup": "API_DELETE_CONFIRMED",
+      "host_key_fingerprint": "SHA256:T3RfyVAstE+dyvneeMMYUjIm1Ej+NN3D5Vr9sIyRUG0",
+      "inspection": {
+        "containers": [
+          {
+            "health": "unhealthy",
+            "id": "460a447fc441071f595dea383b60487aa707e719511792aefa52a3a0b831962a",
+            "nonce": "9128e22668c33a1552f912415c800939",
+            "running": false,
+            "service": "backend",
+            "started": "2026-09-14T07:09:16.50418728Z",
+            "status": "exited"
+          },
+          {
+            "health": null,
+            "id": "c47ad815087ec8f3b310ac59f565babfb03af5b43102f56ac24678ac1c36d206",
+            "nonce": "9128e22668c33a1552f912415c800939",
+            "running": false,
+            "service": "frontend",
+            "started": "2026-09-14T07:09:23.759748703Z",
+            "status": "exited"
+          }
+        ],
+        "frontend_assets": {
+          "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: https:; media-src 'self' blob: https:; connect-src 'self' https: wss:; font-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+          "index_sha256": "6195327372c93442ceffdfc872b34f39296bf8e5cbc602a397b78df489f60f19",
+          "nginx_sha256": "c42be326f3455609704914785d7452808512cc2afb049607006f164532e74d26",
+          "references": [
+            {
+              "kind": "stylesheet",
+              "url": "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+            },
+            {
+              "kind": "script",
+              "url": "/theme-init.js"
+            },
+            {
+              "kind": "script",
+              "url": "/assets/index-BWzIO3Fz.js"
+            },
+            {
+              "kind": "stylesheet",
+              "url": "/assets/index-BUHqTTi2.css"
+            }
+          ],
+          "theme_sha256": "d9988fba5a56d7bd81528b74156f5ce65a8d07f649b9eef77104e81ae768788b"
+        },
+        "mutations": false,
+        "records": {
+          "assets_attempt": {
+            "nonce": "9128e22668c33a1552f912415c800939",
+            "sha256": "ee37bc351f5792155d6a47ed8f011926694b27055cc1e8febe06ba40f2564486"
+          },
+          "assets_result": {
+            "attempt_recorded": true,
+            "attempted_services": [
+              "backend",
+              "frontend"
+            ],
+            "error": "DATABASE_ISOLATION_CHANGED",
+            "nonce": "9128e22668c33a1552f912415c800939",
+            "owned_containers": {
+              "backend": "460a447fc441071f595dea383b60487aa707e719511792aefa52a3a0b831962a",
+              "frontend": "c47ad815087ec8f3b310ac59f565babfb03af5b43102f56ac24678ac1c36d206"
+            },
+            "phase": "LOCAL_ACCEPTANCE",
+            "result": "CHECKPOINT_ONLY",
+            "rollback": {
+              "backend": "STOPPED",
+              "frontend": "STOPPED"
+            },
+            "sha256": "4fdc8a2de3957c8f0a0d369127d195484205dfb33b8fef1398a01cc3bd54ce2d",
+            "start_attempted_services": [
+              "backend",
+              "frontend"
+            ],
+            "uncertain_start_services": []
+          },
+          "continuation_attempt": {
+            "nonce": "9128e22668c33a1552f912415c800939",
+            "sha256": "655db5eacc192aea6146040c9c814ec77d5b58876eb8d6a34e12e99c4bbcb572"
+          },
+          "continuation_result": {
+            "attempt_recorded": true,
+            "attempted_services": [
+              "backend",
+              "frontend"
+            ],
+            "error": "UNREVIEWED_ASSET_ORIGIN",
+            "nonce": "9128e22668c33a1552f912415c800939",
+            "owned_containers": {
+              "backend": "460a447fc441071f595dea383b60487aa707e719511792aefa52a3a0b831962a",
+              "frontend": "c47ad815087ec8f3b310ac59f565babfb03af5b43102f56ac24678ac1c36d206"
+            },
+            "phase": "LOCAL_ACCEPTANCE",
+            "result": "CHECKPOINT_ONLY",
+            "rollback": {
+              "backend": "STOPPED",
+              "frontend": "STOPPED"
+            },
+            "sha256": "72ee16fdc09a163e0d311401c56f43c1e766b4e6e57442ddd7f68e98ada9be5b",
+            "start_attempted_services": [
+              "backend",
+              "frontend"
+            ],
+            "uncertain_start_services": []
+          },
+          "failed_archive": {
+            "attempt_recorded": true,
+            "attempted_services": [
+              "backend"
+            ],
+            "error": "CHILD_COMMAND_FAILED",
+            "nonce": "9128e22668c33a1552f912415c800939",
+            "owned_containers": {},
+            "phase": "START_BACKEND",
+            "result": "CHECKPOINT_ONLY",
+            "rollback": {
+              "backend": "UNCONFIRMED_REQUIRES_REVIEW"
+            },
+            "sha256": "ad5f14d8c643045b59275b4d0433cd9e96f63c1e4fba22dd1af7f3da7812548a",
+            "start_attempted_services": [],
+            "uncertain_start_services": []
+          },
+          "original": {
+            "attempt_recorded": true,
+            "attempted_services": [
+              "backend"
+            ],
+            "error": "CHILD_COMMAND_FAILED",
+            "nonce": "9128e22668c33a1552f912415c800939",
+            "owned_containers": {},
+            "phase": "START_BACKEND",
+            "result": "CHECKPOINT_ONLY",
+            "rollback": {
+              "backend": "UNCONFIRMED_REQUIRES_REVIEW"
+            },
+            "sha256": "ad5f14d8c643045b59275b4d0433cd9e96f63c1e4fba22dd1af7f3da7812548a",
+            "start_attempted_services": [],
+            "uncertain_start_services": []
+          }
+        },
+        "result": "PASS_READ_ONLY_INSPECTION",
+        "schema": 1,
+        "services": [
+          "frontend=exited",
+          "backend=exited",
+          "postgres=running"
+        ]
+      },
+      "local_key_cleanup": "REMOVED",
+      "public_ipv4": "80.68.156.131",
+      "result": "PASS_READ_ONLY_HOST_MONITORING_INSPECTION",
+      "server_id": 9069403,
+      "server_status": "on",
+      "ssh_key_id": 772855
+    }
+  },
+  "accepted_local_handoff": false,
+  "https_started": false,
+  "next": "database-order-continuation-decision-20260914.md"
+}

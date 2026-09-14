@@ -54,3 +54,19 @@ Publish once to .github/workflows/timeweb-application-activation.yml after code
 commit; no workflow_dispatch rerun. HTTPS template has current pins and remains
 unfilled until the actual full local run/artifact/cleanup succeed.
 All previous source/app/image/CPE/SBOM/public-package/host/cost/no-message limits remain.
+
+## Actual execution and final state — 2026-09-14
+
+Executed run34816449431/job103888017101 from369891effdfce1077c2d4740782fef6b354159e1
+with actual workflow SHA256b25f542342bf463b3bd3f5c3846c0e7272f11329ee67ca7c1b90220b93d27ff7.
+This supersedes the provisional dormant workflow hash above. Initial CI34816357110
+never reached the host; its root-only offline fixtures now use a root-owned isolated
+TemporaryDirectory, without altering actual runtime ownership/assertions.
+
+All actual provenance/offline/runtime/local assets/API gates passed. Original final
+DATABASE_ISOLATION_CHANGED stopped the continuation; both owned containers were
+confirmed STOPPED by rollback and independently reconciled. Complete cleanup772851.
+No accepted handoff and no HTTPS. The one-use attempt is consumed. Read
+stopped-container-result-20260914.json and database-order-continuation-decision-20260914.md.
+Dormant stopped-application-activation.yml mirrors the exact executed workflow for
+review; DO NOT publish or rerun it. The new database-order patch is dormant.

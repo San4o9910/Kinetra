@@ -1,0 +1,21 @@
+test_01_exact_patch_bindings (__main__.DatabaseOrderProposal.test_01_exact_patch_bindings) ... ok
+test_02_all_other_code_and_pins_unchanged (__main__.DatabaseOrderProposal.test_02_all_other_code_and_pins_unchanged) ... ok
+test_03_all_original_acceptance_assertions_unchanged (__main__.DatabaseOrderProposal.test_03_all_original_acceptance_assertions_unchanged) ... ok
+test_04_raw_inspect_and_records_and_rollback_unchanged (__main__.DatabaseOrderProposal.test_04_raw_inspect_and_records_and_rollback_unchanged) ... ok
+test_05_read_only_evidence_and_cleanup (__main__.DatabaseOrderProposal.test_05_read_only_evidence_and_cleanup) ... ok
+test_06_real_mount_variants_reproduce_strict_equality_failure (__main__.DatabaseOrderProposal.test_06_real_mount_variants_reproduce_strict_equality_failure) ... ok
+test_07_original_local_guard_accepts_only_reordering (__main__.DatabaseOrderProposal.test_07_original_local_guard_accepts_only_reordering) ... ok
+test_08_changed_mount_fields_still_rejected (__main__.DatabaseOrderProposal.test_08_changed_mount_fields_still_rejected) ... ok
+test_09_added_and_removed_mounts_still_rejected (__main__.DatabaseOrderProposal.test_09_added_and_removed_mounts_still_rejected) ... ok
+test_10_duplicate_destination_is_rejected_not_deduplicated (__main__.DatabaseOrderProposal.test_10_duplicate_destination_is_rejected_not_deduplicated) ... ok
+test_11_malformed_mounts_rejected (__main__.DatabaseOrderProposal.test_11_malformed_mounts_rejected) ... ok
+test_12_inputs_and_every_mount_field_retained (__main__.DatabaseOrderProposal.test_12_inputs_and_every_mount_field_retained) ... ok
+test_13_every_other_original_isolation_field_still_rejected (__main__.DatabaseOrderProposal.test_13_every_other_original_isolation_field_still_rejected) ... ok
+test_14_https_retains_full_dictionary_comparison (__main__.DatabaseOrderProposal.test_14_https_retains_full_dictionary_comparison) ... ok
+test_15_normalizer_only_at_database_snapshot_boundaries (__main__.DatabaseOrderProposal.test_15_normalizer_only_at_database_snapshot_boundaries) ... ok
+test_16_real_asset_success_does_not_become_successful_handoff (__main__.DatabaseOrderProposal.test_16_real_asset_success_does_not_become_successful_handoff) ... ok
+
+----------------------------------------------------------------------
+Ran 16 tests in 0.670s
+
+OK

@@ -1,3 +1,67 @@
+## Launch checkpoint — 2026-09-14: asset acceptance passed; database mount comparison proposal awaits decision
+
+The exact owner-approved asset correction and one stopped-container continuation
+were executed. Implementation e60dadf762128e08f423ad9326092b7dfa8dbcff.
+Actual run34816449431/job103888017101, attempt1,
+control369891effdfce1077c2d4740782fef6b354159e1, completed FAILURE at07:09 UTC.
+Workflow SHA256b25f542342bf463b3bd3f5c3846c0e7272f11329ee67ca7c1b90220b93d27ff7.
+Offline guards, current source/image/database and preserved API/failed-attempt/
+fresh-inspection provenance PASS. Both owned containers started; backend
+healthy/readiness, runtime/nginx and the complete local asset/HTTP/API acceptance
+passed. Actual local_http evidence is retained. Original final database comparison
+then failed DATABASE_ISOLATION_CHANGED; later listener/Caddy/hash gates unexecuted.
+No accepted local handoff exists; HTTPS and external browser checks remain unstarted.
+
+Original rollback confirmed STOPPED for both exact owned app containers.
+PostgreSQL remains running. Full guest directory/local/guest/account key cleanup
+PASS, key772851. Artifact10337085613, kinetra-local-attempt-34816449431-1,
+3400bytes, SHA256489933664f4af6042303af710f2e9c7083431e884c13ac86832347739bdbf578.
+See stopped-container-result-20260914.json for actual job steps, final cleanup,
+artifact metadata and read-only state reconciliation.
+
+First CI run34816357110 failed only because root-only helper offline tests loaded
+runner-owned checkout files. No host steps ran. Fixed in369891effdfce1077c2d4740782fef6b354159e1
+by a root-owned TemporaryDirectory fixture with all assertions retained; the
+actual continuation above then passed those tests. Dormant stopped workflow now
+mirrors that exact executed workflow; do NOT republish/rerun it.
+
+Read-only34816598509/job103888449025 SUCCESS, cleanup772855. Further bounded
+read-only34816826708/job103889141914, control09744cb81f5bf2dc409eedc0c1fdb3aa8a3465f4
+SUCCESS, cleanup772861: 12 snapshots of the exact PostgreSQL showed 9 different
+mount array orders, with only mounts changing among all14 comparison fields.
+Every full mount entry was equal after ordering. Original failing before/after
+snapshots were not persisted; this is an independent reproduction, not a claim
+that the missing historical pair was recovered. Fresh original isolation checks
+must run before any future startup.
+
+DORMANT exact fix prepared for the local and HTTPS database comparisons:
+database-order-policy-fix-20260914.patch,
+SHA256475d56f37d9dcf46b4826cf93a6da5f86d9f5054695183a8ced1d00d831a516c.
+16 offline proposal tests PASS, with all original assertions/other code retained
+and negative tests for real mount/privilege/identity/network drift.
+No live helper or active workflow changed by this checkpoint.
+
+New assets-attempt SHA256ee37bc351f5792155d6a47ed8f011926694b27055cc1e8febe06ba40f2564486;
+assets-result SHA2564fdc8a2de3957c8f0a0d369127d195484205dfb33b8fef1398a01cc3bd54ce2d.
+All older original/failed/continuation records remain byte-identical.
+Backend460a447fc441071f595dea383b60487aa707e719511792aefa52a3a0b831962a,
+lastStartedAt2026-09-14T07:09:16.50418728Z, exited/nonrunning.
+Frontendc47ad815087ec8f3b310ac59f565babfb03af5b43102f56ac24678ac1c36d206,
+lastStartedAt2026-09-14T07:09:23.759748703Z, exited/nonrunning.
+Nonce9128e22668c33a1552f912415c800939. No uncertain starts.
+
+NEXT: owner decision on database-order-continuation-decision-20260914.md.
+The previously approved proposal explicitly allowed ONE continuation and forbade
+a second invocation; that attempt has now been consumed. The new proposal covers
+only complete mount order normalization and one separately state-bound continuation
+preserving all old records, with fresh authenticated provenance, pre-start guards,
+exclusive new attempt, original rollback and full acceptance. Do not repeat old
+never-started/stopped/assets helpers, initialize/migrate or create app containers.
+Do not ask again for PUBLIC package/asset/SMTP permissions already granted.
+Automation6aa60dc3300c8191a72310881d575a07 remains disabled (verified this turn).
+All server/SSH/application/image/SBOM/CPE/raw-report/budget/payment/message/PR21
+constraints unchanged. No full user readiness claimed without backup/restore/ops.
+
 ## Launch checkpoint — 2026-09-14: approved stopped-container continuation implemented
 
 Owner approval1be0c7f18c7a9ee2d3835ce22cf7deefbd98e969 is recorded and implemented.

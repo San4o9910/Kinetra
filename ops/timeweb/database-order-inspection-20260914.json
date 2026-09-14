@@ -1,0 +1,1188 @@
+{
+  "provenance": {
+    "repository": "San4o9910/Kinetra",
+    "control": "09744cb81f5bf2dc409eedc0c1fdb3aa8a3465f4",
+    "workflow": ".github/workflows/kinetra-candidate-validation-diagnostic.yml",
+    "run_id": 34816826708,
+    "job_id": 103889141914,
+    "run_url": "https://github.com/San4o9910/Kinetra/actions/runs/34816826708",
+    "method": "Read-only guest inspection: 12 bounded docker inspect observations; no startup, credentials read, production writes or database mutation.",
+    "limitation": "Original before/after database snapshots from failed run34816449431 were not persisted. This separate read-only run reproduces order-only Mounts differences; it does not reconstruct the missing historical pair."
+  },
+  "account_key_cleanup": "API_DELETE_CONFIRMED",
+  "error": null,
+  "guest_key_cleanup": "API_DELETE_CONFIRMED",
+  "host_key_fingerprint": "SHA256:T3RfyVAstE+dyvneeMMYUjIm1Ej+NN3D5Vr9sIyRUG0",
+  "inspection": {
+    "containers": [
+      {
+        "health": "unhealthy",
+        "id": "460a447fc441071f595dea383b60487aa707e719511792aefa52a3a0b831962a",
+        "nonce": "9128e22668c33a1552f912415c800939",
+        "running": false,
+        "service": "backend",
+        "started": "2026-09-14T07:09:16.50418728Z",
+        "status": "exited"
+      },
+      {
+        "health": null,
+        "id": "c47ad815087ec8f3b310ac59f565babfb03af5b43102f56ac24678ac1c36d206",
+        "nonce": "9128e22668c33a1552f912415c800939",
+        "running": false,
+        "service": "frontend",
+        "started": "2026-09-14T07:09:23.759748703Z",
+        "status": "exited"
+      }
+    ],
+    "database_comparison": {
+      "all_equal_after_mount_order_normalization": true,
+      "changed_fields": [
+        "mounts"
+      ],
+      "first_snapshot_sha256": "1af1065acaaf997f5ecbf0660ecea1400ffe13bf99e1278688d4718383f7d800",
+      "postgres_id": "a6d4870c61fae621ba44e772a11d5ef2a551e32944e6cc0487bd484c124ebad1",
+      "snapshot_count": 12,
+      "variants": {
+        "mounts": [
+          [
+            {
+              "Destination": "/var/lib/postgresql/data",
+              "Driver": "local",
+              "Mode": "rw",
+              "Name": "kinetra-production_postgres17_data",
+              "Propagation": "",
+              "RW": true,
+              "Source": "/var/lib/docker/volumes/kinetra-production_postgres17_data/_data",
+              "Type": "volume"
+            },
+            {
+              "Destination": "/run/secrets/renewals_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/renewals_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/chat_cleanup_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/chat_cleanup_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/api_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/api_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/etc/kinetra-postgres",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/source/deploy/postgres",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/video_cleanup_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/video_cleanup_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/video_verify_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/video_verify_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/bootstrap_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/bootstrap_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/docker-entrypoint-initdb.d",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/source/deploy/postgres/initdb",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/kinetra-postgres/server.crt",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/tls/issued/public/server.crt",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/kinetra-postgres/server.key",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/tls/issued/server-private/server.key",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/migrate_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/migrate_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/notifications_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/notifications_password",
+              "Type": "bind"
+            }
+          ],
+          [
+            {
+              "Destination": "/run/secrets/api_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/api_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/etc/kinetra-postgres",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/source/deploy/postgres",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/video_cleanup_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/video_cleanup_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/video_verify_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/video_verify_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/bootstrap_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/bootstrap_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/docker-entrypoint-initdb.d",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/source/deploy/postgres/initdb",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/kinetra-postgres/server.crt",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/tls/issued/public/server.crt",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/kinetra-postgres/server.key",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/tls/issued/server-private/server.key",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/migrate_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/migrate_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/notifications_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/notifications_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/var/lib/postgresql/data",
+              "Driver": "local",
+              "Mode": "rw",
+              "Name": "kinetra-production_postgres17_data",
+              "Propagation": "",
+              "RW": true,
+              "Source": "/var/lib/docker/volumes/kinetra-production_postgres17_data/_data",
+              "Type": "volume"
+            },
+            {
+              "Destination": "/run/secrets/renewals_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/renewals_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/chat_cleanup_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/chat_cleanup_password",
+              "Type": "bind"
+            }
+          ],
+          [
+            {
+              "Destination": "/run/kinetra-postgres/server.key",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/tls/issued/server-private/server.key",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/migrate_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/migrate_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/notifications_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/notifications_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/var/lib/postgresql/data",
+              "Driver": "local",
+              "Mode": "rw",
+              "Name": "kinetra-production_postgres17_data",
+              "Propagation": "",
+              "RW": true,
+              "Source": "/var/lib/docker/volumes/kinetra-production_postgres17_data/_data",
+              "Type": "volume"
+            },
+            {
+              "Destination": "/run/secrets/renewals_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/renewals_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/chat_cleanup_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/chat_cleanup_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/api_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/api_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/etc/kinetra-postgres",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/source/deploy/postgres",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/video_cleanup_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/video_cleanup_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/video_verify_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/video_verify_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/bootstrap_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/bootstrap_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/docker-entrypoint-initdb.d",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/source/deploy/postgres/initdb",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/kinetra-postgres/server.crt",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/tls/issued/public/server.crt",
+              "Type": "bind"
+            }
+          ],
+          [
+            {
+              "Destination": "/run/secrets/video_cleanup_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/video_cleanup_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/video_verify_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/video_verify_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/bootstrap_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/bootstrap_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/docker-entrypoint-initdb.d",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/source/deploy/postgres/initdb",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/kinetra-postgres/server.crt",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/tls/issued/public/server.crt",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/kinetra-postgres/server.key",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/tls/issued/server-private/server.key",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/migrate_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/migrate_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/notifications_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/notifications_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/var/lib/postgresql/data",
+              "Driver": "local",
+              "Mode": "rw",
+              "Name": "kinetra-production_postgres17_data",
+              "Propagation": "",
+              "RW": true,
+              "Source": "/var/lib/docker/volumes/kinetra-production_postgres17_data/_data",
+              "Type": "volume"
+            },
+            {
+              "Destination": "/run/secrets/renewals_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/renewals_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/chat_cleanup_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/chat_cleanup_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/api_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/api_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/etc/kinetra-postgres",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/source/deploy/postgres",
+              "Type": "bind"
+            }
+          ],
+          [
+            {
+              "Destination": "/run/secrets/chat_cleanup_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/chat_cleanup_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/api_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/api_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/etc/kinetra-postgres",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/source/deploy/postgres",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/video_cleanup_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/video_cleanup_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/video_verify_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/video_verify_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/bootstrap_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/bootstrap_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/docker-entrypoint-initdb.d",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/source/deploy/postgres/initdb",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/kinetra-postgres/server.crt",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/tls/issued/public/server.crt",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/kinetra-postgres/server.key",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/tls/issued/server-private/server.key",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/migrate_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/migrate_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/notifications_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/notifications_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/var/lib/postgresql/data",
+              "Driver": "local",
+              "Mode": "rw",
+              "Name": "kinetra-production_postgres17_data",
+              "Propagation": "",
+              "RW": true,
+              "Source": "/var/lib/docker/volumes/kinetra-production_postgres17_data/_data",
+              "Type": "volume"
+            },
+            {
+              "Destination": "/run/secrets/renewals_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/renewals_password",
+              "Type": "bind"
+            }
+          ],
+          [
+            {
+              "Destination": "/run/secrets/video_verify_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/video_verify_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/bootstrap_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/bootstrap_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/docker-entrypoint-initdb.d",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/source/deploy/postgres/initdb",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/kinetra-postgres/server.crt",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/tls/issued/public/server.crt",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/kinetra-postgres/server.key",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/tls/issued/server-private/server.key",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/migrate_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/migrate_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/notifications_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/notifications_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/var/lib/postgresql/data",
+              "Driver": "local",
+              "Mode": "rw",
+              "Name": "kinetra-production_postgres17_data",
+              "Propagation": "",
+              "RW": true,
+              "Source": "/var/lib/docker/volumes/kinetra-production_postgres17_data/_data",
+              "Type": "volume"
+            },
+            {
+              "Destination": "/run/secrets/renewals_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/renewals_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/chat_cleanup_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/chat_cleanup_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/api_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/api_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/etc/kinetra-postgres",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/source/deploy/postgres",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/video_cleanup_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/video_cleanup_password",
+              "Type": "bind"
+            }
+          ],
+          [
+            {
+              "Destination": "/run/secrets/notifications_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/notifications_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/var/lib/postgresql/data",
+              "Driver": "local",
+              "Mode": "rw",
+              "Name": "kinetra-production_postgres17_data",
+              "Propagation": "",
+              "RW": true,
+              "Source": "/var/lib/docker/volumes/kinetra-production_postgres17_data/_data",
+              "Type": "volume"
+            },
+            {
+              "Destination": "/run/secrets/renewals_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/renewals_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/chat_cleanup_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/chat_cleanup_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/api_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/api_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/etc/kinetra-postgres",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/source/deploy/postgres",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/video_cleanup_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/video_cleanup_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/video_verify_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/video_verify_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/bootstrap_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/bootstrap_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/docker-entrypoint-initdb.d",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/source/deploy/postgres/initdb",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/kinetra-postgres/server.crt",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/tls/issued/public/server.crt",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/kinetra-postgres/server.key",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/tls/issued/server-private/server.key",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/migrate_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/migrate_password",
+              "Type": "bind"
+            }
+          ],
+          [
+            {
+              "Destination": "/docker-entrypoint-initdb.d",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/source/deploy/postgres/initdb",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/kinetra-postgres/server.crt",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/tls/issued/public/server.crt",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/kinetra-postgres/server.key",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/tls/issued/server-private/server.key",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/migrate_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/migrate_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/notifications_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/notifications_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/var/lib/postgresql/data",
+              "Driver": "local",
+              "Mode": "rw",
+              "Name": "kinetra-production_postgres17_data",
+              "Propagation": "",
+              "RW": true,
+              "Source": "/var/lib/docker/volumes/kinetra-production_postgres17_data/_data",
+              "Type": "volume"
+            },
+            {
+              "Destination": "/run/secrets/renewals_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/renewals_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/chat_cleanup_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/chat_cleanup_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/api_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/api_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/etc/kinetra-postgres",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/source/deploy/postgres",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/video_cleanup_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/video_cleanup_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/video_verify_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/video_verify_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/bootstrap_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/bootstrap_password",
+              "Type": "bind"
+            }
+          ],
+          [
+            {
+              "Destination": "/run/secrets/renewals_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/renewals_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/chat_cleanup_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/chat_cleanup_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/api_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/api_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/etc/kinetra-postgres",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/source/deploy/postgres",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/video_cleanup_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/video_cleanup_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/video_verify_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/video_verify_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/bootstrap_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/bootstrap_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/docker-entrypoint-initdb.d",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/source/deploy/postgres/initdb",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/kinetra-postgres/server.crt",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/tls/issued/public/server.crt",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/kinetra-postgres/server.key",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/tls/issued/server-private/server.key",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/migrate_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/migrate_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/run/secrets/notifications_password",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/srv/kinetra-stage/postgres/secrets/notifications_password",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/var/lib/postgresql/data",
+              "Driver": "local",
+              "Mode": "rw",
+              "Name": "kinetra-production_postgres17_data",
+              "Propagation": "",
+              "RW": true,
+              "Source": "/var/lib/docker/volumes/kinetra-production_postgres17_data/_data",
+              "Type": "volume"
+            }
+          ]
+        ]
+      }
+    },
+    "frontend_assets": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: https:; media-src 'self' blob: https:; connect-src 'self' https: wss:; font-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+      "index_sha256": "6195327372c93442ceffdfc872b34f39296bf8e5cbc602a397b78df489f60f19",
+      "nginx_sha256": "c42be326f3455609704914785d7452808512cc2afb049607006f164532e74d26",
+      "references": [
+        {
+          "kind": "stylesheet",
+          "url": "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+        },
+        {
+          "kind": "script",
+          "url": "/theme-init.js"
+        },
+        {
+          "kind": "script",
+          "url": "/assets/index-BWzIO3Fz.js"
+        },
+        {
+          "kind": "stylesheet",
+          "url": "/assets/index-BUHqTTi2.css"
+        }
+      ],
+      "theme_sha256": "d9988fba5a56d7bd81528b74156f5ce65a8d07f649b9eef77104e81ae768788b"
+    },
+    "mutations": false,
+    "records": {
+      "assets_attempt": {
+        "nonce": "9128e22668c33a1552f912415c800939",
+        "sha256": "ee37bc351f5792155d6a47ed8f011926694b27055cc1e8febe06ba40f2564486"
+      },
+      "assets_result": {
+        "attempt_recorded": true,
+        "attempted_services": [
+          "backend",
+          "frontend"
+        ],
+        "error": "DATABASE_ISOLATION_CHANGED",
+        "local_http": {
+          "/": {
+            "sha256": "6195327372c93442ceffdfc872b34f39296bf8e5cbc602a397b78df489f60f19",
+            "status": 200
+          },
+          "/api/v1/me": {
+            "sha256": "8f22344f98a04379c2d2eb837c01ffd9e894bd9070e1d5f62d8e1aa0d9656d68",
+            "status": 401
+          },
+          "/assets/index-BUHqTTi2.css": {
+            "sha256": "f0371f023b6006cd3ebbc5052c49e73af3a324b55f50bc5cdf93406f63d74ddb",
+            "status": 200
+          },
+          "/assets/index-BWzIO3Fz.js": {
+            "sha256": "30f6c183b794b206bd3c9d230d12f6e95eafabc3bf4fb77eff9bbb5692247799",
+            "status": 200
+          },
+          "/health": {
+            "sha256": "af420217726f4ff9ace3919564dcff1e8236e167c879fd9cbe396c59b2845ebc",
+            "status": 200
+          },
+          "/ready": {
+            "sha256": "55f7d9e99b8e2d4e0e193b2f0275501e6d9c1ebd29cadbea6a0da48a8587e3e0",
+            "status": 404
+          },
+          "/theme-init.js": {
+            "sha256": "d9988fba5a56d7bd81528b74156f5ce65a8d07f649b9eef77104e81ae768788b",
+            "status": 200
+          }
+        },
+        "nonce": "9128e22668c33a1552f912415c800939",
+        "owned_containers": {
+          "backend": "460a447fc441071f595dea383b60487aa707e719511792aefa52a3a0b831962a",
+          "frontend": "c47ad815087ec8f3b310ac59f565babfb03af5b43102f56ac24678ac1c36d206"
+        },
+        "phase": "LOCAL_ACCEPTANCE",
+        "result": "CHECKPOINT_ONLY",
+        "rollback": {
+          "backend": "STOPPED",
+          "frontend": "STOPPED"
+        },
+        "sha256": "4fdc8a2de3957c8f0a0d369127d195484205dfb33b8fef1398a01cc3bd54ce2d",
+        "start_attempted_services": [
+          "backend",
+          "frontend"
+        ],
+        "uncertain_start_services": []
+      },
+      "continuation_attempt": {
+        "nonce": "9128e22668c33a1552f912415c800939",
+        "sha256": "655db5eacc192aea6146040c9c814ec77d5b58876eb8d6a34e12e99c4bbcb572"
+      },
+      "continuation_result": {
+        "attempt_recorded": true,
+        "attempted_services": [
+          "backend",
+          "frontend"
+        ],
+        "error": "UNREVIEWED_ASSET_ORIGIN",
+        "local_http": {},
+        "nonce": "9128e22668c33a1552f912415c800939",
+        "owned_containers": {
+          "backend": "460a447fc441071f595dea383b60487aa707e719511792aefa52a3a0b831962a",
+          "frontend": "c47ad815087ec8f3b310ac59f565babfb03af5b43102f56ac24678ac1c36d206"
+        },
+        "phase": "LOCAL_ACCEPTANCE",
+        "result": "CHECKPOINT_ONLY",
+        "rollback": {
+          "backend": "STOPPED",
+          "frontend": "STOPPED"
+        },
+        "sha256": "72ee16fdc09a163e0d311401c56f43c1e766b4e6e57442ddd7f68e98ada9be5b",
+        "start_attempted_services": [
+          "backend",
+          "frontend"
+        ],
+        "uncertain_start_services": []
+      },
+      "failed_archive": {
+        "attempt_recorded": true,
+        "attempted_services": [
+          "backend"
+        ],
+        "error": "CHILD_COMMAND_FAILED",
+        "local_http": {},
+        "nonce": "9128e22668c33a1552f912415c800939",
+        "owned_containers": {},
+        "phase": "START_BACKEND",
+        "result": "CHECKPOINT_ONLY",
+        "rollback": {
+          "backend": "UNCONFIRMED_REQUIRES_REVIEW"
+        },
+        "sha256": "ad5f14d8c643045b59275b4d0433cd9e96f63c1e4fba22dd1af7f3da7812548a",
+        "start_attempted_services": [],
+        "uncertain_start_services": []
+      },
+      "original": {
+        "attempt_recorded": true,
+        "attempted_services": [
+          "backend"
+        ],
+        "error": "CHILD_COMMAND_FAILED",
+        "local_http": {},
+        "nonce": "9128e22668c33a1552f912415c800939",
+        "owned_containers": {},
+        "phase": "START_BACKEND",
+        "result": "CHECKPOINT_ONLY",
+        "rollback": {
+          "backend": "UNCONFIRMED_REQUIRES_REVIEW"
+        },
+        "sha256": "ad5f14d8c643045b59275b4d0433cd9e96f63c1e4fba22dd1af7f3da7812548a",
+        "start_attempted_services": [],
+        "uncertain_start_services": []
+      }
+    },
+    "result": "PASS_READ_ONLY_INSPECTION",
+    "schema": 1,
+    "services": [
+      "frontend=exited",
+      "backend=exited",
+      "postgres=running"
+    ]
+  },
+  "local_key_cleanup": "REMOVED",
+  "public_ipv4": "80.68.156.131",
+  "result": "PASS_READ_ONLY_HOST_MONITORING_INSPECTION",
+  "server_id": 9069403,
+  "server_status": "on",
+  "ssh_key_id": 772861
+}
