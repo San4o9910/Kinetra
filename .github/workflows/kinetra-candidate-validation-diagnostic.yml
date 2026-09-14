@@ -1,4 +1,4 @@
-name: Diagnose exact PostgreSQL isolation comparison without mutation
+name: Recheck preserved Kinetra state before reviewing database order continuation
 on:
   push:
     branches: [ops/timeweb-hourly-preflight-20260909]
