@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Offline HTTPS contracts. Host commands, containers and HTTP are fixtures only."""
 import contextlib
+import datetime
 import copy
 import importlib.util
 import io
@@ -28,9 +29,27 @@ CERTIFICATE = {"sha256": "9" * 64, "ip_san": https.PUBLIC_IP, "not_before": 1,
                "not_after": 4_000_000_000, "trusted": True}
 
 
+
+# Realistic dynamic fields from the exact deployed source; no network.
+def reviewed_http_fixture(path):
+    status, headers, body = fixtures.LocalActivationTests.http(path)
+    if path == "/health":
+        headers = {"content-type": "application/json", "cache-control": "no-store"}
+        body = json.dumps({"status": "ok", "service": "kinetra-backend", "version": "0.4.0",
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")}).encode()
+    elif path == "/api/v1/me":
+        request_id = "11111111-2222-4333-8444-555555555555"
+        headers = {"content-type": "application/json", "cache-control": "no-store", "x-request-id": request_id}
+        body = json.dumps({"error": {"code": "AUTHENTICATION_REQUIRED",
+            "message": "A valid access token is required.", "requestId": request_id}}).encode()
+    return status, headers, body
+
+
+
 class HttpsActivationTests(unittest.TestCase):
     def setUp(self):
         self.fixture = fixtures.LocalActivationTests()
+        self.fixture.http = reviewed_http_fixture
         self.fixture.setUp()
         self.addCleanup(self.fixture.doCleanups)
         self.fixture.fake_runtime()
@@ -101,7 +120,7 @@ class HttpsActivationTests(unittest.TestCase):
 
     @staticmethod
     def public_http(path):
-        return (*fixtures.LocalActivationTests.http(path), dict(CERTIFICATE))
+        return (*reviewed_http_fixture(path), dict(CERTIFICATE))
 
     def run_main(self, data=None):
         path = self.fixture.root / "https-input.json"
@@ -119,7 +138,7 @@ class HttpsActivationTests(unittest.TestCase):
         self.assertEqual((code, state["result"]), (0, "HTTPS_ACCEPTED_ONLY"))
         self.assertEqual(self.mutations(), [["/usr/bin/systemctl", "start", "--job-mode=fail", "caddy.service"]])
         self.assertEqual(state["owned_invocation"], INVOCATION)
-        self.assertEqual(state["https"]["http"], self.data["local_outer"]["activation"]["start"]["local_http"])
+        self.assertEqual(state["https"]["http"], https.reviewed_http(self.data["local_outer"]["activation"]["start"]["local_http"]))
         self.assertEqual(state["provider_requests"], 0)
         self.assertFalse(state["database_policy_changed"])
         self.assertFalse(state["boot_enabled"])
@@ -366,7 +385,7 @@ class TrustedTlsTests(unittest.TestCase):
         sleep.assert_not_called()
 
     def test_transport_readiness_is_bounded_and_retries_only_transport_errors(self):
-        result = (*fixtures.LocalActivationTests.http("/"), dict(CERTIFICATE))
+        result = (*reviewed_http_fixture("/"), dict(CERTIFICATE))
         with patch.object(https, "https_get", side_effect=[ConnectionRefusedError(), result]) as get, \
              patch.object(https.time, "monotonic", side_effect=[0, 0, 1]), patch.object(https.time, "sleep") as sleep:
             self.assertEqual(https.wait_for_certificate(seconds=5), result)
@@ -378,7 +397,7 @@ class TrustedTlsTests(unittest.TestCase):
                 https.wait_for_certificate(seconds=5)
 
     def test_only_allowlisted_initial_handshake_alerts_are_retryable(self):
-        result = (*fixtures.LocalActivationTests.http("/"), dict(CERTIFICATE))
+        result = (*reviewed_http_fixture("/"), dict(CERTIFICATE))
         for reason in ("TLSV1_ALERT_INTERNAL_ERROR", "SSLV3_ALERT_HANDSHAKE_FAILURE", "UNEXPECTED_EOF_WHILE_READING"):
             error = ssl.SSLError("offline pending ACME fixture")
             error.reason = reason
@@ -494,7 +513,7 @@ class PublicBoundaryTests(unittest.TestCase):
         self.stack = contextlib.ExitStack()
         self.addCleanup(self.stack.close)
         paths = ("/", "/theme-init.js", "/assets/index-123.js", "/assets/index-123.css", "/health", "/ready", "/api/v1/me")
-        self.replies = {path: list((*fixtures.LocalActivationTests.http(path), dict(CERTIFICATE))) for path in paths}
+        self.replies = {path: list((*reviewed_http_fixture(path), dict(CERTIFICATE))) for path in paths}
         self.expected = {path: {"status": reply[0], "sha256": https.sha256(reply[2])} for path, reply in self.replies.items()}
         self.stack.enter_context(patch.object(https.local, "QUALIFIED_SHELL_SHA256", https.sha256(fixtures.FIXTURE_SHELL)))
         self.stack.enter_context(patch.object(https, "command", side_effect=AssertionError("host command forbidden")))
@@ -532,11 +551,53 @@ class PublicBoundaryTests(unittest.TestCase):
         del self.replies["/"][1]["content-security-policy"]
         with self.assertRaisesRegex(https.Error, "HTTPS_CSP_REJECTED"):
             https.public_acceptance(self.expected)
-        self.replies["/"][1] = fixtures.LocalActivationTests.http("/")[1]
+        self.replies["/"][1] = reviewed_http_fixture("/")[1]
         self.replies["/api/v1/me"][1]["cache-control"] = "public"
         with self.assertRaisesRegex(https.Error, "HTTPS_API_NO_STORE_REQUIRED"):
             https.public_acceptance(self.expected)
 
+
+
+class DynamicResponseTests(unittest.TestCase):
+    def test_changing_timestamp_and_request_uuid_preserves_only_reviewed_semantics(self):
+        for path in https.DYNAMIC_HTTP:
+            status, headers, body = reviewed_http_fixture(path)
+            first = https.dynamic_response_hash(path, status, headers, body)
+            data = json.loads(body)
+            if path == "/health":
+                data["timestamp"] = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=1)).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+            else:
+                data["error"]["requestId"] = headers["x-request-id"] = "22222222-3333-4444-8555-666666666666"
+            self.assertEqual(first, https.dynamic_response_hash(path, status, headers, json.dumps(data).encode()))
+
+    def test_health_content_shape_and_stale_time_are_not_ignored(self):
+        for change in ({"service": "other"}, {"version": "0.5.0"}, {"status": "bad"},
+                       {"extra": True}, {"timestamp": "not-a-time"}, {"timestamp": "2020-01-01T00:00:00.000Z"}):
+            status, headers, body = reviewed_http_fixture("/health")
+            data = json.loads(body)
+            data.update(change)
+            with self.subTest(change=change), self.assertRaises(https.Error):
+                https.dynamic_response_hash("/health", status, headers, json.dumps(data).encode())
+
+    def test_auth_code_message_shape_and_uuid_binding_are_not_ignored(self):
+        for change in ({"code": "OTHER"}, {"message": "different"}, {"extra": True}, {"requestId": "invalid"},
+                       {"requestId": "22222222-3333-4444-8555-666666666666"}):
+            status, headers, body = reviewed_http_fixture("/api/v1/me")
+            data = json.loads(body)
+            data["error"].update(change)
+            with self.subTest(change=change), self.assertRaises(https.Error):
+                https.dynamic_response_hash("/api/v1/me", status, headers, json.dumps(data).encode())
+
+    def test_dynamic_headers_duplicate_keys_and_status_remain_strict(self):
+        for path in https.DYNAMIC_HTTP:
+            status, headers, body = reviewed_http_fixture(path)
+            cases = [(status + 1, headers, body), (status, dict(headers, **{"set-cookie": "forbidden"}), body),
+                     (status, dict(headers, **{"cache-control": "public"}), body),
+                     (status, dict(headers, **{"content-type": "text/html"}), body),
+                     (status, headers, b'{"status":"ok","status":"ok"}')]
+            for values in cases:
+                with self.subTest(path=path), self.assertRaises(https.Error):
+                    https.dynamic_response_hash(path, *values)
 
 if __name__ == "__main__":
     unittest.main()

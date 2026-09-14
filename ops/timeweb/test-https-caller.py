@@ -48,7 +48,7 @@ def successful_https():
     return {'schema': 1, 'result': 'HTTPS_ACCEPTED_ONLY', 'phase': 'HTTPS_ACCEPTANCE_COMPLETE',
         'error': None, 'nonce': 'c' * 32, 'attempt_recorded': True, 'start_attempted': True,
         'owned_invocation': 'e' * 32, 'rollback': 'NOT_NEEDED',
-        'https': {'http': fixtures.successful_start()['local_http'], 'redirect_status': 308,
+        'https': {'http': module.reviewed_http(fixtures.successful_start()['local_http']), 'redirect_status': 308,
                   'certificate': {'sha256': 'f' * 64, 'ip_san': '80.68.156.131', 'trusted': True,
                                   'not_before': 1, 'not_after': 4_000_000_000}},
         'database_policy_changed': False, 'boot_enabled': False, 'provider_requests': 0,
@@ -290,6 +290,13 @@ class HttpsCallerTests(unittest.TestCase):
         self.assertEqual(record['owned_invocation'], 'e' * 32)
         self.assertEqual(record['remote_directory'], state['remote_directory'])
         self.assertEqual(record['account_key_cleanup'], 'API_DELETE_CONFIRMED')
+
+    def test_dynamic_evidence_cannot_report_arbitrary_body_hashes(self):
+        for path in module.DYNAMIC_HTTP:
+            value = successful_https()
+            value['https']['http'][path]['sha256'] = '0' * 64
+            with self.assertRaisesRegex(module.Error, 'HTTPS_DYNAMIC_EVIDENCE_CHANGED'):
+                module.validate_https(value)
 
     def test_guest_failure_phase_and_attempt_status_survive_failed_capture(self):
         state = {'result': 'FAIL', 'activation_outcome': 'FAILED_OBSERVED',

@@ -10,6 +10,7 @@ No installer, image pull, Compose mutation, DB-policy change or user message.
 from __future__ import annotations
 
 import fcntl
+import datetime
 import hashlib
 import http.client
 import importlib.util
@@ -68,6 +69,24 @@ OUTER_KEYS = {"schema", "result", "server_id", "public_ipv4", "host_key_fingerpr
               "guest_key_cleanup", "account_key_cleanup", "local_key_cleanup", "guest_temp_cleanup", "activation", "activation_outcome",
               "error", "approved_input_sha256", "provenance_sha256", "caddy_started", "database_policy_changed", "provider_requests", "full_launch_accepted"}
 
+
+
+# Source contract: approved app 73b665065e00a5b375e90f701373b3e0856a0386.
+# Historical handoff hashes remain unchanged. Only these two explicitly dynamic
+# bodies use canonical semantic hashes in the new HTTPS acceptance evidence.
+DYNAMIC_HTTP = {
+    "/health": {"status": 200, "sha256": "d0e4876b8d71be615727316eae51f649882adea88d1f5fd84a7fb5ffaad6967b"},
+    "/api/v1/me": {"status": 401, "sha256": "87c156b6b992f86783268a22086c061ed6d586fcb6204406f055036d035696b4"},
+}
+
+def reviewed_http(expected):
+    require(isinstance(expected, dict) and set(DYNAMIC_HTTP) <= set(expected), "HTTP_DYNAMIC_PATHS_REQUIRED")
+    for path, entry in DYNAMIC_HTTP.items():
+        require(isinstance(expected[path], dict) and set(expected[path]) == {"status", "sha256"}
+                and type(expected[path]["status"]) is int and expected[path]["status"] == entry["status"]
+                and isinstance(expected[path]["sha256"], str)
+                and re.fullmatch(r"[a-f0-9]{64}", expected[path]["sha256"]), "HTTP_HISTORICAL_BOUNDARY_CHANGED")
+    return {path: dict(DYNAMIC_HTTP.get(path, entry)) for path, entry in expected.items()}
 
 def canonical(value):
     return sha256(json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False).encode())
@@ -183,6 +202,54 @@ def check_listeners(*, before):
     if not before: require({"80", "443", "8080"} <= ports, "HTTPS_LISTENER_MISSING")
 
 
+
+def dynamic_response_hash(path, status, headers, body):
+    require(path in DYNAMIC_HTTP and status == DYNAMIC_HTTP[path]["status"]
+            and "application/json" in headers.get("content-type", "")
+            and "no-store" in [part.strip() for part in headers.get("cache-control", "").split(",")]
+            and "set-cookie" not in headers and len(body) <= 65536, "DYNAMIC_HTTP_BOUNDARY_INVALID")
+    def unique(pairs):
+        value = {}
+        for key, item in pairs:
+            require(key not in value, "DYNAMIC_JSON_DUPLICATE_KEY")
+            value[key] = item
+        return value
+    try:
+        data = json.loads(body, object_pairs_hook=unique)
+    except (ValueError, UnicodeError):
+        raise Error("DYNAMIC_JSON_INVALID") from None
+    require(isinstance(data, dict), "DYNAMIC_BODY_SCHEMA_INVALID")
+    if path == "/health":
+        require(set(data) == {"status", "service", "version", "timestamp"}, "HEALTH_BODY_SCHEMA_CHANGED")
+        timestamp = data["timestamp"]
+        require(isinstance(timestamp, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z", timestamp),
+                "HEALTH_TIMESTAMP_INVALID")
+        try:
+            observed = datetime.datetime.fromisoformat(timestamp.replace("Z", "+00:00")).timestamp()
+        except ValueError:
+            raise Error("HEALTH_TIMESTAMP_INVALID") from None
+        require(abs(time.time() - observed) <= 60, "HEALTH_TIMESTAMP_NOT_CURRENT")
+        stable = {key: data[key] for key in ("status", "service", "version")}
+    else:
+        require(set(data) == {"error"} and isinstance(data["error"], dict)
+                and set(data["error"]) == {"code", "message", "requestId"}, "AUTH_BODY_SCHEMA_CHANGED")
+        request_id = data["error"]["requestId"]
+        require(isinstance(request_id, str)
+                and re.fullmatch(r"[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}", request_id)
+                and headers.get("x-request-id") == request_id, "AUTH_REQUEST_ID_INVALID")
+        stable = {"error": {key: data["error"][key] for key in ("code", "message")}}
+    digest = canonical(stable)
+    require(digest == DYNAMIC_HTTP[path]["sha256"], "DYNAMIC_BODY_CONTENT_CHANGED")
+    return digest
+
+
+def verify_local_acceptance(expected):
+    observed = local.local_acceptance()
+    require(reviewed_http(observed) == reviewed_http(expected), "LOCAL_APPLICATION_ACCEPTANCE_CHANGED")
+    for path, entry in DYNAMIC_HTTP.items():
+        status, headers, body = local.local_get(path)
+        require(dynamic_response_hash(path, status, headers, body) == entry["sha256"], "LOCAL_DYNAMIC_RESPONSE_CHANGED")
+
 def check_application(data, handoff):
     approved, accepted = data["approved"], handoff["accepted"]
     local.check_hashes(approved)
@@ -223,7 +290,7 @@ def check_application(data, handoff):
         require(revision == approved["commit"], "QUALIFIED_APPLICATION_REVISION_CHANGED")
     local.database_readonly_handoff(postgres_id, approved["migration_hashes"])
     local.backend_ready(accepted["owned_containers"]["backend"])
-    require(local.local_acceptance() == accepted["local_http"], "LOCAL_APPLICATION_ACCEPTANCE_CHANGED")
+    verify_local_acceptance(accepted["local_http"])
     return local.stable_database_observation(database)
 
 
@@ -303,8 +370,8 @@ def public_acceptance(expected):
         if path.startswith("/assets/"): require(body and "text/html" not in headers.get("content-type", ""), "HTTPS_BUILT_ASSET_FAILED")
         if path == "/theme-init.js":
             require(body and "text/html" not in headers.get("content-type", "") and sha256(body) == local.QUALIFIED_THEME_SHA256, "HTTPS_QUALIFIED_THEME_CHANGED")
-        results[path] = {"status": status, "sha256": sha256(body)}
-    require(results == expected, "HTTPS_LOCAL_APPLICATION_MISMATCH")
+        results[path] = {"status": status, "sha256": dynamic_response_hash(path, status, headers, body) if path in DYNAMIC_HTTP else sha256(body)}
+    require(results == reviewed_http(expected), "HTTPS_LOCAL_APPLICATION_MISMATCH")
     connection = http.client.HTTPConnection(PUBLIC_IP, 80, timeout=5)
     try:
         connection.request("GET", "/", headers={"Host": PUBLIC_IP, "Connection": "close"})

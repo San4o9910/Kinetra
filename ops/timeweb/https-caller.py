@@ -25,7 +25,7 @@ import time
 import zipfile
 import io
 
-PINS = {'inspect-host-monitoring.py': '3ffc667a66330c323836d1335e78f92940d6ebdc1877cf66048265d774bb3086', 'start-application-host.py': '1d93f744398488e9f319e7d558a7c1d3e2c9b782d36d7b430fd3ec1709b51eaa', 'activate-application-host.py': '16c9ed2fc47534f86f35e4aa215d824ffbec84fd3c684d5d02157a7e944322c4', 'initialize-database-host.py': '041f415dedf6b0b6922484281926c8c98c87828506dcb2e1ac6fb324b00b05bb', 'prepare-database-host.py': '4621b1c0153ab56ae535e245fdb2de4ef2aff4a30ba5b592343a26795f0655ae', 'bootstrap-server.py': 'a19aca3ea953feecdcb9be6e9dcabdfc8b0e2b4f3938184391cdfb2ff3e87c9e', 'inspect-server.py': '567d892221925bb438ece6a893360a891ffd4228f8af0a18252b8ba365a682c0', 'prepare-api-host.py': 'f549bdda5c325ce4d36a2be239bb6458f79f5d011d3e5ec61e9158388377377a', 'activate-local-application-host.py': 'fa721ac338095fa2f087fb7de5780a875cbc616fd384490a6fd84ada7e0735cd', 'activate-https-host.py': '04a290ec993db3dd0eadd1d12e6472fdc1d196bcee7bba9366aa3fabbe17d1ea', 'prepare-caddy.sh': 'a23d52b21f7c638f757a723048ee632d37e8f217ae796f97dd92ec3bbb990e2d'}
+PINS = {'inspect-host-monitoring.py': '3ffc667a66330c323836d1335e78f92940d6ebdc1877cf66048265d774bb3086', 'start-application-host.py': '1d93f744398488e9f319e7d558a7c1d3e2c9b782d36d7b430fd3ec1709b51eaa', 'activate-application-host.py': '16c9ed2fc47534f86f35e4aa215d824ffbec84fd3c684d5d02157a7e944322c4', 'initialize-database-host.py': '041f415dedf6b0b6922484281926c8c98c87828506dcb2e1ac6fb324b00b05bb', 'prepare-database-host.py': '4621b1c0153ab56ae535e245fdb2de4ef2aff4a30ba5b592343a26795f0655ae', 'bootstrap-server.py': 'a19aca3ea953feecdcb9be6e9dcabdfc8b0e2b4f3938184391cdfb2ff3e87c9e', 'inspect-server.py': '567d892221925bb438ece6a893360a891ffd4228f8af0a18252b8ba365a682c0', 'prepare-api-host.py': 'f549bdda5c325ce4d36a2be239bb6458f79f5d011d3e5ec61e9158388377377a', 'activate-local-application-host.py': 'fa721ac338095fa2f087fb7de5780a875cbc616fd384490a6fd84ada7e0735cd', 'activate-https-host.py': '2d50cd63164278a3d5905cdce9f35c6cac6e3c3f7b395e7590b346904b699594', 'prepare-caddy.sh': 'a23d52b21f7c638f757a723048ee632d37e8f217ae796f97dd92ec3bbb990e2d'}
 CALLER_SHA256 = "177b05d5e67f772a36976705a18114971dce9b860f88fcea98cec88f3eab792b"
 
 
@@ -155,6 +155,24 @@ def public_helpers():
 
 
 HTTPS_RESULT_VALIDATOR = r'''
+
+# Source contract: approved app 73b665065e00a5b375e90f701373b3e0856a0386.
+# Historical handoff hashes remain unchanged. Only these two explicitly dynamic
+# bodies use canonical semantic hashes in the new HTTPS acceptance evidence.
+DYNAMIC_HTTP = {
+    "/health": {"status": 200, "sha256": "d0e4876b8d71be615727316eae51f649882adea88d1f5fd84a7fb5ffaad6967b"},
+    "/api/v1/me": {"status": 401, "sha256": "87c156b6b992f86783268a22086c061ed6d586fcb6204406f055036d035696b4"},
+}
+
+def reviewed_http(expected):
+    require(isinstance(expected, dict) and set(DYNAMIC_HTTP) <= set(expected), "HTTP_DYNAMIC_PATHS_REQUIRED")
+    for path, entry in DYNAMIC_HTTP.items():
+        require(isinstance(expected[path], dict) and set(expected[path]) == {"status", "sha256"}
+                and type(expected[path]["status"]) is int and expected[path]["status"] == entry["status"]
+                and isinstance(expected[path]["sha256"], str)
+                and re.fullmatch(r"[a-f0-9]{64}", expected[path]["sha256"]), "HTTP_HISTORICAL_BOUNDARY_CHANGED")
+    return {path: dict(DYNAMIC_HTTP.get(path, entry)) for path, entry in expected.items()}
+
 def validate_https(value):
     keys = {'schema', 'result', 'phase', 'error', 'nonce', 'attempt_recorded', 'start_attempted',
             'owned_invocation', 'rollback', 'https', 'database_policy_changed', 'boot_enabled',
@@ -196,6 +214,7 @@ def validate_https(value):
                     and entry['status'] == {'/ready': 404, '/api/v1/me': 401}.get(path, 200)
                     and isinstance(entry['sha256'], str) and re.fullmatch(r'[a-f0-9]{64}', entry['sha256']), 'HTTPS_HTTP_ENTRY_INVALID')
             if path == '/theme-init.js': require(entry['sha256'] == 'd9988fba5a56d7bd81528b74156f5ce65a8d07f649b9eef77104e81ae768788b', 'QUALIFIED_THEME_EVIDENCE_CHANGED')
+        require(http == reviewed_http(http), "HTTPS_DYNAMIC_EVIDENCE_CHANGED")
         require(any(p.startswith('/assets/') and p.endswith('.js') for p in http) and any(p.endswith('.css') for p in http), 'HTTPS_ASSET_EVIDENCE_MISSING')
     if value['result'] == 'HTTPS_ACCEPTED_ONLY':
         require(value['error'] is None and value['phase'] == 'HTTPS_ACCEPTANCE_COMPLETE'
@@ -351,7 +370,7 @@ def validate_remote(raw, approved, nonce):
         require(outcome in {"NOT_ATTEMPTED", "UNKNOWN_RECONCILE"}, "REMOTE_MISSING_GUEST_RESULT")
     if value["result"] == "HTTPS_ACCEPTED_ONLY":
         require(value["error"] is None and outcome == "ACCEPTED_OBSERVED" and value["guest_temp_cleanup"] == "REMOVED", "REMOTE_HTTPS_PASS_INCOMPLETE")
-        require(value["start"]["https"]["http"] == approved["local_outer"]["activation"]["start"]["local_http"], "HTTPS_LOCAL_RESPONSE_MISMATCH")
+        require(value["start"]["https"]["http"] == reviewed_http(approved["local_outer"]["activation"]["start"]["local_http"]), "HTTPS_LOCAL_RESPONSE_MISMATCH")
     else:
         require(value["error"] is not None, "REMOTE_HTTPS_FAILURE_INCOMPLETE")
     return value

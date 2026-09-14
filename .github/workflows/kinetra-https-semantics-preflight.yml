@@ -1,0 +1,41 @@
+name: Verify HTTPS dynamic response contracts without host access
+on:
+  push:
+    branches: [ops/timeweb-hourly-preflight-20260909]
+    paths: [.github/workflows/kinetra-https-semantics-preflight.yml]
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Check guest, caller, ownership and dynamic response boundaries offline
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          sudo env -i PATH="$PATH" python3 -B - <<'PY'
+          import ast,hashlib,os,pathlib,re,shutil,subprocess,tempfile
+          root=pathlib.Path('ops/timeweb')
+          for name in ('activate-https-host.py','https-caller.py','test-activate-https-host.py','test-https-caller.py'):
+              ast.parse((root/name).read_text(),filename=name)
+          for digest,name in re.findall(r'([a-f0-9]{64})  ops/timeweb/([^\s]+)',(root/'https-activation.yml').read_text()):
+              assert hashlib.sha256((root/name).read_bytes()).hexdigest()==digest,name
+          total=0
+          with tempfile.TemporaryDirectory(prefix='kinetra-https-offline-',dir='/root') as folder:
+              target=pathlib.Path(folder)/'timeweb'
+              shutil.copytree(root,target,ignore=shutil.ignore_patterns('__pycache__'))
+              for name in ('test-activate-https-host.py','test-https-caller.py'):
+                  result=subprocess.run(['python3','-B',str(target/name)],capture_output=True,text=True,
+                      env={'PATH':os.environ['PATH']},timeout=120)
+                  output=result.stdout+result.stderr
+                  print(name,output,flush=True)
+                  assert result.returncode==0,name
+                  total+=int(re.search(r'Ran (\d+) tests?',output)[1])
+          print('KINETRA_HTTPS_SEMANTICS_OFFLINE=PASS_'+str(total)+'_TESTS_NO_HOST_ACCESS',flush=True)
+          PY
