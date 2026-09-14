@@ -1,4 +1,4 @@
-name: Reconcile approved stopped-container continuation on September 14
+name: Reconcile actual stopped-container continuation result
 on:
   push:
     branches: [ops/timeweb-hourly-preflight-20260909]
@@ -90,7 +90,9 @@ jobs:
           files={'original':'application-start-result.json',
               'failed_archive':'application-start-failed-'+nonce+'.json',
               'continuation_attempt':'application-continuation-attempt-'+nonce+'.json',
-              'continuation_result':'application-continuation-result-'+nonce+'.json'}
+              'continuation_result':'application-continuation-result-'+nonce+'.json',
+              'assets_attempt':'application-assets-attempt-'+nonce+'.json',
+              'assets_result':'application-assets-result-'+nonce+'.json'}
           records={}
           for name,filename in files.items():
               p=stage/'evidence'/filename
@@ -141,7 +143,7 @@ jobs:
               v=json.loads(raw)
               assert set(v)=={'schema','result','mutations','records','containers','services','frontend_assets'}
               assert v['schema']==1 and v['result']=='PASS_READ_ONLY_INSPECTION' and v['mutations'] is False
-              assert set(v['records'])=={'original','failed_archive','continuation_attempt','continuation_result'}
+              assert set(v['records'])=={'original','failed_archive','continuation_attempt','continuation_result','assets_attempt','assets_result'}
               for row in v['records'].values():
                   if row is None:continue
                   assert set(row)<={'sha256','result','phase','error','nonce','attempt_recorded','attempted_services','start_attempted_services','uncertain_start_services','owned_containers','rollback'}
