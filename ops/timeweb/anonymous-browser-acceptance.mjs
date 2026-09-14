@@ -81,7 +81,7 @@ try{
       else{blocked.push(request.method+' '+url.origin+url.pathname);await send('Fetch.failRequest',{requestId:p.requestId,errorReason:'BlockedByClient'});}
     }else if(msg.method==='Network.responseReceived')responses.push({id:p.requestId,url:p.response.url,status:p.response.status});
     else if(msg.method==='Network.loadingFinished')finished.add(p.requestId);
-    else if(msg.method==='Network.loadingFailed')failures.push(p.errorText);
+    else if(msg.method==='Network.loadingFailed')failures.push({id:p.requestId,errorText:p.errorText,canceled:p.canceled===true,blockedReason:p.blockedReason??null,corsErrorStatus:p.corsErrorStatus??null});
     else if(msg.method==='Runtime.exceptionThrown')runtimeErrors.push(p.exceptionDetails.text);
   }
   ws.addEventListener('message',msg=>{
@@ -137,7 +137,15 @@ try{
   }
   const assets=responses.filter(x=>new URL(x.url).pathname.startsWith('/assets/'));
   assert(assets.some(x=>x.url.endsWith('.js')&&x.status===200));assert(assets.some(x=>x.url.endsWith('.css')&&x.status===200));
-  assert.deepEqual(blocked,[]);assert.deepEqual(failures,[]);assert.deepEqual(runtimeErrors,[]);assert.deepEqual(eventErrors,[]);
+  // Chrome can mark the expected anonymous HTTP 401 as loadingFailed with
+  // empty error text. Accept only that exact intercepted bootstrap response;
+  // cancellations, blocked/CORS requests and every other failure still reject.
+  const unexpectedFailures=failures.filter(failure=>{
+    const response=responses.find(item=>item.id===failure.id);
+    return !(refreshIds.has(failure.id)&&response?.url===ORIGIN+'/api/v1/auth/refresh'&&response.status===401
+      &&failure.errorText===''&&!failure.canceled&&failure.blockedReason===null&&failure.corsErrorStatus===null);
+  });
+  assert.deepEqual(blocked,[]);assert.deepEqual(unexpectedFailures,[]);assert.deepEqual(runtimeErrors,[]);assert.deepEqual(eventErrors,[]);
   report.checks.push('real_javascript_css_loaded','anonymous_refresh_401_without_credentials','no_uncaught_browser_exceptions');
   report.result='PASS_ANONYMOUS_EXTERNAL_ONLY';
   await writeFile(join(output,'acceptance.json'),JSON.stringify(report,null,2)+'\n');
