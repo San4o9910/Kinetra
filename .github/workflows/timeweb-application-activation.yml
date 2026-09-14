@@ -2,8 +2,8 @@
 # Fill REVIEW_REQUIRED from actual green current CI/image/database evidence;
 # review this caller before publishing as .github/workflows/timeweb-application-activation.yml.
 # Only API environment preparation and local application startup. No HTTPS/boot/jobs.
-# Owner approval 1be0c7f18c7a9ee2d3835ce22cf7deefbd98e969; exact two stopped containers only.
-name: Continue exact stopped Kinetra containers after approved asset fix
+# Owner approval cd9ac715de899a312c6ab611579a8489d6f6ec96; one new database-order continuation only.
+name: Continue preserved Kinetra containers after database mount order correction
 
 on:
   push:
@@ -66,7 +66,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test "$ACTIVATE_LOCAL_APPLICATION" = APPROVED
           sha256sum --check --strict <<'SHA256'
-          3e2fd87da7f72677dbc008f2086c1e7a3da3ef3b43616ccf89381cf3d641138b  ops/timeweb/application-caller.py
+          177b05d5e67f772a36976705a18114971dce9b860f88fcea98cec88f3eab792b  ops/timeweb/application-caller.py
           61fc0550edbc533938b1850ad17aa6779c1d2fa7122db08296748acfe43924ea  ops/timeweb/verify-launch-provenance.py
           444528e29fa1b280a78989727911a9f6c5025f285a30bed5af0f31fc0ea396c8  ops/timeweb/test-application-caller.py
           ba9d7f7d4a5475de9a4401be60694bcbeab1e62308d2f304454360fc72d2267e  ops/timeweb/upstream-disposition.py
@@ -75,32 +75,38 @@ jobs:
           c4a35c5b13730316bc92c8f1b1ccf1d1b54c1cbaa15718790cb5603a07aec4a8  ops/timeweb/test-scan-upstream-media.py
           8326af893a6b25d65394841584f3d9b12b264868a592addc7c1f4cdff42128ae  ops/timeweb/recover-api-candidate-host.py
           0a1ec78c18632cb03630902c27060a930ec038086711614cac59601b236fdac2  ops/timeweb/recover-api-preparation.py
-          da097af459af00b7482dca00107ee503749b5e8f630da65a1d3eacc572ab7ce6  ops/timeweb/recovery-caller.py
+          4e208f091fdfd93d52cc3dcda253e3d89aa9ec7ca055b174ccf5badab29e181f  ops/timeweb/recovery-caller.py
           d1aa5e4c1e488d6fe8437bcbbb035c6c2750d1c7163e30fc39bd8dc60f70d42d  ops/timeweb/test-recover-api-candidate.py
-          a7808d0ff583eadae94ab74afa9e93b7b71f69e3de607f18a2c250b614b567de  ops/timeweb/authenticate-preserved-api.py
+          fa5e88de564c833872adbb5e824bac26190ab12f6d2e8d50b48d0bcce430e8f6  ops/timeweb/authenticate-preserved-api.py
           2658c9b04bfdc076b7cf509570e9518b65f10ec6e0b6df960c3810a3a17a6de7  ops/timeweb/test-preserved-api-auth.py
           650c761d5293bd9871e54b23971b758e6936a6dc0040a205afd9fe6df22d3a01  ops/timeweb/api-resume-evidence-20260913.json
           dcfeda041b41481494de1ae884b3d90c58c54a9bc612c8f1d1224063ae232d71  ops/timeweb/test-activate-local-application-host.py
-          22421f0929e91cdfa843604cf9c58e954badbaa600682115f4a65289f7196035  ops/timeweb/resume-stopped-application-host.py
-          df6f517afd8ff5538b1bfa8207061860502a5430068a4f581a2f6c32411aa65e  ops/timeweb/resume-stopped-local-host.py
-          7c83816d0f2b7fadaa3a8c270dca91f1332b6f075e7414dc87046d1ee4cd8a7b  ops/timeweb/resume-stopped-caller.py
-          83ed9cdcbbe9500b68b5e74dacd64cc6e4509543a80366cab68603ec21d7f2a5  ops/timeweb/authenticate-stopped-containers.py
-          8e9bb173346ec174e34e632771d7a0a44a3ba29e5b85d18efb4c59bcb8864de8  ops/timeweb/test-resume-stopped-containers.py
+          47b89d794ca48691481ff4f1be652b7064435552dda4f2986494e5e8621e5d02  ops/timeweb/resume-database-order-application-host.py
+          2f5ab436874d81fc90f03ed4af809ab017d55cdbf42742aa76e7738b89a8fb80  ops/timeweb/resume-database-order-local-host.py
+          96893d4ab3d2f67eb873194502256cc875fbd6346a0ad376f1fc42602b2c00c1  ops/timeweb/resume-database-order-caller.py
+          8c1aa7e259cebefd51de666f5c56ee48725f042e5eaec7cba481e1e2a5c20c08  ops/timeweb/authenticate-database-order.py
+          521a98000f70c4498cc8661a3558f89a92833f5303a2c23ca4df8a79e5ad49a4  ops/timeweb/test-resume-database-order.py
           6a0ddc54997eb134f0f9f2a570bf2e36c677baa7a7191eb5c072400d8722fbf0  ops/timeweb/created-backend-inspection-20260913.json
           aacdd6f28ee44ac076e4b29a539f73f4110918345633051fc83a189ecff914ba  ops/timeweb/test-start-health-query-proposal.py
           c83c167618b97c01a543e70c9af218969264106432d32437e0695fc977ab471d  ops/timeweb/start-health-query-fix-20260913.patch
-          a0489943f34b0454f6e3ad4aebb1ccf7ec1909bf5bd01f26b76097e56a91c660  ops/timeweb/test-local-asset-policy-proposal.py
+          03f428e112eecab5bbc91f2157145a00c9fcf34e84f75d10b0cf216aa311f85d  ops/timeweb/test-local-asset-policy-proposal.py
           e8612a9bb5d1648a85ef71eb04f47dbc6df18f1540b2a5d887ed99300ec62081  ops/timeweb/local-asset-policy-fix-20260913.patch
           8d8369984a27c8577c194cb25d11c19be0d1189ff415da229282503364a65b9c  ops/timeweb/local-asset-inspection-20260913.json
           d9988fba5a56d7bd81528b74156f5ce65a8d07f649b9eef77104e81ae768788b  ops/timeweb/qualified-theme-init-20260913.js
           79ce5ac47646669e9541d27836fc66062072c1f4325219010f73ac8b623f0cf7  ops/timeweb/stopped-containers-inspection-20260914.json
-          42d124e16973d7e036b62ffa59a76aa82f2fdd4301f68748a009a308c6cb6413  ops/timeweb/test-start-application-host.py
+          1095fed3e681c779007cb8829be9ccb5d3d16c1d2c16e88d033fe577fd7f98eb  ops/timeweb/test-start-application-host.py
           e0973d2451b2941e4cb826948770608345c28438622607deb4b49729f319ec56  ops/timeweb/test-activate-https-host.py
           45130035b0124170fc219eae702e9422fbe1a2134f73b0f5ef0a63a39b120611  ops/timeweb/test-https-caller.py
+          0408627ac8ab7f7a45dd9c4ad3f4c0205e0355390cc12cfbe6ad566cdd6e2210  ops/timeweb/test-database-order-policy-proposal.py
+          475d56f37d9dcf46b4826cf93a6da5f86d9f5054695183a8ced1d00d831a516c  ops/timeweb/database-order-policy-fix-20260914.patch
+          7ea21d8e4a085b29bb51421494e8e4ab5c87f51ecbede976629f16a58c69e87b  ops/timeweb/database-order-policy-proposal-20260914.json
+          9e1ff80209f7fa6fd017bd1d9553dc85459eb58340bed58232f541977dd49c4a  ops/timeweb/database-order-implementation-pins.json
+          c07fcb5af63f5cd80563516f47726996f70c0e1b4c7471ad1145d5cce49dbd1c  ops/timeweb/database-order-current-inspection-20260914.json
           SHA256
-          sudo env -i PATH="$PATH" python3 -B ops/timeweb/test-resume-stopped-containers.py
+          sudo env -i PATH="$PATH" python3 -B ops/timeweb/test-resume-database-order.py
           env -i PATH="$PATH" python3 -B ops/timeweb/test-start-health-query-proposal.py
           env -i PATH="$PATH" python3 -B ops/timeweb/test-local-asset-policy-proposal.py
+          env -i PATH="$PATH" python3 -B ops/timeweb/test-database-order-policy-proposal.py
           sudo env -i PATH="$PATH" python3 -B - <<'PY_ROOT_FIXTURES'
           import os, pathlib, shutil, subprocess, tempfile
           with tempfile.TemporaryDirectory(prefix='kinetra-root-guest-tests-', dir='/root') as folder:
@@ -145,7 +151,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          python3 -B ops/timeweb/authenticate-stopped-containers.py --authenticate-stopped-containers
+          python3 -B ops/timeweb/authenticate-database-order.py --authenticate-database-order
       - name: Recheck current source images and database before local startup
         shell: bash
         env:
@@ -161,7 +167,7 @@ jobs:
           TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
         run: |
           set -euo pipefail
-          python3 -B ops/timeweb/resume-stopped-caller.py --resume-exact-stopped-containers
+          python3 -B ops/timeweb/resume-database-order-caller.py --resume-database-order-containers
       - name: Retain sanitized accepted local handoff
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
