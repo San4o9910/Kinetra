@@ -11,6 +11,8 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {once} from 'node:events';
 const ORIGIN='https://80.68.156.131', output=process.env.ACCEPTANCE_OUTPUT;
+// Already qualified in pinned start-application-host.py: must stay CSP-blocked.
+const BLOCKED_FONT_STYLESHEET="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap";
 assert(output && output.startsWith('/'));
 assert(typeof WebSocket==='function', 'NODE_WITH_NATIVE_WEBSOCKET_REQUIRED');
 const report={schema:1,origin:ORIGIN,run:process.env.GITHUB_RUN_ID,checks:[],viewports:[]};
@@ -61,7 +63,7 @@ try{
   ws=new WebSocket(debuggerUrl);
   await new Promise((resolve,reject)=>{ws.addEventListener('open',resolve,{once:true});ws.addEventListener('error',reject,{once:true});});
   let sequence=0,session,refreshCount=0;
-  const pending=new Map(),responses=[],failures=[],runtimeErrors=[],blocked=[],eventErrors=[],refreshIds=new Set(),finished=new Set();
+  const requests=new Map(),pending=new Map(),responses=[],failures=[],runtimeErrors=[],blocked=[],eventErrors=[],refreshIds=new Set(),finished=new Set();
   function send(method,params={},target=session){
     return new Promise((resolve,reject)=>{
       const id=++sequence,timer=setTimeout(()=>{pending.delete(id);reject(new Error('CDP_TIMEOUT_'+method));},15000);
@@ -71,7 +73,8 @@ try{
   }
   async function event(msg){
     const p=msg.params;
-    if(msg.method==='Fetch.requestPaused'){
+    if(msg.method==='Network.requestWillBeSent'){requests.set(p.requestId,p.request.url);}
+    else if(msg.method==='Fetch.requestPaused'){
       const request=p.request,url=new URL(request.url),headers=Object.keys(request.headers).map(x=>x.toLowerCase());
       const anonymous=!headers.includes('cookie')&&!headers.includes('authorization');
       const readOnly=['GET','HEAD'].includes(request.method)&&url.origin===ORIGIN&&anonymous;
@@ -137,15 +140,13 @@ try{
   }
   const assets=responses.filter(x=>new URL(x.url).pathname.startsWith('/assets/'));
   assert(assets.some(x=>x.url.endsWith('.js')&&x.status===200));assert(assets.some(x=>x.url.endsWith('.css')&&x.status===200));
-  // Chrome can mark the expected anonymous HTTP 401 as loadingFailed with
-  // empty error text. Accept only that exact intercepted bootstrap response;
-  // cancellations, blocked/CORS requests and every other failure still reject.
-  const unexpectedFailures=failures.filter(failure=>{
-    const response=responses.find(item=>item.id===failure.id);
-    return !(refreshIds.has(failure.id)&&response?.url===ORIGIN+'/api/v1/auth/refresh'&&response.status===401
-      &&failure.errorText===''&&!failure.canceled&&failure.blockedReason===null&&failure.corsErrorStatus===null);
-  });
-  assert.deepEqual(blocked,[]);assert.deepEqual(unexpectedFailures,[]);assert.deepEqual(runtimeErrors,[]);assert.deepEqual(eventErrors,[]);
+  const qualifiedFontBlocks=failures.filter(failure=>requests.get(failure.id)===BLOCKED_FONT_STYLESHEET
+    &&failure.blockedReason==='csp'&&failure.errorText===''&&!failure.canceled&&failure.corsErrorStatus===null);
+  assert.equal(qualifiedFontBlocks.length,1,'QUALIFIED_EXTERNAL_FONT_MUST_STAY_BLOCKED');
+  const unexpectedFailures=failures.filter(failure=>!qualifiedFontBlocks.includes(failure));
+  assert.deepEqual(blocked,[]);assert.deepEqual(unexpectedFailures.map(failure=>({...failure,url:requests.get(failure.id)??null})),[]);
+  assert.deepEqual(runtimeErrors,[]);assert.deepEqual(eventErrors,[]);
+  report.checks.push('qualified_external_font_blocked_by_csp');
   report.checks.push('real_javascript_css_loaded','anonymous_refresh_401_without_credentials','no_uncaught_browser_exceptions');
   report.result='PASS_ANONYMOUS_EXTERNAL_ONLY';
   await writeFile(join(output,'acceptance.json'),JSON.stringify(report,null,2)+'\n');

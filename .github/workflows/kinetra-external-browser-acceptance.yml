@@ -61,7 +61,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          printf '%s  %s\n' '5e2cc0339ad3a51bb79c693d1a57a2a4b5490097ce88594c9a736e24d2ca89cc' 'ops/timeweb/anonymous-browser-acceptance.mjs' | sha256sum --check --strict
+          printf '%s  %s\n' '5c151c545228455a4895d9f85a119c4052abd87548cd1478fc5a5315e25996ae' 'ops/timeweb/anonymous-browser-acceptance.mjs' | sha256sum --check --strict
           node --check ops/timeweb/anonymous-browser-acceptance.mjs
           browser_bin="$(command -v google-chrome)"
           test -x "$browser_bin"
