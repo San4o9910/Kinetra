@@ -3818,7 +3818,7 @@ const runBrowserScenario = async () => {
     })()`);
     assert.deepEqual(completedScheduleStyle, {
       completedClass: true,
-      borderLeftColor: 'rgb(255, 65, 3)',
+      borderLeftColor: 'rgb(255, 137, 95)',
       borderLeftWidth: '3px',
     });
     console.log('KINETRA_T08_COMPLETION_STATE=PASS');
