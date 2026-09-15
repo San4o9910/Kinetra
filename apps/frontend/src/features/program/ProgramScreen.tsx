@@ -35,6 +35,8 @@ type PreparationLoadState =
   | { readonly kind: 'failed'; readonly message: string };
 
 export interface ProgramScreenProps {
+  readonly onOpenCoach?: () => void;
+  readonly onAskTrainer?: (day: ProgramDay, week: number, seconds: number) => void;
   readonly timezone: string;
   readonly subscription: SubscriptionResponse;
   readonly trainingLocked: boolean;
@@ -97,6 +99,8 @@ const workoutSelectionFromHistory = (): WorkoutHistorySelection => {
 };
 
 export const ProgramScreen = ({
+  onOpenCoach,
+  onAskTrainer,
   timezone,
   subscription,
   trainingLocked,
@@ -685,6 +689,8 @@ export const ProgramScreen = ({
   if (selectedDay !== undefined && trainingAccessible && !trainingLocked) {
     return (
       <WorkoutPlayer
+        key={`${selectedDay.video.id}:${loadState.response.week.week_number}`}
+        {...(onAskTrainer === undefined ? {} : { onAskTrainer })}
         day={selectedDay}
         programWeek={loadState.response.week.week_number}
         onCompleted={(response) =>
@@ -749,6 +755,7 @@ export const ProgramScreen = ({
   return (
     <>
       <ProgramWeekView
+        {...(onOpenCoach === undefined ? {} : { onOpenCoach })}
         response={loadState.response}
         currentWeekNumber={loadState.currentWeekNumber}
         todayDayOfWeek={todayDayOfWeek}

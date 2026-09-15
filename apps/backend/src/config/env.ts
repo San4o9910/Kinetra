@@ -802,8 +802,8 @@ export const env = Object.freeze({
     passwordMinimumLength: parseInteger(
       'AUTH_PASSWORD_MIN_LENGTH',
       process.env.AUTH_PASSWORD_MIN_LENGTH,
-      10,
-      8,
+      6,
+      6,
       64,
     ),
     refreshTtlDays: parseInteger(

@@ -16,7 +16,7 @@ const tabItems: readonly TabItem[] = [
   { route: appRoutes.home, label: 'Сегодня', testId: 'tab-home', icon: 'home' },
   {
     route: appRoutes.schedule,
-    label: 'План',
+    label: 'Расписание',
     testId: 'tab-schedule',
     icon: 'calendar',
   },
@@ -26,7 +26,7 @@ const tabItems: readonly TabItem[] = [
     testId: 'tab-progress',
     icon: 'progress',
   },
-  { route: appRoutes.chat, label: 'Тренер', testId: 'tab-chat', icon: 'chat' },
+  { route: appRoutes.chat, label: 'Чат', testId: 'tab-chat', icon: 'chat' },
 ];
 
 const TabIcon = ({ name }: { readonly name: TabIconName }): ReactNode => {
@@ -83,7 +83,7 @@ export const TabBar = ({
   chatUnreadCount,
   onNavigate,
 }: TabBarProps): ReactNode => {
-  const activeRoute = route;
+  const activeRoute = route === appRoutes.assistant ? appRoutes.chat : route;
   const visibleItems = showChat
     ? tabItems
     : tabItems.filter((item) => item.route !== appRoutes.chat);

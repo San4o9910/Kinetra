@@ -16,7 +16,7 @@ GRANT UPDATE ON push_subscriptions, push_notification_deliveries TO kinetra_noti
 GRANT SELECT, UPDATE ON subscriptions, subscription_payment_attempts TO kinetra_renewals;
 GRANT INSERT ON subscription_payment_attempts TO kinetra_renewals;
 
-GRANT SELECT, DELETE ON chat_photos TO kinetra_chat_cleanup;
+GRANT SELECT, DELETE ON chat_photos, chat_video_assets TO kinetra_chat_cleanup;
 -- SELECT FOR UPDATE SKIP LOCKED requires UPDATE privilege on one column.
 GRANT UPDATE (id) ON chat_photos TO kinetra_chat_cleanup;
 -- The photo DELETE trigger inserts into this queue under the caller's identity.

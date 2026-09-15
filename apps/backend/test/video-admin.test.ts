@@ -1796,10 +1796,11 @@ test('T14 slow download body renews its lease and fences once more before public
   }
 });
 
-test('T14 verification deadline expiring during final renewal prevents publication', async () => {
+test('T14 verification deadline expiring during final renewal prevents publication', async (context) => {
   const directory = await mkdtemp(join(tmpdir(), 'kinetra-t14-final-fence-'));
   try {
     const ffprobePath = await writeFakeFfprobe(directory, 'valid', validProbeBody);
+    context.mock.timers.enable({ apis: ['setTimeout'] });
     let claimed = false;
     let renewalFinished = false;
     let published = false;
@@ -1811,7 +1812,8 @@ test('T14 verification deadline expiring during final renewal prevents publicati
         return { ...verifierUpload(), leaseToken: 'deadline-lease' };
       },
       renewVerificationLease: async () => {
-        await new Promise((resolve) => setTimeout(resolve, 250));
+        // Expire specifically during renewal, independent of child-process startup speed.
+        context.mock.timers.tick(201);
         renewalFinished = true;
         return true;
       },

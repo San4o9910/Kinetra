@@ -1,3 +1,7 @@
+import { createChatVideosRouter } from './coaching/chat-videos.js';
+import { createCoachingRouter } from './coaching/router.js';
+import { CoachingService } from './coaching/service.js';
+import { OpenAiCoachProvider } from './coaching/provider.js';
 import type { ApiErrorResponse, HealthResponse } from '@kinetra/shared';
 import cors from 'cors';
 import express, { type NextFunction, type Request, type Response } from 'express';
@@ -163,8 +167,32 @@ export const createApp = (options: CreateAppOptions = {}) => {
   app.use('/api/v1/me', createProfileRouter(profileRuntime));
   app.use('/api/v1/base-lessons', createBaseLessonsRouter(baseLessonsRuntime));
   app.use('/api/v1/chat', createChatRouter(chatRuntime));
+  app.use(
+    '/api/v1/chat-videos',
+    createChatVideosRouter(
+      databasePool,
+      chatRuntime,
+      env.s3,
+      env.chat.enabled && env.chat.photoUploadsEnabled,
+    ),
+  );
   app.use('/api/v1/program', createProgramRouter(programRuntime));
   app.use('/api/v1/progress', createProgressRouter(progressRuntime));
+  const coachKey = process.env.KINETRA_AI_API_KEY?.trim();
+  const coachModel = process.env.KINETRA_AI_MODEL?.trim();
+  app.use(
+    '/api/v1/coaching',
+    createCoachingRouter(
+      new CoachingService(
+        databasePool,
+        programRuntime.service,
+        progressRuntime.service,
+        coachKey && coachModel ? new OpenAiCoachProvider(coachKey, coachModel) : null,
+      ),
+      programRuntime.authMiddleware,
+    ),
+  );
+
   app.use('/api/v1/push', createPushRouter(pushRuntime));
   app.use(
     '/api/v1/settings',

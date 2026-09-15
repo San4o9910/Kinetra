@@ -2,6 +2,7 @@ import { useState, type FormEvent, type ReactNode } from 'react';
 import type { MeResponse, RequestedRole } from '@kinetra/shared';
 
 import { ApiRequestError, fetchMe, register } from '../../lib/api';
+import { resetPasswordIssue } from './authLinks';
 
 const registrationRoles: readonly {
   readonly id: RequestedRole;
@@ -71,8 +72,9 @@ export const RegisterScreen = ({ onAuthenticated, onBack }: RegisterScreenProps)
       return;
     }
 
-    if (password !== passwordConfirmation) {
-      setError('Пароли не совпадают.');
+    const passwordIssue = resetPasswordIssue(password, passwordConfirmation);
+    if (passwordIssue !== null) {
+      setError(passwordIssue);
       return;
     }
 
@@ -179,11 +181,12 @@ export const RegisterScreen = ({ onAuthenticated, onBack }: RegisterScreenProps)
             </label>
 
             <label>
-              <span>Пароль</span>
+              <span>Пароль · от 6 символов</span>
               <input
                 data-testid="register-password"
                 type="password"
                 autoComplete="new-password"
+                minLength={6}
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 required
@@ -196,6 +199,7 @@ export const RegisterScreen = ({ onAuthenticated, onBack }: RegisterScreenProps)
                 data-testid="register-password-confirmation"
                 type="password"
                 autoComplete="new-password"
+                minLength={6}
                 value={passwordConfirmation}
                 onChange={(event) => setPasswordConfirmation(event.target.value)}
                 required

@@ -1,8 +1,16 @@
 import type {
   ApiErrorResponse,
+  WorkoutSessionResponse,
+  WorkoutSessionInput,
+  WorkoutGuide,
+  CoachHistoryResponse,
+  CoachQuestionInput,
+  CoachMessage,
+  TrainerClientContext,
   AuthSessionResponse,
   BaseLessonsResponse,
   ChatConversationListResponse,
+  ChatVideosResponse,
   ChatConversationResponse,
   ChatConversationSummaryResponse,
   ChatMessagePageResponse,
@@ -32,6 +40,9 @@ import type {
   SettingsProfileResponse,
   SubscriptionResponse,
   TrainerVerificationApplicationInput,
+  TrainerVerificationListResponse,
+  TrainerVerificationStatus,
+  TrainerVerificationRequestDto,
   TrainerVerificationMeResponse,
   TrainerVideoPartRequest,
   TrainerVideoAcceptedPartDto,
@@ -430,6 +441,115 @@ export class ApiClient {
       method: 'GET',
       ...(signal === undefined ? {} : { signal }),
     });
+  }
+
+  public async getChatVideos(
+    conversationId: string,
+    signal?: AbortSignal,
+  ): Promise<ChatVideosResponse> {
+    return this.authenticatedJsonRequest(
+      `/api/v1/chat-videos/${encodeURIComponent(conversationId)}`,
+      { method: 'GET', ...(signal === undefined ? {} : { signal }) },
+    );
+  }
+  public async uploadChatVideo(
+    conversationId: string,
+    file: File,
+    id: string,
+    signal: AbortSignal,
+  ): Promise<{ id: string }> {
+    return this.authenticatedJsonRequest(
+      `/api/v1/chat-videos/${encodeURIComponent(conversationId)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': file.type, 'X-Upload-Id': id },
+        body: file,
+        signal,
+      },
+    );
+  }
+
+  public async getWorkoutSession(
+    videoId: string,
+    week: number,
+    signal?: AbortSignal,
+  ): Promise<WorkoutSessionResponse> {
+    return this.authenticatedJsonRequest(
+      `/api/v1/coaching/workouts/${encodeURIComponent(videoId)}/${week}`,
+      { method: 'GET', ...(signal === undefined ? {} : { signal }) },
+    );
+  }
+  public async saveWorkoutSession(
+    videoId: string,
+    week: number,
+    input: WorkoutSessionInput,
+  ): Promise<{ saved: boolean }> {
+    return this.authenticatedJsonRequest(
+      `/api/v1/coaching/workouts/${encodeURIComponent(videoId)}/${week}`,
+      { method: 'PUT', body: JSON.stringify(input) },
+    );
+  }
+  public async getWorkoutGuide(videoId: string, signal?: AbortSignal): Promise<WorkoutGuide> {
+    return this.authenticatedJsonRequest(`/api/v1/coaching/guides/${encodeURIComponent(videoId)}`, {
+      method: 'GET',
+      ...(signal === undefined ? {} : { signal }),
+    });
+  }
+  public async saveWorkoutGuide(videoId: string, input: WorkoutGuide): Promise<WorkoutGuide> {
+    return this.authenticatedJsonRequest(`/api/v1/coaching/guides/${encodeURIComponent(videoId)}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    });
+  }
+  public async getCoachHistory(signal?: AbortSignal): Promise<CoachHistoryResponse> {
+    return this.authenticatedJsonRequest('/api/v1/coaching/assistant', {
+      method: 'GET',
+      ...(signal === undefined ? {} : { signal }),
+    });
+  }
+  public async askCoach(input: CoachQuestionInput, signal?: AbortSignal): Promise<CoachMessage> {
+    return this.authenticatedJsonRequest('/api/v1/coaching/assistant', {
+      method: 'POST',
+      body: JSON.stringify(input),
+      ...(signal === undefined ? {} : { signal }),
+    });
+  }
+  public async getTrainerClientContext(
+    conversationId: string,
+    signal?: AbortSignal,
+  ): Promise<TrainerClientContext> {
+    return this.authenticatedJsonRequest(
+      `/api/v1/coaching/clients/${encodeURIComponent(conversationId)}`,
+      { method: 'GET', ...(signal === undefined ? {} : { signal }) },
+    );
+  }
+
+  public async getReviewerAccess(signal?: AbortSignal): Promise<{ can_review: boolean }> {
+    return this.authenticatedJsonRequest('/api/v1/admin/trainer-verification/access', {
+      method: 'GET',
+      ...(signal === undefined ? {} : { signal }),
+    });
+  }
+
+  public async listTrainerApplications(
+    status: TrainerVerificationStatus,
+    signal?: AbortSignal,
+  ): Promise<TrainerVerificationListResponse> {
+    return this.authenticatedJsonRequest(`/api/v1/admin/trainer-verification?status=${status}`, {
+      method: 'GET',
+      ...(signal === undefined ? {} : { signal }),
+    });
+  }
+
+  public async reviewTrainerApplication(
+    id: string,
+    action: 'approve' | 'request-info' | 'reject',
+    reason?: string,
+  ): Promise<TrainerVerificationRequestDto> {
+    return this.authenticatedJsonRequest(
+      `/api/v1/admin/trainer-verification/${encodeURIComponent(id)}/${action}`,
+      { method: 'POST', body: JSON.stringify(reason === undefined ? {} : { reason }) },
+    );
   }
 
   public async getTrainerVerification(
@@ -1205,7 +1325,7 @@ export class ApiClient {
     headers.set('Accept', 'application/json');
     headers.set('Authorization', `Bearer ${accessToken}`);
 
-    if (init.body !== undefined && init.body !== null) {
+    if (init.body !== undefined && init.body !== null && !headers.has('Content-Type')) {
       headers.set('Content-Type', 'application/json');
     }
 
@@ -1595,3 +1715,49 @@ export const chatRuntimeApi: ChatRuntimeApi = {
     }
   },
 };
+
+export const getReviewerAccess = (signal?: AbortSignal): Promise<{ can_review: boolean }> =>
+  apiClient.getReviewerAccess(signal);
+export const listTrainerApplications = (
+  status: TrainerVerificationStatus,
+  signal?: AbortSignal,
+): Promise<TrainerVerificationListResponse> => apiClient.listTrainerApplications(status, signal);
+export const reviewTrainerApplication = (
+  id: string,
+  action: 'approve' | 'request-info' | 'reject',
+  reason?: string,
+): Promise<TrainerVerificationRequestDto> => apiClient.reviewTrainerApplication(id, action, reason);
+
+export const getWorkoutSession = (
+  videoId: string,
+  week: number,
+  signal?: AbortSignal,
+): Promise<WorkoutSessionResponse> => apiClient.getWorkoutSession(videoId, week, signal);
+export const saveWorkoutSession = (
+  videoId: string,
+  week: number,
+  input: WorkoutSessionInput,
+): Promise<{ saved: boolean }> => apiClient.saveWorkoutSession(videoId, week, input);
+export const getWorkoutGuide = (videoId: string, signal?: AbortSignal): Promise<WorkoutGuide> =>
+  apiClient.getWorkoutGuide(videoId, signal);
+export const saveWorkoutGuide = (videoId: string, input: WorkoutGuide): Promise<WorkoutGuide> =>
+  apiClient.saveWorkoutGuide(videoId, input);
+export const getCoachHistory = (signal?: AbortSignal): Promise<CoachHistoryResponse> =>
+  apiClient.getCoachHistory(signal);
+export const askCoach = (input: CoachQuestionInput, signal?: AbortSignal): Promise<CoachMessage> =>
+  apiClient.askCoach(input, signal);
+export const getTrainerClientContext = (
+  id: string,
+  signal?: AbortSignal,
+): Promise<TrainerClientContext> => apiClient.getTrainerClientContext(id, signal);
+
+export const getChatVideos = (
+  conversationId: string,
+  signal?: AbortSignal,
+): Promise<ChatVideosResponse> => apiClient.getChatVideos(conversationId, signal);
+export const uploadChatVideo = (
+  conversationId: string,
+  file: File,
+  id: string,
+  signal: AbortSignal,
+): Promise<{ id: string }> => apiClient.uploadChatVideo(conversationId, file, id, signal);

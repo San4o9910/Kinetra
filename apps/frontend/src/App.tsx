@@ -1,3 +1,7 @@
+import { CoachAssistantScreen } from './features/coaching/CoachAssistantScreen';
+import { prepareWorkoutQuestion } from './features/program/workoutQuestion';
+import { TrainerApplicationsAdmin } from './features/trainer-verification/TrainerApplicationsAdmin';
+import { getReviewerAccess } from './lib/api';
 import React, {
   useCallback,
   useEffect,
@@ -120,6 +124,7 @@ const SystemState = ({ kind, message, onRetry }: SystemStateProps): ReactNode =>
 );
 
 interface ActiveAppShellProps {
+  readonly canReview?: boolean;
   readonly displayName: string;
   readonly route: AppRoute;
   readonly navigationDisabled: boolean;
@@ -130,6 +135,7 @@ interface ActiveAppShellProps {
 }
 
 const ActiveAppShell = ({
+  canReview = false,
   displayName,
   route,
   navigationDisabled,
@@ -145,6 +151,36 @@ const ActiveAppShell = ({
       disabled={navigationDisabled}
       onOpenSettings={() => onNavigate(appRoutes.settings)}
     />
+    {canReview && (
+      <div className="admin-entry">
+        <button
+          type="button"
+          className="secondary-button"
+          disabled={navigationDisabled}
+          onClick={() => onNavigate(appRoutes.adminApplications)}
+        >
+          Заявки тренеров ↗
+        </button>
+      </div>
+    )}
+    {(route === appRoutes.chat || route === appRoutes.assistant) && (
+      <div className="coach-switch" role="group" aria-label="С кем общаться">
+        <button
+          type="button"
+          aria-pressed={route === appRoutes.chat}
+          onClick={() => onNavigate(appRoutes.chat)}
+        >
+          Тренер
+        </button>
+        <button
+          type="button"
+          aria-pressed={route === appRoutes.assistant}
+          onClick={() => onNavigate(appRoutes.assistant)}
+        >
+          ИИ-помощник
+        </button>
+      </div>
+    )}
     <div className="active-app-content">{children}</div>
     <TabBar
       route={route}
@@ -509,6 +545,22 @@ export const App = (): ReactNode => {
 
   const authenticatedUserId = session.kind === 'authenticated' ? session.profile.user.id : null;
   const authenticatedRole = session.kind === 'authenticated' ? session.profile.account_role : null;
+  const [reviewerAccount, setReviewerAccount] = useState<string | null>(null);
+  const canReview = authenticatedUserId !== null && reviewerAccount === authenticatedUserId;
+  useEffect(() => {
+    if (authenticatedUserId === null) return;
+    const controller = new AbortController();
+    void getReviewerAccess(controller.signal)
+      .then((access) => {
+        if (!controller.signal.aborted)
+          setReviewerAccount(access.can_review ? authenticatedUserId : null);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setReviewerAccount(null);
+      });
+    return () => controller.abort();
+  }, [authenticatedUserId]);
+
   const trainerVerificationRequired =
     session.kind === 'authenticated' &&
     session.profile.account_role === 'client' &&
@@ -672,6 +724,8 @@ export const App = (): ReactNode => {
       return;
     }
 
+    if (route === appRoutes.adminApplications) return;
+
     if (session.profile.account_role === 'trainer') {
       if (
         route === appRoutes.trainerVideos &&
@@ -798,6 +852,23 @@ export const App = (): ReactNode => {
     return <TrainerSignOutState state={trainerSignOutState} onRetry={handleTrainerSignOut} />;
   }
 
+  if (route === appRoutes.adminApplications) {
+    return (
+      <TrainerApplicationsAdmin
+        key={profile.user.id}
+        accountId={profile.user.id}
+        onSessionExpired={handleActiveSessionExpired}
+        onBack={() =>
+          navigate(
+            profile.account_role === 'trainer'
+              ? appRoutes.trainerChats
+              : routeForOnboardingStatus(profile.user.onboardingStatus),
+          )
+        }
+      />
+    );
+  }
+
   if (profile.account_role === 'trainer') {
     if (!isTrainerRoute(route)) {
       return (
@@ -812,6 +883,7 @@ export const App = (): ReactNode => {
 
     const withTrainerShell = (content: ReactNode): ReactNode => (
       <TrainerAdminShell
+        canReview={canReview}
         route={route}
         canManageVideos={profile.trainer_profile?.can_manage_videos === true}
         onNavigate={navigate}
@@ -948,6 +1020,7 @@ export const App = (): ReactNode => {
     profile.user.onboardingStatus === 'active' ||
     profile.user.onboardingStatus === 'base_lessons' ? (
       <ActiveAppShell
+        canReview={canReview}
         displayName={clientDisplayName(profile)}
         route={route}
         navigationDisabled={workoutCompletionBusy}
@@ -1039,6 +1112,16 @@ export const App = (): ReactNode => {
           navigate(appRoutes.login, true);
         }}
       />
+    );
+  }
+
+  if (route === appRoutes.assistant) {
+    return withActiveNavigation(
+      <CoachAssistantScreen
+        key={profile.user.id}
+        onOpenTrainer={() => navigate(appRoutes.chat)}
+        onSessionExpired={handleActiveSessionExpired}
+      />,
     );
   }
 
@@ -1144,11 +1227,16 @@ export const App = (): ReactNode => {
     ) : subscriptionState.kind === 'ready' ? (
       hasTrainingAccess(subscriptionState.subscription) ? (
         <ProgramScreen
+          onAskTrainer={(day, week, seconds) => {
+            prepareWorkoutQuestion(profile.user.id, day, week, seconds);
+            navigateActiveTab(appRoutes.chat);
+          }}
           timezone={profile.user.timezone}
           subscription={subscriptionState.subscription}
           trainingLocked={profile.user.onboardingStatus === 'base_lessons'}
           onOpenBaseLessons={() => navigate(appRoutes.baseLessons)}
           onOpenSchedule={() => navigateActiveTab(appRoutes.schedule)}
+          onOpenCoach={() => navigateActiveTab(appRoutes.assistant)}
           onOpenPayment={() => navigate(appRoutes.payment)}
           onSubscriptionRequired={loadSubscription}
           onWorkoutCompletionBusyChange={handleWorkoutCompletionBusyChange}
@@ -1170,6 +1258,7 @@ export const App = (): ReactNode => {
 
   return (
     <ActiveAppShell
+      canReview={canReview}
       displayName={clientDisplayName(profile)}
       route={route}
       navigationDisabled={workoutCompletionBusy}

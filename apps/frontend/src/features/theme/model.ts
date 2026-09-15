@@ -65,7 +65,7 @@ export const applyThemePreference = (
   document.documentElement.style.colorScheme = resolved;
   document
     .querySelector('meta[name="theme-color"]')
-    ?.setAttribute('content', resolved === 'dark' ? '#080909' : '#F4F6F2');
+    ?.setAttribute('content', resolved === 'dark' ? '#001621' : '#F2F6F8');
 
   return resolved;
 };

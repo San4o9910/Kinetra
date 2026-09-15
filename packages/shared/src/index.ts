@@ -775,3 +775,59 @@ export interface ChatClientToServerEvents {
     acknowledge: (response: { readonly delta_required: boolean }) => void,
   ) => void;
 }
+
+export interface WorkoutGuide {
+  readonly equipment: readonly string[];
+  readonly technique: string;
+  readonly chapters: readonly { readonly title: string; readonly start_seconds: number }[];
+}
+export interface WorkoutSessionResponse {
+  readonly position_seconds: number;
+  readonly difficulty: number | null;
+  readonly wellbeing: number | null;
+  readonly note: string;
+  readonly guide: WorkoutGuide;
+}
+export interface WorkoutSessionInput {
+  readonly position_seconds?: number;
+  readonly difficulty?: number;
+  readonly wellbeing?: number;
+  readonly note?: string;
+}
+export interface CoachMessage {
+  readonly id: string;
+  readonly question: string;
+  readonly answer: string;
+  readonly created_at: string;
+}
+export interface CoachHistoryResponse {
+  readonly available: boolean;
+  readonly messages: readonly CoachMessage[];
+}
+export interface CoachQuestionInput {
+  readonly request_id: string;
+  readonly question: string;
+  readonly use_progress: boolean;
+}
+export interface TrainerClientContext {
+  readonly progress: ProgressResponse;
+  readonly recent_sessions: readonly {
+    readonly title: string;
+    readonly program_week: number;
+    readonly difficulty: number | null;
+    readonly wellbeing: number | null;
+    readonly note: string;
+    readonly updated_at: string;
+  }[];
+}
+
+export interface ChatVideosResponse {
+  readonly available: boolean;
+  readonly videos: readonly {
+    readonly id: string;
+    readonly uploader_user_id: string;
+    readonly duration_seconds: number;
+    readonly created_at: string;
+    readonly url: string;
+  }[];
+}

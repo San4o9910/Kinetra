@@ -1776,11 +1776,11 @@ for (const contract of ['header-settings', 'disabled={disabled}', 'settingsActiv
 for (const testId of ['tab-bar', 'tab-home', 'tab-schedule', 'tab-progress', 'tab-chat']) {
   expectIncludes(tabBar, testId, `T07 tab bar test hook: ${testId}`);
 }
-for (const label of ['Сегодня', 'План', 'Прогресс', 'Тренер']) {
+for (const label of ['Сегодня', 'Расписание', 'Прогресс', 'Чат']) {
   expectIncludes(tabBar, label, `T07 tab bar label: ${label}`);
 }
 for (const chatTabContract of [
-  "{ route: appRoutes.chat, label: 'Тренер', testId: 'tab-chat', icon: 'chat' }",
+  "{ route: appRoutes.chat, label: 'Чат', testId: 'tab-chat', icon: 'chat' }",
   'readonly showChat: boolean',
   'readonly chatUnreadCount: number',
   'tabItems.filter((item) => item.route !== appRoutes.chat)',
@@ -2101,7 +2101,7 @@ expectIncludes(
 );
 
 const frontendStyles = await readText('apps/frontend/src/styles.css');
-for (const color of ['#080909', '#181c1c', '#c8f169', '#f4f6f2', '#a8b0ac']) {
+for (const color of ['#001621', '#082330', '#ff4103', '#f4f6f2', '#a8b0ac']) {
   expectIncludes(frontendStyles.toLowerCase(), color, `T04 design color: ${color}`);
 }
 expectIncludes(frontendStyles, 'min-height: 48px', 'T04 controls exceed 44px touch target');
@@ -3567,13 +3567,13 @@ expectIncludes(
 
 for (const styleContract of [
   ":root[data-theme='light']",
-  '--background: #080909',
-  '--surface: #181c1c',
-  '--accent: #c8f169',
+  '--background: #001621',
+  '--surface: #082330',
+  '--accent: #ff4103',
   '--text: #f4f6f2',
-  '--background: #f4f6f2',
+  '--background: #f2f6f8',
   '--surface: #ffffff',
-  '--focus-ring: #4e650d',
+  '--focus-ring: #ad2b00',
   'outline: 3px solid var(--focus-ring)',
   '.settings-section + .settings-section',
   '.settings-toggle-row input:checked + .settings-toggle',
@@ -6410,7 +6410,7 @@ for (const correctionCiContract of [
   'feature/t14-video-upload-s3',
   'feature/registration-roles-verification',
   'feature/onboarding-exploration-mode',
-  '[main, develop, feature/t12-trainer-chat, feature/registration-roles-verification]',
+  'feature/kinetic-vulcanico-coaching',
   'EXPECTED_BASE_SHA: ${{ github.event.pull_request.base.sha }}',
   'EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}',
   'test "$(git rev-parse HEAD^1)" = "$EXPECTED_BASE_SHA"',
@@ -6936,7 +6936,11 @@ if (
 for (const contract of [
   "KINETRA_REQUIRE_S3_TEST: 'true'",
   "KINETRA_REQUIRE_POSTGRES_TEST: 'true'",
-  'minio/minio:RELEASE.2025-06-13T11-33-47Z',
+  'https://github.com/minio/minio/releases/download/RELEASE.2025-06-13T11-33-47Z/minio.linux-amd64.RELEASE.2025-06-13T11-33-47Z',
+  '668d3fa0334da86a481da79cc88740f751bf60d8cf15ff988f4bceafa22ca4b0',
+  'sha256sum --check --strict',
+  "--address '127.0.0.1:9000'",
+  'MINIO_KMS_SECRET_KEY=',
   'sudo apt-get install --yes --no-install-recommends ffmpeg imagemagick',
 ]) {
   expectIncludes(ciWorkflow, contract, `T14 fail-closed CI contract: ${contract}`);
