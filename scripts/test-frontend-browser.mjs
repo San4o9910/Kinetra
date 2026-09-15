@@ -7816,8 +7816,18 @@ const runT12BrowserScenario = async () => {
     assert.notEqual(chatLayout.tab, null, 'Client chat must retain bottom navigation.');
     assert.ok(
       chatLayout.composer.bottom <= chatLayout.tab.top + 1,
-      'Client chat composer must not overlap the persistent bottom navigation.',
+      `Client chat composer must not overlap the persistent bottom navigation: ${JSON.stringify(chatLayout)}.`,
     );
+    await client.cdp.evaluate("document.querySelector('.chat-videos summary').click()");
+    await waitFor('expanded chat video panel', () =>
+      client.cdp.evaluate("document.querySelector('.chat-videos').open"),
+    );
+    const expandedVideoLayout = await client.layoutMetrics();
+    assert.ok(
+      expandedVideoLayout.composer.bottom <= expandedVideoLayout.tab.top + 1,
+      'Expanded video panel must leave the composer above bottom navigation.',
+    );
+    await client.cdp.evaluate("document.querySelector('.chat-videos summary').click()");
 
     await waitFor(
       'trainer realtime-created conversation without navigation',

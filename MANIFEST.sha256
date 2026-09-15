@@ -321,7 +321,7 @@ d84f3c7b0049aeba4c316a49bf2dcb6da4b0bda5fee17c2ffacfb8730b13a5a6  ./apps/fronten
 f65d6dc912ad0ce9c4cf7c69f71e4dbe2db849878a195f96f1d865d77d0c3577  ./apps/frontend/src/pwa/registerServiceWorker.ts
 2f9ad659021866bc007aea56ea0703fc1e7070f0175fd121c0262b0f6b3b7c05  ./apps/frontend/src/realtime/socket.ts
 4be08543ed666e0459238f8656ba9e398a2c5378b11ec426e02c4d9a28cb2b42  ./apps/frontend/src/routing.ts
-c548d3e50ad3549e69b65f419a7c6ab04f8354c99d7bce4cc627695195a024a6  ./apps/frontend/src/styles.css
+721f13b736af7c3168e13015f3d29325c86f325168a23de9477a0677436201e7  ./apps/frontend/src/styles.css
 8e6a482dec7d62533619e4354794d9248850e9171d650832e7acdf4c313ef0d8  ./apps/frontend/src/vite-env.d.ts
 6b05ae8ab3c10f85b663ffdf99e4b0ff51bf3d3795c1fbcb4762ec2fbc9b41ad  ./apps/frontend/test/api-session.test.ts
 14cb146b0d6330a0fee686ca6c0defb2f366b288f184cdf0d574925f323c1bad  ./apps/frontend/test/auth-recovery.test.ts
@@ -436,6 +436,6 @@ c8171db33a1b645b8c36d542cf4bfc5c47073df8842b846f91a6ebf083973c5e  ./packages/sha
 d16d01c4778cc1b7b5f6695a8ad979bc82ed5d3ecec2a77ac579f3bda9e4210f  ./scripts/local-demo-guard.mjs
 aa40f7eec1b859bca8bfe25c88bb945223365e3490c3b675f3b837afda357737  ./scripts/prepare-local-demo.mjs
 bd552b5c0ba879666a9fecf9a8bba3b30f5b1223fbc1cf69fef30a5c6437aaf2  ./scripts/run-local-demo.mjs
-46ca8ff3702da11f6f06b1b37031618b7f28dd13f2c4651102b3e6ded08f98ca  ./scripts/test-frontend-browser.mjs
+f27d50cc9603630933efca358abe8d563c24a9c96ff267e7f09da8296cfbd3b8  ./scripts/test-frontend-browser.mjs
 a06af897462ff624ce25cb7cba74442e96f8756442cfbdb1af8a6891406519fe  ./scripts/verify-project.mjs
 2b67887209f3334ebdc96426f5c2cb87480fb85ff2f75c0d42b0a944dae7922a  ./tsconfig.base.json
