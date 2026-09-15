@@ -1,3 +1,4 @@
+import { ChatVideos } from './ChatVideos';
 import React, { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 
 import { isTerminalChatAuthError } from './authError';
@@ -651,6 +652,12 @@ export const ConversationView = ({
           />
         ) : null}
 
+        <ChatVideos
+          key={conversationId}
+          conversationId={conversationId}
+          accountId={accountId}
+          online={online}
+        />
         <ChatComposer
           accountId={accountId}
           conversationId={conversationId}

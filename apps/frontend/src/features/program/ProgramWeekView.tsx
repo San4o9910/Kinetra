@@ -1,3 +1,4 @@
+import { KineticMark } from '../navigation/KineticMark';
 import React, { type CSSProperties, type ReactNode } from 'react';
 import type { ProgramDay, WeekResponse } from '@kinetra/shared';
 
@@ -118,8 +119,12 @@ const WorkoutCard = ({
           </span>
           {isToday ? (
             <span className="workout-today-link" data-testid="today-workout" aria-hidden="true">
-              Сегодня
-              <span>›</span>
+              {state === 'completed'
+                ? 'Повторить тренировку'
+                : preparationRequired
+                  ? 'Пройти подготовку'
+                  : 'Начать тренировку'}
+              <span>↗</span>
             </span>
           ) : null}
         </span>
@@ -137,6 +142,7 @@ const WorkoutCard = ({
 };
 
 export interface ProgramWeekViewProps {
+  readonly onOpenCoach?: () => void;
   readonly response: WeekResponse;
   readonly currentWeekNumber: number;
   readonly todayDayOfWeek: number;
@@ -154,6 +160,7 @@ export interface ProgramWeekViewProps {
 }
 
 export const ProgramWeekView = ({
+  onOpenCoach,
   response,
   currentWeekNumber,
   todayDayOfWeek,
@@ -237,9 +244,12 @@ export const ProgramWeekView = ({
         ) : null}
 
         <header className="program-today-header">
-          <p className="program-kicker">ПРОТОКОЛ ДНЯ · НЕДЕЛЯ {currentWeekNumber}</p>
-          <TodayHeading />
-          <p>Текущая тренировка, прогресс недели и ближайший следующий шаг.</p>
+          <p className="program-kicker">ВАШ РИТМ · НЕДЕЛЯ {currentWeekNumber}</p>
+          <div className="today-brand-line">
+            <TodayHeading />
+            <KineticMark />
+          </div>
+          <p>Один шаг сегодня. Больше свободы в движении завтра.</p>
         </header>
 
         <section
@@ -330,6 +340,16 @@ export const ProgramWeekView = ({
           )}
         </section>
 
+        {onOpenCoach !== undefined && (
+          <section className="today-coach-card">
+            <p className="program-kicker">ПОДДЕРЖКА В ВАШЕМ РИТМЕ</p>
+            <h2>Есть вопрос по программе?</h2>
+            <p>Помощник объяснит следующий шаг. Вопросы техники можно обсудить с тренером.</p>
+            <button className="secondary-button" type="button" onClick={onOpenCoach}>
+              Открыть помощника ↗
+            </button>
+          </section>
+        )}
         <button
           className="secondary-button program-schedule-action"
           data-testid="today-open-schedule"

@@ -10,9 +10,17 @@ on:
         feature/t14-video-upload-s3,
         feature/registration-roles-verification,
         feature/onboarding-exploration-mode,
+        feature/kinetic-vulcanico-coaching,
       ]
   pull_request:
-    branches: [main, develop, feature/t12-trainer-chat, feature/registration-roles-verification]
+    branches:
+      [
+        main,
+        develop,
+        feature/t12-trainer-chat,
+        feature/registration-roles-verification,
+        feature/onboarding-exploration-mode,
+      ]
 
 env:
   NODE_VERSION: '22'
@@ -186,13 +194,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          docker run --detach --rm --name kinetra-t14-minio \
-            --publish 9000:9000 \
-            --env MINIO_ROOT_USER="$KINETRA_S3_TEST_ACCESS_KEY" \
-            --env MINIO_ROOT_PASSWORD="$KINETRA_S3_TEST_SECRET_KEY" \
-            --env 'MINIO_KMS_SECRET_KEY=kinetra-t14-ci-key:MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=' \
-            minio/minio:RELEASE.2025-06-13T11-33-47Z \
-            server /data --address ':9000'
+          fixture_dir="$RUNNER_TEMP/kinetra-t14-minio"
+          mkdir -p "$fixture_dir/data"
+          curl --fail --location --retry 3 --connect-timeout 15 --max-time 120 \
+            https://github.com/minio/minio/releases/download/RELEASE.2025-06-13T11-33-47Z/minio.linux-amd64.RELEASE.2025-06-13T11-33-47Z \
+            --output "$fixture_dir/minio"
+          echo "668d3fa0334da86a481da79cc88740f751bf60d8cf15ff988f4bceafa22ca4b0  $fixture_dir/minio" | sha256sum --check --strict
+          chmod 700 "$fixture_dir/minio"
+          MINIO_ROOT_USER="$KINETRA_S3_TEST_ACCESS_KEY" \
+            MINIO_ROOT_PASSWORD="$KINETRA_S3_TEST_SECRET_KEY" \
+            MINIO_KMS_SECRET_KEY='kinetra-t14-ci-key:MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=' \
+            nohup "$fixture_dir/minio" server "$fixture_dir/data" \
+              --address '127.0.0.1:9000' --console-address '127.0.0.1:9001' \
+              >"$fixture_dir/server.log" 2>&1 </dev/null &
+          echo "$!" >"$fixture_dir/server.pid"
           ready='false'
           for _ in $(seq 1 40); do
             if curl --fail --silent http://127.0.0.1:9000/minio/health/ready >/dev/null; then
@@ -202,7 +217,7 @@ jobs:
             sleep 1
           done
           if [[ "$ready" != 'true' ]]; then
-            docker logs kinetra-t14-minio
+            cat "$fixture_dir/server.log"
             exit 1
           fi
 
@@ -355,7 +370,14 @@ jobs:
       - name: Stop private S3 fixture
         if: always()
         shell: bash
-        run: docker stop kinetra-t14-minio >/dev/null 2>&1 || true
+        run: |
+          set -euo pipefail
+          pid_file="$RUNNER_TEMP/kinetra-t14-minio/server.pid"
+          if [[ -f "$pid_file" ]]; then
+            fixture_pid="$(cat "$pid_file")"
+            [[ "$fixture_pid" =~ ^[1-9][0-9]*$ ]]
+            kill "$fixture_pid" 2>/dev/null || true
+          fi
 
       - name: Verify browser profile cleanup
         if: always()

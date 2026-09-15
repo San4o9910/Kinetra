@@ -2422,6 +2422,12 @@ const runBrowserScenario = async () => {
       await cdp.evaluate("window.scrollTo({ top: 0, behavior: 'auto' })");
     };
     const assertSettingsLayout = async (width) => {
+      // Measure the final interactive geometry, not a fractional translateY frame.
+      await cdp.evaluate(`Promise.all(
+        Array.from(document.querySelectorAll('.active-app-content > main'))
+          .flatMap((main) => main.getAnimations())
+          .map((animation) => animation.finished.catch(() => undefined))
+      )`);
       await cdp.send('Emulation.setDeviceMetricsOverride', {
         width,
         height: 820,
@@ -2471,6 +2477,14 @@ const runBrowserScenario = async () => {
             const rect = control.getBoundingClientRect();
             return rect.width >= 44 && rect.height >= 44;
           }),
+          undersizedControls: controls.flatMap((control) => {
+            const rect = control.getBoundingClientRect();
+            return rect.width >= 44 && rect.height >= 44 ? [] : [{
+              testId: control.dataset.testid ?? control.className,
+              width: rect.width,
+              height: rect.height,
+            }];
+          }),
           tabBarBottom: tabBarRect?.bottom ?? -1,
           tabBarTop: tabBarRect?.top ?? -1,
           accountBottom: accountRect?.bottom ?? window.innerHeight + 1,
@@ -2488,7 +2502,7 @@ const runBrowserScenario = async () => {
       assert.equal(
         metrics.controlsAreLargeEnough,
         true,
-        `Settings control below 44px at ${width}px.`,
+        `Settings control below 44px at ${width}px: ${JSON.stringify(metrics.undersizedControls)}.`,
       );
       assert.ok(
         Math.abs(metrics.tabBarBottom - metrics.innerHeight) <= 1,
@@ -3761,7 +3775,7 @@ const runBrowserScenario = async () => {
     await waitFor('workout completion response applied', () =>
       cdp.evaluate(`(() => {
           const message = document.querySelector(${JSON.stringify('.workout-completion-message')});
-          return message?.textContent?.trim() === 'Тренировка пройдена' &&
+          return message?.textContent?.trim() === 'Тренировка пройдена · результат сохранён' &&
             document.querySelector(${JSON.stringify(selector('workout-player'))})
               ?.getAttribute('aria-busy') === 'false';
         })()`),
@@ -3818,7 +3832,7 @@ const runBrowserScenario = async () => {
     })()`);
     assert.deepEqual(completedScheduleStyle, {
       completedClass: true,
-      borderLeftColor: 'rgb(200, 241, 105)',
+      borderLeftColor: 'rgb(255, 137, 95)',
       borderLeftWidth: '3px',
     });
     console.log('KINETRA_T08_COMPLETION_STATE=PASS');
@@ -4079,10 +4093,10 @@ const runBrowserScenario = async () => {
       resolved: 'dark',
       stored: 'system',
       selected: 'system',
-      themeColor: '#080909',
+      themeColor: '#001621',
       colorScheme: 'dark',
-      backgroundToken: '#080909',
-      bodyBackground: 'rgb(8, 9, 9)',
+      backgroundToken: '#001621',
+      bodyBackground: 'rgb(0, 22, 33)',
     });
 
     await click('settings-theme-light');
@@ -4095,10 +4109,10 @@ const runBrowserScenario = async () => {
       resolved: 'light',
       stored: 'light',
       selected: 'light',
-      themeColor: '#F4F6F2',
+      themeColor: '#F2F6F8',
       colorScheme: 'light',
-      backgroundToken: '#f4f6f2',
-      bodyBackground: 'rgb(244, 246, 242)',
+      backgroundToken: '#f2f6f8',
+      bodyBackground: 'rgb(242, 246, 248)',
     });
 
     await click('close-settings');
@@ -4121,8 +4135,8 @@ const runBrowserScenario = async () => {
       {
         preference: 'light',
         resolved: 'light',
-        background: 'rgb(244, 246, 242)',
-        headingColor: 'rgb(17, 20, 20)',
+        background: 'rgb(242, 246, 248)',
+        headingColor: 'rgb(4, 28, 40)',
       },
     );
     await click('header-settings');
@@ -4143,10 +4157,10 @@ const runBrowserScenario = async () => {
       resolved: 'dark',
       stored: 'dark',
       selected: 'dark',
-      themeColor: '#080909',
+      themeColor: '#001621',
       colorScheme: 'dark',
-      backgroundToken: '#080909',
-      bodyBackground: 'rgb(8, 9, 9)',
+      backgroundToken: '#001621',
+      bodyBackground: 'rgb(0, 22, 33)',
     });
 
     await cdp.send('Page.reload', { ignoreCache: true });
@@ -4176,10 +4190,10 @@ const runBrowserScenario = async () => {
       resolved: 'light',
       stored: 'system',
       selected: 'system',
-      themeColor: '#F4F6F2',
+      themeColor: '#F2F6F8',
       colorScheme: 'light',
-      backgroundToken: '#f4f6f2',
-      bodyBackground: 'rgb(244, 246, 242)',
+      backgroundToken: '#f2f6f8',
+      bodyBackground: 'rgb(242, 246, 248)',
     });
     await cdp.send('Emulation.setEmulatedMedia', {
       media: '',
@@ -4202,10 +4216,10 @@ const runBrowserScenario = async () => {
       resolved: 'dark',
       stored: 'system',
       selected: 'system',
-      themeColor: '#080909',
+      themeColor: '#001621',
       colorScheme: 'dark',
-      backgroundToken: '#080909',
-      bodyBackground: 'rgb(8, 9, 9)',
+      backgroundToken: '#001621',
+      bodyBackground: 'rgb(0, 22, 33)',
     });
     console.log('KINETRA_T10_THEME_MODES=PASS');
 
@@ -7802,8 +7816,18 @@ const runT12BrowserScenario = async () => {
     assert.notEqual(chatLayout.tab, null, 'Client chat must retain bottom navigation.');
     assert.ok(
       chatLayout.composer.bottom <= chatLayout.tab.top + 1,
-      'Client chat composer must not overlap the persistent bottom navigation.',
+      `Client chat composer must not overlap the persistent bottom navigation: ${JSON.stringify(chatLayout)}.`,
     );
+    await client.cdp.evaluate("document.querySelector('.chat-videos summary').click()");
+    await waitFor('expanded chat video panel', () =>
+      client.cdp.evaluate("document.querySelector('.chat-videos').open"),
+    );
+    const expandedVideoLayout = await client.layoutMetrics();
+    assert.ok(
+      expandedVideoLayout.composer.bottom <= expandedVideoLayout.tab.top + 1,
+      'Expanded video panel must leave the composer above bottom navigation.',
+    );
+    await client.cdp.evaluate("document.querySelector('.chat-videos summary').click()");
 
     await waitFor(
       'trainer realtime-created conversation without navigation',

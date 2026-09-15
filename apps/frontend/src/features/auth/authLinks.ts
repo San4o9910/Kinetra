@@ -79,7 +79,7 @@ export const listenForAuthLinkNavigation = (
 };
 
 export const resetPasswordIssue = (password: string, confirmation: string): string | null => {
-  if (password.length < 10) return 'Используйте не меньше 10 символов.';
+  if (password.length < 6) return 'Используйте не меньше 6 символов.';
   if (new TextEncoder().encode(password).length > 72) {
     return 'Пароль слишком длинный. Используйте до 72 латинских или 36 русских букв.';
   }

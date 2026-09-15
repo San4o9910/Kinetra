@@ -12,6 +12,8 @@ export const appRoutes = Object.freeze({
   editSurvey: '/settings/survey',
   chat: '/chat',
   trainerChats: '/trainer/chats',
+  adminApplications: '/admin/trainer-applications',
+  assistant: '/assistant',
   trainerVideos: '/trainer/videos',
   payment: '/payment',
   paymentSuccess: '/payment/success',
@@ -90,6 +92,7 @@ export const isActiveAppRoute = (route: AppRoute): boolean =>
   route === appRoutes.home ||
   route === appRoutes.schedule ||
   route === appRoutes.progress ||
+  route === appRoutes.assistant ||
   isSettingsRoute(route);
 
 export const isExplorationAppRoute = (route: AppRoute): boolean =>

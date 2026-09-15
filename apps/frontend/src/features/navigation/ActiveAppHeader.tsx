@@ -1,3 +1,4 @@
+import { KineticMark } from './KineticMark';
 import React, { type ReactNode } from 'react';
 
 export interface ActiveAppHeaderProps {
@@ -17,7 +18,7 @@ export const ActiveAppHeader = ({
     <header className="active-app-header" data-testid="active-app-header">
       <div className="active-app-brand" aria-label="Kinetra">
         <span className="active-app-brand-mark" aria-hidden="true">
-          K
+          <KineticMark />
         </span>
         <span>
           KINETRA<small>ДВИЖЕНИЕ В ВАШЕМ РИТМЕ</small>

@@ -192,7 +192,7 @@ test('ordinary navigation is untouched by the auth link reader', () => {
 
 test('new passwords respect matching, minimum length and the bcrypt byte boundary', () => {
   assert.equal(resetPasswordIssue('long-enough-password', 'long-enough-password'), null);
-  assert.match(resetPasswordIssue('short', 'short')!, /10/u);
+  assert.match(resetPasswordIssue('short', 'short')!, /6/u);
   assert.match(resetPasswordIssue('long-enough-password', 'different-password')!, /не совпадают/u);
   assert.equal(resetPasswordIssue('я'.repeat(36), 'я'.repeat(36)), null);
   assert.match(resetPasswordIssue('я'.repeat(37), 'я'.repeat(37))!, /слишком длинный/u);

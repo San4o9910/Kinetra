@@ -384,6 +384,30 @@ const validApplication = {
   ],
 } as const;
 
+test('reviewer capability discovery reveals no application data and never grants access', async () => {
+  const { harness } = await startHarness();
+  try {
+    const path = '/api/v1/admin/trainer-verification/access';
+    assert.equal((await requestJson(harness, path, { token: null })).status, 401);
+    assert.deepEqual((await requestJson(harness, path, { token: harness.reviewerToken })).body, {
+      can_review: true,
+    });
+    assert.deepEqual((await requestJson(harness, path, { token: harness.traineeToken })).body, {
+      can_review: false,
+    });
+    assert.equal(
+      (
+        await requestJson(harness, '/api/v1/admin/trainer-verification', {
+          token: harness.traineeToken,
+        })
+      ).status,
+      403,
+    );
+  } finally {
+    await harness.close();
+  }
+});
+
 test('trainer verification HTTP contract is authenticated, strict and role-gated', async () => {
   const { harness } = await startHarness();
 
