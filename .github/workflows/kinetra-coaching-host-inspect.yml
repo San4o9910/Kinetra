@@ -1,3 +1,4 @@
+# Read-only reconciliation after run 35036521425 restored the previous application.
 name: Inspect existing host for coaching update
 on:
   push:
