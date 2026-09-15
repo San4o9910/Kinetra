@@ -2422,6 +2422,12 @@ const runBrowserScenario = async () => {
       await cdp.evaluate("window.scrollTo({ top: 0, behavior: 'auto' })");
     };
     const assertSettingsLayout = async (width) => {
+      // Measure the final interactive geometry, not a fractional translateY frame.
+      await cdp.evaluate(`Promise.all(
+        Array.from(document.querySelectorAll('.active-app-content > main'))
+          .flatMap((main) => main.getAnimations())
+          .map((animation) => animation.finished.catch(() => undefined))
+      )`);
       await cdp.send('Emulation.setDeviceMetricsOverride', {
         width,
         height: 820,
@@ -2471,6 +2477,14 @@ const runBrowserScenario = async () => {
             const rect = control.getBoundingClientRect();
             return rect.width >= 44 && rect.height >= 44;
           }),
+          undersizedControls: controls.flatMap((control) => {
+            const rect = control.getBoundingClientRect();
+            return rect.width >= 44 && rect.height >= 44 ? [] : [{
+              testId: control.dataset.testid ?? control.className,
+              width: rect.width,
+              height: rect.height,
+            }];
+          }),
           tabBarBottom: tabBarRect?.bottom ?? -1,
           tabBarTop: tabBarRect?.top ?? -1,
           accountBottom: accountRect?.bottom ?? window.innerHeight + 1,
@@ -2488,7 +2502,7 @@ const runBrowserScenario = async () => {
       assert.equal(
         metrics.controlsAreLargeEnough,
         true,
-        `Settings control below 44px at ${width}px.`,
+        `Settings control below 44px at ${width}px: ${JSON.stringify(metrics.undersizedControls)}.`,
       );
       assert.ok(
         Math.abs(metrics.tabBarBottom - metrics.innerHeight) <= 1,
