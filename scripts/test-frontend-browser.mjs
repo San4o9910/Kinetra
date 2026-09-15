@@ -3761,7 +3761,7 @@ const runBrowserScenario = async () => {
     await waitFor('workout completion response applied', () =>
       cdp.evaluate(`(() => {
           const message = document.querySelector(${JSON.stringify('.workout-completion-message')});
-          return message?.textContent?.trim() === 'Тренировка пройдена' &&
+          return message?.textContent?.trim() === 'Тренировка пройдена · результат сохранён' &&
             document.querySelector(${JSON.stringify(selector('workout-player'))})
               ?.getAttribute('aria-busy') === 'false';
         })()`),
