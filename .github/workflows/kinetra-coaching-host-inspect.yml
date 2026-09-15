@@ -1,0 +1,38 @@
+name: Inspect existing host for coaching update
+on:
+  push:
+    branches: [ops/timeweb-hourly-preflight-20260909]
+    paths: [.github/workflows/kinetra-coaching-host-inspect.yml]
+permissions:
+  contents: read
+concurrency:
+  group: kinetra-timeweb-hourly-provision
+  cancel-in-progress: false
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Verify exact reviewed read-only inspection
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          sha256sum --check --strict <<'SHA256'
+          567d892221925bb438ece6a893360a891ffd4228f8af0a18252b8ba365a682c0  ops/timeweb/inspect-server.py
+          b8a866523515a12e2f33134143ed21a816a674d4014ca3d6ebd023b58090ce59  ops/timeweb/coaching-transport.py
+          103089c9aa99114ab11a506b769aa1710a8c13ece84edba0e83171065e15d6d1  ops/timeweb/coaching-host-inspect.py
+          SHA256
+      - name: Inspect existing application, migration ledger and backup capacity
+        env:
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+        run: python3 -B ops/timeweb/coaching-transport.py --inspect-coaching-release
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: coaching-host-inspection-${{ github.run_id }}
+          path: ${{ runner.temp }}/kinetra-coaching-inspection.json
+          if-no-files-found: error
+          retention-days: 14

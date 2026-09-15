@@ -105,7 +105,9 @@ jobs:
               assert run['path'] == '.github/workflows/ci.yml'
               assert run['status'] == 'completed' and run['conclusion'] == 'success'
               assert run['head_sha'] == app
-              if event == 'pull_request':
+              # GitHub may clear run.pull_requests after merge; authenticated checkout logs below
+              # still bind the historical merge to the exact two approved parents.
+              if event == 'pull_request' and run['pull_requests']:
                   assert any(p['number'] == 22 and p['head']['sha'] == app and p['base']['sha'] == base
                              for p in run['pull_requests'])
               jobs = get('/actions/runs/' + run_id + '/attempts/' + str(run['run_attempt']) + '/jobs?per_page=100')
