@@ -1,6 +1,6 @@
 a6b98ea7cb6d61ed8d430dd0dffa46c87012b5cf859d4ce7207898954951fdcd  ./.editorconfig
 7333eb49cff45b8c396b0325cfe5a3985df7df45f0f8ccb52acc0f335b0e2926  ./.env.example
-0c7692306b9732fdae59d1dcb9ea759d0276277896c191e379c8ea94c13ecb99  ./.github/workflows/ci.yml
+99be7877bf4479acf309772345336e808d7d818beec06b499f370a642c34b855  ./.github/workflows/ci.yml
 bf0b9f2976cc6caa82bd0268fc6c19b11d72a7bf17624cf1fb866462e3811e31  ./.gitignore
 177d20030d4dcc37eae9ef92865ec54dadce60e8f19e9a34a5d4f37502195a36  ./.nvmrc
 019a6ff828333978e4ecceae4a881852c6f850fbc6d86755f5e4c9c068727ec8  ./.prettierignore
@@ -397,7 +397,7 @@ f154eedac3930c22fe497e81404f12f2d35927d56e0f202dd7e9af9bd31c1f00  ./deploy/postg
 1f23635f93bd6720b16e07581bb455a4f70935757430e421c2f8f52d35be4ef5  ./docker-compose.yml
 4886a014b25ffc2f459dd91f910ac6cc7bd25da7e340c1596c97f401d0e41f11  ./docs/DISASTER_RECOVERY.md
 ef1acd72396bef79c34151b24fc9bb7e38847b4f0a6b5b13347ada1e885b3ec9  ./docs/IP_HTTPS_DEPLOYMENT.md
-18329e3797686c7490a5c73dedceac289eb3b668eb23a2b2a4ff4a53bdcbf096  ./docs/KINETIC_COACHING_RELEASE.md
+ef40e24dc82039fded46517294a9ffc03e917e0f7c6cbfd82bfd6ab5d50aeccf  ./docs/KINETIC_COACHING_RELEASE.md
 fa83e5cf15dd9131c4c863d875385fa1d5dc2fcd28cc5e9ff60ce33185775e2d  ./docs/PRODUCTION_DELIVERY.md
 1c25f97e76d08c0a8fd834154ccaa45a3ccc96b3bda61a5398b11cbc29f95224  ./docs/PRODUCTION_LAUNCH_RUNBOOK.md
 c886b8c7080fa4a87f68f24fe0f6b4990c947e7be7b9db8fdc2b79b963f95d2a  ./docs/PRODUCTION_MONITORING.md
@@ -437,5 +437,5 @@ d16d01c4778cc1b7b5f6695a8ad979bc82ed5d3ecec2a77ac579f3bda9e4210f  ./scripts/loca
 aa40f7eec1b859bca8bfe25c88bb945223365e3490c3b675f3b837afda357737  ./scripts/prepare-local-demo.mjs
 bd552b5c0ba879666a9fecf9a8bba3b30f5b1223fbc1cf69fef30a5c6437aaf2  ./scripts/run-local-demo.mjs
 428d56da52679eeaade7f6f5d557bab4e9c690296436c80b14c36667ba00aea4  ./scripts/test-frontend-browser.mjs
-146cbca9d39ba45d1ccd1bbac71ab8b57f0f4ce74910d1bbc9db3e5016f102c5  ./scripts/verify-project.mjs
+a06af897462ff624ce25cb7cba74442e96f8756442cfbdb1af8a6891406519fe  ./scripts/verify-project.mjs
 2b67887209f3334ebdc96426f5c2cb87480fb85ff2f75c0d42b0a944dae7922a  ./tsconfig.base.json

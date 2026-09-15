@@ -6936,7 +6936,11 @@ if (
 for (const contract of [
   "KINETRA_REQUIRE_S3_TEST: 'true'",
   "KINETRA_REQUIRE_POSTGRES_TEST: 'true'",
-  'minio/minio:RELEASE.2025-06-13T11-33-47Z',
+  'https://github.com/minio/minio/releases/download/RELEASE.2025-06-13T11-33-47Z/minio.linux-amd64.RELEASE.2025-06-13T11-33-47Z',
+  '668d3fa0334da86a481da79cc88740f751bf60d8cf15ff988f4bceafa22ca4b0',
+  'sha256sum --check --strict',
+  "--address '127.0.0.1:9000'",
+  'MINIO_KMS_SECRET_KEY=',
   'sudo apt-get install --yes --no-install-recommends ffmpeg imagemagick',
 ]) {
   expectIncludes(ciWorkflow, contract, `T14 fail-closed CI contract: ${contract}`);
