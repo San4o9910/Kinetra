@@ -1,5 +1,6 @@
 import importlib.util,unittest,tempfile,pathlib,os,sys,io,json
 from unittest.mock import patch
+from types import SimpleNamespace
 p=pathlib.Path(__file__).with_name('coaching-upgrade-host.py');spec=importlib.util.spec_from_file_location('upgrade',p);u=importlib.util.module_from_spec(spec);spec.loader.exec_module(u)
 class Checks(unittest.TestCase):
  def test_malformed_request_never_runs_host_commands(self):
@@ -24,4 +25,15 @@ class Checks(unittest.TestCase):
  def test_unhealthy_release_preserves_database_identity(self):
   with patch.object(u,'inspect',return_value={'postgres':{'Id':'changed','State':{'Running':True}}}):
    with self.assertRaisesRegex(u.Failure,'DATABASE_CHANGED'):u.healthy(u.OLD_IMAGES,'expected')
+ def test_migration_public_mount_is_readable_under_private_umask(self):
+  with tempfile.TemporaryDirectory() as folder:
+   work=pathlib.Path(folder);old=os.umask(0o077)
+   try:
+    with patch.object(u,'command',return_value=b'MIGRATIONS_AND_GRANTS=PASS') as run,patch.object(u.subprocess,'run',return_value=SimpleNamespace(returncode=1)):
+     u.migrate('image','pg',{'014_test.sql':'hash'},b'SELECT 1',work,'network','/ca.crt')
+     self.assertEqual((work/'public').stat().st_mode&0o777,0o755)
+     self.assertEqual((work/'public/migrations.json').stat().st_mode&0o777,0o644)
+     self.assertIn('type=bind,source='+str(work/'public')+',target=/release,readonly',run.call_args.args[0])
+     self.assertNotIn('type=bind,source='+str(work)+',target=/release,readonly',run.call_args.args[0])
+   finally:os.umask(old)
 if __name__=='__main__':unittest.main()

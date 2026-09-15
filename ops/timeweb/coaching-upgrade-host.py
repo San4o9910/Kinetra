@@ -76,7 +76,7 @@ assert.equal((await c.query('SELECT count(*)::int AS n FROM schema_migrations'))
 console.log('MIGRATIONS_AND_GRANTS=PASS');
 }finally{await c.end()}
 """
- work=work/'public';work.mkdir(mode=0o755)
+ work=work/'public';work.mkdir(mode=0o755);os.chmod(work,0o755)
  write(work/'migrations.json',json.dumps(newhash).encode());write(work/'runtime-grants.sql',grants)
  # Only public SQL/JSON is mounted. Readable by UID 1000, protected by root-only parent.
  os.chmod(work/'migrations.json',0o644);os.chmod(work/'runtime-grants.sql',0o644)
@@ -103,12 +103,17 @@ def main():
   require(current['backend']['State'].get('Health',{}).get('Status')=='healthy' and get('/health')[0]==200,'BASE_NOT_HEALTHY')
   oldledger=ledger(pgid);expected=data['migrations'];require(len(expected)==len(oldledger)+2 and all(expected.get(r['filename'])==r['checksum'] for r in oldledger),'MIGRATION_HISTORY_CHANGED')
   grants=base64.b64decode(data['grants'],validate=True);require(len(grants)<16384 and b'chat_video_assets' in grants,'GRANTS_INVALID')
+  prior=S/('coaching-release-'+APP[:12])
+  previous=json.loads(private(prior/'attempt-result.json'));prior_request=json.loads(private(prior/'request.json'))
+  require(previous['result']=='FAIL' and previous['stage']=='MIGRATIONS' and previous['error']=='COMMAND_FAILED' and previous['rollback']=='NOT_NEEDED' and previous['backup']['restore_verified'] is True,'PRIOR_FAILURE_NOT_RECONCILED')
+  require(prior_request['run']=='35036305821' and {k:v for k,v in prior_request.items() if k!='run'}=={k:v for k,v in data.items() if k!='run'},'PRIOR_REQUEST_CHANGED')
+  require(hashlib.sha256(private(prior/'database.dump')).hexdigest()=='fe4fdafe5d8b8c39cba238bccfbf0b4f443d0bb399700934a98388be39856590','PRIOR_BACKUP_CHANGED')
   state['stage']='PULL_IMAGES'
   for k,image in data['images'].items():
    command(['docker','pull',image],timeout=180)
    meta=json.loads(command(['docker','image','inspect',image]))[0];require(meta['Config']['Labels'].get('org.opencontainers.image.revision')==APP and meta['Architecture']=='amd64','IMAGE_REVISION_CHANGED')
   require(shutil.disk_usage(S).free>3*1024**3,'BACKUP_CAPACITY_INSUFFICIENT')
-  work=S/('coaching-release-'+APP[:12]);work.mkdir(mode=0o700)
+  work=S/('coaching-release-'+APP[:12]+'-'+data['run']);work.mkdir(mode=0o700)
   write(work/'request.json',raw);write(work/'previous-containers.json',json.dumps(current).encode())
   oldprod=private(S/'env/production.env');oldapi=private(S/'env/api.env')
   write(work/'previous-production.env',oldprod);write(work/'previous-api.env',oldapi)
