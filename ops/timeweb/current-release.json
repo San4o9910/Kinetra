@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "url": "https://80.68.156.131/",
+  "server_id": 9069403,
+  "app_commit": "a61a42f2dc10749939a1044990bf2cf456e34b52",
+  "merge_commit": "13437af4cf7791f767f58a27662755efdc25925b",
+  "control_commit": "d42e7d3d9a857ef621ad775edc03b1a192c6ac58",
+  "accepted_run": 35036937433,
+  "result": "PASS_UPGRADED",
+  "external_anonymous_acceptance": true,
+  "migration_count": 15,
+  "password_min_length": 6,
+  "chat_enabled": true,
+  "owner_reviewer_identity_pending": true,
+  "ai_configured": false,
+  "private_media_enabled": false,
+  "payments_enabled": false,
+  "notes": "ops/timeweb/coaching-release-20260915.md"
+}
