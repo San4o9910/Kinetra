@@ -7518,6 +7518,25 @@ body {
   font-weight: 600;
   cursor: pointer;
 }
+/* The chat uses the space left by the actual header, reviewer entry and switch. */
+.active-app-shell:has(.chat-conversation-shell) {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  min-height: 0;
+  padding-bottom: calc(56px + env(safe-area-inset-bottom));
+  overflow: hidden;
+}
+.active-app-shell:has(.chat-conversation-shell) > :not(.active-app-content) {
+  flex-shrink: 0;
+}
+.active-app-shell:has(.chat-conversation-shell) > .active-app-content {
+  flex: 1 1 0;
+  min-height: 0;
+}
+.active-app-shell:has(.chat-conversation-shell) > .active-app-content > .chat-conversation-shell {
+  height: 100%;
+}
 .coach-switch button[aria-pressed='true'] {
   background: var(--surface-raised);
   color: var(--accent-text);
