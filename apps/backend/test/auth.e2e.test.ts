@@ -215,6 +215,95 @@ const registerEmailUser = async (harness: TestHarness): Promise<ApiResult> =>
     requested_role: 'trainee',
   });
 
+test('six-character passwords work for registration and recovery; shorter passwords are rejected', async () => {
+  const harness = await startHarness({ auth: { passwordMinimumLength: 6 } });
+  try {
+    const account = { email: 'six@example.com', requested_role: 'trainee' };
+    assert.equal(
+      (await postJson(harness, '/api/v1/auth/register', { ...account, password: 'abc12' })).status,
+      400,
+    );
+    const registered = await postJson(harness, '/api/v1/auth/register', {
+      ...account,
+      password: 'abc123',
+    });
+    assert.equal(registered.status, 201);
+    assert.equal(
+      (await postJson(harness, '/api/v1/auth/login', { email: account.email, password: 'abc123' }))
+        .status,
+      200,
+    );
+    await postJson(harness, '/api/v1/auth/password-reset/request', { email: account.email });
+    const token = harness.delivery.passwordResets[0]?.token;
+    assert.ok(token);
+    assert.equal(
+      (
+        await postJson(harness, '/api/v1/auth/password-reset/confirm', {
+          token,
+          newPassword: 'new12',
+        })
+      ).status,
+      400,
+    );
+    assert.equal(
+      (
+        await postJson(harness, '/api/v1/auth/password-reset/confirm', {
+          token,
+          newPassword: 'new123',
+        })
+      ).status,
+      200,
+    );
+    assert.equal(
+      (await postJson(harness, '/api/v1/auth/refresh', {}, registered.cookie!)).status,
+      401,
+    );
+    assert.equal(
+      (
+        await postJson(harness, '/api/v1/auth/login', {
+          identifier: account.email,
+          password: 'new123',
+        })
+      ).status,
+      200,
+    );
+    assert.equal(
+      (
+        await postJson(harness, '/api/v1/auth/login', {
+          identifier: account.email,
+          password: 'abc123',
+        })
+      ).status,
+      401,
+    );
+  } finally {
+    await harness.close();
+  }
+});
+
+test('login attempts share an account limit across identifier aliases and casing', async () => {
+  const harness = await startHarness();
+  try {
+    for (let index = 0; index < 10; index += 1) {
+      const identifier =
+        index % 2 === 0 ? { email: 'Absent@example.com' } : { identifier: 'absent@example.com' };
+      assert.equal(
+        (await postJson(harness, '/api/v1/auth/login', { ...identifier, password: 'WrongPass123' }))
+          .status,
+        401,
+      );
+    }
+    const blocked = await postJson(harness, '/api/v1/auth/login', {
+      email: 'ABSENT@example.com',
+      password: 'WrongPass123',
+    });
+    assert.equal(blocked.status, 429);
+    assert.equal(errorCode(blocked.body), 'LOGIN_RATE_LIMITED');
+  } finally {
+    await harness.close();
+  }
+});
+
 test('email registration and login use bcrypt and reject a wrong password', async () => {
   const harness = await startHarness();
 

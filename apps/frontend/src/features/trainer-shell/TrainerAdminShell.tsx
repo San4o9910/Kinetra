@@ -1,9 +1,11 @@
+import { KineticMark } from '../navigation/KineticMark';
 import type { ReactNode, MouseEvent } from 'react';
 
 import { appRoutes, type AppRoute } from '../../routing';
 
 export interface TrainerAdminShellProps {
   readonly route: AppRoute;
+  readonly canReview?: boolean;
   readonly canManageVideos: boolean;
   readonly onNavigate: (route: AppRoute) => void;
   readonly onSignOut: () => void;
@@ -13,6 +15,7 @@ export interface TrainerAdminShellProps {
 export const TrainerAdminShell = ({
   route,
   canManageVideos,
+  canReview = false,
   onNavigate,
   onSignOut,
   children,
@@ -33,7 +36,9 @@ export const TrainerAdminShell = ({
           onClick={(event) => navigate(event, appRoutes.trainerChats)}
           aria-label="Kinetra — рабочее пространство тренера"
         >
-          <span aria-hidden="true">K</span>
+          <span aria-hidden="true">
+            <KineticMark />
+          </span>
           <strong>KINETRA</strong>
         </a>
         <nav aria-label="Разделы тренера">
@@ -53,6 +58,14 @@ export const TrainerAdminShell = ({
               Видео
             </a>
           ) : null}
+          {canReview && (
+            <a
+              href={appRoutes.adminApplications}
+              onClick={(event) => navigate(event, appRoutes.adminApplications)}
+            >
+              Заявки тренеров
+            </a>
+          )}
         </nav>
         <button type="button" onClick={onSignOut}>
           Выйти

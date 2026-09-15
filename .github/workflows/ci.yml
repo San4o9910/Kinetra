@@ -10,9 +10,17 @@ on:
         feature/t14-video-upload-s3,
         feature/registration-roles-verification,
         feature/onboarding-exploration-mode,
+        feature/kinetic-vulcanico-coaching,
       ]
   pull_request:
-    branches: [main, develop, feature/t12-trainer-chat, feature/registration-roles-verification]
+    branches:
+      [
+        main,
+        develop,
+        feature/t12-trainer-chat,
+        feature/registration-roles-verification,
+        feature/onboarding-exploration-mode,
+      ]
 
 env:
   NODE_VERSION: '22'

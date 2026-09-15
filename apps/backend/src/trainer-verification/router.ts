@@ -105,6 +105,14 @@ export const createTrainerVerificationAdminRouter = ({
   router.use(disableCaching);
   router.use(authMiddleware);
 
+  router.get('/access', (request, response, next) => {
+    const { userId } = requireAuthenticatedPrincipal(request);
+    void service
+      .access(userId)
+      .then((result) => response.json(result))
+      .catch(next);
+  });
+
   router.get(
     '/',
     (

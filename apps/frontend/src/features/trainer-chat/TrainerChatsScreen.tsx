@@ -1,3 +1,4 @@
+import { TrainerClientSummary } from '../coaching/TrainerClientSummary';
 import React, {
   useCallback,
   useEffect,
@@ -566,26 +567,32 @@ export const TrainerChatsScreen = ({
                 <p>Выберите диалог</p>
               </div>
             ) : selectedConversation !== null ? (
-              <ConversationView
-                key={routeConversationId}
-                accountId={accountId}
-                conversationId={routeConversationId}
-                role="trainer"
-                ownDisplayName={session.profile.display_name}
-                counterpart={selectedConversation.client}
-                api={api}
-                realtime={realtime}
-                online={online}
-                photoUploadsEnabled={photoUploadsEnabled}
-                emptyMessage="В диалоге пока нет сообщений."
-                embedded
-                backLabel="К диалогам"
-                headingLevel="h2"
-                onBack={onBackToInbox}
-                onSessionExpired={onSessionExpired}
-                onConversationStateChange={updateSelectedUnread}
-                {...(registerObjectUrl === undefined ? {} : { registerObjectUrl })}
-              />
+              <>
+                <TrainerClientSummary
+                  key={routeConversationId}
+                  conversationId={routeConversationId}
+                />
+                <ConversationView
+                  key={routeConversationId}
+                  accountId={accountId}
+                  conversationId={routeConversationId}
+                  role="trainer"
+                  ownDisplayName={session.profile.display_name}
+                  counterpart={selectedConversation.client}
+                  api={api}
+                  realtime={realtime}
+                  online={online}
+                  photoUploadsEnabled={photoUploadsEnabled}
+                  emptyMessage="В диалоге пока нет сообщений."
+                  embedded
+                  backLabel="К диалогам"
+                  headingLevel="h2"
+                  onBack={onBackToInbox}
+                  onSessionExpired={onSessionExpired}
+                  onConversationStateChange={updateSelectedUnread}
+                  {...(registerObjectUrl === undefined ? {} : { registerObjectUrl })}
+                />
+              </>
             ) : selectedState.kind === 'unavailable' &&
               selectedState.conversationId === routeConversationId ? (
               <div

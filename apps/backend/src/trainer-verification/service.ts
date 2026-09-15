@@ -258,6 +258,11 @@ export class TrainerVerificationService {
     return mutationValue(await this.repository.withdraw(userId, this.clock.now()));
   }
 
+  public async access(userId: string): Promise<{ can_review: boolean }> {
+    const result = await this.repository.listForReviewer(userId, 'pending');
+    return { can_review: result.status === 'ok' };
+  }
+
   public async list(
     reviewerUserId: string,
     rawStatus: unknown,

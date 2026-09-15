@@ -3818,7 +3818,7 @@ const runBrowserScenario = async () => {
     })()`);
     assert.deepEqual(completedScheduleStyle, {
       completedClass: true,
-      borderLeftColor: 'rgb(200, 241, 105)',
+      borderLeftColor: 'rgb(255, 65, 3)',
       borderLeftWidth: '3px',
     });
     console.log('KINETRA_T08_COMPLETION_STATE=PASS');
@@ -4079,10 +4079,10 @@ const runBrowserScenario = async () => {
       resolved: 'dark',
       stored: 'system',
       selected: 'system',
-      themeColor: '#080909',
+      themeColor: '#001621',
       colorScheme: 'dark',
-      backgroundToken: '#080909',
-      bodyBackground: 'rgb(8, 9, 9)',
+      backgroundToken: '#001621',
+      bodyBackground: 'rgb(0, 22, 33)',
     });
 
     await click('settings-theme-light');
@@ -4095,10 +4095,10 @@ const runBrowserScenario = async () => {
       resolved: 'light',
       stored: 'light',
       selected: 'light',
-      themeColor: '#F4F6F2',
+      themeColor: '#F2F6F8',
       colorScheme: 'light',
-      backgroundToken: '#f4f6f2',
-      bodyBackground: 'rgb(244, 246, 242)',
+      backgroundToken: '#f2f6f8',
+      bodyBackground: 'rgb(242, 246, 248)',
     });
 
     await click('close-settings');
@@ -4121,8 +4121,8 @@ const runBrowserScenario = async () => {
       {
         preference: 'light',
         resolved: 'light',
-        background: 'rgb(244, 246, 242)',
-        headingColor: 'rgb(17, 20, 20)',
+        background: 'rgb(242, 246, 248)',
+        headingColor: 'rgb(4, 28, 40)',
       },
     );
     await click('header-settings');
@@ -4143,10 +4143,10 @@ const runBrowserScenario = async () => {
       resolved: 'dark',
       stored: 'dark',
       selected: 'dark',
-      themeColor: '#080909',
+      themeColor: '#001621',
       colorScheme: 'dark',
-      backgroundToken: '#080909',
-      bodyBackground: 'rgb(8, 9, 9)',
+      backgroundToken: '#001621',
+      bodyBackground: 'rgb(0, 22, 33)',
     });
 
     await cdp.send('Page.reload', { ignoreCache: true });
@@ -4176,10 +4176,10 @@ const runBrowserScenario = async () => {
       resolved: 'light',
       stored: 'system',
       selected: 'system',
-      themeColor: '#F4F6F2',
+      themeColor: '#F2F6F8',
       colorScheme: 'light',
-      backgroundToken: '#f4f6f2',
-      bodyBackground: 'rgb(244, 246, 242)',
+      backgroundToken: '#f2f6f8',
+      bodyBackground: 'rgb(242, 246, 248)',
     });
     await cdp.send('Emulation.setEmulatedMedia', {
       media: '',
@@ -4202,10 +4202,10 @@ const runBrowserScenario = async () => {
       resolved: 'dark',
       stored: 'system',
       selected: 'system',
-      themeColor: '#080909',
+      themeColor: '#001621',
       colorScheme: 'dark',
-      backgroundToken: '#080909',
-      bodyBackground: 'rgb(8, 9, 9)',
+      backgroundToken: '#001621',
+      bodyBackground: 'rgb(0, 22, 33)',
     });
     console.log('KINETRA_T10_THEME_MODES=PASS');
 

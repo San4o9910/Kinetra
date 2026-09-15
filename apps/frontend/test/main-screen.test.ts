@@ -213,10 +213,9 @@ test('tab bar renders four client routes with Trainer and its unread badge', () 
   assert.ok(markup.includes('data-testid="tab-chat-badge"'));
   assert.ok(markup.includes('99+'));
   assert.ok(markup.includes('Сегодня'));
-  assert.ok(markup.includes('План'));
+  assert.ok(markup.includes('Расписание'));
   assert.ok(markup.includes('Прогресс'));
   assert.ok(markup.includes('Чат'));
-  assert.ok(markup.includes('Тренер'));
   assert.equal(markup.includes('data-testid="tab-settings"'), false);
 
   const savingMarkup = renderToStaticMarkup(

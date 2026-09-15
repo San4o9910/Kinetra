@@ -12,6 +12,9 @@ let databasePool: pg.Pool | null = null;
 try {
   const config = parseMediaCleanupJobEnvironment();
   databasePool = createJobDatabasePool('kinetra-chat-cleanup', config.databaseUrl);
+  await databasePool.query(
+    "DELETE FROM chat_video_assets WHERE status='uploading' AND created_at<now()-interval '1 hour'",
+  );
   const summary = await new ChatMediaCleanupService(
     new PostgresChatRepository(databasePool),
     new S3ChatMediaStore(config.s3),

@@ -84,7 +84,7 @@ export const AuthLinkGate = ({ link, children, onFinished }: AuthLinkGateProps):
       } else {
         setError(
           caught instanceof ApiRequestError && caught.code === 'WEAK_PASSWORD'
-            ? 'Этот пароль не подходит. Используйте не меньше 10 символов. Если пароль очень длинный, сократите его.'
+            ? 'Этот пароль не подходит. Используйте не меньше 6 символов. Если пароль очень длинный, сократите его.'
             : caught instanceof ApiRequestError && caught.status === 404 && !isReset
               ? 'Подтверждение email сейчас недоступно. Попробуйте войти в аккаунт.'
               : 'Не удалось завершить запрос. Проверьте подключение и попробуйте ещё раз.',
@@ -137,7 +137,7 @@ export const AuthLinkGate = ({ link, children, onFinished }: AuthLinkGateProps):
         ) : isReset ? (
           <form className="auth-form" onSubmit={(event) => void submit(event)}>
             <p id="reset-password-hint">
-              Используйте не меньше 10 символов. После смены пароля потребуется войти заново.
+              Используйте не меньше 6 символов. После смены пароля потребуется войти заново.
             </p>
             <label htmlFor="reset-new-password">
               Новый пароль
@@ -147,7 +147,7 @@ export const AuthLinkGate = ({ link, children, onFinished }: AuthLinkGateProps):
                 type="password"
                 autoComplete="new-password"
                 required
-                minLength={10}
+                minLength={6}
                 disabled={state === 'submitting'}
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
