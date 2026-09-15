@@ -2,7 +2,7 @@
 import base64,hashlib,importlib.util,io,json,os,pathlib,re,stat,urllib.error,urllib.parse,urllib.request,zipfile
 APP='a61a42f2dc10749939a1044990bf2cf456e34b52';BASE='73b665065e00a5b375e90f701373b3e0856a0386';MERGED='13437af4cf7791f767f58a27662755efdc25925b';CONTROL='1cb0c9c1ee900dd54f6e6c8cbf226f319688c75b'
 IMAGES={'backend':'ghcr.io/san4o9910/kinetra-backend@sha256:4926900d638e629fc7c2a275f92866be27b487dc901559ec7ff8fe301b42d6be','frontend':'ghcr.io/san4o9910/kinetra-frontend@sha256:efd7d884c7aa5500f2571c23049491d289591572100ad76f9cac1f911d41206b'}
-CONTAINERS={'backend':'460a447fc441071f595dea383b60487aa707e719511792aefa52a3a0b831962a','frontend':'c47ad815087ec8f3b310ac59f565babfb03af5b43102f56ac24678ac1c36d206','postgres':'a6d4870c61fae621ba44e772a11d5ef2a551e32944e6cc0487bd484c124ebad1'}
+CONTAINERS={'backend':'2fd2d3df2daf27c2d719db243902b9292a160275288efbcedccaf21fef964486','frontend':'3117bf83560d202491d5750ffa8afd357d80bd51cb0a67da20c9b46db3be2a9d','postgres':'a6d4870c61fae621ba44e772a11d5ef2a551e32944e6cc0487bd484c124ebad1'}
 class NoRedirect(urllib.request.HTTPRedirectHandler):
  def redirect_request(self,*args):return None
 opener=urllib.request.build_opener(NoRedirect)
@@ -28,7 +28,7 @@ def main():
  merged=api('/commits/'+MERGED);assert [p['sha'] for p in merged['parents']]==[BASE,APP]
  assert merged['commit']['tree']==api('/commits/'+APP)['commit']['tree']
  success(35035115157,MERGED,'.github/workflows/ci.yml',3)
- success(35035640078,CONTROL,'.github/workflows/kinetra-coaching-host-inspect.yml',1)
+ success(35036784808,'46eefb45dd3cb458e18c4074e5c4e8dec8a4b963','.github/workflows/kinetra-coaching-host-inspect.yml',1)
  success(35035640061,CONTROL,'.github/workflows/kinetra-coaching-images.yml',1)
  art=api('/actions/artifacts/10423615458');assert not art['expired'] and art['workflow_run']['id']==35035640061 and art['workflow_run']['head_sha']==CONTROL
  digest='e64b9d0b364f264434604c33dee9626ddad46b857b9a0ee54e674076e92190f7';assert art['digest']=='sha256:'+digest

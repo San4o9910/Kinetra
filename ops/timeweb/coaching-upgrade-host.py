@@ -52,7 +52,13 @@ def healthy(images,pgid):
    for k in images:
     c=current[k];require(c['HostConfig']['ReadonlyRootfs'] and c['HostConfig']['CapDrop']==['ALL'] and 'no-new-privileges:true' in c['HostConfig']['SecurityOpt'],'SANDBOX_CHANGED')
    ports=current['frontend']['NetworkSettings']['Ports'].get('8080/tcp');require(ports==[{'HostIp':'127.0.0.1','HostPort':'8080'}],'PUBLIC_BIND_CHANGED')
-   require(get('/health')[0]==200 and get('/ready')[0]==404 and get('/api/v1/me')[0]==401 and get('/')[0]==200,'HTTP_ACCEPTANCE_FAILED')
+   try:
+    codes={path:get(path)[0] for path in ('/health','/ready','/api/v1/me','/')}
+   except (OSError,http.client.HTTPException):
+    time.sleep(2);continue
+   if any(code in (502,503) for code in codes.values()):
+    time.sleep(2);continue
+   require(codes=={'/health':200,'/ready':404,'/api/v1/me':401,'/':200},'HTTP_ACCEPTANCE_FAILED')
    return current
   time.sleep(2)
  raise Failure('APPLICATION_HEALTH_TIMEOUT')
@@ -101,13 +107,13 @@ def main():
   require(all(current[k]['Config']['Image']==v for k,v in OLD_IMAGES.items()),'BASE_IMAGES_CHANGED')
   require(all(c['State']['Running'] for c in current.values()),'BASE_NOT_RUNNING');pgid=current['postgres']['Id']
   require(current['backend']['State'].get('Health',{}).get('Status')=='healthy' and get('/health')[0]==200,'BASE_NOT_HEALTHY')
-  oldledger=ledger(pgid);expected=data['migrations'];require(len(expected)==len(oldledger)+2 and all(expected.get(r['filename'])==r['checksum'] for r in oldledger),'MIGRATION_HISTORY_CHANGED')
+  oldledger=ledger(pgid);expected=data['migrations'];require(len(expected)==15 and len(oldledger)==15 and all(expected.get(r['filename'])==r['checksum'] for r in oldledger),'MIGRATION_HISTORY_CHANGED')
   grants=base64.b64decode(data['grants'],validate=True);require(len(grants)<16384 and b'chat_video_assets' in grants,'GRANTS_INVALID')
-  prior=S/('coaching-release-'+APP[:12])
+  prior=S/('coaching-release-'+APP[:12]+'-35036521425')
   previous=json.loads(private(prior/'attempt-result.json'));prior_request=json.loads(private(prior/'request.json'))
-  require(previous['result']=='FAIL' and previous['stage']=='MIGRATIONS' and previous['error']=='COMMAND_FAILED' and previous['rollback']=='NOT_NEEDED' and previous['backup']['restore_verified'] is True,'PRIOR_FAILURE_NOT_RECONCILED')
-  require(prior_request['run']=='35036305821' and {k:v for k,v in prior_request.items() if k!='run'}=={k:v for k,v in data.items() if k!='run'},'PRIOR_REQUEST_CHANGED')
-  require(hashlib.sha256(private(prior/'database.dump')).hexdigest()=='fe4fdafe5d8b8c39cba238bccfbf0b4f443d0bb399700934a98388be39856590','PRIOR_BACKUP_CHANGED')
+  require(previous['result']=='FAIL' and previous['stage']=='REPLACE_APPLICATION' and previous['error']=='ConnectionResetError' and previous['rollback']=='PREVIOUS_APPLICATION_RESTORED_ADDITIVE_SCHEMA_RETAINED' and previous['backup']['restore_verified'] is True,'PRIOR_FAILURE_NOT_RECONCILED')
+  require(prior_request['run']=='35036521425' and {k:v for k,v in prior_request.items() if k not in {'run','expected_containers'}}=={k:v for k,v in data.items() if k not in {'run','expected_containers'}},'PRIOR_REQUEST_CHANGED')
+  require(hashlib.sha256(private(prior/'database.dump')).hexdigest()=='20b631d8dba0289516e4f7e4460c9044000d0941c9b36bd844cf4b917b47ad2e','PRIOR_BACKUP_CHANGED')
   state['stage']='PULL_IMAGES'
   for k,image in data['images'].items():
    command(['docker','pull',image],timeout=180)

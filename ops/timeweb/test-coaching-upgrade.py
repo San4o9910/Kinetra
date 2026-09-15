@@ -36,4 +36,14 @@ class Checks(unittest.TestCase):
      self.assertIn('type=bind,source='+str(work/'public')+',target=/release,readonly',run.call_args.args[0])
      self.assertNotIn('type=bind,source='+str(work)+',target=/release,readonly',run.call_args.args[0])
    finally:os.umask(old)
+ def healthy_containers(self):
+  return {'postgres':{'Id':'pg','State':{'Running':True}},**{key:{'Config':{'Image':image},'State':{'Running':True,'Health':{'Status':'healthy'}},'HostConfig':{'ReadonlyRootfs':True,'CapDrop':['ALL'],'SecurityOpt':['no-new-privileges:true']},'NetworkSettings':{'Ports':{'8080/tcp':[{'HostIp':'127.0.0.1','HostPort':'8080'}]}}} for key,image in u.OLD_IMAGES.items()}}
+ def test_http_startup_reset_waits_for_actual_acceptance(self):
+  current=self.healthy_containers()
+  with patch.object(u,'inspect',return_value=current),patch.object(u,'get',side_effect=[ConnectionResetError(),(200,b''),(404,b''),(401,b''),(200,b'')]),patch.object(u.time,'sleep') as sleep:
+   self.assertEqual(u.healthy(u.OLD_IMAGES,'pg'),current);sleep.assert_called_once_with(2)
+ def test_wrong_auth_boundary_is_not_retried_or_accepted(self):
+  with patch.object(u,'inspect',return_value=self.healthy_containers()),patch.object(u,'get',side_effect=[(200,b''),(404,b''),(200,b''),(200,b'')]),patch.object(u.time,'sleep') as sleep:
+   with self.assertRaisesRegex(u.Failure,'HTTP_ACCEPTANCE_FAILED'):u.healthy(u.OLD_IMAGES,'pg')
+   sleep.assert_not_called()
 if __name__=='__main__':unittest.main()
