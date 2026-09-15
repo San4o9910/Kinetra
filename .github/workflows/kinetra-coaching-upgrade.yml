@@ -1,0 +1,80 @@
+name: Install qualified coaching release on existing Kinetra host
+on:
+  push:
+    branches: [ops/timeweb-hourly-preflight-20260909]
+    paths: [.github/workflows/kinetra-coaching-upgrade.yml]
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: kinetra-timeweb-hourly-provision
+  cancel-in-progress: false
+env:
+  APP_CHECKOUT: ${{ github.workspace }}/Kinetra
+jobs:
+  upgrade:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Verify reviewed upgrade and ownership contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          sha256sum --check --strict <<'SHA256'
+          567d892221925bb438ece6a893360a891ffd4228f8af0a18252b8ba365a682c0  ops/timeweb/inspect-server.py
+          e5defe0861257254e918e3a79e8386348cc305a54c3549665d0675631fbc2bfa  ops/timeweb/coaching-release-gate.py
+          638f58d34bda0c2633840276ad90a745163b9cc98e346de3abebf678945bd695  ops/timeweb/coaching-upgrade-host.py
+          6e205a827bf67e19560c561bed3b4625c145b54c45a2e095bba70b6fe8e0a61b  ops/timeweb/coaching-upgrade-caller.py
+          aa3fd79a93877a670d020faf9845f5ad70483e2360a765c9ea6710434d2030e4  ops/timeweb/test-coaching-upgrade.py
+          ba9d7f7d4a5475de9a4401be60694bcbeab1e62308d2f304454360fc72d2267e  ops/timeweb/upstream-disposition.py
+          5c151c545228455a4895d9f85a119c4052abd87548cd1478fc5a5315e25996ae  ops/timeweb/anonymous-browser-acceptance.mjs
+          SHA256
+          sudo python3 -B ops/timeweb/test-coaching-upgrade.py
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: a61a42f2dc10749939a1044990bf2cf456e34b52
+          path: Kinetra
+          persist-credentials: false
+      - name: Verify merged source manifest and qualified image evidence
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(git -C "$APP_CHECKOUT" rev-parse HEAD)" = a61a42f2dc10749939a1044990bf2cf456e34b52
+          (cd "$APP_CHECKOUT" && sha256sum --check --quiet MANIFEST.sha256)
+          python3 -B ops/timeweb/coaching-release-gate.py
+      - name: Back up, prove restoration and install the qualified update
+        env:
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+        run: python3 -B ops/timeweb/coaching-upgrade-caller.py --upgrade-coaching-release
+      - name: Retain sanitized upgrade result
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: kinetra-coaching-upgrade-${{ github.run_id }}
+          path: ${{ runner.temp }}/kinetra-coaching-upgrade.json
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Verify public HTTPS and desktop and mobile login
+        shell: bash
+        run: |
+          set -euo pipefail
+          browser_bin="$(command -v google-chrome)"
+          test -x "$browser_bin"
+          env -i PATH="$PATH" CHROME_BIN="$browser_bin" GITHUB_RUN_ID="$GITHUB_RUN_ID" ACCEPTANCE_OUTPUT="$RUNNER_TEMP/kinetra-external-acceptance" node ops/timeweb/anonymous-browser-acceptance.mjs
+      - name: Retain external browser acceptance
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: kinetra-coaching-browser-${{ github.run_id }}
+          path: ${{ runner.temp }}/kinetra-external-acceptance/
+          if-no-files-found: warn
+          retention-days: 14
