@@ -11,9 +11,10 @@
   "migration_count": 15,
   "password_min_length": 6,
   "chat_enabled": true,
-  "owner_reviewer_identity_pending": true,
+  "owner_reviewer_identity_pending": false,
   "ai_configured": false,
   "private_media_enabled": false,
   "payments_enabled": false,
-  "notes": "ops/timeweb/coaching-release-20260915.md"
+  "notes": "ops/timeweb/coaching-release-20260915.md",
+  "owner_reviewer_grant_run": 35100872079
 }

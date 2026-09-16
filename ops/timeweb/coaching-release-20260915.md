@@ -66,8 +66,11 @@ artifact. No account forms were submitted and no user messages were sent.
 ## Remaining configuration
 
 - The reviewer-only admin panel is deployed at `/admin/trainer-applications`.
-  No account was promoted. The owner must identify the intended account email;
-  then resolve its UUID and use the existing audited reviewer CLI.
+  The owner-selected existing account received reviewer access on 2026-09-16 through
+  the deployed audited reviewer CLI. Run 35100872079 passed unique account matching,
+  persistence and the application access check (`can_review: true`). The private
+  host audit is under `/srv/kinetra-stage/owner-reviewer-audit/35100872079`.
+  No account email/UUID was published; all temporary SSH keys were removed.
 - AI stays unavailable until a dedicated server key and model are configured.
 - Private photo/video uploads stay disabled until private S3 is configured.
 - Payments remain disabled. Email delivery and authenticated production workflows
