@@ -1,0 +1,56 @@
+# Owner selected their account in the conversation on 2026-09-16.
+# The email is not stored in this public repository or printed in workflow logs.
+name: Grant owner access to trainer application administration
+on:
+  push:
+    branches: [ops/timeweb-hourly-preflight-20260909]
+    paths: [.github/workflows/kinetra-owner-reviewer.yml]
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: kinetra-timeweb-hourly-provision
+  cancel-in-progress: false
+jobs:
+  owner-reviewer:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Verify bounded account selection and deployed release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          sha256sum --check --strict <<'SHA256'
+          567d892221925bb438ece6a893360a891ffd4228f8af0a18252b8ba365a682c0  ops/timeweb/inspect-server.py
+          bae23e2d6b777a0333b65f073f78135760019d637b5e133726674baea7593f2b  ops/timeweb/owner-reviewer-grant-host.py
+          6784d44c93c0e04fba7876765f51bf82fb46a03bf24f097bd5046bf6fc9a280b  ops/timeweb/owner-reviewer-caller.py
+          d85178f75259b1e961cadc101226094b26d4fb95c892a2fdcdf0c3d9b3ad0ac5  ops/timeweb/test-owner-reviewer-grant.py
+          SHA256
+          python3 -B ops/timeweb/test-owner-reviewer-grant.py
+          python3 - <<'PY_GATE'
+          import json,os,urllib.request
+          req=urllib.request.Request('https://api.github.com/repos/San4o9910/Kinetra/actions/runs/35036937433',headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
+          with urllib.request.urlopen(req,timeout=20) as r: run=json.load(r)
+          assert run['repository']['full_name']=='San4o9910/Kinetra' and run['status']=='completed' and run['conclusion']=='success'
+          assert run['head_sha']=='d42e7d3d9a857ef621ad775edc03b1a192c6ac58' and run['path']=='.github/workflows/kinetra-coaching-upgrade.yml'
+          print('KINETRA_REVIEWER_DEPLOYED_RELEASE=PASS')
+          PY_GATE
+      - name: Grant only the selected account through the deployed reviewer CLI
+        env:
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+        run: python3 -B ops/timeweb/owner-reviewer-caller.py --grant-owner-reviewer
+      - name: Retain sanitized access result
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: kinetra-owner-reviewer-${{ github.run_id }}
+          path: ${{ runner.temp }}/kinetra-owner-reviewer.json
+          if-no-files-found: error
+          retention-days: 14
