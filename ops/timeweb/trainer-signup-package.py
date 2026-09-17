@@ -8,7 +8,7 @@ GitHub readers also authenticate the prior database handoff.
 
 def verify_approved_public_package(package, target, app):
     """Existing project packages, explicitly authorized coaching release on September 17."""
-    assert app == 'c0eafb0ffaa9c8d64b1f97be54b7cdebb5600faf'
+    assert app == 'c4f63e798b3bb98b97ea9eb7de73ba5c167a54c5'
     approved_ids = {'backend': 15042113, 'frontend': 15042114}
     assert target in approved_ids and isinstance(package, dict)
     assert type(package.get('id')) is int and package['id'] == approved_ids[target]

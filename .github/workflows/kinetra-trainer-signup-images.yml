@@ -21,14 +21,14 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  APPROVED_APP_COMMIT: c0eafb0ffaa9c8d64b1f97be54b7cdebb5600faf
-  APPROVED_BASE_COMMIT: 13437af4cf7791f767f58a27662755efdc25925b
+  APPROVED_APP_COMMIT: c4f63e798b3bb98b97ea9eb7de73ba5c167a54c5
+  APPROVED_BASE_COMMIT: 36ba7336c9db2cfa7b7605101cb4082db3585d59
   QUALIFIED_RUNTIME_COMMIT: 73b665065e00a5b375e90f701373b3e0856a0386
-  APPROVED_MERGE_COMMIT: facda84ad5fa9b89972de441bbf0112c541543ca
-  RELEASE_MERGE_COMMIT: 36ba7336c9db2cfa7b7605101cb4082db3585d59
+  APPROVED_MERGE_COMMIT: 761272edcaf8af427fb815703f66ae55eb9b1e48
+  RELEASE_MERGE_COMMIT: 5b208925884cdf1038a9a586edfa5bbe28fd1c0e
   RUNTIME_IMAGE: ghcr.io/san4o9910/kinetra-backend@sha256:9138a6408442b847ca771690053870880cee831769919aaf2a2dc858d52e8362
-  APPROVED_HEAD_RUN: '35283202509'
-  APPROVED_MERGE_RUN: '35283205820'
+  APPROVED_HEAD_RUN: '35284329501'
+  APPROVED_MERGE_RUN: '35284334188'
   PUBLISH_TO_GHCR: 'true'
   PUBLIC_ORIGIN: https://80.68.156.131
   NODE_TAG: docker.io/library/node:22-alpine3.24
@@ -87,7 +87,7 @@ jobs:
                   raw = response.read(16 * 1024 * 1024 + 1)
               assert len(raw) <= 16 * 1024 * 1024
               return raw.decode('utf-8-sig')
-          pr = get('/pulls/23')
+          pr = get('/pulls/24')
           assert pr['state'] == 'closed' and pr['merged'] and pr['merge_commit_sha'] == os.environ['RELEASE_MERGE_COMMIT']
           assert pr['head']['repo']['full_name'] == repo
           assert pr['head']['ref'] == 'fix/trainer-application-simplicity'
@@ -109,7 +109,7 @@ jobs:
               # GitHub may clear run.pull_requests after merge; authenticated checkout logs below
               # still bind the historical merge to the exact two approved parents.
               if event == 'pull_request' and run['pull_requests']:
-                  assert any(p['number'] == 23 and p['head']['sha'] == app and p['base']['sha'] == base
+                  assert any(p['number'] == 24 and p['head']['sha'] == app and p['base']['sha'] == base
                              for p in run['pull_requests'])
               jobs = get('/actions/runs/' + run_id + '/attempts/' + str(run['run_attempt']) + '/jobs?per_page=100')
               assert jobs['total_count'] == 3
@@ -185,7 +185,7 @@ jobs:
           set -euo pipefail
           sha256sum --check --strict <<'SHA256'
           61fc0550edbc533938b1850ad17aa6779c1d2fa7122db08296748acfe43924ea  .kinetra-control/ops/timeweb/verify-launch-provenance.py
-          db77a65bb8eff1d8a9f46b02a32ea1c289defc2e3fe239d8bc44222e4023bb4d  .kinetra-control/ops/timeweb/trainer-signup-package.py
+          06ce6182a1cc934b21b45536a8f415449c0caa4cb6805aa0c776a4c2434536a5  .kinetra-control/ops/timeweb/trainer-signup-package.py
           SHA256
           python3 -B - <<'PY'
           import json, os, runpy, urllib.request
@@ -595,7 +595,7 @@ jobs:
           ba9d7f7d4a5475de9a4401be60694bcbeab1e62308d2f304454360fc72d2267e  .kinetra-control/ops/timeweb/upstream-disposition.py
           85f25de920ccffb1878a56b5be6132c0d3ab99a0d21125112575ba8efffd3c82  .kinetra-control/ops/timeweb/test-upstream-disposition.py
           61fc0550edbc533938b1850ad17aa6779c1d2fa7122db08296748acfe43924ea  .kinetra-control/ops/timeweb/verify-launch-provenance.py
-          db77a65bb8eff1d8a9f46b02a32ea1c289defc2e3fe239d8bc44222e4023bb4d  .kinetra-control/ops/timeweb/trainer-signup-package.py
+          06ce6182a1cc934b21b45536a8f415449c0caa4cb6805aa0c776a4c2434536a5  .kinetra-control/ops/timeweb/trainer-signup-package.py
           SHA256
           PYTHONDONTWRITEBYTECODE=1 python3 .kinetra-control/ops/timeweb/test-scan-upstream-media.py
           PYTHONDONTWRITEBYTECODE=1 python3 .kinetra-control/ops/timeweb/test-upstream-disposition.py
