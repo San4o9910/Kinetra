@@ -1,6 +1,6 @@
 a6b98ea7cb6d61ed8d430dd0dffa46c87012b5cf859d4ce7207898954951fdcd  ./.editorconfig
 7333eb49cff45b8c396b0325cfe5a3985df7df45f0f8ccb52acc0f335b0e2926  ./.env.example
-99be7877bf4479acf309772345336e808d7d818beec06b499f370a642c34b855  ./.github/workflows/ci.yml
+251af229a964daec0540505757f996d06152de02ec95f43e8e61ecfb4ae688d5  ./.github/workflows/ci.yml
 bf0b9f2976cc6caa82bd0268fc6c19b11d72a7bf17624cf1fb866462e3811e31  ./.gitignore
 177d20030d4dcc37eae9ef92865ec54dadce60e8f19e9a34a5d4f37502195a36  ./.nvmrc
 019a6ff828333978e4ecceae4a881852c6f850fbc6d86755f5e4c9c068727ec8  ./.prettierignore
@@ -130,7 +130,7 @@ e727c7c7bdc7a43876e015b426d70eef9dc48f7cf12c11fe12a9a19f2198b3d3  ./apps/backend
 2652dc7405de721727288d40ff6d3a1004c9c22a93a51f1c67881cd0550df82a  ./apps/backend/src/trainer-verification/reviewer-cli.ts
 99533ee2fe2367082334a73bfd8d5f49945bb614f1247d2ee9077ce3047593e2  ./apps/backend/src/trainer-verification/router.ts
 df340fb0bb2b9a21404dadb21b4bf8e00a294333cea02f5537da15a9eeeaa1df  ./apps/backend/src/trainer-verification/runtime.ts
-04d82f833661c86a20b0c725059e45f921ce95ab52a6251bfe04f6d39d9c1b84  ./apps/backend/src/trainer-verification/schema.ts
+11769faa241e7656d10f918d2b2241f8b6155593f2aae4db5b33c5f608f32381  ./apps/backend/src/trainer-verification/schema.ts
 35de1415d20261eaa4556fe3941f8c43fbec23bbb33a2ebff1c6d4a2500d9645  ./apps/backend/src/trainer-verification/service.ts
 257ca2b87913a6cb18c24ab310d35842c90b762abacc38e360f0db437939edcb  ./apps/backend/src/types/express.d.ts
 19cf058f07afb9fb76dd084fe36305a143381acfaa735d9783c3a57abe2d8aa8  ./apps/backend/src/video-admin/postgres-video.repository.ts
@@ -202,8 +202,8 @@ c3a3face1438c8989c6a0d5aab2378b4c5452372b239571320a8dcfb8550b113  ./apps/backend
 f21099dd39920a4d2bd12eca6f6ab978feafcf6fe7337c23b5282b94cbdc959e  ./apps/backend/test/support/test-clock.ts
 e5e56cea8c4a1ce2b7f6c3e07c108cbf86ac5b62e65528e0135d55e70fbf4a80  ./apps/backend/test/support/test-delivery.ts
 4580d475a8436bb50613d4f77439254878d5ba7dc281d7dddad1561471385185  ./apps/backend/test/trainer-verification-reviewer-cli.test.ts
-ba92a3399eae24f371f29ebf847d39e8d9e0424477caf7b8eb1f20ce9b6f8d0f  ./apps/backend/test/trainer-verification.e2e.test.ts
-abea8aaba68ddb3c35818a5092629dd9374b74cd8b6d9562395bce861a76ca96  ./apps/backend/test/trainer-verification.postgres.test.ts
+d56cfed0b24a984b371153df256707de9132a82d27fe8cc7ea3738b0d4c3ac3a  ./apps/backend/test/trainer-verification.e2e.test.ts
+8723d77fdce0900c448bbfe7c9475bd490fd80bf1ff44c9fb7675189ea9985ad  ./apps/backend/test/trainer-verification.postgres.test.ts
 d54502b77ed88066f68ce11223bc5d4e40ba5af1e1984289923cff711b053654  ./apps/backend/test/video-admin.e2e.test.ts
 1b4ca9f0f3ba16b5bfdcf5de184ed8c0730a9b918a23b4e8541616734b4f2e70  ./apps/backend/test/video-admin.postgres.test.ts
 6013730bf20a7b5262015560872c320ad24798645ac926bc13d12c7f635dd740  ./apps/backend/test/video-admin.test.ts
@@ -223,13 +223,13 @@ ad869234afa89fe3ac001bd15a3953a3ee76d05f4d6bb448d2767e4063410f84  ./apps/fronten
 2d473807712b3f06216cbe6fa3a4445bd4d142e508cd8ee9c9229088227493e3  ./apps/frontend/public/icons/icon-maskable-512.png
 b2b41ae81353103525caeb62a7208257b0e06a7b9aa5e28f0856bfaa5b944593  ./apps/frontend/public/manifest.webmanifest
 42082a77cef4fa5601c159057c16e6a0f7d52e16e7cbad69bc68cee38fdb5549  ./apps/frontend/public/offline.html
-65adffb18f550be962ba0e64f9586fa1177811f0960c02be592f04170a8a9c14  ./apps/frontend/public/service-worker.js
+77be207189b63202521511b9bac805c49ca3c114d2c9d839d6e0e21796133c80  ./apps/frontend/public/service-worker.js
 0ed61882195d1985dfb9ed93b24a85c9f52a2aba0c5672694878fcf945c3443f  ./apps/frontend/public/theme-init.js
-fe361cf3ddfe55421d372125026b0979305e08a1132da69bddccc998f4c69498  ./apps/frontend/src/App.tsx
+8e1f5819dc3537e8590842a6409a4bded871ffed5c4e58d4bd959084e718a11f  ./apps/frontend/src/App.tsx
 18e921f9c45beaa0cea27f57fb47812f1e7a21a64dce17dfb88f6d5ed43f8932  ./apps/frontend/src/features/auth/AuthLinkGate.tsx
 346c28a7c6f8ec4ba4a9210f8776c1b6e36eb3f6e76a8d4a0edcee5b0f10fdd6  ./apps/frontend/src/features/auth/ForgotPasswordScreen.tsx
 1895192dc2d61436abfa2a2539c9d6c7f08ca24722621b28e6bd7a1b948dbedf  ./apps/frontend/src/features/auth/LoginScreen.tsx
-a57d8e1fa9d89cb6756c0cdb94f78f47b2e560de0a77ef58488e675417533a79  ./apps/frontend/src/features/auth/RegisterScreen.tsx
+e73b6143922e014c4b47b18299e1e962a365e98840c0b6b4ba24afeada8d96c0  ./apps/frontend/src/features/auth/RegisterScreen.tsx
 b3f78ff3b32d0653049d517a415df5235ec791c8eba2880f4d2f266ae236fbb1  ./apps/frontend/src/features/auth/authLinks.ts
 59da136b4bd233913eecddb1f9f478f7b5151651274d6ea6f7574627dda92bed  ./apps/frontend/src/features/base-lessons/BaseLessonsRequiredDialog.tsx
 303b3e78dfb56823ec7b109fe3361ae28ff3ee0852df294a4cecbb3d3b861c4c  ./apps/frontend/src/features/base-lessons/BaseLessonsScreen.tsx
@@ -307,8 +307,8 @@ ae99304abdb4727de9ac59902ff9416e89d39a91c8be175695c6b2b20018bd0d  ./apps/fronten
 6dd0d2c7543ac0e87bc6dc9e7ee29fe6c76e1f2a503bb7832e97c8d01e6763c8  ./apps/frontend/src/features/trainer-chat/index.ts
 876ece19605150ecce807fa7473c4403fd68ca56d01ce841f8263cee853f9c13  ./apps/frontend/src/features/trainer-chat/selectedConversation.ts
 319d0257461fceaa73ba8c51766b4bfce71f633712b499595e8c503d27855a2c  ./apps/frontend/src/features/trainer-shell/TrainerAdminShell.tsx
-bc15c2125d8b45fcf629908c4832acf6d6d6969ca1af4f455759ca981d8634fa  ./apps/frontend/src/features/trainer-verification/TrainerApplicationsAdmin.tsx
-761b6c70eabb0c34e3da287665bfe44934d16dcde6625d4c1bb8c6591ff776cb  ./apps/frontend/src/features/trainer-verification/TrainerVerificationScreen.tsx
+60fad8ea761b0c24df133447e99d6bed2589926fb2c94ee2e037e42bc26ea3c9  ./apps/frontend/src/features/trainer-verification/TrainerApplicationsAdmin.tsx
+9f03559d22b4b1ec9cd1f1c6e9869594a88d5cc814d970f6101c15cda9416ae1  ./apps/frontend/src/features/trainer-verification/TrainerVerificationScreen.tsx
 767497040344c86a178e5f04f0a3eaaaa182bccc9fb6c908a8d6e2a09aa61fc2  ./apps/frontend/src/features/trainer-videos/TrainerVideosScreen.tsx
 146868b489b6a3569c1be8ee568b949eac661f0729ca3f21b30c5ae3b54aa20b  ./apps/frontend/src/features/trainer-videos/model.ts
 823cbdc71ba6b40201242ad9df6b4d1bec1c6efc88229f436743a1dba1f33ee6  ./apps/frontend/src/features/trainer-videos/preview-dialog-lifecycle.ts
@@ -321,7 +321,7 @@ d84f3c7b0049aeba4c316a49bf2dcb6da4b0bda5fee17c2ffacfb8730b13a5a6  ./apps/fronten
 f65d6dc912ad0ce9c4cf7c69f71e4dbe2db849878a195f96f1d865d77d0c3577  ./apps/frontend/src/pwa/registerServiceWorker.ts
 2f9ad659021866bc007aea56ea0703fc1e7070f0175fd121c0262b0f6b3b7c05  ./apps/frontend/src/realtime/socket.ts
 4be08543ed666e0459238f8656ba9e398a2c5378b11ec426e02c4d9a28cb2b42  ./apps/frontend/src/routing.ts
-1b43b2697f5e7ed0e0621a23be127528b781775091d4a074e517f23764936fa6  ./apps/frontend/src/styles.css
+723b96903383129cd2436743e83bbd1951ad254363da4baf6a313cc3d5dbf193  ./apps/frontend/src/styles.css
 8e6a482dec7d62533619e4354794d9248850e9171d650832e7acdf4c313ef0d8  ./apps/frontend/src/vite-env.d.ts
 6b05ae8ab3c10f85b663ffdf99e4b0ff51bf3d3795c1fbcb4762ec2fbc9b41ad  ./apps/frontend/test/api-session.test.ts
 14cb146b0d6330a0fee686ca6c0defb2f366b288f184cdf0d574925f323c1bad  ./apps/frontend/test/auth-recovery.test.ts
@@ -342,7 +342,7 @@ e0a29a6be848d2c3a58ecf2dceeccd5767b6b8799985a9629739a41ff9092765  ./apps/fronten
 62099c56cb95e097b8d408d3c6d5296d696180b9417b8570308fe353ff4be87a  ./apps/frontend/test/progress-api.test.ts
 cfa9bc86dc89f7cceb4fbfee4c5b15e6222186a7719e7ebef42db3981a8af74e  ./apps/frontend/test/progress.test.ts
 d90f7a55815b7c1870cd062135964ac2c4c8dcefc7b28156c63b09a8dbcfa299  ./apps/frontend/test/push-notifications.test.ts
-e11d94ad9eddf357e9458109a6400df80bbef5f2eaff584c285818355c35ad37  ./apps/frontend/test/registration-roles.test.ts
+1c80c98e72c2309db87e9a11217e5962408b60d57edd6561ccef93c686628f10  ./apps/frontend/test/registration-roles.test.ts
 216994005f7b13e63ce2b2e45b19c422fcb8a82bd48816360ad6370cc35eaa96  ./apps/frontend/test/schedule-api.test.ts
 89cfa1d9c27046f274134e5506eb7c22339200648eb1699552c180a64322b53c  ./apps/frontend/test/schedule.test.ts
 cf128fd49ad44d3e53ca1bd971686df35b3828a21a1d2498273fd3182589fc08  ./apps/frontend/test/service-worker.test.ts
@@ -417,7 +417,7 @@ ad37b97348ba7289c37c5f82e2a73142d1c06fefe28fe965dc8ddeb033c73416  ./docs/T11_PAY
 9a8c4a83ec3eb507352c2c50861050099ab2538cccec0ef52c3ca1168f55a033  ./docs/T12_TRAINER_CHAT.md
 4cb9926c72b5793bc5df901b923e816fa864e7972cccae672f9499d65d213a1f  ./docs/T13_PUSH_NOTIFICATIONS.md
 a9b1c236d0feea9883c7d1e0b54d7260cd692d179fc65c6a99609392af213bba  ./docs/T14_VIDEO_UPLOADS.md
-cf715055ccd10f1098d83cf11facdb3278ea844b0e30c737e2ed9be7360f4ff2  ./docs/TRAINER_VERIFICATION.md
+afa829dd0eec21ccb0d25d35ef074dfed4ba5033f03b5ca7d8fc6aa76c0f794f  ./docs/TRAINER_VERIFICATION.md
 424d37de42e2b5b533f5b663b7d9534464106199879a1e8e2597d984a013083e  ./docs/YANDEX_MAIL_SETUP.md
 42cb4e2ce5f3c1726688d1f5ecb4238b79ed9b97e5f80455cbfeeaf28b2821bf  ./eslint.config.mjs
 d3922ef7c7d64239b9c7dfe95a415ed719fe3a723e65c018f5e67fa0d6b1a056  ./ops/backup-postgres.sh
@@ -436,6 +436,6 @@ c8171db33a1b645b8c36d542cf4bfc5c47073df8842b846f91a6ebf083973c5e  ./packages/sha
 d16d01c4778cc1b7b5f6695a8ad979bc82ed5d3ecec2a77ac579f3bda9e4210f  ./scripts/local-demo-guard.mjs
 aa40f7eec1b859bca8bfe25c88bb945223365e3490c3b675f3b837afda357737  ./scripts/prepare-local-demo.mjs
 bd552b5c0ba879666a9fecf9a8bba3b30f5b1223fbc1cf69fef30a5c6437aaf2  ./scripts/run-local-demo.mjs
-f27d50cc9603630933efca358abe8d563c24a9c96ff267e7f09da8296cfbd3b8  ./scripts/test-frontend-browser.mjs
+6c0828a9c987f0a77b8051913901631e7369d34ec9a7921293783d4d22cc80fe  ./scripts/test-frontend-browser.mjs
 a06af897462ff624ce25cb7cba74442e96f8756442cfbdb1af8a6891406519fe  ./scripts/verify-project.mjs
 2b67887209f3334ebdc96426f5c2cb87480fb85ff2f75c0d42b0a944dae7922a  ./tsconfig.base.json

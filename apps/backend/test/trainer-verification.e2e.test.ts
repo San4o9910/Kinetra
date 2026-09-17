@@ -436,7 +436,10 @@ test('trainer verification HTTP contract is authenticated, strict and role-gated
         ...validApplication,
         materials: [{ ...validApplication.materials[0], url: 'http://example.com/profile' }],
       },
-      { ...validApplication, materials: [] },
+      {
+        ...validApplication,
+        materials: [{ ...validApplication.materials[0], url: 'javascript:alert(1)' }],
+      },
       { ...validApplication, timezone: 'Invalid/Timezone' },
     ]) {
       const invalid = await requestJson(harness, '/api/v1/trainer-verification', {
@@ -479,6 +482,67 @@ test('trainer verification HTTP contract is authenticated, strict and role-gated
     assert.equal(errorCode(malformedWithdraw.body), 'INVALID_REQUEST_BODY');
   } finally {
     await harness.close();
+  }
+});
+
+test('applications without websites stay pending until a reviewer approves and accept clarification', async () => {
+  for (const materials of [undefined, []]) {
+    const { harness } = await startHarness();
+    try {
+      const body = {
+        ...validApplication,
+        bio: 'Обучение: курс подготовки тренеров.\nОпыт: начинающий тренер.',
+        materials,
+      };
+      const submitted = await requestJson(harness, '/api/v1/trainer-verification', {
+        method: 'POST',
+        body,
+      });
+      assert.equal(submitted.status, 201);
+      assert.equal(asObject(submitted.body).trainer_verification_state, 'pending');
+      const application = asObject(asObject(submitted.body).request);
+      assert.deepEqual(application.materials, []);
+      assert.equal(application.bio, body.bio);
+      const reviewPath = `/api/v1/admin/trainer-verification/${String(application.id)}`;
+      assert.equal(
+        (await requestJson(harness, `${reviewPath}/approve`, { method: 'POST', body: {} })).status,
+        403,
+      );
+      const queue = await requestJson(
+        harness,
+        '/api/v1/admin/trainer-verification?status=pending',
+        { token: harness.reviewerToken },
+      );
+      assert.equal(queue.status, 200);
+      assert.equal((asObject(queue.body).requests as unknown[]).length, 1);
+      const clarification = await requestJson(harness, `${reviewPath}/request-info`, {
+        method: 'POST',
+        token: harness.reviewerToken,
+        body: { reason: 'Расскажите подробнее о вашем обучении.' },
+      });
+      assert.equal(clarification.status, 200);
+      const updated = await requestJson(harness, '/api/v1/trainer-verification/me', {
+        method: 'PATCH',
+        body: { ...body, bio: body.bio + '\nПрошёл практику с наставником.' },
+      });
+      assert.equal(updated.status, 200);
+      assert.equal(asObject(updated.body).trainer_verification_state, 'pending');
+      assert.deepEqual(asObject(asObject(updated.body).request).materials, []);
+      assert.equal(
+        (
+          await requestJson(harness, `${reviewPath}/approve`, {
+            method: 'POST',
+            token: harness.reviewerToken,
+            body: {},
+          })
+        ).status,
+        200,
+      );
+      const approved = await requestJson(harness, '/api/v1/trainer-verification/me');
+      assert.equal(asObject(approved.body).trainer_verification_state, 'approved');
+    } finally {
+      await harness.close();
+    }
   }
 });
 

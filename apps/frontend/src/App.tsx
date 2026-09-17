@@ -810,9 +810,11 @@ export const App = (): ReactNode => {
       setAuthView('login');
       setSession({ kind: 'authenticated', profile });
       navigate(
-        profile.account_role === 'trainer'
-          ? appRoutes.trainerChats
-          : routeForOnboardingStatus(profile.user.onboardingStatus),
+        route === appRoutes.adminApplications
+          ? appRoutes.adminApplications
+          : profile.account_role === 'trainer'
+            ? appRoutes.trainerChats
+            : routeForOnboardingStatus(profile.user.onboardingStatus),
         true,
       );
     };
@@ -960,6 +962,7 @@ export const App = (): ReactNode => {
   if (profile.requested_role === 'trainer') {
     return (
       <TrainerVerificationScreen
+        onReviewApplications={canReview ? () => navigate(appRoutes.adminApplications) : undefined}
         onProfileUpdated={handleTrainerVerificationProfileUpdated}
         onSessionExpired={handleActiveSessionExpired}
         onSignOut={handleTrainerSignOut}

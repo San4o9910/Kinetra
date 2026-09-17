@@ -178,7 +178,7 @@ test('verification UI uses link metadata only and defines mobile columns after d
 
   assert.doesNotMatch(screenSource, /type="file"/u);
   assert.doesNotMatch(screenSource, /\bS3\b/u);
-  assert.match(screenSource, /Файлы не загружаются/u);
+  assert.match(screenSource, /Можно отправить заявку без ссылок/u);
   assert.ok(desktopColumns >= 0);
   assert.ok(mobileBreakpoint > desktopColumns);
   assert.match(

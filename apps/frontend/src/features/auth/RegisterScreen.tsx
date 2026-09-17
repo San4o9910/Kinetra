@@ -38,18 +38,13 @@ const profileLoadMessage = (error: unknown): string =>
 export const RegisterScreen = ({ onAuthenticated, onBack }: RegisterScreenProps): ReactNode => {
   const [requestedRole, setRequestedRole] = useState<RequestedRole | null>(null);
   const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
-  const [passwordConfirmation, setPasswordConfirmation] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [completion, setCompletion] = useState<RegistrationCompletion | null>(null);
   const canSubmit =
-    requestedRole !== null &&
-    email.trim().length > 0 &&
-    password.length > 0 &&
-    passwordConfirmation.length > 0 &&
-    !isSubmitting;
+    requestedRole !== null && email.trim().length > 0 && password.length > 0 && !isSubmitting;
 
   const loadCreatedProfile = async (): Promise<void> => {
     setIsSubmitting(true);
@@ -72,7 +67,7 @@ export const RegisterScreen = ({ onAuthenticated, onBack }: RegisterScreenProps)
       return;
     }
 
-    const passwordIssue = resetPasswordIssue(password, passwordConfirmation);
+    const passwordIssue = resetPasswordIssue(password, password);
     if (passwordIssue !== null) {
       setError(passwordIssue);
       return;
@@ -84,7 +79,6 @@ export const RegisterScreen = ({ onAuthenticated, onBack }: RegisterScreenProps)
     try {
       const result = await register({
         email: email.trim(),
-        ...(phone.trim().length === 0 ? {} : { phone: phone.trim() }),
         password,
         requested_role: requestedRole,
       });
@@ -124,7 +118,10 @@ export const RegisterScreen = ({ onAuthenticated, onBack }: RegisterScreenProps)
         <div className="auth-copy">
           <p className="survey-kicker">НОВЫЙ ПРОФИЛЬ</p>
           <h1 id="register-title">Создайте аккаунт</h1>
-          <p>Выберите роль. Права тренера появятся только после ручной проверки заявки.</p>
+          <p>
+            Нужны только email и пароль. Для тренеров — короткая заявка и личная проверка владельцем
+            Kinetra.
+          </p>
         </div>
 
         {completion === null ? (
@@ -168,23 +165,10 @@ export const RegisterScreen = ({ onAuthenticated, onBack }: RegisterScreenProps)
             </label>
 
             <label>
-              <span>
-                Телефон <em>необязательно</em>
-              </span>
-              <input
-                data-testid="register-phone"
-                type="tel"
-                autoComplete="tel"
-                value={phone}
-                onChange={(event) => setPhone(event.target.value)}
-              />
-            </label>
-
-            <label>
               <span>Пароль · от 6 символов</span>
               <input
                 data-testid="register-password"
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 autoComplete="new-password"
                 minLength={6}
                 value={password}
@@ -193,18 +177,14 @@ export const RegisterScreen = ({ onAuthenticated, onBack }: RegisterScreenProps)
               />
             </label>
 
-            <label>
-              <span>Повторите пароль</span>
-              <input
-                data-testid="register-password-confirmation"
-                type="password"
-                autoComplete="new-password"
-                minLength={6}
-                value={passwordConfirmation}
-                onChange={(event) => setPasswordConfirmation(event.target.value)}
-                required
-              />
-            </label>
+            <button
+              className="auth-link-button"
+              type="button"
+              aria-pressed={showPassword}
+              onClick={() => setShowPassword((value) => !value)}
+            >
+              {showPassword ? 'Скрыть пароль' : 'Показать пароль'}
+            </button>
 
             {error === null ? null : (
               <p className="survey-error" role="alert">
