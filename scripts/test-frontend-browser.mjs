@@ -8721,7 +8721,7 @@ const runTrainerApplicationBrowserScenario = async () => {
   try {
     await listen(server, apiPort);
     context = await launchT12BrowserContext(directory, 390, 844);
-    // The initial about:blank document may not have a documentElement yet.
+    // The initial document may not have a documentElement yet.
     // Navigate directly; subsequent navigations can use the loaded-document marker.
     await context.cdp.send('Page.navigate', { url: `${frontendOrigin}/login` });
     await waitFor('registration login', () => context.exists('login-screen'));
