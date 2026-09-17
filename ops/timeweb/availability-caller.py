@@ -29,7 +29,8 @@ def main():
   script=(ROOT/'availability-host-inspect.py').read_text()
   result=subprocess.run(args+['/usr/bin/python3 -B -c '+shlex.quote(script)],input=b'',stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=240)
   assert len(result.stdout)<65536
-  guest=json.loads(result.stdout);assert result.returncode==0 and guest['result']=='PASS_READ_ONLY'
+  guest=json.loads(result.stdout);state['guest']=guest
+  assert result.returncode==0 and guest['result']=='PASS_READ_ONLY'
   state['guest']=guest;state['result']='PASS_READ_ONLY'
  except BaseException as e:state['error']=str(e) if isinstance(e,m.InspectError) else type(e).__name__
  finally:

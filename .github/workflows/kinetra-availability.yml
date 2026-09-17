@@ -22,8 +22,8 @@ jobs:
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           sha256sum --check --strict <<'SHA256'
           567d892221925bb438ece6a893360a891ffd4228f8af0a18252b8ba365a682c0  ops/timeweb/inspect-server.py
-          0c9ff626c9b6742c41852c9eb0a15d0f75f06a49f9a91a11ab41ffc026ab6e61  ops/timeweb/availability-caller.py
-          766363eb6683f1300487c4a341b2b2dbf4ba0679b19af42b2bf5c702314d8aa4  ops/timeweb/availability-host-inspect.py
+          fb533928b82753e65cd77413eddd249e203b6c67fff548414629f3353e5b2d68  ops/timeweb/availability-caller.py
+          c1179fab18c504f174556829348461e61c5889ba2ca94ff2432e1734e190be7b  ops/timeweb/availability-host-inspect.py
           SHA256
       - name: Inspect existing application, migration ledger and backup capacity
         env:
@@ -38,7 +38,7 @@ jobs:
             try:
               with urllib.request.urlopen('https://80.68.156.131'+path,timeout=20) as response: code=response.status
             except urllib.error.HTTPError as error: code=error.code
-            except Exception as error: code=type(error).__name__
+            except Exception as error: code=type(error).__name__+':'+type(getattr(error,'reason',None)).__name__+':'+str(getattr(getattr(error,'reason',None),'errno',None))
             print('KINETRA_PUBLIC='+json.dumps({'path':path,'status':code}))
           PY_HTTP
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
