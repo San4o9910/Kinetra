@@ -72,6 +72,42 @@ checks. Evidence artifact **10523629322**, SHA-256
 
 ## Deployment receipt
 
-Pending final qualification and installation. This file must be completed with
-the accepted application, image digests, backup receipt and external acceptance
-before marking the update as deployed in `current-release.json`.
+Accepted installation run **35285117508**, job **105415618619**, control
+`77f3de12b7b74598459380c203114e8dde8a4439`: `PASS_UPGRADED`.
+The same run completed external anonymous desktop (1440×1000) and mobile
+(390×844) checks for HTTPS, login and the simplified registration form, without
+submitting a production registration or sending email. Both viewports rendered
+correctly without horizontal overflow or uncaught browser exceptions.
+
+The compiled server schema was also checked inside the actual deployed backend:
+an application with no materials and a multiline description is accepted;
+an unsafe optional URL is rejected. The existing reviewer grant count was
+preserved, PostgreSQL container identity stayed unchanged, and all 15 migration
+checksums matched. No schema or grants were changed by the application update.
+
+Backup, restored into a disposable database and verified before replacement:
+
+- Path: `/srv/kinetra-stage/trainer-signup-release-c4f63e798b3b-35285117508/database.dump`
+- Bytes: `180326`
+- SHA-256: `90576c32f35fe61f1bc43925ac70f75ab2f40c7c88357d778c37beecad81b579`
+
+The backup remains on the existing host; this is not an off-host disaster recovery
+claim. Backend/frontend replacement required no rollback. All ephemeral provider,
+guest and local SSH key material was cleaned up.
+
+Final container IDs:
+
+- Backend: `fa83f342eca9a9934b8e3a2345d8239a71957ce339ac2e525f9ab8cc16d3ffb2`
+- Frontend: `20d864e33c14c7e08c9b6e2368d128589bc994d6268c2880cdf2b8abf72640d9`
+- PostgreSQL: `a6d4870c61fae621ba44e772a11d5ef2a551e32944e6cc0487bd484c124ebad1`
+
+Owner review URL: `https://80.68.156.131/admin/trainer-applications`.
+Authenticated submission, clarification and approval were exercised in isolated
+HTTP/PostgreSQL/browser fixtures; production checks did not impersonate the owner
+or modify user applications. Existing optional AI, private media and payment
+configuration was preserved.
+
+Acceptance artifacts:
+
+- Upgrade **10523468296**, SHA-256 `d9abb85d9374dcd1626af3bb2b91d7b61b3d3a190e8ab0bd492c4f1e2eae0703`
+- Browser **10524109064**, SHA-256 `4cdb037d1baed9708e3ea0156d49ee259554ba866fab5ebbf319bc456e9a72d9`
