@@ -5,7 +5,7 @@ IDS={'backend':'ba061ee45c22787f53a1579cd786aec408c642713520917e39222d6e4240b5e6
 IMAGES={'backend':'ghcr.io/san4o9910/kinetra-backend@sha256:4926900d638e629fc7c2a275f92866be27b487dc901559ec7ff8fe301b42d6be','frontend':'ghcr.io/san4o9910/kinetra-frontend@sha256:efd7d884c7aa5500f2571c23049491d289591572100ad76f9cac1f911d41206b','postgres':'postgres:17-bookworm@sha256:7bade6d532592ca8ce7ee32def7399dad2607c4ea5583839fc4352a095a11ea6'}
 def command(args,timeout=30):
  r=subprocess.run(args,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=timeout)
- if r.returncode:raise RuntimeError('COMMAND_FAILED')
+ if r.returncode:raise RuntimeError('COMMAND_FAILED:'+pathlib.Path(args[0]).name+':'+str(r.returncode))
  return r.stdout
 def inventory():
  raw=json.loads(command(['docker','inspect',*IDS.values()]))
@@ -28,7 +28,7 @@ def main():
   assert subprocess.run(['systemctl','is-active','--quiet','caddy']).returncode==3
   assert command(['systemctl','is-enabled','docker']).strip()==b'enabled'
   config=pathlib.Path('/etc/caddy/Caddyfile');assert hashlib.sha256(config.read_bytes()).hexdigest()=='c06f2a92c3daaf28c1f0db737c2389447c9f33604615bb599d082df114c9372d'
-  command(['/usr/local/bin/caddy','validate','--config',str(config),'--adapter','caddyfile'])
+  command(['/usr/bin/unshare','--net','--','/usr/sbin/runuser','-u','caddy','--','/usr/bin/env','-i','PATH=/usr/sbin:/usr/bin:/sbin:/bin','XDG_DATA_HOME=/var/lib/caddy/data','XDG_CONFIG_HOME=/var/lib/caddy/config','PUBLIC_IPV4=80.68.156.131','/usr/local/bin/caddy','validate','--config',str(config),'--adapter','caddyfile'])
   compose=S/'source/deploy/compose.single-server.yml';info=compose.lstat();assert stat.S_ISREG(info.st_mode) and info.st_uid==0
   old=compose.read_bytes();assert hashlib.sha256(old).hexdigest()=='de3df2717c7484c4c486eef2e38c1250597db070fbb6cccaa39dcc8c1c40f885'
   assert old.count(b"    restart: 'no'")==1

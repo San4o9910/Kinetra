@@ -23,7 +23,7 @@ jobs:
           sha256sum --check --strict <<'SHA256'
           567d892221925bb438ece6a893360a891ffd4228f8af0a18252b8ba365a682c0  ops/timeweb/inspect-server.py
           ae2abb6a43dd4c588c2a9e61e9c3232e6ec2c3f884259184ee674c59bb7e94ca  ops/timeweb/restore-availability-caller.py
-          46fd58d06503e4129310a0fd1537daef858c5e274dfa28338134849c32419916  ops/timeweb/restore-availability-host.py
+          f3e3d4f379ce060db02a767fea011dc56c74ad17327e602551163860e0bf7651  ops/timeweb/restore-availability-host.py
           SHA256
       - name: Start existing database and HTTPS with persistent boot policies
         env:
