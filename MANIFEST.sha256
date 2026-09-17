@@ -225,7 +225,7 @@ b2b41ae81353103525caeb62a7208257b0e06a7b9aa5e28f0856bfaa5b944593  ./apps/fronten
 42082a77cef4fa5601c159057c16e6a0f7d52e16e7cbad69bc68cee38fdb5549  ./apps/frontend/public/offline.html
 77be207189b63202521511b9bac805c49ca3c114d2c9d839d6e0e21796133c80  ./apps/frontend/public/service-worker.js
 0ed61882195d1985dfb9ed93b24a85c9f52a2aba0c5672694878fcf945c3443f  ./apps/frontend/public/theme-init.js
-8e1f5819dc3537e8590842a6409a4bded871ffed5c4e58d4bd959084e718a11f  ./apps/frontend/src/App.tsx
+f17e70a73182ba71d3f1244d0ef54d6b92fc52a4765ad80afef5b3d6e9ffc847  ./apps/frontend/src/App.tsx
 18e921f9c45beaa0cea27f57fb47812f1e7a21a64dce17dfb88f6d5ed43f8932  ./apps/frontend/src/features/auth/AuthLinkGate.tsx
 346c28a7c6f8ec4ba4a9210f8776c1b6e36eb3f6e76a8d4a0edcee5b0f10fdd6  ./apps/frontend/src/features/auth/ForgotPasswordScreen.tsx
 1895192dc2d61436abfa2a2539c9d6c7f08ca24722621b28e6bd7a1b948dbedf  ./apps/frontend/src/features/auth/LoginScreen.tsx
@@ -360,7 +360,7 @@ dea7d86584c54c3f77059e2099e3f00ae5705846eb55350a09b3cf8962d0cbf3  ./apps/fronten
 278e16c499f2c6b553e8276fd888afc4fe48a7180279f8b093370a47bd3a51e0  ./deploy/Containerfile.dockerignore
 2b1211aafc688117563c0226d72bdaca22ba142fcad6ae6e283c85516bac4322  ./deploy/api.env.example
 f6d04c4c5ce99c9ab48786130607c0790bf4462040ba54651cfc5315ac0ac4a3  ./deploy/compose.production.yml
-de3df2717c7484c4c486eef2e38c1250597db070fbb6cccaa39dcc8c1c40f885  ./deploy/compose.single-server.yml
+74a7c82ac80845f13784280e67d1f9b653fd2afc24b3da816df978cabbca6b2a  ./deploy/compose.single-server.yml
 c06f2a92c3daaf28c1f0db737c2389447c9f33604615bb599d082df114c9372d  ./deploy/edge/Caddyfile
 21642f00ac17dab3d250a03739028bddbcf17f177f2ec46a77ed8d9904900218  ./deploy/jobs/chat-cleanup.env.example
 bd56341097c06ab8b6bebbab2dbe187bb26d1dd2e092a5c7ee20f7a390c28a36  ./deploy/jobs/disabled.env.example

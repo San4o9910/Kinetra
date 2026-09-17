@@ -714,7 +714,7 @@ export const App = (): ReactNode => {
 
   useEffect(() => {
     if (session.kind === 'unauthenticated') {
-      if (route !== appRoutes.login) {
+      if (route !== appRoutes.login && route !== appRoutes.adminApplications) {
         navigate(appRoutes.login, true);
       }
       return;
