@@ -11,6 +11,7 @@ on:
         feature/registration-roles-verification,
         feature/onboarding-exploration-mode,
         feature/kinetic-vulcanico-coaching,
+        fix/trainer-application-simplicity,
       ]
   pull_request:
     branches:

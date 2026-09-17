@@ -52,10 +52,10 @@ export const TrainerApplicationsAdmin = ({
     (caught: unknown): string => {
       if (caught instanceof ApiRequestError) {
         if (caught.kind === 'auth') onSessionExpired();
-        if (caught.status === 403) return 'Для этого раздела нужны права администратора заявок.';
         if (caught.code === 'SELF_REVIEW_FORBIDDEN') return 'Свою заявку одобрять нельзя.';
         if (caught.code.includes('EMAIL'))
           return 'Кандидату нужно подтвердить email перед одобрением.';
+        if (caught.status === 403) return 'Для этого раздела нужны права администратора заявок.';
         if (caught.status === 409)
           return 'Статус заявки изменился. Обновите список перед решением.';
       }
@@ -242,7 +242,7 @@ export const TrainerApplicationsAdmin = ({
             <div className="review-empty">
               <KineticMark />
               <h2>Выберите заявку</h2>
-              <p>Здесь появятся опыт кандидата и подтверждающие материалы.</p>
+              <p>Здесь появятся опыт и подготовка кандидата, а также ссылки, если он их добавил.</p>
             </div>
           ) : (
             <>
@@ -271,6 +271,12 @@ export const TrainerApplicationsAdmin = ({
                 </div>
               </dl>
               <h3>Материалы</h3>
+              {selected.materials.length === 0 ? (
+                <p>
+                  Кандидат подал заявку без ссылок. Проверьте описание подготовки; при необходимости
+                  запросите уточнения.
+                </p>
+              ) : null}
               <ul className="review-materials">
                 {selected.materials.map((material) => (
                   <li key={material.id}>

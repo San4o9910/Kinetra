@@ -8603,6 +8603,209 @@ const runT12BrowserScenario = async () => {
   console.log('KINETRA_T12_BROWSER_E2E=PASS');
 };
 
+// Exercise the simplified form and owner review using a private, disposable fixture.
+const runTrainerApplicationBrowserScenario = async () => {
+  let account = null;
+  let application = null;
+  const candidateId = '00000000-0000-4000-8000-000000000201';
+  const ownerId = '00000000-0000-4000-8000-000000000202';
+  let registrationBody = null;
+  let submissionBody = null;
+  let reviewCount = 0;
+  const person = (id) => ({
+    ...profile,
+    account_role: 'client',
+    requested_role: 'trainer',
+    trainer_profile: null,
+    trainer_verification_state: application?.status ?? 'not_started',
+    user: { ...profile.user, id, onboardingStatus: 'survey_pending', email: `${id}@example.test` },
+  });
+  const session = () => ({
+    user: person(account).user,
+    accessToken: 'application-fixture-token',
+    tokenType: 'Bearer',
+    expiresIn: 900,
+  });
+  const server = createFixtureServer(async (request, response) => {
+    const pathname = new URL(request.url ?? '/', frontendOrigin).pathname;
+    if (pathname === '/api/v1/auth/register') {
+      registrationBody = await readJsonBody(request);
+      account = candidateId;
+      json(response, 201, session());
+      return;
+    }
+    if (pathname === '/api/v1/auth/login') {
+      const body = await readJsonBody(request);
+      assert.equal(body.identifier, 'reviewer@example.test');
+      account = ownerId;
+      json(response, 200, session());
+      return;
+    }
+    if (pathname === '/api/v1/auth/refresh') {
+      if (account === null)
+        json(response, 401, { error: { code: 'AUTHENTICATION_REQUIRED', message: 'Sign in' } });
+      else json(response, 200, session());
+      return;
+    }
+    if (pathname === '/api/v1/auth/logout') {
+      account = null;
+      response.writeHead(204);
+      response.end();
+      return;
+    }
+    if (pathname === '/api/v1/me') {
+      json(response, 200, person(account));
+      return;
+    }
+    if (pathname === '/api/v1/admin/trainer-verification/access') {
+      json(response, 200, { can_review: account === ownerId });
+      return;
+    }
+    if (pathname === '/api/v1/trainer-verification/me') {
+      json(response, 200, {
+        requested_role: 'trainer',
+        trainer_verification_state: application?.status ?? 'not_started',
+        request: application,
+      });
+      return;
+    }
+    if (pathname === '/api/v1/trainer-verification' && request.method === 'POST') {
+      submissionBody = await readJsonBody(request);
+      application = {
+        ...submissionBody,
+        id: '00000000-0000-4000-8000-000000000203',
+        user_id: candidateId,
+        status: 'pending',
+        submitted_at: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        reviewed_at: null,
+        review_reason: null,
+      };
+      json(response, 201, {
+        requested_role: 'trainer',
+        trainer_verification_state: 'pending',
+        request: application,
+      });
+      return;
+    }
+    if (pathname.startsWith('/api/v1/admin/trainer-verification')) {
+      assert.equal(account, ownerId);
+      if (request.method === 'POST') {
+        assert.equal(pathname, `/api/v1/admin/trainer-verification/${application.id}/approve`);
+        reviewCount += 1;
+        application = { ...application, status: 'approved' };
+        json(response, 200, application);
+      } else
+        json(response, 200, { requests: application.status === 'pending' ? [application] : [] });
+      return;
+    }
+    if (pathname.startsWith('/api/')) {
+      json(response, 404, { error: { code: 'NOT_FOUND', message: 'Not found' } });
+      return;
+    }
+    let file = path.join(frontendDist, pathname === '/' ? '/index.html' : pathname);
+    try {
+      if (!(await stat(file)).isFile()) file = path.join(frontendDist, 'index.html');
+    } catch {
+      file = path.join(frontendDist, 'index.html');
+    }
+    response.writeHead(200, {
+      'Content-Type': contentTypes.get(path.extname(file)) ?? 'application/octet-stream',
+      'Cache-Control': 'no-store',
+    });
+    response.end(await readFile(file));
+  });
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'kinetra-browser-'));
+  let context = null;
+  try {
+    await listen(server, apiPort);
+    context = await launchT12BrowserContext(directory, 390, 844);
+    await context.navigate('/login');
+    await waitFor('registration login', () => context.exists('login-screen'));
+    await context.clickButtonWithText('Создать аккаунт');
+    await waitFor('registration form', () => context.exists('register-screen'));
+    assert.equal(await context.exists('register-password-confirmation'), false);
+    assert.equal(await context.exists('register-phone'), false);
+    await context.click('register-role-trainer');
+    await context.setValue('register-email', 'candidate@example.test');
+    await context.setValue('register-password', 'abc123');
+    await context.clickButtonWithText('Показать пароль');
+    assert.equal(
+      await context.cdp.evaluate("document.querySelector('[data-testid=register-password]').type"),
+      'text',
+    );
+    await context.clickButtonWithText('Скрыть пароль');
+    await context.click('register-submit');
+    await waitFor('simple trainer form', () => context.exists('trainer-verification-form'));
+    assert.deepEqual(registrationBody, {
+      email: 'candidate@example.test',
+      password: 'abc123',
+      requested_role: 'trainer',
+    });
+    await context.click('trainer-application-submit');
+    assert.equal(submissionBody, null, 'Empty form must not submit');
+    for (const [field, value] of Object.entries({
+      name: 'Анна Тренер',
+      specialization: 'Мобильность',
+      experience: '0',
+      city: 'Москва',
+      bio: 'Обучение: курс подготовки тренеров.\nНачинаю практику с наставником.',
+    })) {
+      await context.setValue(`trainer-application-${field}`, value);
+    }
+    for (const width of [390, 1280]) {
+      await context.setViewport(width, 844);
+      assert.equal(
+        await context.cdp.evaluate('document.documentElement.scrollWidth <= innerWidth'),
+        true,
+        `Application overflows at ${width}px`,
+      );
+    }
+    await context.click('trainer-application-submit');
+    await waitFor('pending application without links', () =>
+      context.exists('trainer-verification-pending'),
+    );
+    assert.deepEqual(submissionBody.materials, []);
+    assert.equal(submissionBody.experience_years, 0);
+    assert.equal(reviewCount, 0);
+    assert.equal(
+      await context.cdp.evaluate(
+        "[...document.querySelectorAll('button')].some(b => b.textContent.includes('Заявки тренеров'))",
+      ),
+      false,
+    );
+    await context.clickButtonWithText('Выйти');
+    await waitFor('candidate signed out', () => context.exists('login-screen'));
+    await context.navigate('/admin/trainer-applications');
+    await waitFor('owner sign in', () => context.exists('login-screen'));
+    await context.setValue('login-identifier', 'reviewer@example.test');
+    await context.setValue('login-password', 'abc123');
+    await context.click('login-submit');
+    await waitFor('owner queue preserves login destination', async () =>
+      (await context.bodyText()).includes('Анна Тренер'),
+    );
+    assert.equal(await context.pathname(), '/admin/trainer-applications');
+    await context.cdp.evaluate("document.querySelector('.review-row').click()");
+    await waitFor('review without links', async () =>
+      (await context.bodyText()).includes('Кандидат подал заявку без ссылок'),
+    );
+    await context.clickButtonWithText('Одобрить заявку');
+    assert.equal(reviewCount, 0, 'Decision requires explicit confirmation');
+    await context.clickButtonWithText('Подтвердить решение');
+    await waitFor('owner approval saved', () => reviewCount === 1);
+    assert.equal(application.status, 'approved');
+  } finally {
+    context?.cdp.close();
+    await terminateChrome(context?.chrome ?? null);
+    await close(server);
+    await removeProfileDirectory(directory);
+  }
+  console.log('KINETRA_SIMPLIFIED_TRAINER_APPLICATION_BROWSER=PASS');
+};
+
 await buildFrontendForBrowserTest();
 await runBrowserScenario();
 await runT12BrowserScenario();
+
+await runTrainerApplicationBrowserScenario();

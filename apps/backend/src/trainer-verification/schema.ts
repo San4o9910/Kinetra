@@ -68,7 +68,16 @@ export const trainerVerificationApplicationSchema = z
     display_name: trimmedText(1, 120),
     specialization: trimmedText(1, 160),
     experience_years: z.number().int().min(0).max(80),
-    bio: trimmedText(20, 2000),
+    bio: z
+      .string()
+      .trim()
+      .min(20)
+      .max(2000)
+      .refine(
+        (value) => containsNoControlCharacters(value.replace(/[\r\n\t]/gu, '')),
+        'Control characters are not allowed.',
+      )
+      .transform((value) => value.normalize('NFC')),
     city: trimmedText(1, 120),
     timezone: timezoneSchema,
     materials: z
@@ -96,14 +105,14 @@ export const trainerVerificationApplicationSchema = z
             }
           }),
       )
-      .min(1, 'At least one verification material is required.')
       .max(20)
       .refine(
         (materials) => new Set(materials.map((material) => material.url)).size === materials.length,
         {
           message: 'Material URLs must be unique.',
         },
-      ),
+      )
+      .default([]),
   })
   .strict();
 

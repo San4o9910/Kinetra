@@ -28,7 +28,7 @@ const materialKinds: readonly {
 ];
 
 const trainerVerificationStateLabel: Readonly<Record<TrainerVerificationState, string>> = {
-  not_started: 'Подтвердите тренерские навыки',
+  not_started: 'Заявка на тренерство',
   pending: 'Заявка на проверке',
   needs_more_info: 'Нужно дополнить заявку',
   approved: 'Профиль тренера подтверждён',
@@ -72,6 +72,7 @@ interface TrainerVerificationScreenProps {
   readonly onProfileUpdated: (profile: MeResponse) => void;
   readonly onSessionExpired: () => void;
   readonly onSignOut: () => void;
+  readonly onReviewApplications?: (() => void) | undefined;
 }
 
 const browserTimezone = (): string => {
@@ -98,7 +99,7 @@ const emptyDraft = (): ApplicationDraft => ({
   bio: '',
   city: '',
   timezone: browserTimezone(),
-  materials: [emptyMaterial('material-1')],
+  materials: [],
 });
 
 const requestErrorMessage = (error: unknown, fallback: string): string =>
@@ -108,6 +109,7 @@ export const TrainerVerificationScreen = ({
   onProfileUpdated,
   onSessionExpired,
   onSignOut,
+  onReviewApplications,
 }: TrainerVerificationScreenProps): ReactNode => {
   const [loadState, setLoadState] = useState<VerificationLoadState>({ kind: 'loading' });
   const [draft, setDraft] = useState<ApplicationDraft>(emptyDraft);
@@ -172,10 +174,7 @@ export const TrainerVerificationScreen = ({
           bio: request.bio ?? '',
           city: request.city ?? '',
           timezone: request.timezone ?? browserTimezone(),
-          materials:
-            materials.length === 0
-              ? [emptyMaterial(`material-${++materialSequenceRef.current}`)]
-              : materials,
+          materials,
         });
       }
 
@@ -237,10 +236,7 @@ export const TrainerVerificationScreen = ({
   const removeMaterial = (localId: string): void => {
     setDraft((current) => ({
       ...current,
-      materials:
-        current.materials.length === 1
-          ? current.materials
-          : current.materials.filter((material) => material.localId !== localId),
+      materials: current.materials.filter((material) => material.localId !== localId),
     }));
   };
 
@@ -249,14 +245,16 @@ export const TrainerVerificationScreen = ({
     const valuesPresent =
       draft.displayName.trim().length > 0 &&
       draft.specialization.trim().length > 0 &&
+      draft.experienceYears.trim() !== '' &&
       Number.isInteger(experienceYears) &&
       experienceYears >= 0 &&
-      draft.bio.trim().length > 0 &&
+      experienceYears <= 80 &&
+      draft.bio.trim().length >= 20 &&
+      draft.bio.trim().length <= 2000 &&
       draft.city.trim().length > 0 &&
-      draft.timezone.trim().length > 0 &&
-      draft.materials.length > 0;
-    const validMaterials = draft.materials.every(
-      (material) => material.title.trim().length > 0 && isHttpsMaterialUrl(material.url.trim()),
+      draft.timezone.trim().length > 0;
+    const validMaterials = draft.materials.every((material) =>
+      isHttpsMaterialUrl(material.url.trim()),
     );
 
     if (!valuesPresent || !validMaterials) {
@@ -273,7 +271,9 @@ export const TrainerVerificationScreen = ({
       materials: draft.materials.map((material) => ({
         kind: material.kind,
         url: material.url.trim(),
-        title: material.title.trim(),
+        title:
+          material.title.trim() ||
+          materialKinds.find((kind) => kind.value === material.kind)!.label,
         ...(material.issuedAt === '' ? {} : { issued_at: material.issuedAt }),
         ...(material.expiresAt === '' ? {} : { expires_at: material.expiresAt }),
       })),
@@ -290,7 +290,9 @@ export const TrainerVerificationScreen = ({
     const application = applicationFromDraft();
 
     if (application === null) {
-      setActionError('Заполните все обязательные поля и укажите только HTTPS-ссылки.');
+      setActionError(
+        'Укажите имя, специализацию, город и опыт от 0 до 80 лет. Рассказ о подготовке — от 20 до 2000 символов. Если добавляете материалы, укажите только HTTPS-ссылки.',
+      );
       return;
     }
 
@@ -382,7 +384,16 @@ export const TrainerVerificationScreen = ({
           <p className="survey-kicker">ПРОВЕРКА ТРЕНЕРА</p>
           <h1 id="verification-title">{trainerVerificationStateLabel[state]}</h1>
           {state === 'pending' ? (
-            <p>Модератор проверяет данные. До одобрения тренерские функции недоступны.</p>
+            <p>
+              Владелец Kinetra лично проверит заявку. Если нужны уточнения, его комментарий появится
+              здесь. Кабинет тренера откроется после одобрения.
+            </p>
+          ) : null}
+          {state === 'not_started' ? (
+            <p>
+              Расскажите о себе и своей подготовке. Сайт и ссылки не нужны — каждую заявку проверяет
+              владелец Kinetra.
+            </p>
           ) : null}
           {state === 'approved' ? (
             <p>Обновляем профиль и открываем рабочее пространство тренера.</p>
@@ -416,10 +427,12 @@ export const TrainerVerificationScreen = ({
           >
             <div className="verification-fields">
               <label>
-                <span>Имя для отображения</span>
+                <span>Ваше имя</span>
                 <input
                   type="text"
                   autoComplete="name"
+                  maxLength={120}
+                  data-testid="trainer-application-name"
                   value={draft.displayName}
                   onChange={(event) =>
                     setDraft((current) => ({ ...current, displayName: event.target.value }))
@@ -431,6 +444,9 @@ export const TrainerVerificationScreen = ({
                 <span>Специализация</span>
                 <input
                   type="text"
+                  maxLength={160}
+                  placeholder="Например, силовые тренировки"
+                  data-testid="trainer-application-specialization"
                   value={draft.specialization}
                   onChange={(event) =>
                     setDraft((current) => ({ ...current, specialization: event.target.value }))
@@ -446,6 +462,7 @@ export const TrainerVerificationScreen = ({
                   min="0"
                   max="80"
                   step="1"
+                  data-testid="trainer-application-experience"
                   value={draft.experienceYears}
                   onChange={(event) =>
                     setDraft((current) => ({ ...current, experienceYears: event.target.value }))
@@ -458,6 +475,8 @@ export const TrainerVerificationScreen = ({
                 <input
                   type="text"
                   autoComplete="address-level2"
+                  maxLength={120}
+                  data-testid="trainer-application-city"
                   value={draft.city}
                   onChange={(event) =>
                     setDraft((current) => ({ ...current, city: event.target.value }))
@@ -465,23 +484,17 @@ export const TrainerVerificationScreen = ({
                   required
                 />
               </label>
-              <label>
-                <span>Часовой пояс</span>
-                <input
-                  type="text"
-                  value={draft.timezone}
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, timezone: event.target.value }))
-                  }
-                  required
-                />
-              </label>
             </div>
 
             <label>
-              <span>Кратко о вашей практике</span>
+              <span>Образование и опыт</span>
               <textarea
-                rows={5}
+                rows={4}
+                minLength={20}
+                maxLength={2000}
+                aria-describedby="trainer-bio-hint"
+                placeholder="Где учились, с кем работали и какие тренировки проводите. Если вы начинаете — расскажите о своей подготовке."
+                data-testid="trainer-application-bio"
                 value={draft.bio}
                 onChange={(event) =>
                   setDraft((current) => ({ ...current, bio: event.target.value }))
@@ -490,18 +503,30 @@ export const TrainerVerificationScreen = ({
               />
             </label>
 
-            <fieldset className="verification-materials">
-              <legend>Ссылки и подтверждающие материалы</legend>
-              <p>Добавьте минимум одну доступную по HTTPS ссылку. Файлы не загружаются.</p>
+            <p id="trainer-bio-hint">Достаточно нескольких предложений: от 20 до 2000 символов.</p>
+            <details className="verification-materials">
+              <summary>Ссылки и дополнительные сведения · необязательно</summary>
+              <p>
+                Можно отправить заявку без ссылок. Если есть профиль, диплом или портфолио в
+                интернете, добавьте их здесь.
+              </p>
+              <label>
+                <span>Часовой пояс · определён автоматически</span>
+                <input
+                  type="text"
+                  value={draft.timezone}
+                  onChange={(event) =>
+                    setDraft((current) => ({ ...current, timezone: event.target.value }))
+                  }
+                />
+              </label>
               {draft.materials.map((material, index) => (
                 <div className="verification-material" key={material.localId}>
                   <div className="verification-material-heading">
                     <strong>Материал {index + 1}</strong>
-                    {draft.materials.length === 1 ? null : (
-                      <button type="button" onClick={() => removeMaterial(material.localId)}>
-                        Удалить
-                      </button>
-                    )}
+                    <button type="button" onClick={() => removeMaterial(material.localId)}>
+                      Удалить ссылку
+                    </button>
                   </div>
                   <label>
                     <span>Тип</span>
@@ -521,14 +546,14 @@ export const TrainerVerificationScreen = ({
                     </select>
                   </label>
                   <label>
-                    <span>Название</span>
+                    <span>Название · необязательно</span>
                     <input
                       type="text"
                       value={material.title}
                       onChange={(event) =>
                         updateMaterial(material.localId, { title: event.target.value })
                       }
-                      required
+                      maxLength={160}
                     />
                   </label>
                   <label>
@@ -544,34 +569,17 @@ export const TrainerVerificationScreen = ({
                       required
                     />
                   </label>
-                  <div className="verification-material-dates">
-                    <label>
-                      <span>Выдан</span>
-                      <input
-                        type="date"
-                        value={material.issuedAt}
-                        onChange={(event) =>
-                          updateMaterial(material.localId, { issuedAt: event.target.value })
-                        }
-                      />
-                    </label>
-                    <label>
-                      <span>Действует до</span>
-                      <input
-                        type="date"
-                        value={material.expiresAt}
-                        onChange={(event) =>
-                          updateMaterial(material.localId, { expiresAt: event.target.value })
-                        }
-                      />
-                    </label>
-                  </div>
                 </div>
               ))}
-              <button className="secondary-button" type="button" onClick={addMaterial}>
-                Добавить материал
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={addMaterial}
+                disabled={draft.materials.length >= 20}
+              >
+                Добавить ссылку
               </button>
-            </fieldset>
+            </details>
 
             {actionError === null ? null : (
               <p className="survey-error" role="alert">
@@ -579,7 +587,12 @@ export const TrainerVerificationScreen = ({
               </p>
             )}
 
-            <button className="primary-button" type="submit" disabled={isSaving}>
+            <button
+              className="primary-button"
+              type="submit"
+              data-testid="trainer-application-submit"
+              disabled={isSaving}
+            >
               {isSaving
                 ? 'Отправляем…'
                 : state === 'needs_more_info'
@@ -622,6 +635,11 @@ export const TrainerVerificationScreen = ({
           </div>
         ) : null}
 
+        {onReviewApplications === undefined ? null : (
+          <button className="secondary-button" type="button" onClick={onReviewApplications}>
+            Заявки тренеров ↗
+          </button>
+        )}
         <button className="auth-link-button" type="button" disabled={isSaving} onClick={onSignOut}>
           Выйти
         </button>

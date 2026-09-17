@@ -92,7 +92,7 @@ services:
       start_period: 30s
     # An initialization failure requires inspection; never repeatedly initialize
     # a partial database. Choose a restart policy only after launch acceptance.
-    restart: 'no'
+    restart: unless-stopped
     stop_grace_period: 60s
     mem_limit: 1152m
     memswap_limit: 1152m
