@@ -311,6 +311,11 @@ export const runTrainerWorkspaceBrowser = async (h) => {
           h.json(res, 503, { error: { code: 'OFFLINE_TEST', message: 'Связь прервалась' } });
           return;
         }
+        if (Object.keys(body).length === 1 && Number.isInteger(body.position_seconds)) {
+          plan.workouts[0].position_seconds = body.position_seconds;
+          h.json(res, 200, { saved: true, revision: plan.workouts[0].progress_revision });
+          return;
+        }
         assert.equal(body.base_revision, plan.workouts[0].progress_revision);
         Object.assign(plan.workouts[0], body, {
           progress_revision: plan.workouts[0].progress_revision + 1,
