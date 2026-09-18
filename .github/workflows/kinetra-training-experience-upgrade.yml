@@ -1,0 +1,80 @@
+name: Install training experience on the existing application
+on:
+  push:
+    branches: [ops/timeweb-hourly-preflight-20260909]
+    paths: [.github/workflows/kinetra-training-experience-upgrade.yml]
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: kinetra-timeweb-hourly-provision
+  cancel-in-progress: false
+env:
+  APP_CHECKOUT: ${{ github.workspace }}/Kinetra
+jobs:
+  upgrade:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Verify reviewed upgrade and ownership contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          sha256sum --check --strict <<'SHA256'
+          567d892221925bb438ece6a893360a891ffd4228f8af0a18252b8ba365a682c0  ops/timeweb/inspect-server.py
+          4b60ea059675b95652155720a6c11b96567523b1c18d26d7bb7557be066f585d  ops/timeweb/training-experience-release-gate.py
+          34a8b3affa66177774a0871437384634954b8fe2d9a4736de60fd85781dfdfa8  ops/timeweb/training-experience-upgrade-host.py
+          64e7d4f11a46a84c73fc654bf6868d141e69ef22c842dc90f5e99cc403a5c05b  ops/timeweb/training-experience-upgrade-caller.py
+          767887b49c35ee7e32f4c23a68075112149861953f0d116e69a6d111fab41ed9  ops/timeweb/test-training-experience-upgrade.py
+          ba9d7f7d4a5475de9a4401be60694bcbeab1e62308d2f304454360fc72d2267e  ops/timeweb/upstream-disposition.py
+          3b5fe41ef70612d4b6ce8adb3b1027d73e70582929bc1adea23eafa7b278b27d  ops/timeweb/training-experience-browser-acceptance.mjs
+          SHA256
+          sudo python3 -B ops/timeweb/test-training-experience-upgrade.py
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 5be7df36f85b65c8248c221509ea3a7fec1919db
+          path: Kinetra
+          persist-credentials: false
+      - name: Verify merged source manifest and qualified image evidence
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(git -C "$APP_CHECKOUT" rev-parse HEAD)" = 5be7df36f85b65c8248c221509ea3a7fec1919db
+          (cd "$APP_CHECKOUT" && sha256sum --check --quiet MANIFEST.sha256)
+          python3 -B ops/timeweb/training-experience-release-gate.py
+      - name: Back up, prove restoration and install the qualified update
+        env:
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+        run: python3 -B ops/timeweb/training-experience-upgrade-caller.py --upgrade-training-experience
+      - name: Retain sanitized upgrade result
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: kinetra-training-experience-upgrade-${{ github.run_id }}
+          path: ${{ runner.temp }}/kinetra-training-experience-upgrade.json
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Verify public HTTPS, login and simplified registration on desktop and mobile
+        shell: bash
+        run: |
+          set -euo pipefail
+          browser_bin="$(command -v google-chrome)"
+          test -x "$browser_bin"
+          env -i PATH="$PATH" CHROME_BIN="$browser_bin" GITHUB_RUN_ID="$GITHUB_RUN_ID" ACCEPTANCE_OUTPUT="$RUNNER_TEMP/kinetra-external-acceptance" node ops/timeweb/training-experience-browser-acceptance.mjs
+      - name: Retain external browser acceptance
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: kinetra-training-experience-browser-${{ github.run_id }}
+          path: ${{ runner.temp }}/kinetra-external-acceptance/
+          if-no-files-found: warn
+          retention-days: 14
