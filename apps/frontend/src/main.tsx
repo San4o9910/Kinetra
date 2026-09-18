@@ -13,6 +13,7 @@ import { invalidateInMemorySession } from './lib/api';
 import { ThemeProvider } from './features/theme/ThemeProvider';
 import { registerServiceWorker } from './pwa/registerServiceWorker';
 import './styles.css';
+import './features/training/training.css';
 
 const rootElement = document.querySelector<HTMLDivElement>('#root');
 

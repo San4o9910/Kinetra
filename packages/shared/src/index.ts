@@ -831,3 +831,15 @@ export interface ChatVideosResponse {
     readonly url: string;
   }[];
 }
+
+export type {
+  TrainingWorkoutInput,
+  TrainingWorkout,
+  TrainingPlanInput,
+  TrainingPlan,
+  TrainingStudent,
+  TrainingStudentDetail,
+  TrainingLesson,
+  TrainingLibrary,
+  MyTraining,
+} from './training.js';

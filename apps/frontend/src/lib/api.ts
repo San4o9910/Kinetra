@@ -1074,6 +1074,10 @@ export class ApiClient {
     return this.readJsonOrThrow<HealthResponse>(response);
   }
 
+  public async trainingRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+    return this.authenticatedJsonRequest<T>(`/api/v1/training${path}`, init);
+  }
+
   private async authenticatedJsonRequest<T>(
     path: string,
     init: RequestInit,
@@ -1761,3 +1765,6 @@ export const uploadChatVideo = (
   id: string,
   signal: AbortSignal,
 ): Promise<{ id: string }> => apiClient.uploadChatVideo(conversationId, file, id, signal);
+
+export const trainingRequest = <T>(path: string, init: RequestInit = {}): Promise<T> =>
+  apiClient.trainingRequest<T>(path, init);
