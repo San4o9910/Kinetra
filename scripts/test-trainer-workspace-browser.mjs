@@ -388,9 +388,33 @@ export const runTrainerWorkspaceBrowser = async (h) => {
     );
     await client.clickButtonWithText('Начать тренировку');
     await h.waitFor('workout mode', () => client.exists('training-session'));
+    assert.equal(
+      await client.cdp.evaluate('document.activeElement?.id'),
+      'training-session-heading',
+    );
+    assert.equal(
+      await client.cdp.evaluate(
+        "[...document.querySelectorAll('.training-session input,.training-session select,.training-session textarea')].every(e=>!!e.closest('label')||!!e.getAttribute('aria-label'))",
+      ),
+      true,
+      'Workout fields have accessible names',
+    );
+    await client.cdp.send('Input.dispatchKeyEvent', {
+      type: 'keyDown',
+      key: 'Tab',
+      code: 'Tab',
+      windowsVirtualKeyCode: 9,
+    });
+    await client.cdp.send('Input.dispatchKeyEvent', {
+      type: 'keyUp',
+      key: 'Tab',
+      code: 'Tab',
+      windowsVirtualKeyCode: 9,
+    });
+    assert.equal(await client.cdp.evaluate('document.activeElement?.tagName'), 'BUTTON');
     rejectLogs = true;
     await client.cdp.evaluate(
-      "document.querySelector('.training-session input[type=checkbox]').click()",
+      "document.querySelector('.training-set-list button[aria-pressed]').click()",
     );
     await h.waitFor('offline marks retained', async () =>
       (await client.bodyText()).includes('Отметки ожидают отправки'),
@@ -421,7 +445,7 @@ export const runTrainerWorkspaceBrowser = async (h) => {
     await client.navigate('/schedule');
     await h.waitFor(
       'personal calendar',
-      async () => !!(await client.cdp.evaluate("document.querySelector('.training-calendar')")),
+      async () => await client.cdp.evaluate("!!document.querySelector('.training-calendar')"),
     );
     assert.ok(
       await client.cdp.evaluate(

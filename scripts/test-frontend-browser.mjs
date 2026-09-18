@@ -616,6 +616,13 @@ const serveLegacyTrainingFixture = (request, response) => {
     '/api/v1/training/students': { students: [] },
     '/api/v1/training/lessons': { lessons: [], upload_available: true, max_bytes: 268435456 },
   };
+  if (
+    request.method === 'GET' &&
+    /^\/api\/v1\/training\/admin\/verification\/[0-9a-f-]+\/history$/u.test(request.url)
+  ) {
+    json(response, 200, { events: [] });
+    return true;
+  }
   if (request.method === 'GET' && payloads[request.url]) {
     json(response, 200, payloads[request.url]);
     return true;
@@ -1626,7 +1633,11 @@ class CdpClient {
     });
 
     if (result.exceptionDetails !== undefined) {
-      throw new Error(result.exceptionDetails.text ?? 'Browser evaluation failed.');
+      throw new Error(
+        result.exceptionDetails.exception?.description ??
+          result.exceptionDetails.text ??
+          'Browser evaluation failed.',
+      );
     }
 
     return result.result.value;

@@ -338,7 +338,7 @@ c0540c067352a6fe91556eeb05e0a9b6a2342a625e9cea390615b0f98db5fdce  ./apps/fronten
 a19d9ced78349f020d82220ffccad81ea5272c2c5d0081c2cc6c6f8d74476a3c  ./apps/frontend/src/features/training/TrainerWorkspace.tsx
 4b85bdf62036bba0a511d01d0fe00fdefec3c693e9a101d604b86007f1e6fdec  ./apps/frontend/src/features/training/TrainingPlayer.tsx
 bca166c0618aaa4eceb8bcce6c1eabb1f7cf2a252727e1228deb90ec8f11fe2d  ./apps/frontend/src/features/training/TrainingSupport.tsx
-c4f324783ab912eebea940f254d7fefe4c6f83c0258c8d48d6cc0f2ad2ddb682  ./apps/frontend/src/features/training/WorkoutSession.tsx
+72a8b60fd5cb9bf6a3616fef0e03062a2f72efd79f238dd606f80546011e80ad  ./apps/frontend/src/features/training/WorkoutSession.tsx
 e3136ae72e6c1ea9bc3b7c9fa40933df1a14033c7e070d6a3c95022c3adc09c3  ./apps/frontend/src/features/training/api.ts
 135daf2faab86e8e9bef5f7dbf09a10581a44f687de6381a2f1f891782dc6820  ./apps/frontend/src/features/training/drafts.ts
 ce1d08d4adb106638492b7eaa188bd48c52669c112369a8a776977f2ef5000dc  ./apps/frontend/src/features/training/training.css
@@ -468,7 +468,7 @@ c8171db33a1b645b8c36d542cf4bfc5c47073df8842b846f91a6ebf083973c5e  ./packages/sha
 d16d01c4778cc1b7b5f6695a8ad979bc82ed5d3ecec2a77ac579f3bda9e4210f  ./scripts/local-demo-guard.mjs
 aa40f7eec1b859bca8bfe25c88bb945223365e3490c3b675f3b837afda357737  ./scripts/prepare-local-demo.mjs
 bd552b5c0ba879666a9fecf9a8bba3b30f5b1223fbc1cf69fef30a5c6437aaf2  ./scripts/run-local-demo.mjs
-e1a3ff24ad289bbcbc2868f62442903fca89727b0c9faaa0f677cedb9ea5861d  ./scripts/test-frontend-browser.mjs
-6c5d4041385fa245554a1d46b5e9dc9eca03f02e32a071fe40dd8a3532b2b01d  ./scripts/test-trainer-workspace-browser.mjs
+72aabc646f207cd2befc08e3ef0507531799ec1de8c75e4f3c1e22af0ebe0ac9  ./scripts/test-frontend-browser.mjs
+3ac2a44db9c304ec07fccae668971fc4a5998e24591e3d8f448bfaa55cb89ce0  ./scripts/test-trainer-workspace-browser.mjs
 14a57c35af1cd982e34e54b25b01877058d55ea113bbbb129cce88dd71f60158  ./scripts/verify-project.mjs
 2b67887209f3334ebdc96426f5c2cb87480fb85ff2f75c0d42b0a944dae7922a  ./tsconfig.base.json

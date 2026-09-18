@@ -46,6 +46,7 @@ export const WorkoutSession = ({
     [status, setStatus] = useState(''),
     [error, setError] = useState(''),
     [conflict, setConflict] = useState(false);
+  const heading = useRef<HTMLHeadingElement>(null);
   const state = useRef(value),
     running = useRef(false),
     active = useRef(true);
@@ -54,6 +55,7 @@ export const WorkoutSession = ({
     exercise = exercises[index];
   useEffect(() => {
     active.current = true;
+    heading.current?.focus();
     return () => {
       active.current = false;
     };
@@ -173,7 +175,9 @@ export const WorkoutSession = ({
       <div className="training-heading">
         <div>
           <p className="survey-kicker">ВАША ТРЕНИРОВКА</p>
-          <h2>{workout.title}</h2>
+          <h2 ref={heading} id="training-session-heading" tabIndex={-1}>
+            {workout.title}
+          </h2>
         </div>
         <button
           type="button"
@@ -188,6 +192,16 @@ export const WorkoutSession = ({
           К программе
         </button>
       </div>
+      {workout.lesson_id && (
+        <TrainingPlayer
+          id={workout.lesson_id}
+          title={workout.title}
+          position={workout.position_seconds}
+          onPosition={(seconds) => {
+            void trainingApi.log(workout.id, { position_seconds: seconds }).catch(() => undefined);
+          }}
+        />
+      )}
       {!!exercises.length && (
         <>
           <div className="training-actions">
@@ -319,18 +333,6 @@ export const WorkoutSession = ({
       ) : (
         <>
           <p className="training-instructions">{workout.instructions}</p>
-          {workout.lesson_id && (
-            <TrainingPlayer
-              id={workout.lesson_id}
-              title={workout.title}
-              position={workout.position_seconds}
-              onPosition={(seconds) => {
-                void trainingApi
-                  .log(workout.id, { position_seconds: seconds })
-                  .catch(() => undefined);
-              }}
-            />
-          )}
         </>
       )}
       <form
