@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { TrainingMeasurement, TrainingPlan } from '@kinetra/shared';
 import { trainingApi, trainingMessage } from './api';
+import { apiBaseUrl } from '../../lib/api';
 export const ExerciseProgress = ({ plans }: { plans: TrainingPlan[] }) => {
   const history = plans
     .flatMap((p) => p.workouts)
@@ -301,7 +302,7 @@ export const Measurements = ({ studentId }: { studentId?: string }) => {
           {photos[r.id] && (
             <img
               className="training-progress-photo"
-              src={photos[r.id]}
+              src={apiBaseUrl + photos[r.id]}
               alt={`Фото прогресса от ${r.recorded_date}`}
               referrerPolicy="no-referrer"
             />

@@ -59,6 +59,16 @@ test(
         second = await training.createStudent(trainer, { name: 'Елена' });
       await training.acceptInvite(client, { token: student.token });
       await training.acceptInvite(otherClient, { token: second.token });
+      const expiring = await training.createStudent(trainer, { name: 'Приглашение' });
+      await pool.query(
+        "UPDATE training_students SET invite_expires_at=now()-interval '1 hour' WHERE id=$1",
+        [expiring.id],
+      );
+      assert.ok(
+        (await experience.attention(trainer)).events.some(
+          (e) => e.student_id === expiring.id && e.title.includes('истёк'),
+        ),
+      );
       const input = join(directory, 'iphone.mov');
       await execute(
         'ffmpeg',

@@ -134,7 +134,7 @@ e727c7c7bdc7a43876e015b426d70eef9dc48f7cf12c11fe12a9a19f2198b3d3  ./apps/backend
 df340fb0bb2b9a21404dadb21b4bf8e00a294333cea02f5537da15a9eeeaa1df  ./apps/backend/src/trainer-verification/runtime.ts
 11769faa241e7656d10f918d2b2241f8b6155593f2aae4db5b33c5f608f32381  ./apps/backend/src/trainer-verification/schema.ts
 35de1415d20261eaa4556fe3941f8c43fbec23bbb33a2ebff1c6d4a2500d9645  ./apps/backend/src/trainer-verification/service.ts
-6c19176cfce10066776d28a6b86b07733e50f8fe7f7333f8d9b1cda924a3c0f4  ./apps/backend/src/training/experience.ts
+f06bffd36d7884702dbed0ff17322580528ec411b4c0a3beeaf81e1cda2d0623  ./apps/backend/src/training/experience.ts
 4b92d4bdc8d5227f9b272de9b3b8b4f2f5b5e2bb4ad17d5afcbe95720da9d531  ./apps/backend/src/training/media.ts
 e9d48348739e307f0535dd7ca20f03a64c4f4a1070832ae4dd2f323267df53e6  ./apps/backend/src/training/progress-photos.ts
 26e4b1501b2c267b345e60aabef57421f722a19f745f23c1d7a5c03f212ed65e  ./apps/backend/src/training/reminders.ts
@@ -214,7 +214,7 @@ e5e56cea8c4a1ce2b7f6c3e07c108cbf86ac5b62e65528e0135d55e70fbf4a80  ./apps/backend
 4580d475a8436bb50613d4f77439254878d5ba7dc281d7dddad1561471385185  ./apps/backend/test/trainer-verification-reviewer-cli.test.ts
 d56cfed0b24a984b371153df256707de9132a82d27fe8cc7ea3738b0d4c3ac3a  ./apps/backend/test/trainer-verification.e2e.test.ts
 8723d77fdce0900c448bbfe7c9475bd490fd80bf1ff44c9fb7675189ea9985ad  ./apps/backend/test/trainer-verification.postgres.test.ts
-46d0a257d9a8bbd1377f3c61a18917a4983bf98ecde92311b64974267c0fac0e  ./apps/backend/test/training-experience.postgres.test.ts
+17b138c0fc59492183e7ff57a1d8ff99ea2552520b73e6e7fe9c8cc652b7ed09  ./apps/backend/test/training-experience.postgres.test.ts
 00a3ab2aabc24770561da4aae1524acff2421fadd91a2e101e3859a8f2ca2d22  ./apps/backend/test/training.postgres.test.ts
 180e8c39c2af366d6d9a9ad2837a74c1f849599cf94480bf55b0b49a72c43fd5  ./apps/backend/test/training.test.ts
 d54502b77ed88066f68ce11223bc5d4e40ba5af1e1984289923cff711b053654  ./apps/backend/test/video-admin.e2e.test.ts
@@ -328,7 +328,7 @@ dfd7c13fa64091df3eb2b17b202ea2a2a30985e421ae616ab1ebd6234ab5a0fb  ./apps/fronten
 6b43788ce3fe857f22503011721d3f0811282de608bb6ed17604ef92b0d7802d  ./apps/frontend/src/features/trainer-videos/program-polling.ts
 0fb1a6278d83149e7e742b69f4000b9c6c4359ba6c449d97a74ffb8d819f9262  ./apps/frontend/src/features/trainer-videos/upload.ts
 c2a7b358c64250ec6770863a5c655a5b531e5e4a34bed7bbbbaf0f382da3c54a  ./apps/frontend/src/features/training/ExerciseEditor.tsx
-341728ec642cb5b5972e5330fb22e321227166920a04d72527df253ab36a8ad4  ./apps/frontend/src/features/training/Measurements.tsx
+111a6c6ff462af6a0555684da19ac5ebe2ab6ad12dad9afcf36c4138820fa0ab  ./apps/frontend/src/features/training/Measurements.tsx
 49ee83c8db75e824b5cab39482ea9f490692e388c441b4fa2e157929d26570a5  ./apps/frontend/src/features/training/MyTraining.tsx
 2328890d63a13d42946b30527f4a3cc4e4ef93c3e12975d112bc49171916e1a5  ./apps/frontend/src/features/training/PersonalTraining.tsx
 c0540c067352a6fe91556eeb05e0a9b6a2342a625e9cea390615b0f98db5fdce  ./apps/frontend/src/features/training/PlanEditor.tsx
@@ -450,6 +450,7 @@ a9b1c236d0feea9883c7d1e0b54d7260cd692d179fc65c6a99609392af213bba  ./docs/T14_VID
 afa829dd0eec21ccb0d25d35ef074dfed4ba5033f03b5ca7d8fc6aa76c0f794f  ./docs/TRAINER_VERIFICATION.md
 9c67433e40c70a20cba89b408cb5c986114d6b79f5b3e56b130b34c4a925f739  ./docs/TRAINER_WORKSPACE.md
 424d37de42e2b5b533f5b663b7d9534464106199879a1e8e2597d984a013083e  ./docs/YANDEX_MAIL_SETUP.md
+b8c1eca961f34f54c42450763bd088068dbcad6f777c4c198dbe6968d64f1ad0  ./docs/training-experience.md
 42cb4e2ce5f3c1726688d1f5ecb4238b79ed9b97e5f80455cbfeeaf28b2821bf  ./eslint.config.mjs
 d3922ef7c7d64239b9c7dfe95a415ed719fe3a723e65c018f5e67fa0d6b1a056  ./ops/backup-postgres.sh
 d701eb257a917150110e76f8ab5104b568ec18d20ec287470670937c5a4e9b3a  ./ops/monitoring/alerts.example.yml
@@ -469,6 +470,6 @@ d16d01c4778cc1b7b5f6695a8ad979bc82ed5d3ecec2a77ac579f3bda9e4210f  ./scripts/loca
 aa40f7eec1b859bca8bfe25c88bb945223365e3490c3b675f3b837afda357737  ./scripts/prepare-local-demo.mjs
 bd552b5c0ba879666a9fecf9a8bba3b30f5b1223fbc1cf69fef30a5c6437aaf2  ./scripts/run-local-demo.mjs
 72aabc646f207cd2befc08e3ef0507531799ec1de8c75e4f3c1e22af0ebe0ac9  ./scripts/test-frontend-browser.mjs
-3ac2a44db9c304ec07fccae668971fc4a5998e24591e3d8f448bfaa55cb89ce0  ./scripts/test-trainer-workspace-browser.mjs
+f2e9e63891b1086341177f7ce2bd3835b687ae268ded44c13b018fc6a5372da1  ./scripts/test-trainer-workspace-browser.mjs
 14a57c35af1cd982e34e54b25b01877058d55ea113bbbb129cce88dd71f60158  ./scripts/verify-project.mjs
 2b67887209f3334ebdc96426f5c2cb87480fb85ff2f75c0d42b0a944dae7922a  ./tsconfig.base.json

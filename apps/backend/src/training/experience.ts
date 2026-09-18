@@ -160,7 +160,7 @@ export class TrainingExperience {
   public async attention(trainer: string) {
     await this.training.trainer(this.training.pool, trainer);
     const rows = await this.training.pool.query(
-      `SELECT s.id,s.name,s.client_id,s.reports_seen_at,
+      `SELECT s.id,s.name,s.client_id,s.reports_seen_at,s.invite_expires_at,
    (SELECT max(l.updated_at) FROM training_logs l JOIN training_workouts w ON w.id=l.workout_id JOIN training_plans p ON p.id=w.plan_id WHERE p.student_id=s.id AND l.completed_at IS NOT NULL) report_at,
    (SELECT count(*)::int FROM training_workouts w JOIN training_plans p ON p.id=w.plan_id LEFT JOIN training_logs l ON l.workout_id=w.id WHERE p.student_id=s.id AND p.status='published' AND w.scheduled_date<(now() AT TIME ZONE COALESCE(tz.name,'UTC'))::date AND l.completed_at IS NULL) overdue,
    (SELECT count(*)::int FROM training_workouts w JOIN training_plans p ON p.id=w.plan_id LEFT JOIN training_logs l ON l.workout_id=w.id WHERE p.student_id=s.id AND p.status='published' AND l.completed_at IS NULL) remaining,
@@ -172,7 +172,16 @@ export class TrainingExperience {
     for (const s of rows.rows) {
       const base = { student_id: s.id as string, name: s.name as string };
       if (!s.client_id)
-        events.push({ ...base, kind: 'invitation', title: 'Ещё не принял приглашение' });
+        events.push({
+          ...base,
+          kind: 'invitation',
+          title:
+            !s.invite_expires_at || new Date(s.invite_expires_at).getTime() <= Date.now()
+              ? 'Срок приглашения истёк — создайте новое'
+              : new Date(s.invite_expires_at).getTime() <= Date.now() + 2 * 86400000
+                ? 'Приглашение истекает в ближайшие 2 дня'
+                : 'Ещё не принял приглашение',
+        });
       if (s.report_at && (!s.reports_seen_at || s.report_at > s.reports_seen_at))
         events.push({ ...base, kind: 'report', title: 'Новый отчёт о тренировке' });
       if (s.overdue > 0)

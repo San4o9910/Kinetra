@@ -300,6 +300,14 @@ export const runTrainerWorkspaceBrowser = async (h) => {
     mkdtemp(path.join(os.tmpdir(), 'kinetra-browser-')),
   ]);
   let trainer, client;
+  const clickReady = async (context, text) => {
+    await h.waitFor('enabled action: ' + text, () =>
+      context.cdp.evaluate(
+        `(()=>{const b=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===${JSON.stringify(text)});return !!b&&!b.matches(':disabled');})()`,
+      ),
+    );
+    await context.clickButtonWithText(text);
+  };
   const fill = async (context, label, value) =>
     context.cdp.evaluate(
       `(()=>{const label=[...document.querySelectorAll('label')].find(l=>l.textContent.trim().startsWith(${JSON.stringify(label)}));if(!label)throw Error('Missing label');const el=label.querySelector('input,textarea,select');const proto=el.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:el.tagName==='SELECT'?HTMLSelectElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(proto,'value').set.call(el,${JSON.stringify(value)});el.dispatchEvent(new Event(el.tagName==='SELECT'?'change':'input',{bubbles:true}));})()`,
@@ -315,10 +323,10 @@ export const runTrainerWorkspaceBrowser = async (h) => {
     await trainer.click('login-submit');
     await h.waitFor('trainer workspace landing', () => trainer.exists('trainer-workspace'));
     assert.equal(await trainer.pathname(), '/trainer/students');
-    await trainer.clickButtonWithText('＋ Добавить ученика');
+    await clickReady(trainer, '＋ Добавить ученика');
     await fill(trainer, 'Имя', 'Анна Ученица');
     await fill(trainer, 'Контакт', 'anna@example.test');
-    await trainer.clickButtonWithText('Создать приглашение');
+    await clickReady(trainer, 'Создать приглашение');
     await h.waitFor('student invitation created', () => student !== null);
     await h.waitFor('student detail rendered', async () =>
       (await trainer.bodyText()).includes('Создать программу'),
@@ -332,7 +340,7 @@ export const runTrainerWorkspaceBrowser = async (h) => {
     await trainer.cdp.evaluate(
       `(()=>{const input=document.querySelector('input[type=file]');const transfer=new DataTransfer();transfer.items.add(new File([new Uint8Array([1,2,3,4])],'lesson.mp4',{type:'video/mp4'}));input.files=transfer.files;input.dispatchEvent(new Event('change',{bubbles:true}));})()`,
     );
-    await trainer.clickButtonWithText('Загрузить урок');
+    await clickReady(trainer, 'Загрузить урок');
     await h.waitFor('personal video uploaded', () => uploaded);
     await h.waitFor('video ready in library', async () =>
       (await trainer.bodyText()).includes('Готов к занятиям'),
@@ -345,28 +353,28 @@ export const runTrainerWorkspaceBrowser = async (h) => {
     await h.waitFor('student selected', async () =>
       (await trainer.bodyText()).includes('Создать программу'),
     );
-    await trainer.clickButtonWithText('Создать программу');
+    await clickReady(trainer, 'Создать программу');
     await h.waitFor('program draft', async () =>
       (await trainer.bodyText()).includes('Добавить занятие'),
     );
     await fill(trainer, 'Название программы', 'Сила и мобильность');
     await fill(trainer, 'Цель и рекомендации', 'Две спокойные тренировки');
-    await trainer.clickButtonWithText('＋ Добавить занятие');
+    await clickReady(trainer, '＋ Добавить занятие');
     await fill(trainer, 'Название занятия', 'Первая тренировка');
     await fill(trainer, 'Инструкции', 'Приседания: 3 подхода по 12');
     await fill(trainer, 'Видеоурок', lessonId);
-    await trainer.clickButtonWithText('＋ Добавить упражнение');
+    await clickReady(trainer, '＋ Добавить упражнение');
     await fill(trainer, 'Название упражнения', 'Приседания');
     await fill(trainer, 'Вес, кг', '10');
     await h.waitFor(
       'autosaved structured exercise',
       () => plan?.workouts[0]?.exercises?.[0]?.weight_kg === 10,
     );
-    await trainer.clickButtonWithText('Сохранить как шаблон');
+    await clickReady(trainer, 'Сохранить как шаблон');
     await h.waitFor('trainer template saved', () => templates.length === 1);
 
     await trainer.cdp.evaluate('window.confirm=()=>true');
-    await trainer.clickButtonWithText('Сохранить и назначить');
+    await clickReady(trainer, 'Сохранить и назначить');
     await h.waitFor('program published', () => plan?.status === 'published');
     assert.equal(plan.workouts[0].lesson_id, lessonId);
     await client.cdp.send('Page.navigate', { url: h.frontendOrigin + '/login#invite=' + token });
@@ -377,7 +385,7 @@ export const runTrainerWorkspaceBrowser = async (h) => {
     await h.waitFor('invitation opens after authentication', async () =>
       (await client.bodyText()).includes('Приглашение от тренера Мария Тренер'),
     );
-    await client.clickButtonWithText('Подключиться к тренеру');
+    await clickReady(client, 'Подключиться к тренеру');
     await h.waitFor('assigned program', async () =>
       (await client.bodyText()).includes('Первая тренировка'),
     );
@@ -386,7 +394,7 @@ export const runTrainerWorkspaceBrowser = async (h) => {
       false,
       'Personal program replaces the general course for an assigned student',
     );
-    await client.clickButtonWithText('Начать тренировку');
+    await clickReady(client, 'Начать тренировку');
     await h.waitFor('workout mode', () => client.exists('training-session'));
     assert.equal(
       await client.cdp.evaluate('document.activeElement?.id'),
@@ -425,14 +433,14 @@ export const runTrainerWorkspaceBrowser = async (h) => {
       ),
     );
     rejectLogs = false;
-    await client.clickButtonWithText('Отправить снова');
+    await clickReady(client, 'Отправить снова');
     await h.waitFor('replayed workout marks', () => plan.workouts[0].set_records.length === 1);
     await h.waitFor('save finished', async () =>
       (await client.bodyText()).includes('Сохранено у тренера'),
     );
 
     await fill(client, 'Сообщение тренеру', 'Сделала все подходы');
-    await client.clickButtonWithText('Тренировка выполнена');
+    await clickReady(client, 'Тренировка выполнена');
     await h.waitFor('individual progress persisted', () => student.completed === 1);
     await trainer.navigate('/trainer/students');
     await h.waitFor('updated student roster', async () =>
