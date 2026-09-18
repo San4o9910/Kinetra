@@ -1,3 +1,4 @@
+import { AssignedLessons } from './AssignedLessons';
 import { useEffect, useState } from 'react';
 import type { MyTraining, TrainingWorkout } from '@kinetra/shared';
 import { WorkoutSession } from './WorkoutSession';
@@ -180,7 +181,7 @@ export const PersonalTraining = ({
               ))}
             </section>
           )}
-          {!current && (
+          {!current && !data.assigned_lessons?.length && (
             <section className="training-empty">
               <h2>Тренер готовит вашу программу</h2>
               <p>Назначенные занятия появятся здесь.</p>
@@ -219,6 +220,7 @@ export const PersonalTraining = ({
                   {undated.slice(0, 1).map(card)}
                 </section>
               )}
+              <AssignedLessons lessons={data.assigned_lessons ?? []} onSaved={onSaved} />
               <ReminderSettings timezone={timezone} />
             </>
           )}
@@ -282,6 +284,7 @@ export const PersonalTraining = ({
                   {undated.map(card)}
                 </section>
               )}
+              <AssignedLessons lessons={data.assigned_lessons ?? []} onSaved={onSaved} />
               <ReminderSettings timezone={timezone} />
             </>
           )}
@@ -311,6 +314,7 @@ export const PersonalTraining = ({
                   value={workouts.filter((w) => w.completed_at).length}
                 />
               </section>
+              <AssignedLessons lessons={data.assigned_lessons ?? []} onSaved={onSaved} />
               <ExerciseProgress plans={data.plans} />
               <Measurements />
               {data.plans.map((p) => (

@@ -40,7 +40,14 @@ export const TrainerAttention = ({
     <section className="training-attention" aria-label="Требует внимания">
       <div className="training-heading">
         <h2>На сегодня</h2>
-        <span className="training-badge">{events.length} событий</span>
+        <span className="training-badge">
+          {events.length}{' '}
+          {new Intl.PluralRules('ru').select(events.length) === 'one'
+            ? 'событие'
+            : new Intl.PluralRules('ru').select(events.length) === 'few'
+              ? 'события'
+              : 'событий'}
+        </span>
       </div>
       {events.length ? (
         <div className="training-attention-list">

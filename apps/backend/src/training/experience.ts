@@ -128,8 +128,8 @@ export class TrainingExperience {
       for (const w of shifted)
         for (const id of [w.lesson_id, ...w.exercises.map((e) => e.lesson_id)].filter(Boolean)) {
           const lesson = await db.query(
-            "SELECT id FROM training_lessons WHERE id=$1 AND trainer_id=$2 AND status='ready' FOR SHARE",
-            [id, trainer],
+            "SELECT id FROM training_lessons WHERE id=$1 AND trainer_id=$2 AND status='ready' AND (audience='shared' OR personal_student_id=$3) FOR SHARE",
+            [id, trainer, student],
           );
           if (lesson.rowCount !== 1)
             trainingError(409, 'LESSON_UNAVAILABLE', 'Один из уроков шаблона недоступен.');

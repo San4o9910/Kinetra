@@ -1,5 +1,6 @@
 import type {
   TrainingTemplate,
+  TrainingLessonRecipient,
   TrainingAttention,
   TrainingMeasurement,
   TrainingComplaint,
@@ -18,6 +19,17 @@ const json = (method: string, body?: unknown): RequestInit => ({
   ...(body === undefined ? {} : { body: JSON.stringify(body) }),
 });
 export const trainingApi = {
+  lessonRecipients: (id: string) =>
+    trainingRequest<{ recipients: TrainingLessonRecipient[] }>(`/lessons/${id}/assignments`),
+  assignLesson: (id: string, target: 'all' | 'selected', student_ids: string[]) =>
+    trainingRequest<{ assigned: number }>(
+      `/lessons/${id}/assignments`,
+      json('POST', target === 'all' ? { target } : { target, student_ids }),
+    ),
+  revokeLesson: (id: string, student: string) =>
+    trainingRequest(`/lessons/${id}/assignments/${student}`, json('DELETE')),
+  lessonProgress: (id: string, input: { position_seconds?: number; completed?: true }) =>
+    trainingRequest(`/lessons/${id}/progress`, json('PUT', input)),
   templates: () => trainingRequest<{ templates: TrainingTemplate[] }>('/templates'),
   saveTemplate: (id: string) => trainingRequest(`/plans/${id}/template`, json('POST')),
   removeTemplate: (id: string) => trainingRequest(`/templates/${id}`, json('DELETE')),
@@ -139,7 +151,13 @@ export const trainingApi = {
     title: string,
     description: string,
     size_bytes: number,
-    extra: { folder?: string; original_name?: string; source_modified?: number } = {},
+    extra: {
+      folder?: string;
+      original_name?: string;
+      source_modified?: number;
+      audience?: 'shared' | 'personal';
+      personal_student_id?: string | null;
+    } = {},
   ) =>
     trainingRequest<{ id: string }>(
       '/lessons',

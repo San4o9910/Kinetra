@@ -1,3 +1,4 @@
+import { LessonAssignments } from './lesson-assignments.js';
 import { TrainingProgressPhotos } from './progress-photos.js';
 import { ResumableTrainingMedia } from './resumable-media.js';
 import { TrainingExperience } from './experience.js';
@@ -36,6 +37,7 @@ export const createTrainingRouter = (
   );
   const user: typeof requireAuthenticatedPrincipal = requireAuthenticatedPrincipal;
   const experience = new TrainingExperience(service);
+  const assignments = new LessonAssignments(service);
   const endpoint = (
     method: 'get' | 'post' | 'put' | 'delete',
     path: string,
@@ -47,6 +49,18 @@ export const createTrainingRouter = (
         .catch(next);
     });
   };
+  endpoint('get', '/lessons/:id/assignments', (id, req) =>
+    assignments.recipients(id, String(req.params.id ?? '')),
+  );
+  endpoint('post', '/lessons/:id/assignments', (id, req) =>
+    assignments.assign(id, String(req.params.id ?? ''), req.body),
+  );
+  endpoint('delete', '/lessons/:id/assignments/:student', (id, req) =>
+    assignments.revoke(id, String(req.params.id ?? ''), String(req.params.student ?? '')),
+  );
+  endpoint('put', '/lessons/:id/progress', (id, req) =>
+    assignments.progress(id, String(req.params.id ?? ''), req.body),
+  );
   endpoint('get', '/lessons/:id/upload', (id, req) =>
     uploads.status(id, String(req.params.id ?? '')),
   );

@@ -41,11 +41,31 @@ export interface TrainingStudent {
   minutes: number;
   last_completed_at: string | null;
 }
+export interface AssignedTrainingLesson {
+  id: string;
+  title: string;
+  description: string;
+  audience: 'shared' | 'personal';
+  duration_seconds: number | null;
+  assigned_at: string;
+  position_seconds: number;
+  completed_at: string | null;
+}
+export interface TrainingLessonRecipient {
+  id: string;
+  name: string;
+  client_id: string | null;
+  position_seconds: number;
+  completed_at: string | null;
+}
 export interface TrainingStudentDetail {
   student: TrainingStudent;
   plans: TrainingPlan[];
+  assigned_lessons?: AssignedTrainingLesson[];
 }
 export interface TrainingLesson {
+  audience?: 'shared' | 'personal';
+  personal_student_id?: string | null;
   id: string;
   title: string;
   description: string;
@@ -69,6 +89,7 @@ export interface MyTraining {
   trainer_name: string | null;
   student_id: string | null;
   plans: TrainingPlan[];
+  assigned_lessons?: AssignedTrainingLesson[];
 }
 
 export interface TrainingExercise {

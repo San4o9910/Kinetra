@@ -1,3 +1,4 @@
+import { KinetraVideoIntro } from '../navigation/KinetraVideoIntro';
 import React, { useEffect, useRef, useState } from 'react';
 import { apiBaseUrl } from '../../lib/api';
 import { trainingApi, trainingMessage } from './api';
@@ -12,6 +13,8 @@ export const TrainingPlayer = ({
   position?: number;
   onPosition?: (seconds: number) => void;
 }): React.ReactNode => {
+  const [phase, setPhase] = useState<'ready' | 'intro' | 'playing'>('ready');
+  const [needsPlay, setNeedsPlay] = useState(false);
   const [url, setUrl] = useState('');
   const [error, setError] = useState('');
   const [retry, setRetry] = useState(0);
@@ -45,6 +48,12 @@ export const TrainingPlayer = ({
       window.clearInterval(timer);
     };
   }, [id, retry]);
+  const play = () => {
+    setPhase('playing');
+    requestAnimationFrame(() => video.current?.focus({ preventScroll: true }));
+    setNeedsPlay(false);
+    if (video.current) void video.current.play().catch(() => setNeedsPlay(true));
+  };
   return (
     <div className="training-player">
       {error ? (
@@ -57,30 +66,55 @@ export const TrainingPlayer = ({
       ) : !url ? (
         <p role="status">Загружаем урок…</p>
       ) : (
-        <video
-          ref={video}
-          src={url}
-          controls
-          playsInline
-          preload="metadata"
-          aria-label={title}
-          onLoadedMetadata={() => {
-            if (video.current) {
-              video.current.currentTime = Math.min(resume.current, video.current.duration);
-              if (wasPlaying.current) void video.current.play().catch(() => undefined);
-            }
-          }}
-          onTimeUpdate={() => {
-            if (video.current && Date.now() - lastSave.current > 15_000) {
-              lastSave.current = Date.now();
-              onPosition?.(Math.floor(video.current.currentTime));
-            }
-          }}
-          onPause={() => {
-            if (video.current) onPosition?.(Math.floor(video.current.currentTime));
-          }}
-          onError={() => setError('Не удалось воспроизвести урок. Обновите ссылку.')}
-        />
+        <>
+          {phase === 'ready' && (
+            <div className="training-video-launch">
+              <strong>{title}</strong>
+              <button
+                type="button"
+                className="primary-button"
+                onClick={() => {
+                  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) play();
+                  else setPhase('intro');
+                }}
+              >
+                ▶ Воспроизвести урок
+              </button>
+            </div>
+          )}
+          {phase === 'intro' && <KinetraVideoIntro onDone={play} />}
+          {needsPlay && (
+            <button type="button" className="primary-button" onClick={play}>
+              Воспроизвести видео
+            </button>
+          )}
+          <video
+            ref={video}
+            hidden={phase !== 'playing'}
+            src={url}
+            tabIndex={0}
+            controls
+            playsInline
+            preload="metadata"
+            aria-label={title}
+            onLoadedMetadata={() => {
+              if (video.current) {
+                video.current.currentTime = Math.min(resume.current, video.current.duration);
+                if (wasPlaying.current) void video.current.play().catch(() => undefined);
+              }
+            }}
+            onTimeUpdate={() => {
+              if (video.current && Date.now() - lastSave.current > 15_000) {
+                lastSave.current = Date.now();
+                onPosition?.(Math.floor(video.current.currentTime));
+              }
+            }}
+            onPause={() => {
+              if (video.current) onPosition?.(Math.floor(video.current.currentTime));
+            }}
+            onError={() => setError('Не удалось воспроизвести урок. Обновите ссылку.')}
+          />
+        </>
       )}
     </div>
   );

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import type { TrainingLibrary, TrainingLesson } from '@kinetra/shared';
+import { LessonSharing } from './LessonSharing';
+import type { TrainingLibrary, TrainingLesson, TrainingStudent } from '@kinetra/shared';
 import { trainingApi, trainingMessage } from './api';
 import { TrainingPlayer } from './TrainingPlayer';
 const LessonCover = ({ lesson }: { lesson: TrainingLesson }) => {
@@ -32,6 +33,20 @@ const LessonCover = ({ lesson }: { lesson: TrainingLesson }) => {
   );
 };
 export const TrainerLessons = (): React.ReactNode => {
+  const [audience, setAudience] = useState<'shared' | 'personal'>('shared'),
+    [personalStudent, setPersonalStudent] = useState(''),
+    [students, setStudents] = useState<TrainingStudent[]>([]),
+    [sharing, setSharing] = useState<string | null>(null);
+  useEffect(() => {
+    const c = new AbortController();
+    void trainingApi
+      .students(c.signal)
+      .then((v) => setStudents(v.students.filter((s) => !s.archived_at)))
+      .catch((e) => {
+        if (!c.signal.aborted) setError(trainingMessage(e));
+      });
+    return () => c.abort();
+  }, []);
   const [data, setData] = useState<TrainingLibrary | null>(null),
     [revision, setRevision] = useState(0),
     [error, setError] = useState(''),
@@ -100,6 +115,8 @@ export const TrainerLessons = (): React.ReactNode => {
         (
           await trainingApi.createLesson(title, description, selected.size, {
             folder,
+            audience,
+            personal_student_id: audience === 'personal' ? personalStudent : null,
             original_name: selected.name.slice(0, 200),
             source_modified: selected.lastModified,
           })
@@ -170,7 +187,9 @@ export const TrainerLessons = (): React.ReactNode => {
         <div>
           <p className="survey-kicker">БИБЛИОТЕКА ТРЕНЕРА</p>
           <h1>Мои видеоуроки</h1>
-          <p>Загрузите один раз. Используйте в занятиях и отдельных упражнениях.</p>
+          <p>
+            Создавайте общие и персональные уроки. Назначайте одному ученику, нескольким или всем.
+          </p>
         </div>
       </div>
       {error && (
@@ -187,6 +206,44 @@ export const TrainerLessons = (): React.ReactNode => {
       >
         <h2>Новый урок</h2>
         <fieldset disabled={busy}>
+          <label>
+            Тип урока
+            <select
+              value={audience}
+              onChange={(e) => setAudience(e.target.value as 'shared' | 'personal')}
+            >
+              <option value="shared">Общий — для нескольких учеников</option>
+              <option value="personal">Персональный — для одного ученика</option>
+            </select>
+          </label>
+          {audience === 'personal' ? (
+            <label>
+              Для кого
+              <select
+                required
+                value={personalStudent}
+                onChange={(e) => setPersonalStudent(e.target.value)}
+              >
+                <option value="">Выберите ученика</option>
+                {students.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                    {!s.client_id ? ' · ожидает приглашения' : ''}
+                  </option>
+                ))}
+              </select>
+              <small>
+                После подготовки видео ученик получит урок автоматически. Другим ученикам его
+                назначить нельзя.
+              </small>
+            </label>
+          ) : (
+            <p className="training-muted">
+              После подготовки видео выберите получателей в карточке урока. До назначения видео
+              видно только вам.
+            </p>
+          )}
+
           <label>
             Название
             <input
@@ -247,7 +304,13 @@ export const TrainerLessons = (): React.ReactNode => {
         </p>
         <button
           className="primary-button"
-          disabled={busy || !file || !title.trim() || !data?.upload_available}
+          disabled={
+            busy ||
+            !file ||
+            !title.trim() ||
+            !data?.upload_available ||
+            (audience === 'personal' && !personalStudent)
+          }
         >
           {busy ? 'Загружаем…' : 'Загрузить урок'}
         </button>
@@ -301,7 +364,9 @@ export const TrainerLessons = (): React.ReactNode => {
             <LessonCover lesson={l} />
             <div className="training-actions">
               <span className="training-badge">{labels[l.status] ?? l.status}</span>
-              <small>{l.folder || 'Без папки'}</small>
+              <small>
+                {l.audience === 'personal' ? 'Персональный' : 'Общий'} · {l.folder || 'Без папки'}
+              </small>
             </div>
             <h2>{l.title}</h2>
             <p>{l.description}</p>
@@ -318,6 +383,15 @@ export const TrainerLessons = (): React.ReactNode => {
               />
             )}
             <div className="training-actions">
+              {l.status === 'ready' && (
+                <button
+                  type="button"
+                  aria-expanded={sharing === l.id}
+                  onClick={() => setSharing(sharing === l.id ? null : l.id)}
+                >
+                  {sharing === l.id ? 'Скрыть назначения' : 'Назначить / результаты'}
+                </button>
+              )}
               {l.status === 'ready' && (
                 <button type="button" onClick={() => setPreview(preview === l.id ? null : l.id)}>
                   {preview === l.id ? 'Закрыть видео' : 'Посмотреть'}
@@ -366,6 +440,7 @@ export const TrainerLessons = (): React.ReactNode => {
                 </button>
               )}
             </div>
+            {sharing === l.id && <LessonSharing lesson={l} />}
             {preview === l.id && <TrainingPlayer id={l.id} title={l.title} />}
           </article>
         ))}

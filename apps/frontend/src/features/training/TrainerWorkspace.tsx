@@ -1,3 +1,4 @@
+import { AssignedLessons } from './AssignedLessons';
 import { TrainerAttention, TemplatePicker } from './TrainerTools';
 import { ExerciseProgress, Measurements } from './Measurements';
 import React, { useEffect, useState } from 'react';
@@ -335,6 +336,7 @@ export const TrainerWorkspace = ({
                 {!detail.student.archived_at && (
                   <TemplatePicker key={selected} studentId={selected} onAssigned={reload} />
                 )}
+                <AssignedLessons lessons={detail.assigned_lessons ?? []} readOnly />
                 <ExerciseProgress plans={detail.plans} />
                 {!detail.student.archived_at && (
                   <Measurements key={`measurements:${selected}`} studentId={selected} />
@@ -349,7 +351,10 @@ export const TrainerWorkspace = ({
                     key={`${p.id}:${p.revision}`}
                     plan={p}
                     accountId={accountId}
-                    lessons={lessons}
+                    lessons={lessons.filter(
+                      (l) =>
+                        l.audience !== 'personal' || l.personal_student_id === detail.student.id,
+                    )}
                     archivedStudent={!!detail.student.archived_at}
                     onSaved={reload}
                   />
