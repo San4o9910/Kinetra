@@ -12,19 +12,22 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: 1df883f4553fad833e36687720786d7ba8c63377
+          ref: 55d3ea5bc91613785a7ce3ffa3b4c43ef5a77b8c
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
       - name: Verify exact candidate and install pinned dependencies
         run: |
-          test "$(git rev-parse HEAD)" = 1df883f4553fad833e36687720786d7ba8c63377
+          test "$(git rev-parse HEAD)" = 55d3ea5bc91613785a7ce3ffa3b4c43ef5a77b8c
           sha256sum --check --quiet MANIFEST.sha256
           npm ci
+      - name: Install the same media decoder as CI
+        run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends ffmpeg
       - name: Verify lesson assignment and visible animation stages
         env:
           VITE_API_URL: https://api.ci.kinetra.test
+          KINETRA_CAPTURE_PREVIEW_LOG: 'true'
         run: |
           python3 - <<'PY'
           from pathlib import Path
