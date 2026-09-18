@@ -1,6 +1,8 @@
+import { isDeepStrictEqual } from 'node:util';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import type {
+  TrainingExercise,
   MyTraining,
   TrainingPlan,
   TrainingStudentDetail,
@@ -57,7 +59,7 @@ export class TrainingService {
     if (result.rowCount !== 1)
       trainingError(403, 'TRAINER_REQUIRED', 'Кабинет доступен после одобрения заявки тренера.');
   }
-  private async student(db: PoolClient, trainer: string, id: string, active = true) {
+  public async student(db: PoolClient, trainer: string, id: string, active = true) {
     await this.trainer(db, trainer);
     const result = await db.query(
       'SELECT * FROM training_students WHERE id=$1 AND trainer_id=$2 FOR UPDATE',
@@ -185,7 +187,7 @@ export class TrainingService {
     });
     return { saved: true };
   }
-  private async plans(
+  public async plans(
     db: Pool | PoolClient,
     studentId: string,
     client = false,
@@ -195,7 +197,7 @@ export class TrainingService {
       [studentId],
     );
     const workouts = await db.query(
-      `SELECT w.*,v.title AS lesson_title,l.completed_at,COALESCE(l.position_seconds,0) AS position_seconds,l.difficulty,l.wellbeing,COALESCE(l.note,'') AS note,to_char(w.scheduled_date,'YYYY-MM-DD') AS scheduled_date
+      `SELECT w.*,v.title AS lesson_title,l.completed_at,COALESCE(l.position_seconds,0) AS position_seconds,l.difficulty,l.wellbeing,COALESCE(l.note,'') AS note,COALESCE(l.set_records,'[]'::jsonb) AS set_records,COALESCE(l.progress_revision,0) AS progress_revision,to_char(w.scheduled_date,'YYYY-MM-DD') AS scheduled_date
       FROM training_workouts w JOIN training_plans p ON p.id=w.plan_id LEFT JOIN training_lessons v ON v.id=w.lesson_id LEFT JOIN training_logs l ON l.workout_id=w.id
       WHERE p.student_id=$1 ${client ? "AND p.status<>'draft'" : ''} ORDER BY w.position`,
       [studentId],
@@ -246,7 +248,7 @@ export class TrainingService {
       return { id: result.rows[0].id as string };
     });
   }
-  private async ownedPlan(db: PoolClient, trainer: string, id: string) {
+  public async ownedPlan(db: PoolClient, trainer: string, id: string) {
     const found = await db.query('SELECT student_id FROM training_plans WHERE id=$1', [
       trainingId(id),
     ]);
@@ -276,13 +278,14 @@ export class TrainingService {
           'В опубликованной программе должно остаться хотя бы одно занятие.',
         );
       const old = await db.query(
-        'SELECT w.*,l.completed_at FROM training_workouts w LEFT JOIN training_logs l ON l.workout_id=w.id WHERE w.plan_id=$1',
+        "SELECT w.*,l.completed_at,COALESCE(l.set_records,'[]'::jsonb) AS set_records FROM training_workouts w LEFT JOIN training_logs l ON l.workout_id=w.id WHERE w.plan_id=$1",
         [id],
       );
-      for (const w of old.rows.filter((w) => w.completed_at)) {
+      for (const w of old.rows.filter((w) => w.completed_at || w.set_records.length > 0)) {
         const incoming = parsed.data.workouts.find((i) => i.id === w.id);
         if (
           !incoming ||
+          !isDeepStrictEqual(incoming.exercises, w.exercises) ||
           incoming.title !== w.title ||
           incoming.instructions !== w.instructions ||
           incoming.lesson_id !== w.lesson_id ||
@@ -293,21 +296,23 @@ export class TrainingService {
           trainingError(
             409,
             'COMPLETED_WORKOUT',
-            'Выполненное занятие нельзя изменить или удалить: оно хранит историю ученика.',
+            'Начатое или выполненное занятие нельзя изменить или удалить: оно хранит результаты ученика.',
           );
       }
       for (const [position, w] of parsed.data.workouts.entries()) {
-        if (w.lesson_id) {
+        for (const lessonId of [w.lesson_id, ...w.exercises.map((e) => e.lesson_id)].filter(
+          Boolean,
+        )) {
           const lesson = await db.query(
             "SELECT id FROM training_lessons WHERE id=$1 AND trainer_id=$2 AND status='ready' FOR SHARE",
-            [w.lesson_id, trainer],
+            [lessonId, trainer],
           );
           if (lesson.rowCount !== 1)
             trainingError(400, 'LESSON_UNAVAILABLE', 'Выберите готовый урок из своей библиотеки.');
         }
         const result = await db.query(
-          `INSERT INTO training_workouts(id,plan_id,title,instructions,scheduled_date,duration_minutes,lesson_id,position) VALUES($1,$2,$3,$4,$5,$6,$7,$8)
-          ON CONFLICT(id) DO UPDATE SET title=$3,instructions=$4,scheduled_date=$5,duration_minutes=$6,lesson_id=$7,position=$8 WHERE training_workouts.plan_id=$2 RETURNING id`,
+          `INSERT INTO training_workouts(id,plan_id,title,instructions,scheduled_date,duration_minutes,lesson_id,position,exercises) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)
+          ON CONFLICT(id) DO UPDATE SET title=$3,instructions=$4,scheduled_date=$5,duration_minutes=$6,lesson_id=$7,position=$8,exercises=$9::jsonb WHERE training_workouts.plan_id=$2 RETURNING id`,
           [
             w.id,
             id,
@@ -317,6 +322,7 @@ export class TrainingService {
             w.duration_minutes,
             w.lesson_id,
             position,
+            JSON.stringify(w.exercises),
           ],
         );
         if (result.rowCount !== 1)
@@ -361,15 +367,39 @@ export class TrainingService {
     if (!parsed.success) trainingError(400, 'INVALID_LOG', 'Проверьте отметку выполнения.');
     return this.transaction(async (db) => {
       const result = await db.query(
-        `SELECT w.id FROM training_workouts w JOIN training_plans p ON p.id=w.plan_id JOIN training_students s ON s.id=p.student_id JOIN trainer_profiles t ON t.user_id=s.trainer_id
+        `SELECT w.id,w.exercises FROM training_workouts w JOIN training_plans p ON p.id=w.plan_id JOIN training_students s ON s.id=p.student_id JOIN trainer_profiles t ON t.user_id=s.trainer_id
         WHERE w.id=$1 AND s.client_id=$2 AND s.archived_at IS NULL AND t.is_active=true AND p.status='published' FOR SHARE OF s,t,p FOR UPDATE OF w`,
         [trainingId(id), client],
       );
       if (result.rowCount !== 1) trainingError(404, 'WORKOUT_UNAVAILABLE', 'Занятие недоступно.');
       const v = parsed.data;
+      const oldLog = await db.query(
+        'SELECT progress_revision FROM training_logs WHERE workout_id=$1 FOR UPDATE',
+        [id],
+      );
+      const previousRevision = oldLog.rows[0]?.progress_revision ?? 0;
+      if (v.base_revision !== undefined && v.base_revision !== previousRevision)
+        trainingError(
+          409,
+          'LOG_CHANGED',
+          'Отметки изменились на другом устройстве. Обновите тренировку перед сохранением.',
+        );
+      const updatesProgress =
+        v.set_records !== undefined ||
+        v.completed !== undefined ||
+        v.note !== undefined ||
+        v.difficulty !== undefined ||
+        v.wellbeing !== undefined;
+      const exercises = result.rows[0].exercises as TrainingExercise[];
+      if (
+        v.set_records?.some(
+          (r) => !exercises.some((e) => e.id === r.exercise_id && r.set <= e.sets),
+        )
+      )
+        trainingError(400, 'INVALID_SET', 'Подход не найден в назначенной тренировке.');
       await db.query(
-        `INSERT INTO training_logs(workout_id,client_id,completed_at,position_seconds,difficulty,wellbeing,note) VALUES($1,$2,CASE WHEN $3 THEN now() END,COALESCE($4,0),$5,$6,COALESCE($7,''))
-        ON CONFLICT(workout_id) DO UPDATE SET completed_at=COALESCE(training_logs.completed_at,EXCLUDED.completed_at),position_seconds=COALESCE($4,training_logs.position_seconds),difficulty=COALESCE($5,training_logs.difficulty),wellbeing=COALESCE($6,training_logs.wellbeing),note=COALESCE($7,training_logs.note),updated_at=now()`,
+        `INSERT INTO training_logs(workout_id,client_id,completed_at,position_seconds,difficulty,wellbeing,note,set_records,progress_revision) VALUES($1,$2,CASE WHEN $3 THEN now() END,COALESCE($4,0),$5,$6,COALESCE($7,''),COALESCE($8::jsonb,'[]'::jsonb),$9)
+        ON CONFLICT(workout_id) DO UPDATE SET completed_at=COALESCE(training_logs.completed_at,EXCLUDED.completed_at),position_seconds=COALESCE($4,training_logs.position_seconds),difficulty=COALESCE($5,training_logs.difficulty),wellbeing=COALESCE($6,training_logs.wellbeing),note=COALESCE($7,training_logs.note),set_records=COALESCE($8::jsonb,training_logs.set_records),progress_revision=$9,updated_at=now()`,
         [
           id,
           client,
@@ -378,15 +408,17 @@ export class TrainingService {
           v.difficulty ?? null,
           v.wellbeing ?? null,
           v.note ?? null,
+          v.set_records ? JSON.stringify(v.set_records) : null,
+          previousRevision + (updatesProgress ? 1 : 0),
         ],
       );
-      return { saved: true };
+      return { saved: true, revision: previousRevision + (updatesProgress ? 1 : 0) };
     });
   }
   public async library(trainer: string): Promise<TrainingLibrary> {
     await this.trainer(this.pool, trainer);
     const result = await this.pool.query(
-      "SELECT id,title,description,status,size_bytes::float8 AS size_bytes,duration_seconds FROM training_lessons WHERE trainer_id=$1 AND status<>'archived' ORDER BY created_at DESC",
+      "SELECT id,title,description,status,size_bytes::float8 AS size_bytes,duration_seconds,folder,original_name,source_bytes::float8 AS source_bytes,source_modified::float8 AS source_modified,upload_offset::float8 AS upload_offset,error_message,thumbnail_ready FROM training_lessons WHERE trainer_id=$1 AND status<>'archived' ORDER BY created_at DESC",
       [trainer],
     );
     return {
@@ -405,18 +437,27 @@ export class TrainingService {
       await this.trainer(db, trainer);
       await db.query("SELECT pg_advisory_xact_lock(hashtext('training-media-quota'))");
       const sum = await db.query(
-        "SELECT COALESCE(sum(size_bytes),0)::float8 AS total,COALESCE(sum(size_bytes) FILTER(WHERE trainer_id=$1),0)::float8 AS own FROM training_lessons WHERE status IN ('pending','uploading','ready')",
+        "SELECT COALESCE(sum(CASE WHEN status='ready' THEN size_bytes ELSE GREATEST(size_bytes,268435456) END),0)::float8 AS total,COALESCE(sum(CASE WHEN status='ready' THEN size_bytes ELSE GREATEST(size_bytes,268435456) END) FILTER(WHERE trainer_id=$1),0)::float8 AS own FROM training_lessons WHERE status IN ('pending','uploading','processing','ready')",
         [trainer],
       );
       if (
-        sum.rows[0].total + parsed.data.size_bytes > 5 * 1024 ** 3 ||
-        sum.rows[0].own + parsed.data.size_bytes > 1024 ** 3
+        sum.rows[0].total + Math.max(parsed.data.size_bytes, 256 * 1024 ** 2) > 5 * 1024 ** 3 ||
+        sum.rows[0].own + Math.max(parsed.data.size_bytes, 256 * 1024 ** 2) > 1024 ** 3
       )
         trainingError(409, 'MEDIA_QUOTA', 'Недостаточно места для урока. Удалите ненужные видео.');
       const id = randomUUID();
       await db.query(
-        'INSERT INTO training_lessons(id,trainer_id,title,description,size_bytes) VALUES($1,$2,$3,$4,$5)',
-        [id, trainer, parsed.data.title, parsed.data.description, parsed.data.size_bytes],
+        'INSERT INTO training_lessons(id,trainer_id,title,description,size_bytes,source_bytes,folder,original_name,source_modified) VALUES($1,$2,$3,$4,$5,$5,$6,$7,$8)',
+        [
+          id,
+          trainer,
+          parsed.data.title,
+          parsed.data.description,
+          parsed.data.size_bytes,
+          parsed.data.folder,
+          parsed.data.original_name,
+          parsed.data.source_modified,
+        ],
       );
       return { id };
     });
@@ -429,11 +470,12 @@ export class TrainingService {
         [trainingId(id), trainer],
       );
       if (!result.rows[0]) trainingError(404, 'LESSON_UNAVAILABLE', 'Урок недоступен.');
-      if (result.rows[0].status === 'uploading')
+      if (['uploading', 'processing'].includes(result.rows[0].status))
         trainingError(409, 'UPLOAD_BUSY', 'Дождитесь завершения загрузки.');
-      const used = await db.query('SELECT id FROM training_workouts WHERE lesson_id=$1 LIMIT 1', [
-        id,
-      ]);
+      const used = await db.query(
+        `SELECT id FROM training_workouts WHERE lesson_id=$1 OR exercises @> jsonb_build_array(jsonb_build_object('lesson_id',$1::text)) UNION ALL SELECT id FROM training_templates WHERE workouts::text LIKE '%'||$1::text||'%' LIMIT 1`,
+        [id],
+      );
       if (used.rowCount !== 0)
         trainingError(
           409,
@@ -449,7 +491,7 @@ export class TrainingService {
   public async mediaAccess(user: string, id: string) {
     const result = await this.pool.query(
       `SELECT l.id,l.size_bytes::float8 AS size_bytes FROM training_lessons l JOIN trainer_profiles t ON t.user_id=l.trainer_id WHERE l.id=$1 AND l.status='ready' AND t.is_active=true AND (l.trainer_id=$2 OR EXISTS(
-      SELECT 1 FROM training_workouts w JOIN training_plans p ON p.id=w.plan_id JOIN training_students s ON s.id=p.student_id WHERE w.lesson_id=l.id AND p.status IN ('published','archived') AND s.client_id=$2 AND s.trainer_id=l.trainer_id AND s.archived_at IS NULL))`,
+      SELECT 1 FROM training_workouts w JOIN training_plans p ON p.id=w.plan_id JOIN training_students s ON s.id=p.student_id WHERE (w.lesson_id=l.id OR w.exercises @> jsonb_build_array(jsonb_build_object('lesson_id',l.id::text))) AND p.status IN ('published','archived') AND s.client_id=$2 AND s.trainer_id=l.trainer_id AND s.archived_at IS NULL))`,
       [trainingId(id), user],
     );
     if (!result.rows[0]) trainingError(404, 'LESSON_UNAVAILABLE', 'Урок недоступен.');

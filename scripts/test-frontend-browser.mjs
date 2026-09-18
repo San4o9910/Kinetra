@@ -610,6 +610,8 @@ const createFixtureServer = (handler) =>
 
 const serveLegacyTrainingFixture = (request, response) => {
   const payloads = {
+    '/api/v1/training/attention': { events: [] },
+    '/api/v1/training/admin/complaints': { complaints: [] },
     '/api/v1/training/mine': { trainer_name: null, student_id: null, plans: [] },
     '/api/v1/training/students': { students: [] },
     '/api/v1/training/lessons': { lessons: [], upload_available: true, max_bytes: 268435456 },

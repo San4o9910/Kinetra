@@ -1,4 +1,11 @@
 import type {
+  TrainingTemplate,
+  TrainingAttention,
+  TrainingMeasurement,
+  TrainingComplaint,
+  TrainingSetRecord,
+} from '@kinetra/shared';
+import type {
   MyTraining,
   TrainingLibrary,
   TrainingPlanInput,
@@ -11,6 +18,86 @@ const json = (method: string, body?: unknown): RequestInit => ({
   ...(body === undefined ? {} : { body: JSON.stringify(body) }),
 });
 export const trainingApi = {
+  templates: () => trainingRequest<{ templates: TrainingTemplate[] }>('/templates'),
+  saveTemplate: (id: string) => trainingRequest(`/plans/${id}/template`, json('POST')),
+  removeTemplate: (id: string) => trainingRequest(`/templates/${id}`, json('DELETE')),
+  assignTemplate: (student: string, template_id: string, start_date: string | null) =>
+    trainingRequest<{ id: string }>(
+      `/students/${student}/template`,
+      json('POST', { template_id, start_date }),
+    ),
+  attention: () => trainingRequest<{ events: TrainingAttention[] }>('/attention'),
+  seen: (id: string) => trainingRequest(`/students/${id}/seen`, json('POST')),
+  reschedule: (id: string, requested_date: string, reason: string) =>
+    trainingRequest(`/workouts/${id}/reschedule`, json('POST', { requested_date, reason })),
+  reschedules: () =>
+    trainingRequest<{
+      requests: {
+        id: string;
+        workout_id: string;
+        status: string;
+        requested_date: string;
+        reason: string;
+      }[];
+    }>('/reschedules'),
+  reviewReschedule: (id: string, approve: boolean) =>
+    trainingRequest(`/reschedules/${id}/review`, json('POST', { approve })),
+  measurements: (student?: string) =>
+    trainingRequest<{ measurements: TrainingMeasurement[] }>(
+      student ? `/students/${student}/measurements` : '/measurements',
+    ),
+  addMeasurement: (input: Omit<TrainingMeasurement, 'id' | 'photo_id'>) =>
+    trainingRequest<{ id: string }>('/measurements', json('POST', input)),
+  removeMeasurement: (id: string) => trainingRequest(`/measurements/${id}`, json('DELETE')),
+  shareMeasurement: (id: string, share: boolean) =>
+    trainingRequest(`/measurements/${id}/sharing`, json('PUT', { share })),
+  uploadPhoto: (id: string, file: File) =>
+    trainingRequest(`/measurements/${id}/photo`, {
+      method: 'PUT',
+      body: file,
+      headers: { 'Content-Type': file.type },
+    }),
+  photoAccess: (id: string) => trainingRequest<{ path: string }>(`/measurements/${id}/photo`),
+  complaints: (admin = false) =>
+    trainingRequest<{ complaints: TrainingComplaint[] }>(
+      admin ? '/admin/complaints' : '/complaints',
+    ),
+  complain: (reason: string) => trainingRequest('/complaints', json('POST', { reason })),
+  reviewComplaint: (
+    id: string,
+    status: 'reviewing' | 'resolved',
+    resolution: string,
+    revision: number,
+  ) => trainingRequest(`/admin/complaints/${id}`, json('POST', { status, resolution, revision })),
+  verificationHistory: (id: string) =>
+    trainingRequest<{
+      events: {
+        from_status: string | null;
+        to_status: string;
+        reason: string | null;
+        created_at: string;
+      }[];
+    }>(`/admin/verification/${id}/history`),
+  uploadStatus: (id: string) =>
+    trainingRequest<{
+      status: string;
+      offset: number;
+      size: number;
+      original_name: string;
+      source_modified: number | null;
+      error_message: string;
+      chunk_bytes: number;
+    }>(`/lessons/${id}/upload`),
+  uploadChunk: (id: string, chunk: Blob, offset: number, signal: AbortSignal) =>
+    trainingRequest<{ offset: number }>(`/lessons/${id}/chunk`, {
+      method: 'PUT',
+      body: chunk,
+      headers: { 'Content-Type': 'application/octet-stream', 'X-Upload-Offset': String(offset) },
+      signal,
+    }),
+  finishUpload: (id: string) => trainingRequest(`/lessons/${id}/finish`, json('POST')),
+  cancelUpload: (id: string) => trainingRequest(`/lessons/${id}/cancel`, json('POST')),
+
   students: (signal?: AbortSignal) =>
     trainingRequest<{ students: TrainingStudent[] }>('/students', { signal: signal ?? null }),
   student: (id: string, signal?: AbortSignal) =>
@@ -34,16 +121,30 @@ export const trainingApi = {
     id: string,
     input: {
       completed?: true;
+      base_revision?: number;
+      set_records?: TrainingSetRecord[];
       position_seconds?: number;
       difficulty?: number;
       wellbeing?: number;
       note?: string;
     },
-  ) => trainingRequest(`/workouts/${id}/log`, json('PUT', input)),
+  ) =>
+    trainingRequest<{ saved: boolean; revision?: number }>(
+      `/workouts/${id}/log`,
+      json('PUT', input),
+    ),
   library: (signal?: AbortSignal) =>
     trainingRequest<TrainingLibrary>('/lessons', { signal: signal ?? null }),
-  createLesson: (title: string, description: string, size_bytes: number) =>
-    trainingRequest<{ id: string }>('/lessons', json('POST', { title, description, size_bytes })),
+  createLesson: (
+    title: string,
+    description: string,
+    size_bytes: number,
+    extra: { folder?: string; original_name?: string; source_modified?: number } = {},
+  ) =>
+    trainingRequest<{ id: string }>(
+      '/lessons',
+      json('POST', { title, description, size_bytes, ...extra }),
+    ),
   upload: (id: string, file: File, signal: AbortSignal) =>
     trainingRequest(`/lessons/${id}/file`, {
       method: 'PUT',

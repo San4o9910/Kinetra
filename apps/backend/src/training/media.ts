@@ -29,14 +29,14 @@ export const parseMediaRange = (
 };
 export class TrainingMedia {
   public constructor(
-    private readonly service: TrainingService,
-    private readonly directory: string | null,
-    private readonly secret: string,
+    public readonly service: TrainingService,
+    public readonly directory: string | null,
+    public readonly secret: string,
   ) {
     if (directory && !isAbsolute(directory))
       throw new Error('TRAINING_MEDIA_DIR must be an absolute private persistent path.');
   }
-  private path(id: string) {
+  public path(id: string) {
     return join(this.directory!, `${trainingId(id)}.mp4`);
   }
   public sign(user: string, id: string, now = Date.now()): string {
@@ -109,23 +109,39 @@ export class TrainingMedia {
     if (!this.directory) return;
     await mkdir(this.directory, { recursive: true, mode: 0o700 });
     await this.service.pool.query(
-      "UPDATE training_lessons SET status='failed',updated_at=now() WHERE status IN ('pending','uploading') AND updated_at<now()-interval '30 minutes'",
+      "UPDATE training_lessons SET status='failed',updated_at=now() WHERE status IN ('pending','uploading') AND ((original_name='' AND updated_at<now()-interval '30 minutes') OR updated_at<now()-interval '24 hours')",
     );
     const rows = await this.service.pool.query(
-      "SELECT id FROM training_lessons WHERE status IN ('ready','uploading','pending')",
+      "SELECT id,status FROM training_lessons WHERE status IN ('ready','uploading','pending','processing')",
     );
-    const live = new Set(rows.rows.map((r) => r.id as string));
+    const live = new Map(rows.rows.map((r) => [r.id as string, r.status as string]));
+    const photos = new Set(
+      (
+        await this.service.pool.query(
+          'SELECT photo_id FROM training_measurements WHERE photo_id IS NOT NULL',
+        )
+      ).rows.map((r) => r.photo_id as string),
+    );
     for (const name of await readdir(this.directory)) {
-      if (!/^[0-9a-f-]{36}(?:\.[0-9a-f-]{36}\.part|\.mp4)$/u.test(name)) continue;
+      const lesson =
+        /^([0-9a-f-]{36})(\.[0-9a-f-]{36}\.part|\.mp4|\.upload|\.processing\.mp4|\.thumb\.jpg)$/u.exec(
+          name,
+        );
+      const photo = /^progress-([0-9a-f-]{36})(\.input|\.jpg)$/u.exec(name);
+      if (!lesson && !photo) continue;
       const path = join(this.directory, name);
-      const file = await stat(path);
-      if (
-        Date.now() - file.mtimeMs > 30 * 60_000 &&
-        (!live.has(name.slice(0, 36)) || name.endsWith('.part'))
-      )
-        await rm(path, { force: true });
+      const file = await stat(path).catch(() => null);
+      if (!file || Date.now() - file.mtimeMs < 60 * 60_000) continue;
+      const abandoned = lesson
+        ? !live.has(lesson[1]!) ||
+          (live.get(lesson[1]!) === 'ready' &&
+            ['.upload', '.processing.mp4'].includes(lesson[2]!)) ||
+          lesson[2]!.endsWith('.part')
+        : photo![2] === '.input' || !photos.has(photo![1]!);
+      if (abandoned) await rm(path, { force: true });
     }
   }
+
   public async upload(trainer: string, id: string, request: Request) {
     if (!this.directory)
       trainingError(503, 'MEDIA_UNAVAILABLE', 'Загрузка видео временно недоступна.');
@@ -159,7 +175,7 @@ export class TrainingMedia {
           'Сейчас обрабатывается другое видео. Повторите через минуту.',
         );
       const quota = await db.query(
-        "SELECT COALESCE(sum(size_bytes),0)::float8 total,COALESCE(sum(size_bytes) FILTER(WHERE trainer_id=$1),0)::float8 own FROM training_lessons WHERE status IN ('ready','pending','uploading') AND id<>$2",
+        "SELECT COALESCE(sum(CASE WHEN status='ready' THEN size_bytes ELSE 268435456 END),0)::float8 total,COALESCE(sum(CASE WHEN status='ready' THEN size_bytes ELSE 268435456 END) FILTER(WHERE trainer_id=$1),0)::float8 own FROM training_lessons WHERE status IN ('ready','pending','uploading','processing') AND id<>$2",
         [trainer, id],
       );
       if (quota.rows[0].total + size > 5 * 1024 ** 3 || quota.rows[0].own + size > 1024 ** 3)
@@ -296,7 +312,9 @@ export class TrainingMedia {
   }
   public async remove(trainer: string, id: string) {
     const result = await this.service.removeLesson(trainer, id);
-    if (this.directory) await rm(this.path(id), { force: true });
+    if (this.directory)
+      for (const suffix of ['.mp4', '.thumb.jpg', '.upload', '.processing.mp4'])
+        await rm(join(this.directory, `${id}${suffix}`), { force: true });
     return result;
   }
 }

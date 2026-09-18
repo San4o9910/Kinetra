@@ -5,6 +5,7 @@ export interface TrainingWorkoutInput {
   scheduled_date: string | null;
   duration_minutes: number;
   lesson_id: string | null;
+  exercises?: TrainingExercise[];
 }
 export interface TrainingWorkout extends TrainingWorkoutInput {
   lesson_title: string | null;
@@ -13,6 +14,8 @@ export interface TrainingWorkout extends TrainingWorkoutInput {
   difficulty: number | null;
   wellbeing: number | null;
   note: string;
+  set_records?: TrainingSetRecord[];
+  progress_revision?: number;
 }
 export interface TrainingPlanInput {
   title: string;
@@ -46,9 +49,16 @@ export interface TrainingLesson {
   id: string;
   title: string;
   description: string;
-  status: 'pending' | 'uploading' | 'ready' | 'failed' | 'archived';
+  status: 'pending' | 'uploading' | 'processing' | 'ready' | 'failed' | 'archived';
   size_bytes: number;
   duration_seconds: number | null;
+  folder?: string;
+  original_name?: string;
+  source_bytes?: number;
+  source_modified?: number | null;
+  upload_offset?: number;
+  error_message?: string;
+  thumbnail_ready?: boolean;
 }
 export interface TrainingLibrary {
   lessons: TrainingLesson[];
@@ -59,4 +69,60 @@ export interface MyTraining {
   trainer_name: string | null;
   student_id: string | null;
   plans: TrainingPlan[];
+}
+
+export interface TrainingExercise {
+  id: string;
+  name: string;
+  sets: number;
+  repetitions: number | null;
+  seconds: number | null;
+  weight_kg: number | null;
+  rest_seconds: number;
+  lesson_id: string | null;
+}
+export interface TrainingSetRecord {
+  exercise_id: string;
+  set: number;
+  repetitions: number | null;
+  seconds: number | null;
+  weight_kg: number | null;
+  completed: boolean;
+}
+export interface TrainingTemplate {
+  id: string;
+  title: string;
+  goal: string;
+  workouts: TrainingWorkoutInput[];
+}
+export interface TrainingAttention {
+  student_id: string;
+  name: string;
+  kind: 'report' | 'overdue' | 'ending' | 'invitation' | 'reschedule';
+  title: string;
+  request_id?: string;
+  requested_date?: string;
+  reason?: string;
+}
+export interface TrainingMeasurement {
+  id: string;
+  recorded_date: string;
+  weight_kg: number | null;
+  waist_cm: number | null;
+  chest_cm: number | null;
+  hips_cm: number | null;
+  note: string;
+  share_with_trainer: boolean;
+  photo_id: string | null;
+}
+export interface TrainingComplaint {
+  id: string;
+  trainer_name: string;
+  client_name: string;
+  reason: string;
+  status: 'new' | 'reviewing' | 'resolved';
+  resolution: string;
+  revision: number;
+  created_at: string;
+  events: { status: string; reason: string; created_at: string }[];
 }

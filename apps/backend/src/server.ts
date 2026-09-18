@@ -1,3 +1,9 @@
+import { TrainingReminders } from './training/reminders.js';
+import { WebPushSender } from './push/webpush-sender.js';
+import { TrainingService } from './training/service.js';
+import { TrainingMedia } from './training/media.js';
+import { ResumableTrainingMedia } from './training/resumable-media.js';
+import { databasePool } from './db/pool.js';
 import { createServer } from 'node:http';
 
 import { createApp } from './app.js';
@@ -14,6 +20,35 @@ const chatRuntime = createProductionChatRuntime({
   accessTokenVerifier: authRuntime.accessTokenVerifier,
 });
 let shutdownStarted = false;
+const trainingDirectory = process.env.TRAINING_MEDIA_DIR?.trim() || null;
+const trainingWorker = new ResumableTrainingMedia(
+  new TrainingMedia(
+    new TrainingService(databasePool, trainingDirectory !== null),
+    trainingDirectory,
+    env.auth.jwtAccessSecret,
+  ),
+);
+const trainingTimer = setInterval(() => {
+  if (!shutdownStarted) void trainingWorker.processNext();
+}, 15_000);
+trainingTimer.unref();
+const reminders =
+  env.vapid && process.env.TRAINING_REMINDERS_ENABLED === 'true'
+    ? new TrainingReminders(databasePool, new WebPushSender(env.vapid))
+    : null;
+let remindersRunning = false;
+const remindersTimer = setInterval(() => {
+  if (!shutdownStarted && reminders && !remindersRunning) {
+    remindersRunning = true;
+    void reminders
+      .run()
+      .catch(() => console.error('Personal reminder delivery failed.'))
+      .finally(() => {
+        remindersRunning = false;
+      });
+  }
+}, 30_000);
+remindersTimer.unref();
 const app = createApp({ authRuntime, chatRuntime, isDraining: () => shutdownStarted });
 const httpServer = createServer(app);
 httpServer.requestTimeout = Math.max(env.chat.photoUploadTotalTimeoutMs + 5_000, 610_000);
@@ -57,6 +92,9 @@ const shutdown = createShutdownHandler({
   ...env.shutdown,
   markDraining: () => {
     shutdownStarted = true;
+    clearInterval(trainingTimer);
+    clearInterval(remindersTimer);
+    void trainingWorker.stop();
     console.log('Kinetra backend is draining.');
   },
   closeRealtime: async () => {

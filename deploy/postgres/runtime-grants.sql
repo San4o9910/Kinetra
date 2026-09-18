@@ -8,7 +8,7 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO kinetra_api;
 REVOKE ALL ON TABLE schema_migrations FROM kinetra_api;
 
 GRANT SELECT ON users, subscriptions, workout_completions, videos, program_weeks,
-  program_days, weekly_metrics, push_subscriptions, push_notification_deliveries
+  program_days, weekly_metrics, push_subscriptions, push_notification_deliveries, training_students
   TO kinetra_notifications;
 GRANT INSERT ON push_notification_deliveries TO kinetra_notifications;
 GRANT UPDATE ON push_subscriptions, push_notification_deliveries TO kinetra_notifications;

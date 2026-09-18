@@ -269,6 +269,7 @@ export class PostgresPushRepository implements PushRepository {
          LEFT JOIN pg_timezone_names AS timezone_entry
            ON timezone_entry.name = user_record.timezone
          WHERE user_record.onboarding_status = 'active'
+           AND NOT EXISTS(SELECT 1 FROM training_students ts WHERE ts.client_id=user_record.id AND ts.archived_at IS NULL)
            AND EXISTS (
            SELECT 1
            FROM push_subscriptions AS subscription

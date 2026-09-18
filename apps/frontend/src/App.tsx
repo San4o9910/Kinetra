@@ -930,6 +930,7 @@ export const App = (): ReactNode => {
     if (route === appRoutes.trainerStudents)
       return withTrainerShell(
         <TrainerWorkspace
+          accountId={profile.user.id}
           key={profile.user.id}
           onChat={(id) => navigate(trainerConversationRoute(id))}
         />,
@@ -1081,7 +1082,12 @@ export const App = (): ReactNode => {
 
   if (route === appRoutes.myTraining)
     return withActiveNavigation(
-      <MyTraining key={profile.user.id} onOpenChat={() => navigate(appRoutes.chat)} />,
+      <MyTraining
+        accountId={profile.user.id}
+        timezone={profile.user.timezone}
+        key={profile.user.id}
+        onOpenChat={() => navigate(appRoutes.chat)}
+      />,
     );
 
   if (route === appRoutes.editSurvey) {
@@ -1317,6 +1323,8 @@ export const App = (): ReactNode => {
       onNavigate={navigateActiveTab}
     >
       <MyTraining
+        accountId={profile.user.id}
+        timezone={profile.user.timezone}
         key={`${profile.user.id}:${route}`}
         mode={
           route === appRoutes.progress

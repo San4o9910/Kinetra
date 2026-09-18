@@ -1,193 +1,381 @@
 import React, { useEffect, useRef, useState } from 'react';
-import type { TrainingLibrary } from '@kinetra/shared';
+import type { TrainingLibrary, TrainingLesson } from '@kinetra/shared';
 import { trainingApi, trainingMessage } from './api';
 import { TrainingPlayer } from './TrainingPlayer';
+const LessonCover = ({ lesson }: { lesson: TrainingLesson }) => {
+  const [url, setUrl] = useState('');
+  useEffect(() => {
+    if (!lesson.thumbnail_ready) return;
+    let active = true;
+    void trainingApi
+      .access(lesson.id)
+      .then((v) => {
+        if (active) setUrl(v.path.replace('/media/', '/thumbnails/'));
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [lesson.id, lesson.thumbnail_ready]);
+  return url ? (
+    <img
+      className="training-lesson-cover"
+      src={url}
+      alt=""
+      loading="lazy"
+      referrerPolicy="no-referrer"
+    />
+  ) : (
+    <div className="training-lesson-cover training-cover-placeholder" aria-hidden="true">
+      K<span>▶</span>
+    </div>
+  );
+};
 export const TrainerLessons = (): React.ReactNode => {
-  const [data, setData] = useState<TrainingLibrary | null>(null);
-  const [revision, setRevision] = useState(0);
-  const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [stage, setStage] = useState('');
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<string | null>(null);
-  const controller = useRef<AbortController | null>(null);
-  const fileInput = useRef<HTMLInputElement>(null);
+  const [data, setData] = useState<TrainingLibrary | null>(null),
+    [revision, setRevision] = useState(0),
+    [error, setError] = useState(''),
+    [busy, setBusy] = useState(false),
+    [stage, setStage] = useState(''),
+    [progress, setProgress] = useState(0),
+    [title, setTitle] = useState(''),
+    [description, setDescription] = useState(''),
+    [folder, setFolder] = useState(''),
+    [file, setFile] = useState<File | null>(null),
+    [preview, setPreview] = useState<string | null>(null),
+    [query, setQuery] = useState(''),
+    [filter, setFilter] = useState('all'),
+    [resumeId, setResumeId] = useState<string | null>(null);
+  const controller = useRef<AbortController | null>(null),
+    fileInput = useRef<HTMLInputElement>(null),
+    resumeInput = useRef<HTMLInputElement>(null),
+    active = useRef(true),
+    uploading = useRef(false);
+  useEffect(() => {
+    active.current = true;
+    return () => {
+      active.current = false;
+      controller.current?.abort();
+    };
+  }, []);
   useEffect(() => {
     const c = new AbortController();
-    void trainingApi
-      .library(c.signal)
-      .then(setData)
-      .catch((e) => {
-        if (!c.signal.aborted) setError(trainingMessage(e));
-      });
-    return () => c.abort();
+    const load = () => {
+      void trainingApi
+        .library(c.signal)
+        .then((v) => {
+          if (!c.signal.aborted) setData(v);
+        })
+        .catch((e) => {
+          if (!c.signal.aborted) setError(trainingMessage(e));
+        });
+    };
+    load();
+    const timer = setInterval(load, 5000);
+    return () => {
+      c.abort();
+      clearInterval(timer);
+    };
   }, [revision]);
-  useEffect(() => () => controller.current?.abort(), []);
-  const upload = async () => {
-    if (!file || busy) return;
+  useEffect(() => {
+    if (!busy) return;
+    const before = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', before);
+    return () => window.removeEventListener('beforeunload', before);
+  }, [busy]);
+  const upload = async (selected: File, id?: string) => {
+    if (uploading.current) return;
+    uploading.current = true;
     setBusy(true);
     setError('');
-    controller.current = new AbortController();
-    setStage('Загружаем и проверяем видео. Не закрывайте страницу.');
+    setProgress(0);
+    const c = new AbortController();
+    controller.current = c;
     try {
-      const lesson = await trainingApi.createLesson(title, description, file.size);
-      await trainingApi.upload(lesson.id, file, controller.current.signal);
-      setTitle('');
-      setDescription('');
-      setFile(null);
-      if (fileInput.current) fileInput.current.value = '';
-      setStage('Урок готов. Теперь его можно добавить в программу ученика.');
+      const lessonId =
+        id ??
+        (
+          await trainingApi.createLesson(title, description, selected.size, {
+            folder,
+            original_name: selected.name.slice(0, 200),
+            source_modified: selected.lastModified,
+          })
+        ).id;
+      let state = await trainingApi.uploadStatus(lessonId);
+      if (
+        state.size !== selected.size ||
+        state.original_name !== selected.name.slice(0, 200) ||
+        (state.source_modified !== null && state.source_modified !== selected.lastModified)
+      )
+        throw new Error('Выберите тот же файл, с которого началась загрузка.');
+      let offset = state.offset;
+      setProgress(Math.floor((offset / selected.size) * 100));
+      setStage('Загружаем видео. При обрыве связи можно продолжить с сохранённого места.');
+      while (offset < selected.size) {
+        if (c.signal.aborted) throw new DOMException('Paused', 'AbortError');
+        try {
+          const chunk = selected.slice(offset, Math.min(offset + state.chunk_bytes, selected.size));
+          offset = (await trainingApi.uploadChunk(lessonId, chunk, offset, c.signal)).offset;
+        } catch (e) {
+          if (c.signal.aborted) throw e;
+          state = await trainingApi.uploadStatus(lessonId);
+          if (state.offset <= offset) throw e;
+          offset = state.offset;
+        }
+        if (active.current) setProgress(Math.floor((offset / selected.size) * 100));
+      }
+      await trainingApi.finishUpload(lessonId);
+      if (active.current) {
+        setStage('Видео загружено. Подготавливаем его для учеников — страницу можно закрыть.');
+        setTitle('');
+        setDescription('');
+        setFile(null);
+        if (fileInput.current) fileInput.current.value = '';
+      }
     } catch (e) {
-      setError(trainingMessage(e));
-      setStage('');
+      if (active.current) {
+        if (c.signal.aborted)
+          setStage('Загрузка приостановлена. Нажмите «Продолжить» у урока и выберите тот же файл.');
+        else setError(trainingMessage(e));
+      }
     } finally {
-      setBusy(false);
-      setRevision((v) => v + 1);
+      uploading.current = false;
+      if (active.current) {
+        setBusy(false);
+        setRevision((v) => v + 1);
+      }
     }
   };
+  const labels: Record<string, string> = {
+    pending: 'Ожидает загрузки',
+    uploading: 'Можно продолжить загрузку',
+    processing: 'Подготавливаем видео',
+    ready: 'Готов к занятиям',
+    failed: 'Не удалось загрузить',
+  };
+  const folders = [...new Set((data?.lessons ?? []).map((l) => l.folder || 'Без папки'))];
+  const visible = data?.lessons.filter(
+    (l) =>
+      (filter === 'all' || (l.folder || 'Без папки') === filter) &&
+      `${l.title} ${l.description}`
+        .toLocaleLowerCase('ru-RU')
+        .includes(query.toLocaleLowerCase('ru-RU')),
+  );
   return (
     <main className="training-workspace">
       <div className="training-heading">
         <div>
           <p className="survey-kicker">БИБЛИОТЕКА ТРЕНЕРА</p>
           <h1>Мои видеоуроки</h1>
-          <p>Загрузите урок один раз и добавляйте его в программы своих учеников.</p>
+          <p>Загрузите один раз. Используйте в занятиях и отдельных упражнениях.</p>
         </div>
       </div>
       {error && (
-        <p className="training-error" role="alert">
-          {error}{' '}
-          <button
-            type="button"
-            onClick={() => {
-              setError('');
-              setRevision((v) => v + 1);
-            }}
-          >
-            Обновить
-          </button>
+        <p role="alert" className="training-error">
+          {error}
         </p>
       )}
       <form
         className="training-card training-form"
         onSubmit={(e) => {
           e.preventDefault();
-          void upload();
+          if (file) void upload(file);
         }}
       >
         <h2>Новый урок</h2>
-        <label>
-          Название
-          <input
-            required
-            maxLength={160}
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            disabled={busy}
-          />
-        </label>
-        <label>
-          Описание и техника выполнения
-          <textarea
-            maxLength={5000}
-            rows={3}
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            disabled={busy}
-          />
-        </label>
-        <label>
-          Видео с устройства
-          <input
-            ref={fileInput}
-            type="file"
-            accept="video/mp4,.mp4"
-            required
-            disabled={busy || data?.upload_available !== true}
-            onChange={(e) => {
-              const f = e.target.files?.[0] ?? null;
-              if (f && f.size > 256 * 1024 * 1024) {
-                setError('Выберите видео размером до 256 МБ.');
-                e.target.value = '';
-                setFile(null);
-              } else setFile(f);
-            }}
-          />
-        </label>
+        <fieldset disabled={busy}>
+          <label>
+            Название
+            <input
+              required
+              maxLength={160}
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+            />
+          </label>
+          <label>
+            Описание и техника выполнения
+            <textarea
+              maxLength={5000}
+              rows={3}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+          </label>
+          <label>
+            Папка · необязательно
+            <input
+              list="lesson-folders"
+              maxLength={80}
+              value={folder}
+              placeholder="Например, разминка"
+              onChange={(e) => setFolder(e.target.value)}
+            />
+            <datalist id="lesson-folders">
+              {folders
+                .filter((f) => f !== 'Без папки')
+                .map((f) => (
+                  <option key={f} value={f} />
+                ))}
+            </datalist>
+          </label>
+          <label>
+            Видео с устройства
+            <input
+              ref={fileInput}
+              type="file"
+              accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm"
+              required
+              disabled={busy || !data?.upload_available}
+              onChange={(e) => {
+                const f = e.target.files?.[0] ?? null;
+                if (f && f.size > 256 * 1024 ** 2) {
+                  setError('Выберите видео до 256 МБ.');
+                  e.target.value = '';
+                  setFile(null);
+                } else setFile(f);
+              }}
+            />
+          </label>
+        </fieldset>
         <p className="training-muted">
-          MP4 (H.264), до 256 МБ и 2 часов. Видео увидят только ученики, которым вы назначите урок.
+          MP4, MOV или WebM, до 256 МБ и 2 часов. Формат подготовится автоматически. Видео доступны
+          только вашим назначенным ученикам.
         </p>
-        {data && !data.upload_available && (
-          <p role="status">
-            Загрузка временно недоступна. Сохранённые уроки остаются в библиотеке.
-          </p>
-        )}
         <button
           className="primary-button"
-          disabled={busy || !file || !title.trim() || data?.upload_available !== true}
+          disabled={busy || !file || !title.trim() || !data?.upload_available}
         >
           {busy ? 'Загружаем…' : 'Загрузить урок'}
         </button>
         {busy && (
-          <button type="button" onClick={() => controller.current?.abort()}>
-            Отменить загрузку
-          </button>
+          <>
+            <progress max={100} value={progress} aria-label="Загрузка видео" />
+            <p role="status">{progress}%</p>
+            <button type="button" onClick={() => controller.current?.abort()}>
+              Приостановить загрузку
+            </button>
+          </>
         )}
         {stage && <p role="status">{stage}</p>}
+        {data && !data.upload_available && <p role="status">Загрузка временно недоступна.</p>}
       </form>
-      {!data && !error && <p role="status">Загружаем библиотеку…</p>}
+      <div className="training-library-toolbar">
+        <label>
+          Найти урок
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Название или описание"
+          />
+        </label>
+        <label>
+          Папка
+          <select value={filter} onChange={(e) => setFilter(e.target.value)}>
+            <option value="all">Все папки</option>
+            {folders.map((f) => (
+              <option key={f}>{f}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <input
+        className="training-file-hidden"
+        ref={resumeInput}
+        type="file"
+        accept="video/*,.mov,.mp4,.webm"
+        aria-label="Исходный файл для продолжения загрузки"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f && resumeId) void upload(f, resumeId);
+          e.target.value = '';
+        }}
+      />
       <div className="training-lesson-grid">
-        {data?.lessons.map((lesson) => (
-          <article className="training-card" key={lesson.id}>
-            <span className="training-badge">
-              {lesson.status === 'ready'
-                ? 'Готов к занятиям'
-                : lesson.status === 'failed'
-                  ? 'Загрузка не завершена'
-                  : 'Ожидает загрузки'}
-            </span>
-            <h2>{lesson.title}</h2>
-            <p>{lesson.description}</p>
-            <p className="training-muted">
-              {(lesson.size_bytes / 1024 / 1024).toFixed(1)} МБ{' '}
-              {lesson.duration_seconds ? `· ${Math.ceil(lesson.duration_seconds / 60)} мин` : ''}
-            </p>
+        {visible?.map((l) => (
+          <article className="training-card" key={l.id}>
+            <LessonCover lesson={l} />
             <div className="training-actions">
-              {lesson.status === 'ready' && (
-                <button
-                  type="button"
-                  onClick={() => setPreview(preview === lesson.id ? null : lesson.id)}
-                >
-                  {preview === lesson.id ? 'Закрыть видео' : 'Посмотреть'}
+              <span className="training-badge">{labels[l.status] ?? l.status}</span>
+              <small>{l.folder || 'Без папки'}</small>
+            </div>
+            <h2>{l.title}</h2>
+            <p>{l.description}</p>
+            <p className="training-muted">
+              {(l.size_bytes / 1024 / 1024).toFixed(1)} МБ
+              {l.duration_seconds ? ` · ${Math.ceil(l.duration_seconds / 60)} мин` : ''}
+            </p>
+            {l.error_message && <p role="status">{l.error_message}</p>}
+            {l.status === 'uploading' && (
+              <progress
+                aria-label={`Загружено видео ${l.title}`}
+                max={l.source_bytes ?? l.size_bytes}
+                value={l.upload_offset ?? 0}
+              />
+            )}
+            <div className="training-actions">
+              {l.status === 'ready' && (
+                <button type="button" onClick={() => setPreview(preview === l.id ? null : l.id)}>
+                  {preview === l.id ? 'Закрыть видео' : 'Посмотреть'}
                 </button>
               )}
-              <button
-                type="button"
-                disabled={busy || lesson.status === 'uploading'}
-                onClick={() => {
-                  if (!window.confirm(`Удалить урок «${lesson.title}»?`)) return;
-                  setBusy(true);
-                  void trainingApi
-                    .removeLesson(lesson.id)
-                    .then(() => {
-                      setPreview(null);
-                      setRevision((v) => v + 1);
-                    })
-                    .catch((e) => setError(trainingMessage(e)))
-                    .finally(() => setBusy(false));
-                }}
-              >
-                Удалить
-              </button>
+              {['pending', 'uploading'].includes(l.status) && (
+                <>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      setResumeId(l.id);
+                      resumeInput.current?.click();
+                    }}
+                  >
+                    Продолжить загрузку
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      if (window.confirm('Отменить эту загрузку? Загруженная часть будет удалена.'))
+                        void trainingApi
+                          .cancelUpload(l.id)
+                          .then(() => setRevision((v) => v + 1))
+                          .catch((e) => setError(trainingMessage(e)));
+                    }}
+                  >
+                    Отменить загрузку
+                  </button>
+                </>
+              )}
+              {!['uploading', 'processing'].includes(l.status) && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    if (window.confirm(`Удалить урок «${l.title}»?`))
+                      void trainingApi
+                        .removeLesson(l.id)
+                        .then(() => setRevision((v) => v + 1))
+                        .catch((e) => setError(trainingMessage(e)));
+                  }}
+                >
+                  Удалить
+                </button>
+              )}
             </div>
-            {preview === lesson.id && <TrainingPlayer id={lesson.id} title={lesson.title} />}
+            {preview === l.id && <TrainingPlayer id={l.id} title={l.title} />}
           </article>
         ))}
       </div>
-      {data?.lessons.length === 0 && (
-        <p className="training-empty">Пока нет уроков. Загрузите первое видео выше.</p>
+      {data && visible?.length === 0 && (
+        <p className="training-empty">
+          {query || filter !== 'all'
+            ? 'По запросу ничего не найдено.'
+            : 'Пока нет уроков. Загрузите первое видео выше.'}
+        </p>
       )}
     </main>
   );
