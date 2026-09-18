@@ -9,6 +9,10 @@ jobs:
   diagnose:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        input_mode: [automation, window]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -30,10 +34,14 @@ jobs:
         working-directory: app
         env:
           VITE_API_URL: https://api.ci.kinetra.test
+          DIAGNOSTIC_MODE: ${{ matrix.input_mode }}
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import os
           p=Path('scripts/test-frontend-browser.mjs');s=p.read_text()
+          flag='--enable-automation' if os.environ['DIAGNOSTIC_MODE']=='automation' else '--window-size=1280,900'
+          s=s.replace("'--headless=new',","'--headless=new', '"+flag+"',")
           for call in ['await runBrowserScenario();','await runT12BrowserScenario();','await runTrainerApplicationBrowserScenario();']:
               assert s.count(call)==1;s=s.replace(call,'// Other suites remain mandatory in release CI.')
           p.write_text(s)
