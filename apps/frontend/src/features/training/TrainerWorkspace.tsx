@@ -1,8 +1,16 @@
+import { TrainerAttention, TemplatePicker } from './TrainerTools';
+import { ExerciseProgress, Measurements } from './Measurements';
 import React, { useEffect, useState } from 'react';
 import type { TrainingStudent, TrainingStudentDetail, TrainingLesson } from '@kinetra/shared';
 import { trainingApi, trainingMessage, inviteLink } from './api';
 import { PlanEditor } from './PlanEditor';
-export const TrainerWorkspace = ({ onChat }: { onChat: (id: string) => void }): React.ReactNode => {
+export const TrainerWorkspace = ({
+  onChat,
+  accountId = '',
+}: {
+  onChat: (id: string) => void;
+  accountId?: string;
+}): React.ReactNode => {
   const [students, setStudents] = useState<TrainingStudent[] | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [detail, setDetail] = useState<TrainingStudentDetail | null>(null);
@@ -74,6 +82,14 @@ export const TrainerWorkspace = ({ onChat }: { onChat: (id: string) => void }): 
           ＋ Добавить ученика
         </button>
       </div>
+      <TrainerAttention
+        revision={revision}
+        onChanged={reload}
+        onSelect={(id) => {
+          setSelected(id);
+          setDetail(null);
+        }}
+      />
       {error && (
         <p className="training-error" role="alert">
           {error}{' '}
@@ -316,6 +332,13 @@ export const TrainerWorkspace = ({ onChat }: { onChat: (id: string) => void }): 
                     </div>
                   )}
                 </section>
+                {!detail.student.archived_at && (
+                  <TemplatePicker key={selected} studentId={selected} onAssigned={reload} />
+                )}
+                <ExerciseProgress plans={detail.plans} />
+                {!detail.student.archived_at && (
+                  <Measurements key={`measurements:${selected}`} studentId={selected} />
+                )}
                 {detail.plans.length === 0 && (
                   <p className="training-empty">
                     Программы пока нет. Создайте её и добавьте занятия.
@@ -325,6 +348,7 @@ export const TrainerWorkspace = ({ onChat }: { onChat: (id: string) => void }): 
                   <PlanEditor
                     key={`${p.id}:${p.revision}`}
                     plan={p}
+                    accountId={accountId}
                     lessons={lessons}
                     archivedStudent={!!detail.student.archived_at}
                     onSaved={reload}

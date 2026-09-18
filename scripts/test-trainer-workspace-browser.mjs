@@ -13,7 +13,10 @@ export const runTrainerWorkspaceBrowser = async (h) => {
   let student = null,
     plan = null,
     lesson = null,
-    uploaded = false;
+    uploaded = false,
+    uploadOffset = 0,
+    rejectLogs = false,
+    templates = [];
   const accounts = new Map();
   const person = (role) => ({
     ...h.profile,
@@ -46,9 +49,22 @@ export const runTrainerWorkspaceBrowser = async (h) => {
       return;
     }
     if (pathname === '/api/v1/auth/refresh') {
-      const role = String(req.headers.cookie ?? '').includes('=trainer') ? 'trainer' : 'client';
+      const role = /(?:^|;\s*)kinetra_refresh=(trainer|client)(?:;|$)/.exec(
+        String(req.headers.cookie ?? ''),
+      )?.[1];
       if (accounts.get(role)) h.json(res, 200, session(role));
       else h.json(res, 401, { error: { code: 'AUTHENTICATION_REQUIRED', message: 'Sign in' } });
+      return;
+    }
+    if (pathname === '/api/v1/settings/profile') {
+      h.json(res, 200, {
+        ...h.profile,
+        notification_preferences: {
+          workout_reminders: false,
+          reminder_time: '09:00',
+          weekly_survey_reminder: false,
+        },
+      });
       return;
     }
     if (pathname === '/api/v1/me') {
@@ -83,6 +99,38 @@ export const runTrainerWorkspaceBrowser = async (h) => {
         ['trainer', 'client'].includes(role),
         'Protected training request carries account token',
       );
+      if (pathname.endsWith('/attention')) {
+        h.json(res, 200, { events: [] });
+        return;
+      }
+      if (pathname.endsWith('/measurements')) {
+        h.json(res, 200, { measurements: [] });
+        return;
+      }
+      if (pathname.endsWith('/reschedules')) {
+        h.json(res, 200, { requests: [] });
+        return;
+      }
+      if (pathname.endsWith('/complaints')) {
+        h.json(res, 200, { complaints: [] });
+        return;
+      }
+      if (pathname.endsWith('/templates')) {
+        h.json(res, 200, { templates });
+        return;
+      }
+      if (pathname.endsWith(`/plans/${planId}/template`)) {
+        templates = [
+          {
+            id: '00000000-0000-4000-8000-000000000310',
+            title: plan.title,
+            goal: plan.goal,
+            workouts: structuredClone(plan.workouts),
+          },
+        ];
+        h.json(res, 200, { id: templates[0].id });
+        return;
+      }
       if (pathname.endsWith('/students') && req.method === 'POST') {
         const body = await h.readJsonBody(req);
         assert.equal(body.name, 'Анна Ученица');
@@ -136,7 +184,9 @@ export const runTrainerWorkspaceBrowser = async (h) => {
             difficulty: null,
             wellbeing: null,
             note: '',
-            lesson_title: lesson.title,
+            lesson_title: lesson?.title ?? null,
+            progress_revision: 0,
+            set_records: [],
           })),
         };
         h.json(res, 200, { revision: plan.revision });
@@ -173,11 +223,19 @@ export const runTrainerWorkspaceBrowser = async (h) => {
       if (pathname.endsWith('/log')) {
         assert.equal(role, 'client');
         const body = await h.readJsonBody(req);
-        Object.assign(plan.workouts[0], body, { completed_at: new Date().toISOString() });
-        student.completed = 1;
-        student.minutes = 30;
+        if (rejectLogs) {
+          h.json(res, 503, { error: { code: 'OFFLINE_TEST', message: 'Связь прервалась' } });
+          return;
+        }
+        assert.equal(body.base_revision, plan.workouts[0].progress_revision);
+        Object.assign(plan.workouts[0], body, {
+          progress_revision: plan.workouts[0].progress_revision + 1,
+          completed_at: body.completed ? new Date().toISOString() : null,
+        });
+        student.completed = body.completed ? 1 : 0;
+        student.minutes = body.completed ? 30 : 0;
         student.last_completed_at = plan.workouts[0].completed_at;
-        h.json(res, 200, { saved: true });
+        h.json(res, 200, { saved: true, revision: plan.workouts[0].progress_revision });
         return;
       }
       if (pathname.endsWith('/lessons') && req.method === 'POST') {
@@ -194,15 +252,32 @@ export const runTrainerWorkspaceBrowser = async (h) => {
         });
         return;
       }
-      if (pathname.endsWith('/file')) {
-        assert.equal(req.headers['content-type'], 'video/mp4');
-        let size = 0;
-        for await (const bytes of req) size += bytes.length;
-        assert.equal(size, lesson.size_bytes);
+      if (pathname.endsWith('/upload')) {
+        h.json(res, 200, {
+          status: lesson.status,
+          offset: uploadOffset,
+          size: lesson.size_bytes,
+          original_name: lesson.original_name,
+          source_modified: lesson.source_modified,
+          chunk_bytes: 4 * 1024 * 1024,
+        });
+        return;
+      }
+      if (pathname.endsWith('/chunk')) {
+        assert.equal(req.headers['content-type'], 'application/octet-stream');
+        assert.equal(Number(req.headers['x-upload-offset']), uploadOffset);
+        for await (const bytes of req) uploadOffset += bytes.length;
+        lesson.upload_offset = uploadOffset;
+        lesson.status = 'uploading';
+        h.json(res, 200, { offset: uploadOffset });
+        return;
+      }
+      if (pathname.endsWith('/finish')) {
+        assert.equal(uploadOffset, lesson.size_bytes);
         uploaded = true;
         lesson.status = 'ready';
         lesson.duration_seconds = 20;
-        h.json(res, 200, { saved: true });
+        h.json(res, 200, { queued: true });
         return;
       }
     }
@@ -227,6 +302,14 @@ export const runTrainerWorkspaceBrowser = async (h) => {
     mkdtemp(path.join(os.tmpdir(), 'kinetra-browser-')),
   ]);
   let trainer, client;
+  const clickReady = async (context, text) => {
+    await h.waitFor('enabled action: ' + text, () =>
+      context.cdp.evaluate(
+        `(()=>{const b=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===${JSON.stringify(text)});return !!b&&!b.matches(':disabled');})()`,
+      ),
+    );
+    await context.clickButtonWithText(text);
+  };
   const fill = async (context, label, value) =>
     context.cdp.evaluate(
       `(()=>{const label=[...document.querySelectorAll('label')].find(l=>l.textContent.trim().startsWith(${JSON.stringify(label)}));if(!label)throw Error('Missing label');const el=label.querySelector('input,textarea,select');const proto=el.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:el.tagName==='SELECT'?HTMLSelectElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(proto,'value').set.call(el,${JSON.stringify(value)});el.dispatchEvent(new Event(el.tagName==='SELECT'?'change':'input',{bubbles:true}));})()`,
@@ -234,18 +317,17 @@ export const runTrainerWorkspaceBrowser = async (h) => {
   try {
     await h.listen(server, h.apiPort);
     trainer = await h.launchT12BrowserContext(dirs[0], 1280, 900);
-    client = await h.launchT12BrowserContext(dirs[1], 390, 844);
     await trainer.cdp.send('Page.navigate', { url: h.frontendOrigin + '/login' });
     await h.waitFor('workspace trainer login', () => trainer.exists('login-screen'));
     await trainer.setValue('login-identifier', 'trainer@example.test');
-    await trainer.setValue('login-password', 'abc123');
+    await trainer.setValue('login-password', 'K7m9Q2');
     await trainer.click('login-submit');
     await h.waitFor('trainer workspace landing', () => trainer.exists('trainer-workspace'));
     assert.equal(await trainer.pathname(), '/trainer/students');
-    await trainer.clickButtonWithText('＋ Добавить ученика');
+    await clickReady(trainer, '＋ Добавить ученика');
     await fill(trainer, 'Имя', 'Анна Ученица');
     await fill(trainer, 'Контакт', 'anna@example.test');
-    await trainer.clickButtonWithText('Создать приглашение');
+    await clickReady(trainer, 'Создать приглашение');
     await h.waitFor('student invitation created', () => student !== null);
     await h.waitFor('student detail rendered', async () =>
       (await trainer.bodyText()).includes('Создать программу'),
@@ -259,7 +341,7 @@ export const runTrainerWorkspaceBrowser = async (h) => {
     await trainer.cdp.evaluate(
       `(()=>{const input=document.querySelector('input[type=file]');const transfer=new DataTransfer();transfer.items.add(new File([new Uint8Array([1,2,3,4])],'lesson.mp4',{type:'video/mp4'}));input.files=transfer.files;input.dispatchEvent(new Event('change',{bubbles:true}));})()`,
     );
-    await trainer.clickButtonWithText('Загрузить урок');
+    await clickReady(trainer, 'Загрузить урок');
     await h.waitFor('personal video uploaded', () => uploaded);
     await h.waitFor('video ready in library', async () =>
       (await trainer.bodyText()).includes('Готов к занятиям'),
@@ -272,29 +354,46 @@ export const runTrainerWorkspaceBrowser = async (h) => {
     await h.waitFor('student selected', async () =>
       (await trainer.bodyText()).includes('Создать программу'),
     );
-    await trainer.clickButtonWithText('Создать программу');
+    await clickReady(trainer, 'Создать программу');
     await h.waitFor('program draft', async () =>
       (await trainer.bodyText()).includes('Добавить занятие'),
     );
     await fill(trainer, 'Название программы', 'Сила и мобильность');
     await fill(trainer, 'Цель и рекомендации', 'Две спокойные тренировки');
-    await trainer.clickButtonWithText('＋ Добавить занятие');
+    await clickReady(trainer, '＋ Добавить занятие');
     await fill(trainer, 'Название занятия', 'Первая тренировка');
-    await fill(trainer, 'Упражнения', 'Приседания: 3 подхода по 12');
+    await fill(trainer, 'Инструкции', 'Приседания: 3 подхода по 12');
     await fill(trainer, 'Видеоурок', lessonId);
+    await clickReady(trainer, '＋ Добавить упражнение');
+    await fill(trainer, 'Название упражнения', 'Приседания');
+    await fill(trainer, 'Вес, кг', '10');
+    await h.waitFor(
+      'autosaved structured exercise',
+      () => plan?.workouts[0]?.exercises?.[0]?.weight_kg === 10,
+    );
+    await clickReady(trainer, 'Сохранить как шаблон');
+    await h.waitFor('trainer template saved', () => templates.length === 1);
+
     await trainer.cdp.evaluate('window.confirm=()=>true');
-    await trainer.clickButtonWithText('Сохранить и назначить');
+    await clickReady(trainer, 'Сохранить и назначить');
     await h.waitFor('program published', () => plan?.status === 'published');
     assert.equal(plan.workouts[0].lesson_id, lessonId);
+    // Keep one native headless window during the keyboard scenario. Distinct
+    // Chrome processes can steal OS focus despite Page.bringToFront; the two
+    // users remain isolated by their persistent profiles and fixture sessions.
+    trainer.cdp.close();
+    await h.terminateChrome(trainer.chrome);
+    trainer = null;
+    client = await h.launchT12BrowserContext(dirs[1], 1280, 900);
     await client.cdp.send('Page.navigate', { url: h.frontendOrigin + '/login#invite=' + token });
     await h.waitFor('student login', () => client.exists('login-screen'));
     await client.setValue('login-identifier', 'student@example.test');
-    await client.setValue('login-password', 'abc123');
+    await client.setValue('login-password', 'K7m9Q2');
     await client.click('login-submit');
     await h.waitFor('invitation opens after authentication', async () =>
       (await client.bodyText()).includes('Приглашение от тренера Мария Тренер'),
     );
-    await client.clickButtonWithText('Подключиться к тренеру');
+    await clickReady(client, 'Подключиться к тренеру');
     await h.waitFor('assigned program', async () =>
       (await client.bodyText()).includes('Первая тренировка'),
     );
@@ -303,10 +402,101 @@ export const runTrainerWorkspaceBrowser = async (h) => {
       false,
       'Personal program replaces the general course for an assigned student',
     );
-    await client.cdp.evaluate("document.querySelector('.training-completion summary').click()");
+    // Native input must focus the renderer, not only the DOM element. A synthetic
+    // .click() does not establish the browser's keyboard input target in headless Chrome.
+    await client.setViewport(1280, 900);
+    await client.cdp.send('Page.bringToFront');
+    await client.cdp.evaluate(
+      `(()=>{const button=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Начать тренировку');if(!button||button.disabled)throw Error('Workout action unavailable');button.dataset.testid='workspace-start-with-pointer';})()`,
+    );
+    await client.trustedClick('workspace-start-with-pointer');
+    await h.waitFor('workout mode', () => client.exists('training-session'));
+    assert.equal(
+      await client.cdp.evaluate('document.activeElement?.id'),
+      'training-session-heading',
+    );
+    assert.equal(
+      await client.cdp.evaluate(
+        "[...document.querySelectorAll('.training-session input,.training-session select,.training-session textarea')].every(e=>!!e.closest('label')||!!e.getAttribute('aria-label'))",
+      ),
+      true,
+      'Workout fields have accessible names',
+    );
+    await h.waitFor('native workout window focus', () =>
+      client.cdp.evaluate('document.hasFocus()'),
+    );
+    await client.cdp.evaluate(
+      `(()=>{window.__trainingFocusTrace=[];for(const type of ['keydown','keyup','focusin','focusout'])document.addEventListener(type,e=>queueMicrotask(()=>{window.__trainingFocusTrace.push({type,key:e.key,prevented:e.defaultPrevented,target:e.target?.tagName,id:e.target?.id,active:document.activeElement?.tagName,activeId:document.activeElement?.id});}),true);return new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));})()`,
+    );
+    await client.cdp.send('Input.dispatchKeyEvent', {
+      type: 'rawKeyDown',
+      key: 'Tab',
+      code: 'Tab',
+      windowsVirtualKeyCode: 9,
+    });
+    await client.cdp.send('Input.dispatchKeyEvent', {
+      type: 'keyUp',
+      key: 'Tab',
+      code: 'Tab',
+      windowsVirtualKeyCode: 9,
+    });
+    try {
+      await h.waitFor(
+        'keyboard focus reaches workout controls',
+        async () => (await client.cdp.evaluate('document.activeElement?.tagName')) === 'BUTTON',
+      );
+    } catch (error) {
+      throw new Error(
+        String(error) +
+          ' ' +
+          JSON.stringify(
+            await client.cdp.evaluate(
+              `({focus:document.activeElement?.outerHTML?.slice(0,500),trace:window.__trainingFocusTrace.slice(-25),controls:[...document.querySelectorAll('.training-session button')].slice(0,8).map(b=>({text:b.textContent,tabIndex:b.tabIndex,disabled:b.matches(':disabled'),display:getComputedStyle(b).display,visibility:getComputedStyle(b).visibility}))})`,
+            ),
+          ),
+      );
+    }
+    assert.ok(
+      await client.cdp.evaluate(
+        "window.__trainingFocusTrace.some(e=>e.type==='keydown'&&e.key==='Tab')",
+      ),
+      'Native Tab reaches the workout document',
+    );
+    await client.setViewport(390, 844);
+    rejectLogs = true;
+    await client.cdp.evaluate(
+      "document.querySelector('.training-set-list button[aria-pressed]').click()",
+    );
+    await h.waitFor('offline marks retained', async () =>
+      (await client.bodyText()).includes('Отметки ожидают отправки'),
+    );
+    assert.ok(
+      await client.cdp.evaluate(
+        `Object.keys(localStorage).some(k=>k.startsWith('kinetra.training.private.v1:${clientId}:workout:'))`,
+      ),
+    );
+    rejectLogs = false;
+    await clickReady(client, 'Отправить снова');
+    await h.waitFor('replayed workout marks', () => plan.workouts[0].set_records.length === 1);
+    await h.waitFor('save finished', async () =>
+      (await client.bodyText()).includes('Сохранено у тренера'),
+    );
+
     await fill(client, 'Сообщение тренеру', 'Сделала все подходы');
-    await client.clickButtonWithText('Тренировка выполнена');
+    await clickReady(client, 'Тренировка выполнена');
     await h.waitFor('individual progress persisted', () => student.completed === 1);
+    trainer = await h.launchT12BrowserContext(dirs[0], 1280, 900);
+    await h.waitFor(
+      'returning trainer authentication',
+      async () =>
+        (await trainer.exists('login-screen')) || (await trainer.exists('trainer-workspace')),
+    );
+    if (await trainer.exists('login-screen')) {
+      await trainer.setValue('login-identifier', 'trainer@example.test');
+      await trainer.setValue('login-password', 'K7m9Q2');
+      await trainer.click('login-submit');
+    }
+    await h.waitFor('returning trainer workspace', () => trainer.exists('trainer-workspace'));
     await trainer.navigate('/trainer/students');
     await h.waitFor('updated student roster', async () =>
       (await trainer.bodyText()).includes('1 из 1 занятий'),
@@ -315,6 +505,21 @@ export const runTrainerWorkspaceBrowser = async (h) => {
     await h.waitFor('trainer receives feedback', async () =>
       (await trainer.bodyText()).includes('Сделала все подходы'),
     );
+    await client.navigate('/schedule');
+    await h.waitFor(
+      'personal calendar',
+      async () => await client.cdp.evaluate("!!document.querySelector('.training-calendar')"),
+    );
+    assert.ok(
+      await client.cdp.evaluate(
+        "[...document.querySelectorAll('.training-calendar button')].every(b=>b.getAttribute('aria-label')||b.textContent.trim())",
+      ),
+    );
+    await client.navigate('/progress');
+    await h.waitFor('exercise history', async () =>
+      (await client.bodyText()).includes('Приседания'),
+    );
+    assert.ok((await client.bodyText()).includes('Замеры'));
     for (const context of [trainer, client])
       for (const width of [390, 1280]) {
         await context.setViewport(width, 844);
@@ -333,4 +538,5 @@ export const runTrainerWorkspaceBrowser = async (h) => {
     for (const dir of dirs) await h.removeProfileDirectory(dir);
   }
   console.log('KINETRA_TRAINER_WORKSPACE_BROWSER=PASS');
+  console.log('KINETRA_TRAINING_EXPERIENCE_BROWSER=PASS');
 };

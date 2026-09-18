@@ -13,6 +13,7 @@ on:
         feature/kinetic-vulcanico-coaching,
         fix/trainer-application-simplicity,
         feature/trainer-workspace,
+        feature/training-experience,
       ]
   pull_request:
     branches:
@@ -255,6 +256,8 @@ jobs:
             echo 'A test failed or was skipped; release validation is blocked.' >&2
             exit 1
           fi
+          grep -F 'KINETRA_TRAINING_EXPERIENCE_POSTGRES=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_TRAINING_EXPERIENCE_BROWSER=PASS' /tmp/kinetra-test.log
           grep -F 'KINETRA_TRAINER_WORKSPACE_POSTGRES=PASS' /tmp/kinetra-test.log
           grep -F 'KINETRA_TRAINER_WORKSPACE_BROWSER=PASS' /tmp/kinetra-test.log
           grep -F 'KINETRA_T04_POSTGRES_INTEGRATION=PASS' /tmp/kinetra-test.log

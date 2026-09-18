@@ -33,3 +33,17 @@ export const clearWorkoutQuestion = (accountId: string): void => {
     /* Best-effort cleanup. */
   }
 };
+
+export const prepareExerciseQuestion = (
+  accountId: string,
+  workout: string,
+  exercise: string,
+): string => {
+  const text = `Вопрос по тренировке «${workout}», упражнение «${exercise}».\n`;
+  try {
+    sessionStorage.setItem(prefix + accountId, text);
+  } catch {
+    /* Draft stays optional. */
+  }
+  return text;
+};

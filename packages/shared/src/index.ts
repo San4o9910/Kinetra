@@ -851,3 +851,12 @@ export type {
   TrainingLibrary,
   MyTraining,
 } from './training.js';
+
+export type {
+  TrainingExercise,
+  TrainingSetRecord,
+  TrainingTemplate,
+  TrainingAttention,
+  TrainingMeasurement,
+  TrainingComplaint,
+} from './training.js';

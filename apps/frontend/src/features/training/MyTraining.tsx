@@ -1,149 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import type { MyTraining as MyTrainingData, TrainingWorkout } from '@kinetra/shared';
+import type { MyTraining as MyTrainingData } from '@kinetra/shared';
 import { trainingApi, trainingMessage, pendingInvite, clearInvite } from './api';
-import { TrainingPlayer } from './TrainingPlayer';
+import { PersonalTraining } from './PersonalTraining';
 
-const StudentWorkout = ({
-  workout,
-  archived,
-  onSaved,
-}: {
-  workout: TrainingWorkout;
-  archived: boolean;
-  onSaved: () => void;
-}): React.ReactNode => {
-  const [open, setOpen] = useState(false);
-  const [difficulty, setDifficulty] = useState(workout.difficulty ?? 3);
-  const [wellbeing, setWellbeing] = useState(workout.wellbeing ?? 3);
-  const [note, setNote] = useState(workout.note);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  return (
-    <article
-      className={`training-card training-client-workout ${workout.completed_at ? 'is-complete' : ''}`}
-    >
-      <div className="training-actions">
-        <span className="training-badge">
-          {workout.completed_at
-            ? '✓ Выполнено'
-            : workout.scheduled_date
-              ? new Date(`${workout.scheduled_date}T12:00:00`).toLocaleDateString('ru-RU', {
-                  day: 'numeric',
-                  month: 'long',
-                })
-              : 'В удобный день'}
-        </span>
-        <span>{workout.duration_minutes} мин</span>
-      </div>
-      <h3>{workout.title}</h3>
-      {workout.instructions && <p className="training-instructions">{workout.instructions}</p>}
-      {workout.lesson_id && (
-        <>
-          <button type="button" onClick={() => setOpen((v) => !v)}>
-            {open ? 'Свернуть урок' : '▶ Открыть видеоурок'}
-          </button>
-          {open && (
-            <TrainingPlayer
-              key={workout.lesson_id}
-              id={workout.lesson_id}
-              title={workout.lesson_title ?? workout.title}
-              position={workout.position_seconds}
-              {...(archived
-                ? {}
-                : {
-                    onPosition: (seconds: number) => {
-                      void trainingApi
-                        .log(workout.id, { position_seconds: seconds })
-                        .catch((e) => setError(trainingMessage(e)));
-                    },
-                  })}
-            />
-          )}
-        </>
-      )}
-      {!archived ? (
-        <form
-          className="training-form training-completion"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (busy) return;
-            setBusy(true);
-            setError('');
-            void trainingApi
-              .log(workout.id, { completed: true, difficulty, wellbeing, note })
-              .then(onSaved)
-              .catch((e) => setError(trainingMessage(e)))
-              .finally(() => setBusy(false));
-          }}
-        >
-          <details open={!!workout.completed_at}>
-            <summary>
-              {workout.completed_at ? 'Ваши отметки' : 'Завершить занятие и оставить отметку'}
-            </summary>
-            <div className="training-fields">
-              <label>
-                Сложность, от 1 до 5
-                <select value={difficulty} onChange={(e) => setDifficulty(Number(e.target.value))}>
-                  {[1, 2, 3, 4, 5].map((n) => (
-                    <option key={n} value={n}>
-                      {n}
-                      {n === 1 ? ' — легко' : n === 5 ? ' — очень сложно' : ''}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Самочувствие, от 1 до 5
-                <select value={wellbeing} onChange={(e) => setWellbeing(Number(e.target.value))}>
-                  {[1, 2, 3, 4, 5].map((n) => (
-                    <option key={n} value={n}>
-                      {n}
-                      {n === 1 ? ' — плохо' : n === 5 ? ' — отлично' : ''}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <label>
-              Сообщение тренеру
-              <textarea
-                maxLength={1000}
-                rows={2}
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder="Как прошло занятие?"
-              />
-            </label>
-            <button className="primary-button" disabled={busy}>
-              {busy
-                ? 'Сохраняем…'
-                : workout.completed_at
-                  ? 'Обновить отметку'
-                  : 'Тренировка выполнена'}
-            </button>
-          </details>
-        </form>
-      ) : (
-        workout.completed_at && (
-          <p>
-            Выполнено {new Date(workout.completed_at).toLocaleDateString('ru-RU')} · {workout.note}
-          </p>
-        )
-      )}
-      {error && (
-        <p role="alert" className="training-error">
-          {error}
-        </p>
-      )}
-    </article>
-  );
-};
 export const MyTraining = ({
   mode = 'home',
+  accountId = '',
+  timezone = 'Europe/Moscow',
   fallback,
   onOpenChat,
 }: {
   mode?: 'home' | 'schedule' | 'progress';
+  accountId?: string;
+  timezone?: string;
   fallback?: React.ReactNode;
   onOpenChat: () => void;
 }): React.ReactNode => {
@@ -293,82 +162,17 @@ export const MyTraining = ({
         )}
       </>
     );
-  const current = data.plans.find((p) => p.status === 'published');
-  const all = data.plans.flatMap((p) => p.workouts);
-  const completed = all.filter((w) => w.completed_at);
-  const currentDone = current?.workouts.filter((w) => w.completed_at).length ?? 0;
   return (
-    <main className="training-workspace training-personal">
-      <div className="training-heading">
-        <div>
-          <p className="survey-kicker">ВАШ ТРЕНЕР · {data.trainer_name}</p>
-          <h1>
-            {mode === 'progress'
-              ? 'Мой прогресс'
-              : mode === 'schedule'
-                ? 'Мои занятия'
-                : (current?.title ?? 'Моя программа')}
-          </h1>
-        </div>
-        <button type="button" onClick={onOpenChat}>
-          Написать тренеру
-        </button>
-      </div>
+    <>
       {token && invitation}
-      <section className="training-card">
-        <div className="training-stats">
-          <div>
-            <strong>
-              {currentDone} / {current?.workouts.length ?? 0}
-            </strong>
-            <span>занятий в программе</span>
-          </div>
-          <div>
-            <strong>{completed.length}</strong>
-            <span>выполнено за всё время</span>
-          </div>
-          <div>
-            <strong>{completed.reduce((sum, w) => sum + w.duration_minutes, 0)}</strong>
-            <span>минут тренировок</span>
-          </div>
-        </div>
-        <progress
-          max={Math.max(1, current?.workouts.length ?? 0)}
-          value={currentDone}
-          aria-label="Ваш прогресс"
-        />
-        {current?.goal && <p className="training-instructions">{current.goal}</p>}
-      </section>
-      {!current && (
-        <section className="training-empty">
-          <h2>Тренер готовит вашу программу</h2>
-          <p>Как только он назначит занятия, они появятся здесь.</p>
-        </section>
-      )}
-      {(mode === 'progress'
-        ? current?.workouts.filter((w) => w.completed_at)
-        : current?.workouts
-      )?.map((w) => (
-        <StudentWorkout
-          key={w.id}
-          workout={w}
-          archived={false}
-          onSaved={() => setRevision((v) => v + 1)}
-        />
-      ))}
-      {mode === 'progress' && currentDone === 0 && (
-        <p className="training-empty">Здесь появятся ваши выполненные занятия и отметки.</p>
-      )}
-      {data.plans
-        .filter((p) => p.status === 'archived')
-        .map((p) => (
-          <details className="training-card" key={p.id}>
-            <summary>История: {p.title}</summary>
-            {p.workouts.map((w) => (
-              <StudentWorkout key={w.id} workout={w} archived onSaved={() => undefined} />
-            ))}
-          </details>
-        ))}
-    </main>
+      <PersonalTraining
+        data={data}
+        mode={mode}
+        accountId={accountId}
+        timezone={timezone}
+        onChat={onOpenChat}
+        onSaved={() => setRevision((v) => v + 1)}
+      />
+    </>
   );
 };

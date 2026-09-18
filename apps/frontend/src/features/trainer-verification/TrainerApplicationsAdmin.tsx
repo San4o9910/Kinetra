@@ -1,3 +1,4 @@
+import { TrainingSupport, VerificationHistory } from '../training/TrainingSupport';
 import React from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { TrainerVerificationRequestDto, TrainerVerificationStatus } from '@kinetra/shared';
@@ -147,6 +148,10 @@ export const TrainerApplicationsAdmin = ({
         <h1>Заявки тренеров</h1>
         <p>Квалификация, материалы и решение — в одном месте.</p>
       </div>
+      <details className="training-card">
+        <summary>Обращения учеников о тренерах</summary>
+        <TrainingSupport admin />
+      </details>
       <div className="review-toolbar">
         <label>
           Статус
@@ -270,6 +275,7 @@ export const TrainerApplicationsAdmin = ({
                   </dd>
                 </div>
               </dl>
+              <VerificationHistory key={`${selected.id}:${selected.updated_at}`} id={selected.id} />
               <h3>Материалы</h3>
               {selected.materials.length === 0 ? (
                 <p>
