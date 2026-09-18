@@ -32,8 +32,8 @@ export const TrainerAdminShell = ({
       <header className="trainer-admin-header">
         <a
           className="trainer-admin-brand"
-          href={appRoutes.trainerChats}
-          onClick={(event) => navigate(event, appRoutes.trainerChats)}
+          href={appRoutes.trainerStudents}
+          onClick={(event) => navigate(event, appRoutes.trainerStudents)}
           aria-label="Kinetra — рабочее пространство тренера"
         >
           <span aria-hidden="true">
@@ -42,6 +42,20 @@ export const TrainerAdminShell = ({
           <strong>KINETRA</strong>
         </a>
         <nav aria-label="Разделы тренера">
+          <a
+            href={appRoutes.trainerStudents}
+            aria-current={route === appRoutes.trainerStudents ? 'page' : undefined}
+            onClick={(event) => navigate(event, appRoutes.trainerStudents)}
+          >
+            Ученики
+          </a>
+          <a
+            href={appRoutes.trainerLessons}
+            aria-current={route === appRoutes.trainerLessons ? 'page' : undefined}
+            onClick={(event) => navigate(event, appRoutes.trainerLessons)}
+          >
+            Мои уроки
+          </a>
           <a
             href={appRoutes.trainerChats}
             aria-current={chatsActive ? 'page' : undefined}
@@ -55,7 +69,7 @@ export const TrainerAdminShell = ({
               aria-current={route === appRoutes.trainerVideos ? 'page' : undefined}
               onClick={(event) => navigate(event, appRoutes.trainerVideos)}
             >
-              Видео
+              Общий курс
             </a>
           ) : null}
           {canReview && (

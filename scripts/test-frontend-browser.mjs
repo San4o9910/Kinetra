@@ -1,3 +1,4 @@
+import { runTrainerWorkspaceBrowser } from './test-trainer-workspace-browser.mjs';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -607,6 +608,19 @@ const createFixtureServer = (handler) =>
     });
   });
 
+const serveLegacyTrainingFixture = (request, response) => {
+  const payloads = {
+    '/api/v1/training/mine': { trainer_name: null, student_id: null, plans: [] },
+    '/api/v1/training/students': { students: [] },
+    '/api/v1/training/lessons': { lessons: [], upload_available: true, max_bytes: 268435456 },
+  };
+  if (request.method === 'GET' && payloads[request.url]) {
+    json(response, 200, payloads[request.url]);
+    return true;
+  }
+  return false;
+};
+
 const createMockApiServer = () =>
   createFixtureServer(async (request, response) => {
     response.setHeader('Access-Control-Allow-Origin', frontendOrigin);
@@ -627,6 +641,8 @@ const createMockApiServer = () =>
       response.end();
       return;
     }
+
+    if (serveLegacyTrainingFixture(request, response)) return;
 
     if (request.method === 'GET' && request.url === '/browser-test-health') {
       json(response, 200, { status: 'ok' });
@@ -5608,6 +5624,7 @@ const createT12BrowserServer = (syntheticVideo) => {
 
     const requestUrl = new URL(request.url ?? '/', frontendOrigin);
     const { pathname } = requestUrl;
+    if (serveLegacyTrainingFixture(request, response)) return;
 
     if (request.method === 'GET' && pathname === '/browser-test-health') {
       json(response, 200, { status: 'ok', scenario: 't12' });
@@ -7331,8 +7348,8 @@ const runT12BrowserScenario = async () => {
         trainer,
         'chat-trainer@example.test',
         'trainer-password',
-        '/trainer/chats',
-        'trainer-chat-screen',
+        '/trainer/students',
+        'trainer-workspace',
       ),
     ]);
     assert.deepEqual(fixture.state.loginCount, { client: 1, trainer: 1 });
@@ -7365,7 +7382,7 @@ const runT12BrowserScenario = async () => {
 
     await trainer.cdp.evaluate(`(() => {
       const link = [...document.querySelectorAll('a')].find(
-        (candidate) => candidate.textContent?.trim() === 'Видео'
+        (candidate) => candidate.textContent?.trim() === 'Общий курс'
       );
       if (!(link instanceof HTMLAnchorElement)) throw new Error('T14 trainer video nav missing.');
       link.click();
@@ -7789,10 +7806,12 @@ const runT12BrowserScenario = async () => {
     await waitFor(
       'trainer client-route guard',
       async () =>
-        (await trainer.pathname()) === '/trainer/chats' &&
-        (await trainer.exists('trainer-chat-screen')),
+        (await trainer.pathname()) === '/trainer/students' &&
+        (await trainer.exists('trainer-workspace')),
       20_000,
     );
+    await trainer.navigate('/trainer/chats');
+    await waitFor('trainer opens chats', () => trainer.exists('trainer-chat-screen'));
     await waitFor(
       'two authenticated T12 sockets',
       () =>
@@ -8811,3 +8830,20 @@ await runBrowserScenario();
 await runT12BrowserScenario();
 
 await runTrainerApplicationBrowserScenario();
+
+await runTrainerWorkspaceBrowser({
+  createFixtureServer,
+  json,
+  readJsonBody,
+  frontendOrigin,
+  frontendDist,
+  contentTypes,
+  apiPort,
+  listen,
+  close,
+  launchT12BrowserContext,
+  waitFor,
+  terminateChrome,
+  removeProfileDirectory,
+  profile,
+});

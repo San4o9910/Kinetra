@@ -1,3 +1,7 @@
+import { TrainerWorkspace } from './features/training/TrainerWorkspace';
+import { TrainerLessons } from './features/training/TrainerLessons';
+import { MyTraining } from './features/training/MyTraining';
+import { captureInvite, pendingInvite } from './features/training/api';
 import { CoachAssistantScreen } from './features/coaching/CoachAssistantScreen';
 import { prepareWorkoutQuestion } from './features/program/workoutQuestion';
 import { TrainerApplicationsAdmin } from './features/trainer-verification/TrainerApplicationsAdmin';
@@ -181,6 +185,15 @@ const ActiveAppShell = ({
         </button>
       </div>
     )}
+    <div className="training-invite-link">
+      <button
+        type="button"
+        className="secondary-button"
+        onClick={() => onNavigate(appRoutes.myTraining)}
+      >
+        Мой тренер и программа
+      </button>
+    </div>
     <div className="active-app-content">{children}</div>
     <TabBar
       route={route}
@@ -331,6 +344,15 @@ export const App = (): ReactNode => {
   const [authView, setAuthView] = useState<AuthView>('login');
   const workoutCompletionBusyRef = useRef(false);
   const [route, navigate] = useBrowserRoute(workoutCompletionBusyRef);
+  useEffect(() => {
+    const receiveInvite = (): void => {
+      captureInvite();
+      if (pendingInvite()) navigate(appRoutes.myTraining, true);
+    };
+    receiveInvite();
+    window.addEventListener('hashchange', receiveInvite);
+    return () => window.removeEventListener('hashchange', receiveInvite);
+  }, [navigate]);
   const [workoutCompletionBusy, setWorkoutCompletionBusy] = useState(false);
   const [, setBlockingDialogOpen] = useState(false);
   const [trainerSignOutState, setTrainerSignOutState] = useState<'idle' | TrainerSignOutUiState>(
@@ -429,7 +451,7 @@ export const App = (): ReactNode => {
     (updated: MeResponse): void => {
       setSession({ kind: 'authenticated', profile: updated });
       if (updated.account_role === 'trainer') {
-        navigate(appRoutes.trainerChats, true);
+        navigate(appRoutes.trainerStudents, true);
       }
     },
     [navigate],
@@ -725,17 +747,27 @@ export const App = (): ReactNode => {
     }
 
     if (route === appRoutes.adminApplications) return;
+    if (
+      session.profile.account_role !== 'trainer' &&
+      session.profile.requested_role !== 'trainer'
+    ) {
+      if (pendingInvite() && route !== appRoutes.myTraining) {
+        navigate(appRoutes.myTraining, true);
+        return;
+      }
+      if (route === appRoutes.myTraining) return;
+    }
 
     if (session.profile.account_role === 'trainer') {
       if (
         route === appRoutes.trainerVideos &&
         session.profile.trainer_profile?.can_manage_videos !== true
       ) {
-        navigate(appRoutes.trainerChats, true);
+        navigate(appRoutes.trainerStudents, true);
         return;
       }
       if (!isTrainerRoute(route)) {
-        navigate(appRoutes.trainerChats, true);
+        navigate(appRoutes.trainerStudents, true);
       }
       return;
     }
@@ -813,7 +845,7 @@ export const App = (): ReactNode => {
         route === appRoutes.adminApplications
           ? appRoutes.adminApplications
           : profile.account_role === 'trainer'
-            ? appRoutes.trainerChats
+            ? appRoutes.trainerStudents
             : routeForOnboardingStatus(profile.user.onboardingStatus),
         true,
       );
@@ -863,7 +895,7 @@ export const App = (): ReactNode => {
         onBack={() =>
           navigate(
             profile.account_role === 'trainer'
-              ? appRoutes.trainerChats
+              ? appRoutes.trainerStudents
               : routeForOnboardingStatus(profile.user.onboardingStatus),
           )
         }
@@ -894,6 +926,16 @@ export const App = (): ReactNode => {
         {content}
       </TrainerAdminShell>
     );
+
+    if (route === appRoutes.trainerStudents)
+      return withTrainerShell(
+        <TrainerWorkspace
+          key={profile.user.id}
+          onChat={(id) => navigate(trainerConversationRoute(id))}
+        />,
+      );
+    if (route === appRoutes.trainerLessons)
+      return withTrainerShell(<TrainerLessons key={profile.user.id} />);
 
     if (route === appRoutes.trainerVideos) {
       return withTrainerShell(
@@ -1035,6 +1077,11 @@ export const App = (): ReactNode => {
       </ActiveAppShell>
     ) : (
       content
+    );
+
+  if (route === appRoutes.myTraining)
+    return withActiveNavigation(
+      <MyTraining key={profile.user.id} onOpenChat={() => navigate(appRoutes.chat)} />,
     );
 
   if (route === appRoutes.editSurvey) {
@@ -1269,7 +1316,18 @@ export const App = (): ReactNode => {
       chatUnreadCount={chatRuntime.unreadCount}
       onNavigate={navigateActiveTab}
     >
-      {activeContent}
+      <MyTraining
+        key={`${profile.user.id}:${route}`}
+        mode={
+          route === appRoutes.progress
+            ? 'progress'
+            : route === appRoutes.schedule
+              ? 'schedule'
+              : 'home'
+        }
+        onOpenChat={() => navigate(appRoutes.chat)}
+        fallback={activeContent}
+      />
     </ActiveAppShell>
   );
 };

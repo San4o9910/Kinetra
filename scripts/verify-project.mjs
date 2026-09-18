@@ -6054,7 +6054,7 @@ for (const multipartDeadlineContract of [
   "request.removeListener('data', onData)",
   "request.on('error', ignoreLateStreamError)",
   'releaseMultipartSlot = acquireMultipartSlot();',
-  'httpServer.requestTimeout = env.chat.photoUploadTotalTimeoutMs + 5_000',
+  'httpServer.requestTimeout = Math.max(env.chat.photoUploadTotalTimeoutMs + 5_000, 610_000)',
 ]) {
   expectIncludes(
     `${chatMedia}\n${chatRouter}\n${backendServer}`,

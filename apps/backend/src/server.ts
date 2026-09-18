@@ -16,7 +16,7 @@ const chatRuntime = createProductionChatRuntime({
 let shutdownStarted = false;
 const app = createApp({ authRuntime, chatRuntime, isDraining: () => shutdownStarted });
 const httpServer = createServer(app);
-httpServer.requestTimeout = env.chat.photoUploadTotalTimeoutMs + 5_000;
+httpServer.requestTimeout = Math.max(env.chat.photoUploadTotalTimeoutMs + 5_000, 610_000);
 const socketServer = createSocketServer(httpServer);
 const detachChatRealtime = attachChatRealtime(socketServer, {
   accessTokenVerifier: authRuntime.accessTokenVerifier,

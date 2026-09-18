@@ -1,3 +1,6 @@
+import { TrainingService } from './training/service.js';
+import { TrainingMedia } from './training/media.js';
+import { createTrainingRouter } from './training/router.js';
 import { createChatVideosRouter } from './coaching/chat-videos.js';
 import { createCoachingRouter } from './coaching/router.js';
 import { CoachingService } from './coaching/service.js';
@@ -178,6 +181,16 @@ export const createApp = (options: CreateAppOptions = {}) => {
   );
   app.use('/api/v1/program', createProgramRouter(programRuntime));
   app.use('/api/v1/progress', createProgressRouter(progressRuntime));
+  const trainingMediaDirectory = process.env.TRAINING_MEDIA_DIR?.trim() || null;
+  const trainingService = new TrainingService(databasePool, trainingMediaDirectory !== null);
+  app.use(
+    '/api/v1/training',
+    createTrainingRouter(
+      trainingService,
+      new TrainingMedia(trainingService, trainingMediaDirectory, env.auth.jwtAccessSecret),
+      programRuntime.authMiddleware,
+    ),
+  );
   const coachKey = process.env.KINETRA_AI_API_KEY?.trim();
   const coachModel = process.env.KINETRA_AI_MODEL?.trim();
   app.use(

@@ -12,6 +12,9 @@ export const appRoutes = Object.freeze({
   editSurvey: '/settings/survey',
   chat: '/chat',
   trainerChats: '/trainer/chats',
+  trainerStudents: '/trainer/students',
+  trainerLessons: '/trainer/lessons',
+  myTraining: '/my-training',
   adminApplications: '/admin/trainer-applications',
   assistant: '/assistant',
   trainerVideos: '/trainer/videos',
@@ -78,6 +81,8 @@ export const isPaymentRoute = (route: AppRoute): boolean =>
   route === appRoutes.paymentCancel;
 
 export const isTrainerRoute = (route: AppRoute): boolean =>
+  route === appRoutes.trainerStudents ||
+  route === appRoutes.trainerLessons ||
   route === appRoutes.trainerChats ||
   route === appRoutes.trainerVideos ||
   trainerConversationIdFromRoute(route) !== null;
@@ -89,6 +94,7 @@ export const isChatFabRoute = (route: AppRoute): boolean =>
   route === appRoutes.settings;
 
 export const isActiveAppRoute = (route: AppRoute): boolean =>
+  route === appRoutes.myTraining ||
   route === appRoutes.home ||
   route === appRoutes.schedule ||
   route === appRoutes.progress ||
