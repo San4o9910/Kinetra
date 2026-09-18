@@ -394,7 +394,14 @@ export const runTrainerWorkspaceBrowser = async (h) => {
       false,
       'Personal program replaces the general course for an assigned student',
     );
-    await clickReady(client, 'Начать тренировку');
+    // Native input must focus the renderer, not only the DOM element. A synthetic
+    // .click() does not establish the browser's keyboard input target in headless Chrome.
+    await client.setViewport(1280, 900);
+    await client.cdp.send('Page.bringToFront');
+    await client.cdp.evaluate(
+      `(()=>{const button=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Начать тренировку');if(!button||button.disabled)throw Error('Workout action unavailable');button.dataset.testid='workspace-start-with-pointer';})()`,
+    );
+    await client.trustedClick('workspace-start-with-pointer');
     await h.waitFor('workout mode', () => client.exists('training-session'));
     assert.equal(
       await client.cdp.evaluate('document.activeElement?.id'),
@@ -407,12 +414,7 @@ export const runTrainerWorkspaceBrowser = async (h) => {
       true,
       'Workout fields have accessible names',
     );
-    // Two headless windows are open. Establish desktop foreground focus for native keyboard input.
-    await client.setViewport(1280, 900);
-    await client.cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true });
-    await client.cdp.send('Page.bringToFront');
     assert.equal(await client.cdp.evaluate('document.hasFocus()'), true);
-    await client.cdp.evaluate("document.getElementById('training-session-heading').focus()");
     await client.cdp.evaluate(
       `(()=>{window.__trainingFocusTrace=[];for(const type of ['keydown','keyup','focusin','focusout'])document.addEventListener(type,e=>queueMicrotask(()=>{window.__trainingFocusTrace.push({type,key:e.key,prevented:e.defaultPrevented,target:e.target?.tagName,id:e.target?.id,active:document.activeElement?.tagName,activeId:document.activeElement?.id});}),true);return new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));})()`,
     );
@@ -421,14 +423,12 @@ export const runTrainerWorkspaceBrowser = async (h) => {
       key: 'Tab',
       code: 'Tab',
       windowsVirtualKeyCode: 9,
-      nativeVirtualKeyCode: 9,
     });
     await client.cdp.send('Input.dispatchKeyEvent', {
       type: 'keyUp',
       key: 'Tab',
       code: 'Tab',
       windowsVirtualKeyCode: 9,
-      nativeVirtualKeyCode: 9,
     });
     try {
       await h.waitFor(
@@ -446,6 +446,12 @@ export const runTrainerWorkspaceBrowser = async (h) => {
           ),
       );
     }
+    assert.ok(
+      await client.cdp.evaluate(
+        "window.__trainingFocusTrace.some(e=>e.type==='keydown'&&e.key==='Tab')",
+      ),
+      'Native Tab reaches the workout document',
+    );
     await client.setViewport(390, 844);
     rejectLogs = true;
     await client.cdp.evaluate(
