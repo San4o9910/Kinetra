@@ -189,7 +189,7 @@ jobs:
           set -euo pipefail
           sha256sum --check --strict <<'SHA256'
           61fc0550edbc533938b1850ad17aa6779c1d2fa7122db08296748acfe43924ea  .kinetra-control/ops/timeweb/verify-launch-provenance.py
-          aae4ed55a984989eeddc8621542c6cbd21c0a7b1caead927b45d0fc2c10389a5  .kinetra-control/ops/timeweb/training-experience-package.py
+          55ed38e9634426ac2a0e2dd044b7c13bac07943ab9c5ebfc630892a11933bc33  .kinetra-control/ops/timeweb/training-experience-package.py
           SHA256
           python3 -B - <<'PY'
           import json, os, runpy, urllib.request
@@ -616,7 +616,7 @@ jobs:
           ba9d7f7d4a5475de9a4401be60694bcbeab1e62308d2f304454360fc72d2267e  .kinetra-control/ops/timeweb/upstream-disposition.py
           85f25de920ccffb1878a56b5be6132c0d3ab99a0d21125112575ba8efffd3c82  .kinetra-control/ops/timeweb/test-upstream-disposition.py
           61fc0550edbc533938b1850ad17aa6779c1d2fa7122db08296748acfe43924ea  .kinetra-control/ops/timeweb/verify-launch-provenance.py
-          aae4ed55a984989eeddc8621542c6cbd21c0a7b1caead927b45d0fc2c10389a5  .kinetra-control/ops/timeweb/training-experience-package.py
+          55ed38e9634426ac2a0e2dd044b7c13bac07943ab9c5ebfc630892a11933bc33  .kinetra-control/ops/timeweb/training-experience-package.py
           SHA256
           PYTHONDONTWRITEBYTECODE=1 python3 .kinetra-control/ops/timeweb/test-scan-upstream-media.py
           PYTHONDONTWRITEBYTECODE=1 python3 .kinetra-control/ops/timeweb/test-upstream-disposition.py
