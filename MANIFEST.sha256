@@ -277,7 +277,7 @@ f54548fe15345439ffbe87bd0e27c14c715c42702e50c51506e7a935a1a3e046  ./apps/fronten
 195b4d02d15b4f2b89f052d2b42dcf44e63838952d755b5b7bec7cda50a6c87b  ./apps/frontend/src/features/coaching/WorkoutGuideEditor.tsx
 3ee9ec198a0584e61e822f181a3b6dd6f07a698408918857ef27e63ad9fab062  ./apps/frontend/src/features/navigation/ActiveAppHeader.tsx
 e941256d6a879d7819ba9dd6a10db95e93ebd86be6658dc25564ff4ac5c862d1  ./apps/frontend/src/features/navigation/KineticMark.tsx
-9be7e85b701042026d8b5177b984482eedf71dafaebfef95205648f865005f9f  ./apps/frontend/src/features/navigation/KinetraVideoIntro.tsx
+7fe79ad9e95b19e79af8a51865315f10b429d01fd62bce96ed022986ae194508  ./apps/frontend/src/features/navigation/KinetraVideoIntro.tsx
 8e1af34b41b8f9880001708995da5aa7e1413908ace3da0be94965051ea2fb1d  ./apps/frontend/src/features/navigation/TabBar.tsx
 a1e5e31d8de5ff0b2c50debd69cde5bbe9bc369fedf9a00d184284a1f9bbb15a  ./apps/frontend/src/features/navigation/kinetra-video-intro.css
 d8a13a201541e4c58267b8f5aaa0d178d843bb0766a7d779e45a5c5c12413742  ./apps/frontend/src/features/onboarding/OnboardingCarousel.tsx

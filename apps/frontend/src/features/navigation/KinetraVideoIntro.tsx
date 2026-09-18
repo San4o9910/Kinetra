@@ -122,7 +122,8 @@ export const KinetraVideoIntro = ({ onDone }: { onDone: () => void }) => {
         'transform',
         `translate(${split * 235} ${split * 36}) rotate(${split * 10})`,
       );
-      mark.style.opacity = String(gather * (1 - Math.pow(split, 4)));
+      mark.style.opacity = String(gather * (1 - clamp((t - 6.8) / 0.2)));
+      // Keep both halves readable during the cut; fade only in the final 200 ms.
       if (elapsed >= KINETRA_INTRO_MS) done();
       else frame = requestAnimationFrame(tick);
     };
