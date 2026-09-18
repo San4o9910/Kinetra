@@ -248,8 +248,6 @@ const ChatRouteState = ({
   </main>
 );
 
-if (typeof window !== 'undefined') captureInvite();
-
 export type TrainerSignOutUiState = 'pending' | 'failed';
 
 export const TrainerSignOutState = React.memo(
@@ -346,6 +344,15 @@ export const App = (): ReactNode => {
   const [authView, setAuthView] = useState<AuthView>('login');
   const workoutCompletionBusyRef = useRef(false);
   const [route, navigate] = useBrowserRoute(workoutCompletionBusyRef);
+  useEffect(() => {
+    const receiveInvite = (): void => {
+      captureInvite();
+      if (pendingInvite()) navigate(appRoutes.myTraining, true);
+    };
+    receiveInvite();
+    window.addEventListener('hashchange', receiveInvite);
+    return () => window.removeEventListener('hashchange', receiveInvite);
+  }, [navigate]);
   const [workoutCompletionBusy, setWorkoutCompletionBusy] = useState(false);
   const [, setBlockingDialogOpen] = useState(false);
   const [trainerSignOutState, setTrainerSignOutState] = useState<'idle' | TrainerSignOutUiState>(

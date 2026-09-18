@@ -209,7 +209,7 @@ e5e56cea8c4a1ce2b7f6c3e07c108cbf86ac5b62e65528e0135d55e70fbf4a80  ./apps/backend
 4580d475a8436bb50613d4f77439254878d5ba7dc281d7dddad1561471385185  ./apps/backend/test/trainer-verification-reviewer-cli.test.ts
 d56cfed0b24a984b371153df256707de9132a82d27fe8cc7ea3738b0d4c3ac3a  ./apps/backend/test/trainer-verification.e2e.test.ts
 8723d77fdce0900c448bbfe7c9475bd490fd80bf1ff44c9fb7675189ea9985ad  ./apps/backend/test/trainer-verification.postgres.test.ts
-6487edea9c61f652a3092672cacd4083ea29fa45a9ec40d7b074ab550817ffcf  ./apps/backend/test/training.postgres.test.ts
+033df65187525797e9cb7ba18a127e813aef49dbc112801e792ac1c54c316450  ./apps/backend/test/training.postgres.test.ts
 180e8c39c2af366d6d9a9ad2837a74c1f849599cf94480bf55b0b49a72c43fd5  ./apps/backend/test/training.test.ts
 d54502b77ed88066f68ce11223bc5d4e40ba5af1e1984289923cff711b053654  ./apps/backend/test/video-admin.e2e.test.ts
 1b4ca9f0f3ba16b5bfdcf5de184ed8c0730a9b918a23b4e8541616734b4f2e70  ./apps/backend/test/video-admin.postgres.test.ts
@@ -232,7 +232,7 @@ b2b41ae81353103525caeb62a7208257b0e06a7b9aa5e28f0856bfaa5b944593  ./apps/fronten
 42082a77cef4fa5601c159057c16e6a0f7d52e16e7cbad69bc68cee38fdb5549  ./apps/frontend/public/offline.html
 2b543f716b4147dcbc45a255c116a1d48ba20261ae68f76a178c4b9f93fb8084  ./apps/frontend/public/service-worker.js
 0ed61882195d1985dfb9ed93b24a85c9f52a2aba0c5672694878fcf945c3443f  ./apps/frontend/public/theme-init.js
-d859e2228545fc3458ff553b8826349b62a4e147768f8712647ca80edea50659  ./apps/frontend/src/App.tsx
+13a12190330b714b75679d86772da81820d42768930f81e8d4d6fd8b196bc958  ./apps/frontend/src/App.tsx
 18e921f9c45beaa0cea27f57fb47812f1e7a21a64dce17dfb88f6d5ed43f8932  ./apps/frontend/src/features/auth/AuthLinkGate.tsx
 346c28a7c6f8ec4ba4a9210f8776c1b6e36eb3f6e76a8d4a0edcee5b0f10fdd6  ./apps/frontend/src/features/auth/ForgotPasswordScreen.tsx
 1895192dc2d61436abfa2a2539c9d6c7f08ca24722621b28e6bd7a1b948dbedf  ./apps/frontend/src/features/auth/LoginScreen.tsx
@@ -335,7 +335,7 @@ c770ecd2e8c58a8d72bd99ed91900a92418ab7ffa557357c89505aa4e4eeb250  ./apps/fronten
 f65d6dc912ad0ce9c4cf7c69f71e4dbe2db849878a195f96f1d865d77d0c3577  ./apps/frontend/src/pwa/registerServiceWorker.ts
 2f9ad659021866bc007aea56ea0703fc1e7070f0175fd121c0262b0f6b3b7c05  ./apps/frontend/src/realtime/socket.ts
 cfe601f9f4d68a2702f9758d27318849c98977cc3136ffc3ddadde5a1b8efe97  ./apps/frontend/src/routing.ts
-723b96903383129cd2436743e83bbd1951ad254363da4baf6a313cc3d5dbf193  ./apps/frontend/src/styles.css
+736f258cfec2f48d0b6e2a088b584b78274c7efa4dcf8a143bea291d91373080  ./apps/frontend/src/styles.css
 8e6a482dec7d62533619e4354794d9248850e9171d650832e7acdf4c313ef0d8  ./apps/frontend/src/vite-env.d.ts
 6b05ae8ab3c10f85b663ffdf99e4b0ff51bf3d3795c1fbcb4762ec2fbc9b41ad  ./apps/frontend/test/api-session.test.ts
 14cb146b0d6330a0fee686ca6c0defb2f366b288f184cdf0d574925f323c1bad  ./apps/frontend/test/auth-recovery.test.ts

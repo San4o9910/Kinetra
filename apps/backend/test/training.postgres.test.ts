@@ -1,3 +1,8 @@
+import express, { type ErrorRequestHandler } from 'express';
+import { createServer } from 'node:http';
+import { createAuthMiddleware } from '../src/auth/middleware.js';
+import { HmacJwtAccessTokenService } from '../src/auth/tokens.js';
+import { createTrainingRouter } from '../src/training/router.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { randomUUID } from 'node:crypto';
@@ -145,6 +150,61 @@ test(
       await service.publishPlan(trainer, plan.id, { revision: saved.revision });
       assert.equal((await service.myTraining(client)).plans[0]?.workouts[0]?.title, workout.title);
       await service.mediaAccess(client, lesson.id);
+      // Actual HTTP boundary and byte-range playback use the same JWT middleware as production.
+      const tokens = new HmacJwtAccessTokenService(
+        'training-test-access-secret-at-least-32-bytes',
+        'training-test',
+        'training-test',
+        900,
+      );
+      const app = express();
+      app.use(express.json());
+      app.use(
+        '/api/v1/training',
+        createTrainingRouter(service, media, createAuthMiddleware(tokens)),
+      );
+      const errors: ErrorRequestHandler = (error, _request, response, _next) => {
+        response
+          .status(error instanceof HttpError ? error.statusCode : 500)
+          .json({ error: { code: error instanceof HttpError ? error.code : 'INTERNAL' } });
+      };
+      app.use(errors);
+      const server = createServer(app);
+      await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+      try {
+        const address = server.address();
+        assert.ok(address && typeof address !== 'string');
+        const origin = `http://127.0.0.1:${address.port}`;
+        assert.equal((await fetch(origin + '/api/v1/training/students')).status, 401);
+        const clientToken = (await tokens.issue(client, randomUUID(), new Date())).token;
+        assert.equal(
+          (
+            await fetch(origin + '/api/v1/training/students', {
+              headers: { Authorization: `Bearer ${clientToken}` },
+            })
+          ).status,
+          403,
+        );
+        const playback = await fetch(origin + `/api/v1/training/lessons/${lesson.id}/access`, {
+          headers: { Authorization: `Bearer ${clientToken}` },
+        });
+        assert.equal(playback.status, 200);
+        const access = (await playback.json()) as { path: string };
+        const ranged = await fetch(origin + access.path, { headers: { Range: 'bytes=0-15' } });
+        assert.equal(ranged.status, 206);
+        assert.equal(ranged.headers.get('cache-control'), 'private, no-store');
+        assert.deepEqual(Buffer.from(await ranged.arrayBuffer()), bytes.subarray(0, 16));
+        assert.equal((await fetch(origin + access.path + '&token=forged')).status, 401);
+        assert.equal(
+          (await fetch(origin + access.path, { headers: { Range: 'bytes=999999999-' } })).status,
+          416,
+        );
+      } finally {
+        server.closeAllConnections();
+        await new Promise<void>((resolve, reject) =>
+          server.close((e) => (e ? reject(e) : resolve())),
+        );
+      }
       await assert.rejects(
         service.mediaAccess(otherClient, lesson.id),
         denies('LESSON_UNAVAILABLE'),
