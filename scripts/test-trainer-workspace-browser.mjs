@@ -407,7 +407,12 @@ export const runTrainerWorkspaceBrowser = async (h) => {
       true,
       'Workout fields have accessible names',
     );
+    // Two headless windows are open. Establish desktop foreground focus for native keyboard input.
+    await client.setViewport(1280, 900);
+    await client.cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true });
     await client.cdp.send('Page.bringToFront');
+    assert.equal(await client.cdp.evaluate('document.hasFocus()'), true);
+    await client.cdp.evaluate("document.getElementById('training-session-heading').focus()");
     await client.cdp.send('Input.dispatchKeyEvent', {
       type: 'rawKeyDown',
       key: 'Tab',
@@ -426,6 +431,7 @@ export const runTrainerWorkspaceBrowser = async (h) => {
       'keyboard focus reaches workout controls',
       async () => (await client.cdp.evaluate('document.activeElement?.tagName')) === 'BUTTON',
     );
+    await client.setViewport(390, 844);
     rejectLogs = true;
     await client.cdp.evaluate(
       "document.querySelector('.training-set-list button[aria-pressed]').click()",
