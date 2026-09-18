@@ -49,4 +49,4 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-# Read-only capacity check before the personal trainer workspace release, 2026-09-18.
+# Read-only capacity and identity check before the training experience update, 2026-09-18.
