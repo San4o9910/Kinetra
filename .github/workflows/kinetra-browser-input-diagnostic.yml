@@ -1,0 +1,49 @@
+name: Diagnose isolated native browser input
+on:
+  push:
+    branches: [ops/timeweb-hourly-preflight-20260909]
+    paths: [.github/workflows/kinetra-browser-input-diagnostic.yml]
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Compare native browser focus without application code
+        run: CHROME_BIN="$(command -v google-chrome)" node ops/timeweb/browser-input-diagnostic.mjs
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 16383efcc06a6cd5313b639cebc02020a5f0592f
+          path: app
+          persist-credentials: false
+      - name: Install pinned application dependencies
+        working-directory: app
+        run: npm ci
+      - name: Run only the unchanged trainer workspace scenario for diagnosis
+        working-directory: app
+        env:
+          VITE_API_URL: https://api.ci.kinetra.test
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('scripts/test-frontend-browser.mjs');s=p.read_text()
+          for call in ['await runBrowserScenario();','await runT12BrowserScenario();','await runTrainerApplicationBrowserScenario();']:
+              assert s.count(call)==1;s=s.replace(call,'// Other suites remain mandatory in release CI.')
+          p.write_text(s)
+          p=Path('scripts/test-trainer-workspace-browser.mjs');s=p.read_text();needle='  } finally {\n    for (const context of [trainer, client]) {';assert s.count(needle)==1
+          s=s.replace(needle,"""  } catch (error) {
+            for (const context of [trainer, client]) if(context) {
+              console.log('WORKSPACE_INPUT_DIAGNOSTIC', JSON.stringify({bounds:await context.cdp.send('Browser.getWindowForTarget'),page:await context.cdp.evaluate('({url:location.href,focused:document.hasFocus(),visibility:document.visibilityState,active:document.activeElement?.outerHTML,ready:document.readyState,activation:{active:navigator.userActivation.isActive,ever:navigator.userActivation.hasBeenActive},trace:window.__trainingFocusTrace})')}));
+            }
+            throw error;
+          } finally {
+            for (const context of [trainer, client]) {""");p.write_text(s)
+          PY
+          node scripts/test-frontend-browser.mjs
