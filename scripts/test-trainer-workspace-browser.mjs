@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
@@ -21,13 +22,21 @@ export const runTrainerWorkspaceBrowser = async (h) => {
     lessonCompleted = false;
   const mediaDirectory = await mkdtemp(path.join(os.tmpdir(), 'kinetra-sharing-media-'));
   const mediaFile = path.join(mediaDirectory, 'lesson.mp4');
-  await writeFile(
+  execFileSync('ffmpeg', [
+    '-v',
+    'error',
+    '-f',
+    'lavfi',
+    '-i',
+    'color=c=0x001621:s=320x180:r=15',
+    '-t',
+    '2',
+    '-c:v',
+    'libx264',
+    '-pix_fmt',
+    'yuv420p',
     mediaFile,
-    Buffer.from(
-      await readFile(new URL('./fixtures/intro-video.mp4.b64', import.meta.url), 'utf8'),
-      'base64',
-    ),
-  );
+  ]);
   const assignedLessons = () =>
     lessonAssigned && lesson
       ? [
@@ -623,10 +632,18 @@ export const runTrainerWorkspaceBrowser = async (h) => {
           `document.querySelector('.kinetra-video-intro svg')?.dataset.phase===${JSON.stringify(phase)}`,
         ),
       );
+      await new Promise((resolve) =>
+        setTimeout(
+          resolve,
+          { drop: 500, bounce: 350, draw: 1200, word: 350, gather: 700, split: 400 }[phase],
+        ),
+      );
       await client.cdp.evaluate(
         "document.querySelector('.kinetra-video-intro').scrollIntoView({block:'center'})",
       );
       const shot = await client.cdp.send('Page.captureScreenshot', { format: 'png' });
+      if (process.env.KINETRA_CAPTURE_PREVIEW_LOG === 'true')
+        console.log('KINETRA_INTRO_FRAME=' + JSON.stringify({ phase, data: shot.data }));
       await writeFile(path.join(artifact, `intro-${phase}.png`), Buffer.from(shot.data, 'base64'));
     }
     await h.waitFor('intro ends', () =>
