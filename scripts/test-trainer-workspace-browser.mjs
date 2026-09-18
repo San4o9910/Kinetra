@@ -315,7 +315,6 @@ export const runTrainerWorkspaceBrowser = async (h) => {
   try {
     await h.listen(server, h.apiPort);
     trainer = await h.launchT12BrowserContext(dirs[0], 1280, 900);
-    client = await h.launchT12BrowserContext(dirs[1], 390, 844);
     await trainer.cdp.send('Page.navigate', { url: h.frontendOrigin + '/login' });
     await h.waitFor('workspace trainer login', () => trainer.exists('login-screen'));
     await trainer.setValue('login-identifier', 'trainer@example.test');
@@ -377,6 +376,13 @@ export const runTrainerWorkspaceBrowser = async (h) => {
     await clickReady(trainer, 'Сохранить и назначить');
     await h.waitFor('program published', () => plan?.status === 'published');
     assert.equal(plan.workouts[0].lesson_id, lessonId);
+    // Keep one native headless window during the keyboard scenario. Distinct
+    // Chrome processes can steal OS focus despite Page.bringToFront; the two
+    // users remain isolated by their persistent profiles and fixture sessions.
+    trainer.cdp.close();
+    await h.terminateChrome(trainer.chrome);
+    trainer = null;
+    client = await h.launchT12BrowserContext(dirs[1], 1280, 900);
     await client.cdp.send('Page.navigate', { url: h.frontendOrigin + '/login#invite=' + token });
     await h.waitFor('student login', () => client.exists('login-screen'));
     await client.setValue('login-identifier', 'student@example.test');
@@ -414,7 +420,9 @@ export const runTrainerWorkspaceBrowser = async (h) => {
       true,
       'Workout fields have accessible names',
     );
-    assert.equal(await client.cdp.evaluate('document.hasFocus()'), true);
+    await h.waitFor('native workout window focus', () =>
+      client.cdp.evaluate('document.hasFocus()'),
+    );
     await client.cdp.evaluate(
       `(()=>{window.__trainingFocusTrace=[];for(const type of ['keydown','keyup','focusin','focusout'])document.addEventListener(type,e=>queueMicrotask(()=>{window.__trainingFocusTrace.push({type,key:e.key,prevented:e.defaultPrevented,target:e.target?.tagName,id:e.target?.id,active:document.activeElement?.tagName,activeId:document.activeElement?.id});}),true);return new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));})()`,
     );
@@ -475,6 +483,7 @@ export const runTrainerWorkspaceBrowser = async (h) => {
     await fill(client, 'Сообщение тренеру', 'Сделала все подходы');
     await clickReady(client, 'Тренировка выполнена');
     await h.waitFor('individual progress persisted', () => student.completed === 1);
+    trainer = await h.launchT12BrowserContext(dirs[0], 1280, 900);
     await trainer.navigate('/trainer/students');
     await h.waitFor('updated student roster', async () =>
       (await trainer.bodyText()).includes('1 из 1 занятий'),
