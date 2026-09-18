@@ -1,0 +1,80 @@
+name: Install personal trainer workspace on the existing application
+on:
+  push:
+    branches: [ops/timeweb-hourly-preflight-20260909]
+    paths: [.github/workflows/kinetra-trainer-workspace-upgrade.yml]
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: kinetra-timeweb-hourly-provision
+  cancel-in-progress: false
+env:
+  APP_CHECKOUT: ${{ github.workspace }}/Kinetra
+jobs:
+  upgrade:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Verify reviewed upgrade and ownership contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          sha256sum --check --strict <<'SHA256'
+          567d892221925bb438ece6a893360a891ffd4228f8af0a18252b8ba365a682c0  ops/timeweb/inspect-server.py
+          25946ae57e93b50e532d229214dd2239b6a56bed0af364db284e7653b0a87774  ops/timeweb/trainer-workspace-release-gate.py
+          aa52d534aefb6badbe864e04952708f742764eebdfc17a610d2ff8d9707bf734  ops/timeweb/trainer-workspace-upgrade-host.py
+          e5faaea47e61007cfe685eae52447e863bb0185832ac6595e6c1d8528e0c9a0c  ops/timeweb/trainer-workspace-upgrade-caller.py
+          958129258b05fdfcf1e81b3c0e2121eb5fb98e8ce3ead74c247e5a61fb0d5fef  ops/timeweb/test-trainer-workspace-upgrade.py
+          ba9d7f7d4a5475de9a4401be60694bcbeab1e62308d2f304454360fc72d2267e  ops/timeweb/upstream-disposition.py
+          18af7ec4274789a41a620e06e8885ce79c724f4657a1d4f7e71ea199b8297b2f  ops/timeweb/trainer-workspace-browser-acceptance.mjs
+          SHA256
+          sudo python3 -B ops/timeweb/test-trainer-workspace-upgrade.py
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 5f9fbea3ab2ed75f5da79d3fb542be4525b00aa3
+          path: Kinetra
+          persist-credentials: false
+      - name: Verify merged source manifest and qualified image evidence
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(git -C "$APP_CHECKOUT" rev-parse HEAD)" = 5f9fbea3ab2ed75f5da79d3fb542be4525b00aa3
+          (cd "$APP_CHECKOUT" && sha256sum --check --quiet MANIFEST.sha256)
+          python3 -B ops/timeweb/trainer-workspace-release-gate.py
+      - name: Back up, prove restoration and install the qualified update
+        env:
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+        run: python3 -B ops/timeweb/trainer-workspace-upgrade-caller.py --upgrade-trainer-workspace
+      - name: Retain sanitized upgrade result
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: kinetra-trainer-workspace-upgrade-${{ github.run_id }}
+          path: ${{ runner.temp }}/kinetra-trainer-workspace-upgrade.json
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Verify public HTTPS, login and simplified registration on desktop and mobile
+        shell: bash
+        run: |
+          set -euo pipefail
+          browser_bin="$(command -v google-chrome)"
+          test -x "$browser_bin"
+          env -i PATH="$PATH" CHROME_BIN="$browser_bin" GITHUB_RUN_ID="$GITHUB_RUN_ID" ACCEPTANCE_OUTPUT="$RUNNER_TEMP/kinetra-external-acceptance" node ops/timeweb/trainer-workspace-browser-acceptance.mjs
+      - name: Retain external browser acceptance
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: kinetra-trainer-workspace-browser-${{ github.run_id }}
+          path: ${{ runner.temp }}/kinetra-external-acceptance/
+          if-no-files-found: warn
+          retention-days: 14
