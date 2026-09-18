@@ -320,7 +320,7 @@ export const runTrainerWorkspaceBrowser = async (h) => {
     await trainer.cdp.send('Page.navigate', { url: h.frontendOrigin + '/login' });
     await h.waitFor('workspace trainer login', () => trainer.exists('login-screen'));
     await trainer.setValue('login-identifier', 'trainer@example.test');
-    await trainer.setValue('login-password', 'abc123');
+    await trainer.setValue('login-password', 'K7m9Q2');
     await trainer.click('login-submit');
     await h.waitFor('trainer workspace landing', () => trainer.exists('trainer-workspace'));
     assert.equal(await trainer.pathname(), '/trainer/students');
@@ -388,7 +388,7 @@ export const runTrainerWorkspaceBrowser = async (h) => {
     await client.cdp.send('Page.navigate', { url: h.frontendOrigin + '/login#invite=' + token });
     await h.waitFor('student login', () => client.exists('login-screen'));
     await client.setValue('login-identifier', 'student@example.test');
-    await client.setValue('login-password', 'abc123');
+    await client.setValue('login-password', 'K7m9Q2');
     await client.click('login-submit');
     await h.waitFor('invitation opens after authentication', async () =>
       (await client.bodyText()).includes('Приглашение от тренера Мария Тренер'),
@@ -493,7 +493,7 @@ export const runTrainerWorkspaceBrowser = async (h) => {
     );
     if (await trainer.exists('login-screen')) {
       await trainer.setValue('login-identifier', 'trainer@example.test');
-      await trainer.setValue('login-password', 'abc123');
+      await trainer.setValue('login-password', 'K7m9Q2');
       await trainer.click('login-submit');
     }
     await h.waitFor('returning trainer workspace', () => trainer.exists('trainer-workspace'));
