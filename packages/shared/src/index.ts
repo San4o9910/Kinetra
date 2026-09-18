@@ -1,3 +1,4 @@
+import type { TrainingStudentDetail } from './training.js';
 export interface HealthResponse {
   readonly status: 'ok';
   readonly service: 'kinetra-backend';
@@ -809,17 +810,24 @@ export interface CoachQuestionInput {
   readonly question: string;
   readonly use_progress: boolean;
 }
-export interface TrainerClientContext {
-  readonly progress: ProgressResponse;
-  readonly recent_sessions: readonly {
-    readonly title: string;
-    readonly program_week: number;
-    readonly difficulty: number | null;
-    readonly wellbeing: number | null;
-    readonly note: string;
-    readonly updated_at: string;
-  }[];
-}
+export type TrainerClientContext =
+  | {
+      readonly personal_training: TrainingStudentDetail;
+      readonly progress: null;
+      readonly recent_sessions: readonly [];
+    }
+  | {
+      readonly personal_training?: undefined;
+      readonly progress: ProgressResponse;
+      readonly recent_sessions: readonly {
+        readonly title: string;
+        readonly program_week: number;
+        readonly difficulty: number | null;
+        readonly wellbeing: number | null;
+        readonly note: string;
+        readonly updated_at: string;
+      }[];
+    };
 
 export interface ChatVideosResponse {
   readonly available: boolean;

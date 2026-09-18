@@ -70,7 +70,7 @@ d6fb9a0044f5d575e35552911c2f4211f007454dd0b45045df7d529018f95480  ./apps/backend
 3e2daa747ffda43a89806d6659c0e9fb9554975f980ba4b4ce90a12cdb7b9c56  ./apps/backend/src/coaching/provider.ts
 65e06a32de1db5683217e847ce0ec6ab804585db0a16a15e8890ce652d72434f  ./apps/backend/src/coaching/router.ts
 3b90c3f97dedd002c4942cf81bfb036f95b1abddd3d703bd1c7cc8d61adffc6f  ./apps/backend/src/coaching/schema.ts
-ef7b1fea7b889c06ec7b08d1938102a498ae86bd8b713bbc08e72d719902a9de  ./apps/backend/src/coaching/service.ts
+2ee5ff2597a5a967388410e1b86d821287d3bd505fda886288eb9f6db1313321  ./apps/backend/src/coaching/service.ts
 931f3235f7a35964d59655bac7603a42342411a38074bc30751105710adb3d24  ./apps/backend/src/config/database.ts
 d5e8c1baaed94c4c5e90eb2fc8eeb854d99faf2ab5d48682395a3c941ed60b70  ./apps/backend/src/config/env.ts
 ff5c71f626c8931414fc2e2b65eecd8b9320836ba7143d780ca052868ab67fa0  ./apps/backend/src/config/job-env.ts
@@ -209,7 +209,7 @@ e5e56cea8c4a1ce2b7f6c3e07c108cbf86ac5b62e65528e0135d55e70fbf4a80  ./apps/backend
 4580d475a8436bb50613d4f77439254878d5ba7dc281d7dddad1561471385185  ./apps/backend/test/trainer-verification-reviewer-cli.test.ts
 d56cfed0b24a984b371153df256707de9132a82d27fe8cc7ea3738b0d4c3ac3a  ./apps/backend/test/trainer-verification.e2e.test.ts
 8723d77fdce0900c448bbfe7c9475bd490fd80bf1ff44c9fb7675189ea9985ad  ./apps/backend/test/trainer-verification.postgres.test.ts
-033df65187525797e9cb7ba18a127e813aef49dbc112801e792ac1c54c316450  ./apps/backend/test/training.postgres.test.ts
+00a3ab2aabc24770561da4aae1524acff2421fadd91a2e101e3859a8f2ca2d22  ./apps/backend/test/training.postgres.test.ts
 180e8c39c2af366d6d9a9ad2837a74c1f849599cf94480bf55b0b49a72c43fd5  ./apps/backend/test/training.test.ts
 d54502b77ed88066f68ce11223bc5d4e40ba5af1e1984289923cff711b053654  ./apps/backend/test/video-admin.e2e.test.ts
 1b4ca9f0f3ba16b5bfdcf5de184ed8c0730a9b918a23b4e8541616734b4f2e70  ./apps/backend/test/video-admin.postgres.test.ts
@@ -264,7 +264,7 @@ deabadd1b687581e716d1cdba95b34075cbe2b23748d0a7ad7f492512d365ae4  ./apps/fronten
 0686241d973a853e37e2adaf40ae683d9c70a046793cd72383377b2dd430d70a  ./apps/frontend/src/features/chat/types.ts
 8a13a918bc9f59f9935a6b59ed7508618185849115855cbd240e47b8d5422da9  ./apps/frontend/src/features/chat/usePhotoAccessLifecycle.ts
 f54548fe15345439ffbe87bd0e27c14c715c42702e50c51506e7a935a1a3e046  ./apps/frontend/src/features/coaching/CoachAssistantScreen.tsx
-f3af424cc3e69f9d13c8651410355afa050475aa338cb23e506b1efd0fca92ad  ./apps/frontend/src/features/coaching/TrainerClientSummary.tsx
+67b696eadc88ff9998dc61c6182730ca9db6afa4b7460bd8a374d918f884f98d  ./apps/frontend/src/features/coaching/TrainerClientSummary.tsx
 195b4d02d15b4f2b89f052d2b42dcf44e63838952d755b5b7bec7cda50a6c87b  ./apps/frontend/src/features/coaching/WorkoutGuideEditor.tsx
 3ee9ec198a0584e61e822f181a3b6dd6f07a698408918857ef27e63ad9fab062  ./apps/frontend/src/features/navigation/ActiveAppHeader.tsx
 e941256d6a879d7819ba9dd6a10db95e93ebd86be6658dc25564ff4ac5c862d1  ./apps/frontend/src/features/navigation/KineticMark.tsx
@@ -446,7 +446,7 @@ aa749ec949392f06cfb01cff6a091b40dbcef9c099e56ee7475910bc68b4a9c3  ./ops/test-pro
 b27604399fbe5607234eaa4b4cb64b8e786d77949d05b87afd0620a0106975cd  ./package-lock.json
 67946edf50475090423548f35b8a2746f8c7f27d0b50ce2053ae2afd0700b9ae  ./package.json
 1226b52db0d0863828daae249e0b8ba56452f40c4d6ebc4dab1f6bb40e532da8  ./packages/shared/package.json
-3368396bf166d01e2e59456e4d358bd799833a35e305c5322a62cf2f827e1b90  ./packages/shared/src/index.ts
+0699ed64e19fef8d88786a196cc77d51cc742d6f545da8ac3c8c58a95461b4f4  ./packages/shared/src/index.ts
 c5728d09d76924f0227dea6979869d90196c388e4139c488a5031417793efc97  ./packages/shared/src/training.ts
 c8171db33a1b645b8c36d542cf4bfc5c47073df8842b846f91a6ebf083973c5e  ./packages/shared/tsconfig.json
 4c9d6d3999285a6ab8712d8582d54e69a76f434b4faf933a886c664a65031c54  ./scripts/check-changed-format.mjs

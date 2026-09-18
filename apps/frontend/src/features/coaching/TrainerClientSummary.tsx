@@ -40,6 +40,40 @@ export const TrainerClientSummary = ({
         </p>
       ) : data === null ? (
         <p role="status">Загружаем…</p>
+      ) : data.personal_training ? (
+        <>
+          <div className="trainer-client-stats">
+            <span>
+              Выполнено{' '}
+              <strong>
+                {data.personal_training.student.completed} / {data.personal_training.student.total}
+              </strong>
+            </span>
+            <span>
+              Время <strong>{data.personal_training.student.minutes} мин</strong>
+            </span>
+          </div>
+          <p>
+            {data.personal_training.plans.find((plan) => plan.status === 'published')?.title ??
+              'Программа ещё не назначена'}
+          </p>
+          {data.personal_training.plans
+            .flatMap((plan) => plan.workouts)
+            .filter((workout) => workout.completed_at)
+            .sort((a, b) => Date.parse(b.completed_at!) - Date.parse(a.completed_at!))
+            .slice(0, 5)
+            .map((workout) => (
+              <article key={workout.id}>
+                <strong>{workout.title}</strong>
+                <p>
+                  Сложность: {workout.difficulty ?? '—'} / 5 · Самочувствие:{' '}
+                  {workout.wellbeing ?? '—'} / 5
+                </p>
+                {workout.note && <p>{workout.note}</p>}
+              </article>
+            ))}
+          <a href="/trainer/students">Программы и история учеников ↗</a>
+        </>
       ) : (
         <>
           <div className="trainer-client-stats">

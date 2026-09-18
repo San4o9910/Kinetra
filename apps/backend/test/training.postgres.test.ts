@@ -1,3 +1,4 @@
+import { CoachingService } from '../src/coaching/service.js';
 import express, { type ErrorRequestHandler } from 'express';
 import { createServer } from 'node:http';
 import { createAuthMiddleware } from '../src/auth/middleware.js';
@@ -223,6 +224,22 @@ test(
       await service.log(client, workout.id, { completed: true });
       let detail = await service.detail(trainer, student.id);
       assert.equal(detail.student.completed, 1);
+      const legacyUnavailable = async (): Promise<never> => {
+        throw new Error('Personal student must not require the platform course or survey');
+      };
+      const coaching = new CoachingService(
+        pool,
+        { getWeek: legacyUnavailable, getCurrentWeek: legacyUnavailable },
+        { getProgress: legacyUnavailable },
+        null,
+      );
+      const context = await coaching.clientContext(trainer, detail.student.conversation_id!);
+      assert.equal(context.personal_training?.student.completed, 1);
+      assert.equal(context.progress, null);
+      await assert.rejects(
+        coaching.clientContext(otherTrainer, detail.student.conversation_id!),
+        denies('CONVERSATION_ACCESS_REQUIRED'),
+      );
       assert.equal(detail.student.minutes, 30);
       assert.equal(detail.plans[0]?.workouts[0]?.note, 'Всё получилось');
       assert.equal(detail.plans[0]?.workouts[0]?.position_seconds, 1);
@@ -274,6 +291,10 @@ test(
       await pool.query('UPDATE trainer_profiles SET is_active=true WHERE user_id=$1', [trainer]);
       await service.archiveStudent(trainer, student.id);
       assert.equal((await service.myTraining(client)).student_id, null);
+      await assert.rejects(
+        coaching.clientContext(trainer, detail.student.conversation_id!),
+        denies('CONVERSATION_ACCESS_REQUIRED'),
+      );
       assert.equal((await service.detail(trainer, student.id)).student.minutes, 30);
       await assert.rejects(service.mediaAccess(client, lesson.id), denies('LESSON_UNAVAILABLE'));
       console.log('KINETRA_TRAINER_WORKSPACE_POSTGRES=PASS');

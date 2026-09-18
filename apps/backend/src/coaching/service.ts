@@ -1,3 +1,4 @@
+import { TrainingService } from '../training/service.js';
 import type {
   CoachHistoryResponse,
   CoachMessage,
@@ -175,21 +176,41 @@ export class CoachingService {
     const clientId = result.rows[0]?.client_user_id as string | undefined;
     if (clientId === undefined)
       throw new HttpError(403, 'CONVERSATION_ACCESS_REQUIRED', 'Этот клиент вам не назначен.');
-    const [progress, sessions] = await Promise.all([
-      this.progress.getProgress(clientId),
-      this.pool.query(
-        'SELECT v.title,s.program_week,s.difficulty,s.wellbeing,s.note,s.updated_at FROM workout_sessions s JOIN videos v ON v.id=s.video_id WHERE s.user_id=$1 AND s.difficulty IS NOT NULL ORDER BY s.updated_at DESC LIMIT 5',
-        [clientId],
-      ),
-    ]);
+    const personal = await this.pool.query(
+      'SELECT id,archived_at FROM training_students WHERE client_id=$1 AND trainer_id=$2 ORDER BY (archived_at IS NULL) DESC,created_at DESC LIMIT 1',
+      [clientId, trainerId],
+    );
+    if (personal.rows[0]?.archived_at)
+      throw new HttpError(
+        403,
+        'CONVERSATION_ACCESS_REQUIRED',
+        'Ученик в архиве. История доступна в кабинете.',
+      );
+    const personalTraining = personal.rows[0]
+      ? await new TrainingService(this.pool, false).detail(trainerId, personal.rows[0].id)
+      : undefined;
+    const [progress, sessions] = personalTraining
+      ? [null, { rows: [] }]
+      : await Promise.all([
+          this.progress.getProgress(clientId),
+          this.pool.query(
+            'SELECT v.title,s.program_week,s.difficulty,s.wellbeing,s.note,s.updated_at FROM workout_sessions s JOIN videos v ON v.id=s.video_id WHERE s.user_id=$1 AND s.difficulty IS NOT NULL ORDER BY s.updated_at DESC LIMIT 5',
+            [clientId],
+          ),
+        ]);
     // Re-check assignment after asynchronous reads, so a reassigned conversation cannot return new data.
     const stillAssigned = await this.pool.query(
-      'SELECT 1 FROM chat_conversations c JOIN trainer_profiles t ON t.user_id=c.trainer_user_id WHERE c.id=$1 AND c.trainer_user_id=$2 AND t.is_active=true',
-      [conversationId, trainerId],
+      `SELECT 1 FROM chat_conversations c JOIN trainer_profiles t ON t.user_id=c.trainer_user_id WHERE c.id=$1 AND c.trainer_user_id=$2 AND t.is_active=true AND ($3::uuid IS NULL OR EXISTS(SELECT 1 FROM training_students s WHERE s.id=$3 AND s.archived_at IS NULL AND s.trainer_id=$2 AND s.client_id=c.client_user_id))`,
+      [conversationId, trainerId, personal.rows[0]?.id ?? null],
     );
     if (stillAssigned.rowCount !== 1)
       throw new HttpError(403, 'CONVERSATION_ACCESS_REQUIRED', 'Назначение клиента изменилось.');
-    return { progress, recent_sessions: sessions.rows as TrainerClientContext['recent_sessions'] };
+    if (personalTraining)
+      return { personal_training: personalTraining, progress: null, recent_sessions: [] };
+    return {
+      progress: progress!,
+      recent_sessions: sessions.rows as TrainerClientContext['recent_sessions'],
+    };
   }
 
   public async history(userId: string): Promise<CoachHistoryResponse> {
