@@ -50,3 +50,4 @@ jobs:
           retention-days: 14
 
 # Read-only capacity and identity check before the training experience update, 2026-09-18.
+# Inspect accepted training-experience release before lesson-sharing update.

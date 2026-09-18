@@ -12,17 +12,17 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: 5be7df36f85b65c8248c221509ea3a7fec1919db
+          ref: 9cc40ac59f72d5d764e85948e57ee05cb63f6e4a
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
       - name: Verify exact candidate and install pinned dependencies
         run: |
-          test "$(git rev-parse HEAD)" = 5be7df36f85b65c8248c221509ea3a7fec1919db
+          test "$(git rev-parse HEAD)" = 9cc40ac59f72d5d764e85948e57ee05cb63f6e4a
           sha256sum --check --quiet MANIFEST.sha256
           npm ci
-      - name: Repeat unchanged trainer workspace scenario three times
+      - name: Verify lesson assignment and visible animation stages
         env:
           VITE_API_URL: https://api.ci.kinetra.test
         run: |
@@ -33,6 +33,13 @@ jobs:
               assert s.count(call)==1;s=s.replace(call,'// Other suites remain mandatory in release CI.')
           p.write_text(s)
           PY
-          for attempt in 1 2 3; do
+          for attempt in 1; do
             node scripts/test-frontend-browser.mjs
           done
+      - name: Retain animation previews
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: lesson-sharing-preview
+          path: artifacts/lesson-sharing/
+          if-no-files-found: ignore
