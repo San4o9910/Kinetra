@@ -21,14 +21,14 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  APPROVED_APP_COMMIT: 5be7df36f85b65c8248c221509ea3a7fec1919db
-  APPROVED_BASE_COMMIT: 9d6dced30e194a418016c9e45e5d353e50786cb1
+  APPROVED_APP_COMMIT: c57cc5d54e87bb2468a9d84630557d4f52ec57d1
+  APPROVED_BASE_COMMIT: cd6bd3c853caaea4a262e7821776461cb691f504
   QUALIFIED_RUNTIME_COMMIT: 73b665065e00a5b375e90f701373b3e0856a0386
-  APPROVED_MERGE_COMMIT: 7a4412cfc74e51743a78a274cb40e6e141270768
-  RELEASE_MERGE_COMMIT: cd6bd3c853caaea4a262e7821776461cb691f504
+  APPROVED_MERGE_COMMIT: 0f177341e8c3028b6e60ac422ffd534825cc5da3
+  RELEASE_MERGE_COMMIT: badac80ca01fa84e9ba246b763f018f3b6277d3d
   RUNTIME_IMAGE: ghcr.io/san4o9910/kinetra-backend@sha256:9138a6408442b847ca771690053870880cee831769919aaf2a2dc858d52e8362
-  APPROVED_HEAD_RUN: '35360977695'
-  APPROVED_MERGE_RUN: '35360982984'
+  APPROVED_HEAD_RUN: '35386025095'
+  APPROVED_MERGE_RUN: '35386029688'
   PUBLISH_TO_GHCR: 'true'
   PUBLIC_ORIGIN: https://80.68.156.131
   NODE_TAG: docker.io/library/node:22-alpine3.24
@@ -87,10 +87,10 @@ jobs:
                   raw = response.read(16 * 1024 * 1024 + 1)
               assert len(raw) <= 16 * 1024 * 1024
               return raw.decode('utf-8-sig')
-          pr = get('/pulls/26')
+          pr = get('/pulls/27')
           assert pr['state'] == 'closed' and pr['merged'] and pr['merge_commit_sha'] == os.environ['RELEASE_MERGE_COMMIT']
           assert pr['head']['repo']['full_name'] == repo
-          assert pr['head']['ref'] == 'feature/training-experience'
+          assert pr['head']['ref'] == 'feature/lesson-sharing-brand-intro'
           assert pr['head']['sha'] == app
           released = get('/commits/' + os.environ['RELEASE_MERGE_COMMIT'])
           assert [p['sha'] for p in released['parents']] == [base, app]
@@ -109,7 +109,7 @@ jobs:
               # GitHub may clear run.pull_requests after merge; authenticated checkout logs below
               # still bind the historical merge to the exact two approved parents.
               if event == 'pull_request' and run['pull_requests']:
-                  assert any(p['number'] == 26 and p['head']['sha'] == app and p['base']['sha'] == base
+                  assert any(p['number'] == 27 and p['head']['sha'] == app and p['base']['sha'] == base
                              for p in run['pull_requests'])
               jobs = get('/actions/runs/' + run_id + '/attempts/' + str(run['run_attempt']) + '/jobs?per_page=100')
               assert jobs['total_count'] == 3
@@ -293,6 +293,8 @@ jobs:
               test -f apps/backend/scripts/seed.mjs
               test -f apps/backend/migrations/001_auth.sql
               test -f apps/backend/migrations/017_training_experience.sql
+              test -f apps/backend/migrations/018_lesson_assignments.sql
+              test -f apps/backend/dist/training/lesson-assignments.js
               test -f apps/backend/dist/training/resumable-media.js
               test -f apps/backend/dist/training/progress-photos.js
               node --check apps/backend/scripts/migrate.mjs
