@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        input_mode: [automation, window]
+        input_mode: [leak_off, uncommon_password]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -40,12 +40,14 @@ jobs:
           from pathlib import Path
           import os
           p=Path('scripts/test-frontend-browser.mjs');s=p.read_text()
-          flag='--enable-automation' if os.environ['DIAGNOSTIC_MODE']=='automation' else '--window-size=1280,900'
-          s=s.replace("'--headless=new',","'--headless=new', '"+flag+"',")
+          if os.environ['DIAGNOSTIC_MODE']=='leak_off':
+              s=s.replace('--disable-features=LocalNetworkAccessChecks','--disable-features=LocalNetworkAccessChecks,PasswordLeakDetection')
           for call in ['await runBrowserScenario();','await runT12BrowserScenario();','await runTrainerApplicationBrowserScenario();']:
               assert s.count(call)==1;s=s.replace(call,'// Other suites remain mandatory in release CI.')
           p.write_text(s)
-          p=Path('scripts/test-trainer-workspace-browser.mjs');s=p.read_text();needle='  } finally {\n    for (const context of [trainer, client]) {';assert s.count(needle)==1
+          p=Path('scripts/test-trainer-workspace-browser.mjs');s=p.read_text()
+          if os.environ['DIAGNOSTIC_MODE']=='uncommon_password':s=s.replace('abc123','K7m9Q2')
+          needle='  } finally {\n    for (const context of [trainer, client]) {';assert s.count(needle)==1
           s=s.replace(needle,"""  } catch (error) {
             for (const context of [trainer, client]) if(context) {
               console.log('WORKSPACE_INPUT_DIAGNOSTIC', JSON.stringify({bounds:await context.cdp.send('Browser.getWindowForTarget'),page:await context.cdp.evaluate('({url:location.href,focused:document.hasFocus(),visibility:document.visibilityState,active:document.activeElement?.outerHTML,ready:document.readyState,activation:{active:navigator.userActivation.isActive,ever:navigator.userActivation.hasBeenActive},trace:window.__trainingFocusTrace})')}));
