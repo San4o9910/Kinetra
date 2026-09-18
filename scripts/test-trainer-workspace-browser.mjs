@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
 import { mkdtemp, mkdir, writeFile, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
@@ -22,21 +21,13 @@ export const runTrainerWorkspaceBrowser = async (h) => {
     lessonCompleted = false;
   const mediaDirectory = await mkdtemp(path.join(os.tmpdir(), 'kinetra-sharing-media-'));
   const mediaFile = path.join(mediaDirectory, 'lesson.mp4');
-  execFileSync('ffmpeg', [
-    '-v',
-    'error',
-    '-f',
-    'lavfi',
-    '-i',
-    'color=c=0x001621:s=320x180:r=15',
-    '-t',
-    '2',
-    '-c:v',
-    'libx264',
-    '-pix_fmt',
-    'yuv420p',
+  await writeFile(
     mediaFile,
-  ]);
+    Buffer.from(
+      await readFile(new URL('./fixtures/intro-video.mp4.b64', import.meta.url), 'utf8'),
+      'base64',
+    ),
+  );
   const assignedLessons = () =>
     lessonAssigned && lesson
       ? [

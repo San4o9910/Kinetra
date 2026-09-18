@@ -474,10 +474,11 @@ b27604399fbe5607234eaa4b4cb64b8e786d77949d05b87afd0620a0106975cd  ./package-lock
 0224aa9d35513e410099d4f7c382f1cde4597fa50f7dbc3bac28374f67f693da  ./packages/shared/src/training.ts
 c8171db33a1b645b8c36d542cf4bfc5c47073df8842b846f91a6ebf083973c5e  ./packages/shared/tsconfig.json
 4c9d6d3999285a6ab8712d8582d54e69a76f434b4faf933a886c664a65031c54  ./scripts/check-changed-format.mjs
+07713ebdf41adf6417d2eacf65a5bca4a6c8aa50326003a6aaaf18dd3fc8aa0c  ./scripts/fixtures/intro-video.mp4.b64
 d16d01c4778cc1b7b5f6695a8ad979bc82ed5d3ecec2a77ac579f3bda9e4210f  ./scripts/local-demo-guard.mjs
 aa40f7eec1b859bca8bfe25c88bb945223365e3490c3b675f3b837afda357737  ./scripts/prepare-local-demo.mjs
 bd552b5c0ba879666a9fecf9a8bba3b30f5b1223fbc1cf69fef30a5c6437aaf2  ./scripts/run-local-demo.mjs
 72aabc646f207cd2befc08e3ef0507531799ec1de8c75e4f3c1e22af0ebe0ac9  ./scripts/test-frontend-browser.mjs
-6e46b7917d4ff6bcc503f10872e292747bb1e2c4e5501bc03d4ab4ddf767a071  ./scripts/test-trainer-workspace-browser.mjs
+caa54de2fc2c49db9191891edfce32a4a50c54b3a37214be0ec79be799f6407b  ./scripts/test-trainer-workspace-browser.mjs
 14a57c35af1cd982e34e54b25b01877058d55ea113bbbb129cce88dd71f60158  ./scripts/verify-project.mjs
 2b67887209f3334ebdc96426f5c2cb87480fb85ff2f75c0d42b0a944dae7922a  ./tsconfig.base.json
