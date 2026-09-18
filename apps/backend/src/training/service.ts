@@ -1,3 +1,4 @@
+import { assignedLessons } from './lesson-assignments.js';
 import { isDeepStrictEqual } from 'node:util';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
@@ -215,7 +216,11 @@ export class TrainingService {
         trainer,
       ]);
       const { invite_hash: _hash, invite_expires_at: _expires, ...student } = result.rows[0];
-      return { student, plans: await this.plans(db, id) } as TrainingStudentDetail;
+      return {
+        student,
+        plans: await this.plans(db, id),
+        assigned_lessons: await assignedLessons(db, id),
+      } as TrainingStudentDetail;
     });
   }
   public async myTraining(client: string): Promise<MyTraining> {
@@ -229,6 +234,7 @@ export class TrainingService {
         student_id: row?.id ?? null,
         trainer_name: row?.display_name ?? null,
         plans: row ? await this.plans(db, row.id, true) : [],
+        assigned_lessons: row ? await assignedLessons(db, row.id) : [],
       };
     });
   }
@@ -304,8 +310,8 @@ export class TrainingService {
           Boolean,
         )) {
           const lesson = await db.query(
-            "SELECT id FROM training_lessons WHERE id=$1 AND trainer_id=$2 AND status='ready' FOR SHARE",
-            [lessonId, trainer],
+            "SELECT id FROM training_lessons WHERE id=$1 AND trainer_id=$2 AND status='ready' AND (audience='shared' OR personal_student_id=$3) FOR SHARE",
+            [lessonId, trainer, plan.student_id],
           );
           if (lesson.rowCount !== 1)
             trainingError(400, 'LESSON_UNAVAILABLE', 'Выберите готовый урок из своей библиотеки.');
@@ -418,7 +424,7 @@ export class TrainingService {
   public async library(trainer: string): Promise<TrainingLibrary> {
     await this.trainer(this.pool, trainer);
     const result = await this.pool.query(
-      "SELECT id,title,description,status,size_bytes::float8 AS size_bytes,duration_seconds,folder,original_name,source_bytes::float8 AS source_bytes,source_modified::float8 AS source_modified,upload_offset::float8 AS upload_offset,error_message,thumbnail_ready FROM training_lessons WHERE trainer_id=$1 AND status<>'archived' ORDER BY created_at DESC",
+      "SELECT id,title,description,status,audience,personal_student_id,size_bytes::float8 AS size_bytes,duration_seconds,folder,original_name,source_bytes::float8 AS source_bytes,source_modified::float8 AS source_modified,upload_offset::float8 AS upload_offset,error_message,thumbnail_ready FROM training_lessons WHERE trainer_id=$1 AND status<>'archived' ORDER BY created_at DESC",
       [trainer],
     );
     return {
@@ -435,6 +441,8 @@ export class TrainingService {
       trainingError(400, 'INVALID_LESSON', 'Укажите название и видео размером до 256 МБ.');
     return this.transaction(async (db) => {
       await this.trainer(db, trainer);
+      if (parsed.data.personal_student_id)
+        await this.student(db, trainer, parsed.data.personal_student_id);
       await db.query("SELECT pg_advisory_xact_lock(hashtext('training-media-quota'))");
       const sum = await db.query(
         "SELECT COALESCE(sum(CASE WHEN status='ready' THEN size_bytes ELSE GREATEST(size_bytes,268435456) END),0)::float8 AS total,COALESCE(sum(CASE WHEN status='ready' THEN size_bytes ELSE GREATEST(size_bytes,268435456) END) FILTER(WHERE trainer_id=$1),0)::float8 AS own FROM training_lessons WHERE status IN ('pending','uploading','processing','ready')",
@@ -447,7 +455,7 @@ export class TrainingService {
         trainingError(409, 'MEDIA_QUOTA', 'Недостаточно места для урока. Удалите ненужные видео.');
       const id = randomUUID();
       await db.query(
-        'INSERT INTO training_lessons(id,trainer_id,title,description,size_bytes,source_bytes,folder,original_name,source_modified) VALUES($1,$2,$3,$4,$5,$5,$6,$7,$8)',
+        'INSERT INTO training_lessons(id,trainer_id,title,description,size_bytes,source_bytes,folder,original_name,source_modified,audience,personal_student_id) VALUES($1,$2,$3,$4,$5,$5,$6,$7,$8,$9,$10)',
         [
           id,
           trainer,
@@ -457,8 +465,15 @@ export class TrainingService {
           parsed.data.folder,
           parsed.data.original_name,
           parsed.data.source_modified,
+          parsed.data.audience,
+          parsed.data.personal_student_id,
         ],
       );
+      if (parsed.data.personal_student_id)
+        await db.query(
+          'INSERT INTO training_lesson_assignments(lesson_id,student_id) VALUES($1,$2)',
+          [id, parsed.data.personal_student_id],
+        );
       return { id };
     });
   }
@@ -491,7 +506,7 @@ export class TrainingService {
   public async mediaAccess(user: string, id: string) {
     const result = await this.pool.query(
       `SELECT l.id,l.size_bytes::float8 AS size_bytes FROM training_lessons l JOIN trainer_profiles t ON t.user_id=l.trainer_id WHERE l.id=$1 AND l.status='ready' AND t.is_active=true AND (l.trainer_id=$2 OR EXISTS(
-      SELECT 1 FROM training_workouts w JOIN training_plans p ON p.id=w.plan_id JOIN training_students s ON s.id=p.student_id WHERE (w.lesson_id=l.id OR w.exercises @> jsonb_build_array(jsonb_build_object('lesson_id',l.id::text))) AND p.status IN ('published','archived') AND s.client_id=$2 AND s.trainer_id=l.trainer_id AND s.archived_at IS NULL))`,
+      SELECT 1 FROM training_workouts w JOIN training_plans p ON p.id=w.plan_id JOIN training_students s ON s.id=p.student_id WHERE (w.lesson_id=l.id OR w.exercises @> jsonb_build_array(jsonb_build_object('lesson_id',l.id::text))) AND p.status IN ('published','archived') AND s.client_id=$2 AND s.trainer_id=l.trainer_id AND s.archived_at IS NULL AND (l.audience='shared' OR l.personal_student_id=s.id)) OR EXISTS(SELECT 1 FROM training_lesson_assignments a JOIN training_students s ON s.id=a.student_id WHERE a.lesson_id=l.id AND a.revoked_at IS NULL AND s.client_id=$2 AND s.trainer_id=l.trainer_id AND s.archived_at IS NULL AND (l.audience='shared' OR l.personal_student_id=s.id)))`,
       [trainingId(id), user],
     );
     if (!result.rows[0]) trainingError(404, 'LESSON_UNAVAILABLE', 'Урок недоступен.');

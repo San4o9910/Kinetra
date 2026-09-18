@@ -1,0 +1,76 @@
+.kinetra-video-intro {
+  background: #001621;
+  color: #f4f6f2;
+  border-radius: 16px;
+  overflow: hidden;
+  width: 100%;
+}
+.kinetra-video-intro svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.kinetra-video-intro [data-drop],
+.kinetra-video-intro [data-ball] {
+  fill: #ff4103;
+}
+.kinetra-video-intro [data-word],
+.kinetra-video-intro [data-mark] {
+  fill: none;
+  stroke: #ff4103;
+  stroke-width: 8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.kinetra-video-intro [data-mark] {
+  stroke-width: 13;
+  opacity: 0;
+}
+.kinetra-video-intro [data-ball],
+.kinetra-video-intro [data-ripple] {
+  opacity: 0;
+}
+.kinetra-video-intro [data-ripple] {
+  fill: none;
+  stroke: #ff4103;
+  stroke-width: 2;
+}
+.kinetra-intro-floor {
+  stroke: #20414f;
+  stroke-width: 1;
+  fill: none;
+}
+.kinetra-intro-caption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 16px 16px;
+  font-size: 12px;
+}
+.training-player .kinetra-intro-caption button {
+  color: #f4f6f2;
+  border-color: #365664;
+  font-size: 12px;
+}
+.training-video-launch {
+  min-height: 180px;
+  display: grid;
+  place-content: center;
+  gap: 12px;
+  text-align: center;
+  background: var(--surface-deep);
+  border-radius: 16px;
+  padding: 24px;
+}
+.training-video-launch button {
+  justify-self: center;
+}
+.training-player video[hidden] {
+  display: none;
+}
+
+.kinetra-video-intro [data-word] {
+  opacity: 0;
+}

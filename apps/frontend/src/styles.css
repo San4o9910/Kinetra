@@ -7776,3 +7776,13 @@ body {
   background: var(--surface-inset);
   border-radius: 14px;
 }
+
+/* A dark K on the orange trainer tile; the mark stays inside its 34px box. */
+.trainer-admin-brand > span {
+  flex: 0 0 34px;
+}
+.trainer-admin-brand .kinetic-mark {
+  width: 28px;
+  height: 28px;
+  stroke: var(--accent-ink);
+}

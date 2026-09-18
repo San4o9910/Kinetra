@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, stat } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
+import { mkdtemp, mkdir, writeFile, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 
@@ -16,7 +17,37 @@ export const runTrainerWorkspaceBrowser = async (h) => {
     uploaded = false,
     uploadOffset = 0,
     rejectLogs = false,
-    templates = [];
+    templates = [],
+    lessonAssigned = false,
+    lessonCompleted = false;
+  const mediaDirectory = await mkdtemp(path.join(os.tmpdir(), 'kinetra-sharing-media-'));
+  const mediaFile = path.join(mediaDirectory, 'lesson.mp4');
+  execFileSync('ffmpeg', [
+    '-v',
+    'error',
+    '-f',
+    'lavfi',
+    '-i',
+    'color=c=0x001621:s=320x180:r=15',
+    '-t',
+    '2',
+    '-c:v',
+    'libx264',
+    '-pix_fmt',
+    'yuv420p',
+    mediaFile,
+  ]);
+  const assignedLessons = () =>
+    lessonAssigned && lesson
+      ? [
+          {
+            ...lesson,
+            assigned_at: new Date().toISOString(),
+            position_seconds: 0,
+            completed_at: lessonCompleted ? new Date().toISOString() : null,
+          },
+        ]
+      : [];
   const accounts = new Map();
   const person = (role) => ({
     ...h.profile,
@@ -94,13 +125,61 @@ export const runTrainerWorkspaceBrowser = async (h) => {
       });
       return;
     }
+    if (pathname === '/fixture-lesson.mp4') {
+      res.writeHead(200, { 'Content-Type': 'video/mp4' });
+      res.end(await readFile(mediaFile));
+      return;
+    }
     if (pathname.startsWith('/api/v1/training/')) {
+      if (pathname.endsWith('/access')) {
+        h.json(res, 200, { path: '/fixture-lesson.mp4' });
+        return;
+      }
+      if (pathname.endsWith('/assignments')) {
+        if (req.method === 'POST') {
+          const input = await h.readJsonBody(req);
+          assert.ok(input.target === 'all' || input.student_ids.includes(studentId));
+          lessonAssigned = true;
+          h.json(res, 200, { assigned: 1 });
+        } else
+          h.json(res, 200, {
+            recipients: lessonAssigned
+              ? [
+                  {
+                    ...student,
+                    position_seconds: 0,
+                    completed_at: lessonCompleted ? new Date().toISOString() : null,
+                  },
+                ]
+              : [],
+          });
+        return;
+      }
+      if (pathname.endsWith('/progress')) {
+        const input = await h.readJsonBody(req);
+        lessonCompleted = lessonCompleted || input.completed === true;
+        h.json(res, 200, { saved: true });
+        return;
+      }
+
       assert.ok(
         ['trainer', 'client'].includes(role),
         'Protected training request carries account token',
       );
       if (pathname.endsWith('/attention')) {
-        h.json(res, 200, { events: [] });
+        h.json(res, 200, {
+          events:
+            student && !student.client_id
+              ? [
+                  {
+                    student_id: studentId,
+                    name: student.name,
+                    kind: 'invitation',
+                    title: 'Ещё не принял приглашение',
+                  },
+                ]
+              : [],
+        });
         return;
       }
       if (pathname.endsWith('/measurements')) {
@@ -155,7 +234,11 @@ export const runTrainerWorkspaceBrowser = async (h) => {
         return;
       }
       if (pathname.endsWith(`/students/${studentId}`)) {
-        h.json(res, 200, { student, plans: plan ? [plan] : [] });
+        h.json(res, 200, {
+          student,
+          plans: plan ? [plan] : [],
+          assigned_lessons: assignedLessons(),
+        });
         return;
       }
       if (pathname.endsWith(`/students/${studentId}/plans`)) {
@@ -217,6 +300,7 @@ export const runTrainerWorkspaceBrowser = async (h) => {
           student_id: student?.client_id ? studentId : null,
           trainer_name: student?.client_id ? 'Мария Тренер' : null,
           plans: student?.client_id && plan?.status === 'published' ? [plan] : [],
+          assigned_lessons: student?.client_id ? assignedLessons() : [],
         });
         return;
       }
@@ -346,10 +430,30 @@ export const runTrainerWorkspaceBrowser = async (h) => {
     await h.waitFor('video ready in library', async () =>
       (await trainer.bodyText()).includes('Готов к занятиям'),
     );
+    await clickReady(trainer, 'Назначить / результаты');
+    await h.waitFor('lesson recipients loaded', async () =>
+      (await trainer.bodyText()).includes('Доступ появится после принятия приглашения'),
+    );
+    await fill(trainer, 'Получатели', 'all');
+    await clickReady(trainer, 'Назначить всем');
+    await h.waitFor('lesson assigned to current roster', () => lessonAssigned);
     await trainer.navigate('/trainer/students');
     await h.waitFor('student roster', async () =>
       (await trainer.bodyText()).includes('Анна Ученица'),
     );
+    for (const theme of ['dark', 'light']) {
+      await trainer.cdp.evaluate(`document.documentElement.dataset.theme=${JSON.stringify(theme)}`);
+      const contrast = await trainer.cdp.evaluate(
+        `(()=>{const node=document.querySelector('.training-attention-item button');const fg=getComputedStyle(node).color,bg=getComputedStyle(node.closest('article')).backgroundColor;const lum=c=>{const v=c.match(/[\\d.]+/g).slice(0,3).map(Number).map(n=>n/255).map(n=>n<=0.04045?n/12.92:((n+0.055)/1.055)**2.4);return v[0]*0.2126+v[1]*0.7152+v[2]*0.0722;};const a=lum(fg),b=lum(bg);return (Math.max(a,b)+.05)/(Math.min(a,b)+.05);})()`,
+      );
+      assert.ok(contrast >= 4.5, `${theme} attention text contrast: ${contrast}`);
+      const mark = await trainer.cdp.evaluate(
+        `(()=>{const m=document.querySelector('.trainer-admin-brand svg'),tile=m.parentElement;return {stroke:getComputedStyle(m).stroke,background:getComputedStyle(tile).backgroundColor,width:m.getBoundingClientRect().width,tile:tile.getBoundingClientRect().width};})()`,
+      );
+      assert.notEqual(mark.stroke, mark.background);
+      assert.ok(mark.width <= mark.tile);
+    }
+    await trainer.cdp.evaluate("document.documentElement.dataset.theme='dark'");
     await trainer.cdp.evaluate("document.querySelector('.training-student').click()");
     await h.waitFor('student selected', async () =>
       (await trainer.bodyText()).includes('Создать программу'),
@@ -505,6 +609,85 @@ export const runTrainerWorkspaceBrowser = async (h) => {
     await h.waitFor('trainer receives feedback', async () =>
       (await trainer.bodyText()).includes('Сделала все подходы'),
     );
+    await client.navigate('/');
+    await client.cdp.send('Page.bringToFront');
+    await h.waitFor('standalone assigned lesson', async () =>
+      (await client.bodyText()).includes('Смотреть урок'),
+    );
+    await clickReady(client, 'Смотреть урок');
+    await h.waitFor('lesson ready to play', async () =>
+      (await client.bodyText()).includes('Воспроизвести урок'),
+    );
+    await client.setViewport(390, 844);
+    await clickReady(client, '▶ Воспроизвести урок');
+    await h.waitFor('brand intro starts', () =>
+      client.cdp.evaluate("!!document.querySelector('.kinetra-video-intro')"),
+    );
+    const started = Date.now();
+    const artifact = path.join(process.cwd(), 'artifacts/lesson-sharing');
+    await mkdir(artifact, { recursive: true });
+    for (const phase of ['drop', 'bounce', 'draw', 'word', 'gather', 'split']) {
+      await h.waitFor(`intro phase ${phase}`, () =>
+        client.cdp.evaluate(
+          `document.querySelector('.kinetra-video-intro svg')?.dataset.phase===${JSON.stringify(phase)}`,
+        ),
+      );
+      await client.cdp.evaluate(
+        "document.querySelector('.kinetra-video-intro').scrollIntoView({block:'center'})",
+      );
+      const shot = await client.cdp.send('Page.captureScreenshot', { format: 'png' });
+      await writeFile(path.join(artifact, `intro-${phase}.png`), Buffer.from(shot.data, 'base64'));
+    }
+    await h.waitFor('intro ends', () =>
+      client.cdp.evaluate("!document.querySelector('.kinetra-video-intro')"),
+    );
+    assert.ok(Date.now() - started >= 6500, 'Intro must remain visible for all stages');
+    assert.equal(
+      await client.cdp.evaluate("document.querySelector('.training-player video').hidden"),
+      false,
+    );
+    await clickReady(client, 'Отметить пройденным');
+    await h.waitFor('separate lesson progress', () => lessonCompleted);
+    // Reopen: keyboard-operable skip, then reduced motion omits the decorative sequence.
+    await clickReady(client, 'Закрыть урок');
+    await clickReady(client, 'Смотреть урок');
+    await clickReady(client, '▶ Воспроизвести урок');
+    await h.waitFor('skip available', () =>
+      client.cdp.evaluate("!!document.querySelector('.kinetra-intro-caption button')"),
+    );
+    await client.cdp.send('Page.bringToFront');
+    await client.cdp.evaluate(
+      "document.querySelector('.kinetra-intro-caption button').dataset.testid='intro-skip'",
+    );
+    await client.cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true });
+    await client.cdp.evaluate("document.querySelector('.kinetra-intro-caption button').focus()");
+    await client.cdp.send('Input.dispatchKeyEvent', {
+      type: 'rawKeyDown',
+      key: 'Enter',
+      code: 'Enter',
+      windowsVirtualKeyCode: 13,
+    });
+    await client.cdp.send('Input.dispatchKeyEvent', {
+      type: 'keyUp',
+      key: 'Enter',
+      code: 'Enter',
+      windowsVirtualKeyCode: 13,
+    });
+    await h.waitFor('keyboard skips animation', () =>
+      client.cdp.evaluate("!document.querySelector('.kinetra-video-intro')"),
+    );
+    await clickReady(client, 'Закрыть урок');
+    await client.cdp.send('Emulation.setEmulatedMedia', {
+      features: [{ name: 'prefers-reduced-motion', value: 'reduce' }],
+    });
+    await clickReady(client, 'Смотреть урок');
+    await clickReady(client, '▶ Воспроизвести урок');
+    assert.equal(
+      await client.cdp.evaluate("!!document.querySelector('.kinetra-video-intro')"),
+      false,
+    );
+    await client.cdp.send('Emulation.setEmulatedMedia', { features: [] });
+    console.log('KINETRA_LESSON_SHARING_INTRO_ACCESSIBILITY_BROWSER=PASS');
     await client.navigate('/schedule');
     await h.waitFor(
       'personal calendar',
@@ -535,6 +718,7 @@ export const runTrainerWorkspaceBrowser = async (h) => {
       await h.terminateChrome(context?.chrome ?? null);
     }
     await h.close(server);
+    await h.removeProfileDirectory(mediaDirectory);
     for (const dir of dirs) await h.removeProfileDirectory(dir);
   }
   console.log('KINETRA_TRAINER_WORKSPACE_BROWSER=PASS');

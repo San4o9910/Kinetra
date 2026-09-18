@@ -14,6 +14,7 @@ on:
         fix/trainer-application-simplicity,
         feature/trainer-workspace,
         feature/training-experience,
+        feature/lesson-sharing-brand-intro,
       ]
   pull_request:
     branches:
@@ -385,6 +386,15 @@ jobs:
             [[ "$fixture_pid" =~ ^[1-9][0-9]*$ ]]
             kill "$fixture_pid" 2>/dev/null || true
           fi
+
+      - name: Upload lesson animation and layout previews
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: lesson-sharing-preview
+          path: artifacts/lesson-sharing/
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Verify browser profile cleanup
         if: always()

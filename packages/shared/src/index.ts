@@ -860,3 +860,5 @@ export type {
   TrainingMeasurement,
   TrainingComplaint,
 } from './training.js';
+
+export type { AssignedTrainingLesson, TrainingLessonRecipient } from './training.js';

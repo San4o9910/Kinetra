@@ -64,6 +64,8 @@ export const planSchema = z
   .refine((v) => new Set(v.workouts.map((w) => w.id)).size === v.workouts.length);
 export const lessonSchema = z
   .object({
+    audience: z.enum(['shared', 'personal']).default('shared'),
+    personal_student_id: uuid.nullable().default(null),
     title: text(1, 160),
     description: text(0, 5000).default(''),
     folder: text(0, 80).default(''),
@@ -75,7 +77,8 @@ export const lessonSchema = z
       .min(1)
       .max(256 * 1024 * 1024),
   })
-  .strict();
+  .strict()
+  .refine((v) => (v.audience === 'personal') === (v.personal_student_id !== null));
 export const logSchema = z
   .object({
     completed: z.literal(true).optional(),
