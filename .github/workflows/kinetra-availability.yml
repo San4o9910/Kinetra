@@ -48,3 +48,5 @@ jobs:
           path: ${{ runner.temp }}/kinetra-availability.json
           if-no-files-found: error
           retention-days: 14
+
+# Read-only capacity check before the personal trainer workspace release, 2026-09-18.
