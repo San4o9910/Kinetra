@@ -49,7 +49,9 @@ export const runTrainerWorkspaceBrowser = async (h) => {
       return;
     }
     if (pathname === '/api/v1/auth/refresh') {
-      const role = String(req.headers.cookie ?? '').includes('=trainer') ? 'trainer' : 'client';
+      const role = /(?:^|;\s*)kinetra_refresh=(trainer|client)(?:;|$)/.exec(
+        String(req.headers.cookie ?? ''),
+      )?.[1];
       if (accounts.get(role)) h.json(res, 200, session(role));
       else h.json(res, 401, { error: { code: 'AUTHENTICATION_REQUIRED', message: 'Sign in' } });
       return;
@@ -484,6 +486,17 @@ export const runTrainerWorkspaceBrowser = async (h) => {
     await clickReady(client, 'Тренировка выполнена');
     await h.waitFor('individual progress persisted', () => student.completed === 1);
     trainer = await h.launchT12BrowserContext(dirs[0], 1280, 900);
+    await h.waitFor(
+      'returning trainer authentication',
+      async () =>
+        (await trainer.exists('login-screen')) || (await trainer.exists('trainer-workspace')),
+    );
+    if (await trainer.exists('login-screen')) {
+      await trainer.setValue('login-identifier', 'trainer@example.test');
+      await trainer.setValue('login-password', 'abc123');
+      await trainer.click('login-submit');
+    }
+    await h.waitFor('returning trainer workspace', () => trainer.exists('trainer-workspace'));
     await trainer.navigate('/trainer/students');
     await h.waitFor('updated student roster', async () =>
       (await trainer.bodyText()).includes('1 из 1 занятий'),
