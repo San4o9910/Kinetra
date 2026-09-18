@@ -26,8 +26,8 @@ jobs:
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           sha256sum --check --strict <<'SHA256'
           567d892221925bb438ece6a893360a891ffd4228f8af0a18252b8ba365a682c0  ops/timeweb/inspect-server.py
-          4b60ea059675b95652155720a6c11b96567523b1c18d26d7bb7557be066f585d  ops/timeweb/training-experience-release-gate.py
-          34a8b3affa66177774a0871437384634954b8fe2d9a4736de60fd85781dfdfa8  ops/timeweb/training-experience-upgrade-host.py
+          5b932cde0852b77cba52c553a5a919408afe3d54ef4d369fd73e625421830ea4  ops/timeweb/training-experience-release-gate.py
+          4147a5f37714ebc435dcd8699cc6eb4b2056ba43800b538b4ba15c39d07310a9  ops/timeweb/training-experience-upgrade-host.py
           64e7d4f11a46a84c73fc654bf6868d141e69ef22c842dc90f5e99cc403a5c05b  ops/timeweb/training-experience-upgrade-caller.py
           767887b49c35ee7e32f4c23a68075112149861953f0d116e69a6d111fab41ed9  ops/timeweb/test-training-experience-upgrade.py
           ba9d7f7d4a5475de9a4401be60694bcbeab1e62308d2f304454360fc72d2267e  ops/timeweb/upstream-disposition.py
@@ -36,7 +36,7 @@ jobs:
           sudo python3 -B ops/timeweb/test-training-experience-upgrade.py
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: 5be7df36f85b65c8248c221509ea3a7fec1919db
+          ref: c57cc5d54e87bb2468a9d84630557d4f52ec57d1
           path: Kinetra
           persist-credentials: false
       - name: Verify merged source manifest and qualified image evidence
@@ -45,7 +45,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          test "$(git -C "$APP_CHECKOUT" rev-parse HEAD)" = 5be7df36f85b65c8248c221509ea3a7fec1919db
+          test "$(git -C "$APP_CHECKOUT" rev-parse HEAD)" = c57cc5d54e87bb2468a9d84630557d4f52ec57d1
           (cd "$APP_CHECKOUT" && sha256sum --check --quiet MANIFEST.sha256)
           python3 -B ops/timeweb/training-experience-release-gate.py
       - name: Back up, prove restoration and install the qualified update
