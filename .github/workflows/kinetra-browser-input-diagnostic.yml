@@ -1,4 +1,4 @@
-name: Diagnose isolated native browser input
+name: Verify isolated trainer workflow stability
 on:
   push:
     branches: [ops/timeweb-hourly-preflight-20260909]
@@ -9,51 +9,30 @@ jobs:
   diagnose:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      matrix:
-        input_mode: [leak_off, uncommon_password]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
+          ref: 5be7df36f85b65c8248c221509ea3a7fec1919db
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
-      - name: Compare native browser focus without application code
-        run: CHROME_BIN="$(command -v google-chrome)" node ops/timeweb/browser-input-diagnostic.mjs
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          ref: 16383efcc06a6cd5313b639cebc02020a5f0592f
-          path: app
-          persist-credentials: false
-      - name: Install pinned application dependencies
-        working-directory: app
-        run: npm ci
-      - name: Run only the unchanged trainer workspace scenario for diagnosis
-        working-directory: app
+      - name: Verify exact candidate and install pinned dependencies
+        run: |
+          test "$(git rev-parse HEAD)" = 5be7df36f85b65c8248c221509ea3a7fec1919db
+          sha256sum --check --quiet MANIFEST.sha256
+          npm ci
+      - name: Repeat unchanged trainer workspace scenario three times
         env:
           VITE_API_URL: https://api.ci.kinetra.test
-          DIAGNOSTIC_MODE: ${{ matrix.input_mode }}
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          import os
           p=Path('scripts/test-frontend-browser.mjs');s=p.read_text()
-          if os.environ['DIAGNOSTIC_MODE']=='leak_off':
-              s=s.replace('--disable-features=LocalNetworkAccessChecks','--disable-features=LocalNetworkAccessChecks,PasswordLeakDetection')
           for call in ['await runBrowserScenario();','await runT12BrowserScenario();','await runTrainerApplicationBrowserScenario();']:
               assert s.count(call)==1;s=s.replace(call,'// Other suites remain mandatory in release CI.')
           p.write_text(s)
-          p=Path('scripts/test-trainer-workspace-browser.mjs');s=p.read_text()
-          if os.environ['DIAGNOSTIC_MODE']=='uncommon_password':s=s.replace('abc123','K7m9Q2')
-          needle='  } finally {\n    for (const context of [trainer, client]) {';assert s.count(needle)==1
-          s=s.replace(needle,"""  } catch (error) {
-            for (const context of [trainer, client]) if(context) {
-              console.log('WORKSPACE_INPUT_DIAGNOSTIC', JSON.stringify({bounds:await context.cdp.send('Browser.getWindowForTarget'),page:await context.cdp.evaluate('({url:location.href,focused:document.hasFocus(),visibility:document.visibilityState,active:document.activeElement?.outerHTML,ready:document.readyState,activation:{active:navigator.userActivation.isActive,ever:navigator.userActivation.hasBeenActive},trace:window.__trainingFocusTrace})')}));
-            }
-            throw error;
-          } finally {
-            for (const context of [trainer, client]) {""");p.write_text(s)
           PY
-          node scripts/test-frontend-browser.mjs
+          for attempt in 1 2 3; do
+            node scripts/test-frontend-browser.mjs
+          done
