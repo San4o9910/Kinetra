@@ -407,19 +407,25 @@ export const runTrainerWorkspaceBrowser = async (h) => {
       true,
       'Workout fields have accessible names',
     );
+    await client.cdp.send('Page.bringToFront');
     await client.cdp.send('Input.dispatchKeyEvent', {
-      type: 'keyDown',
+      type: 'rawKeyDown',
       key: 'Tab',
       code: 'Tab',
       windowsVirtualKeyCode: 9,
+      nativeVirtualKeyCode: 9,
     });
     await client.cdp.send('Input.dispatchKeyEvent', {
       type: 'keyUp',
       key: 'Tab',
       code: 'Tab',
       windowsVirtualKeyCode: 9,
+      nativeVirtualKeyCode: 9,
     });
-    assert.equal(await client.cdp.evaluate('document.activeElement?.tagName'), 'BUTTON');
+    await h.waitFor(
+      'keyboard focus reaches workout controls',
+      async () => (await client.cdp.evaluate('document.activeElement?.tagName')) === 'BUTTON',
+    );
     rejectLogs = true;
     await client.cdp.evaluate(
       "document.querySelector('.training-set-list button[aria-pressed]').click()",

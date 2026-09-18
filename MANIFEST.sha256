@@ -470,6 +470,6 @@ d16d01c4778cc1b7b5f6695a8ad979bc82ed5d3ecec2a77ac579f3bda9e4210f  ./scripts/loca
 aa40f7eec1b859bca8bfe25c88bb945223365e3490c3b675f3b837afda357737  ./scripts/prepare-local-demo.mjs
 bd552b5c0ba879666a9fecf9a8bba3b30f5b1223fbc1cf69fef30a5c6437aaf2  ./scripts/run-local-demo.mjs
 72aabc646f207cd2befc08e3ef0507531799ec1de8c75e4f3c1e22af0ebe0ac9  ./scripts/test-frontend-browser.mjs
-f2e9e63891b1086341177f7ce2bd3835b687ae268ded44c13b018fc6a5372da1  ./scripts/test-trainer-workspace-browser.mjs
+34da76a3f1039d4f14521b6fb15ebe7e65367b6d15998a77f1bc62fbe10b7d2a  ./scripts/test-trainer-workspace-browser.mjs
 14a57c35af1cd982e34e54b25b01877058d55ea113bbbb129cce88dd71f60158  ./scripts/verify-project.mjs
 2b67887209f3334ebdc96426f5c2cb87480fb85ff2f75c0d42b0a944dae7922a  ./tsconfig.base.json
