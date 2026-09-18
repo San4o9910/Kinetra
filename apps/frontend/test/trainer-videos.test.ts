@@ -132,7 +132,7 @@ test('T14 trainer shell exposes capability-driven tabs with the current page', (
   );
   assert.match(videosMarkup, /aria-label="Разделы тренера"/u);
   assert.match(videosMarkup, /href="\/trainer\/videos" aria-current="page"/u);
-  assert.match(videosMarkup, />Диалоги</u);
+  assert.match(videosMarkup, />Чат</u);
   assert.match(videosMarkup, />Общий курс</u);
 
   const chatOnlyMarkup = renderToStaticMarkup(

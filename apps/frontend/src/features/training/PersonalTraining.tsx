@@ -1,3 +1,4 @@
+import { MyCoachCard } from './CoachProfile';
 import { AssignedLessons } from './AssignedLessons';
 import { useEffect, useState } from 'react';
 import type { MyTraining, TrainingWorkout } from '@kinetra/shared';
@@ -186,6 +187,13 @@ export const PersonalTraining = ({
               <h2>Тренер готовит вашу программу</h2>
               <p>Назначенные занятия появятся здесь.</p>
             </section>
+          )}
+          {mode === 'progress' && (
+            <MyCoachCard
+              key={
+                complete.length + (data.assigned_lessons?.filter((l) => l.completed_at).length ?? 0)
+              }
+            />
           )}
           {mode === 'home' && (
             <>

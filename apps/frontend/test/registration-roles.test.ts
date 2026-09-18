@@ -160,7 +160,7 @@ test('frontend keeps pending requested trainers out of the trainer shell and cha
   assert.ok(requestedTrainerGate > actualTrainerGate);
   assert.match(
     appSource,
-    /session\.profile\.user\.onboardingStatus === 'active' && !trainerVerificationRequired/u,
+    /session\.profile\.account_role === 'trainer' \|\| !trainerVerificationRequired/u,
   );
   assert.match(appSource, /onSignOut=\{handleTrainerSignOut\}/u);
   assert.match(verificationSource, /readonly onSignOut: \(\) => void/u);

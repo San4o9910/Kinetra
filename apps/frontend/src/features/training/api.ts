@@ -1,4 +1,10 @@
 import type {
+  NutritionEntry,
+  NutritionEntryInput,
+  NutritionTemplate,
+  CoachProfile,
+} from '@kinetra/shared';
+import type {
   TrainingTemplate,
   TrainingLessonRecipient,
   TrainingAttention,
@@ -19,6 +25,45 @@ const json = (method: string, body?: unknown): RequestInit => ({
   ...(body === undefined ? {} : { body: JSON.stringify(body) }),
 });
 export const trainingApi = {
+  coachProfile: () => trainingRequest<CoachProfile>('/coach-profile'),
+  myCoach: () =>
+    trainingRequest<{ profile: CoachProfile | null; score: number | null; can_review: boolean }>(
+      '/my-coach',
+    ),
+  rateCoach: (score: number) => trainingRequest('/my-coach/rating', json('PUT', { score })),
+  nutrition: (date: string, student?: string, signal?: AbortSignal) =>
+    trainingRequest<{ entries: NutritionEntry[] }>(
+      `${student ? `/students/${student}` : ''}/nutrition?date=${encodeURIComponent(date)}`,
+      signal ? { signal } : {},
+    ),
+  saveMeal: (id: string, input: NutritionEntryInput) =>
+    trainingRequest<{ id: string; revision: number }>(`/nutrition/${id}`, json('PUT', input)),
+  removeMeal: (id: string) => trainingRequest(`/nutrition/${id}`, json('DELETE')),
+  shareMeal: (id: string, share: boolean) =>
+    trainingRequest(`/nutrition/${id}/sharing`, json('PUT', { share })),
+  removeMealPhoto: (id: string) => trainingRequest(`/nutrition/${id}/photo`, json('DELETE')),
+  mealPhoto: (id: string) => trainingRequest<{ path: string }>(`/nutrition/${id}/photo`),
+  uploadMealPhoto: (id: string, file: File) =>
+    trainingRequest(`/nutrition/${id}/photo`, {
+      method: 'PUT',
+      body: file,
+      headers: { 'Content-Type': file.type },
+    }),
+  foodTemplates: () => trainingRequest<{ templates: NutritionTemplate[] }>('/nutrition-templates'),
+  saveFoodTemplate: (id: string, input: Omit<NutritionTemplate, 'id'>) =>
+    trainingRequest(`/nutrition-templates/${id}`, json('PUT', input)),
+  removeFoodTemplate: (id: string) => trainingRequest(`/nutrition-templates/${id}`, json('DELETE')),
+  applyFoodTemplate: (
+    id: string,
+    request_id: string,
+    recorded_date: string,
+    share_with_trainer: boolean,
+  ) =>
+    trainingRequest<{ ids: string[] }>(
+      `/nutrition-templates/${id}/apply`,
+      json('POST', { request_id, recorded_date, share_with_trainer }),
+    ),
+
   lessonRecipients: (id: string) =>
     trainingRequest<{ recipients: TrainingLessonRecipient[] }>(`/lessons/${id}/assignments`),
   assignLesson: (id: string, target: 'all' | 'selected', student_ids: string[]) =>

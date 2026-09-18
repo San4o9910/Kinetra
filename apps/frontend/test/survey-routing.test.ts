@@ -57,7 +57,7 @@ test('server onboarding statuses map to canonical browser routes', () => {
   assert.equal(isExplorationAppRoute(appRoutes.settings), true);
   assert.equal(isExplorationAppRoute(appRoutes.editSurvey), true);
   assert.equal(isExplorationAppRoute(appRoutes.baseLessons), true);
-  assert.equal(isExplorationAppRoute(appRoutes.chat), false);
+  assert.equal(isExplorationAppRoute(appRoutes.chat), true);
   assert.equal(normalizeAppRoute('/unknown'), appRoutes.login);
 });
 

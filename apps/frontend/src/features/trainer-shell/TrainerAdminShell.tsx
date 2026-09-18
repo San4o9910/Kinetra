@@ -41,28 +41,7 @@ export const TrainerAdminShell = ({
           </span>
           <strong>KINETRA</strong>
         </a>
-        <nav aria-label="Разделы тренера">
-          <a
-            href={appRoutes.trainerStudents}
-            aria-current={route === appRoutes.trainerStudents ? 'page' : undefined}
-            onClick={(event) => navigate(event, appRoutes.trainerStudents)}
-          >
-            Ученики
-          </a>
-          <a
-            href={appRoutes.trainerLessons}
-            aria-current={route === appRoutes.trainerLessons ? 'page' : undefined}
-            onClick={(event) => navigate(event, appRoutes.trainerLessons)}
-          >
-            Мои уроки
-          </a>
-          <a
-            href={appRoutes.trainerChats}
-            aria-current={chatsActive ? 'page' : undefined}
-            onClick={(event) => navigate(event, appRoutes.trainerChats)}
-          >
-            Диалоги
-          </a>
+        <nav aria-label="Дополнительные разделы тренера">
           {canManageVideos ? (
             <a
               href={appRoutes.trainerVideos}
@@ -86,6 +65,46 @@ export const TrainerAdminShell = ({
         </button>
       </header>
       <div className="trainer-admin-content">{children}</div>
+      <nav className="trainer-bottom-nav" aria-label="Разделы тренера">
+        {[
+          {
+            route: appRoutes.trainerStudents,
+            label: 'Ученики',
+            icon: 'M4 21v-2a5 5 0 0 1 10 0v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M17 4a4 4 0 0 1 0 8M20 21v-2a5 5 0 0 0-3-4.6',
+          },
+          {
+            route: appRoutes.trainerLessons,
+            label: 'Мои уроки',
+            icon: 'M4 4h16v16H4zM10 8l6 4-6 4z',
+          },
+          {
+            route: appRoutes.trainerChats,
+            label: 'Чат',
+            icon: 'M4 4h16v13H10l-5 4v-4H4zM8 8h8M8 12h6',
+          },
+          {
+            route: appRoutes.trainerProfile,
+            label: 'Профиль',
+            icon: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8M4 21v-2a8 6 0 0 1 16 0v2',
+          },
+        ].map((item) => (
+          <a
+            key={item.route}
+            href={item.route}
+            aria-current={
+              (item.route === appRoutes.trainerChats ? chatsActive : route === item.route)
+                ? 'page'
+                : undefined
+            }
+            onClick={(event) => navigate(event, item.route)}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d={item.icon} />
+            </svg>
+            <span>{item.label}</span>
+          </a>
+        ))}
+      </nav>
     </div>
   );
 };

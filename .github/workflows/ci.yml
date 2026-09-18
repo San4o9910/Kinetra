@@ -15,6 +15,7 @@ on:
         feature/trainer-workspace,
         feature/training-experience,
         feature/lesson-sharing-brand-intro,
+        feature/nutrition-coach-plans,
       ]
   pull_request:
     branches:
@@ -257,6 +258,9 @@ jobs:
             echo 'A test failed or was skipped; release validation is blocked.' >&2
             exit 1
           fi
+          grep -F 'KINETRA_NUTRITION_COACH_CHAT_POSTGRES=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_CHAT_BEFORE_ONBOARDING_ROUNDTRIP_BROWSER=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_NUTRITION_TEMPLATES_PHOTOS_PACKAGES_BROWSER=PASS' /tmp/kinetra-test.log
           grep -F 'KINETRA_TRAINING_EXPERIENCE_POSTGRES=PASS' /tmp/kinetra-test.log
           grep -F 'KINETRA_TRAINING_EXPERIENCE_BROWSER=PASS' /tmp/kinetra-test.log
           grep -F 'KINETRA_TRAINER_WORKSPACE_POSTGRES=PASS' /tmp/kinetra-test.log

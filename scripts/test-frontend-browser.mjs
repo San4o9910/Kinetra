@@ -2886,29 +2886,19 @@ const runBrowserScenario = async () => {
     );
 
     assert.equal(await exists('chat-fab'), false);
-    assert.equal(await exists('tab-chat'), false);
-    assert.equal(
-      await cdp.evaluate(
-        `document.querySelectorAll(${JSON.stringify('[data-testid^="tab-"]')}).length - 1`,
-      ),
-      3,
-    );
+    assert.equal(await exists('tab-chat'), true);
+    assert.equal(await exists('tab-nutrition'), true);
     assert.equal(await exists('header-settings'), true);
     const chatSessionRequestsBeforeExplorationProbe = counters.chatSessionGet;
-    await cdp.evaluate(`
-      window.history.pushState(null, '', '/chat');
-      window.dispatchEvent(new PopStateEvent('popstate'));
-    `);
+    await click('tab-chat');
     await waitFor(
-      'chat route is rejected during exploration',
+      'chat route opens before base lessons',
       async () =>
-        (await pathname()) === '/' &&
-        (await exists('training-preparation-card')) &&
-        !(await exists('chat-fab')) &&
-        !(await exists('tab-chat')),
+        (await pathname()) === '/chat' &&
+        (await exists('tab-chat')) &&
+        counters.chatSessionGet > chatSessionRequestsBeforeExplorationProbe,
     );
-    assert.equal(counters.chatSessionGet, chatSessionRequestsBeforeExplorationProbe);
-    console.log('KINETRA_EXPLORATION_CHAT_LOCK=PASS');
+    console.log('KINETRA_EXPLORATION_CHAT_ACCESS=PASS');
 
     await click('tab-schedule');
     await waitFor(

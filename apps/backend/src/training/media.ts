@@ -118,7 +118,7 @@ export class TrainingMedia {
     const photos = new Set(
       (
         await this.service.pool.query(
-          'SELECT photo_id FROM training_measurements WHERE photo_id IS NOT NULL',
+          'SELECT photo_id FROM training_measurements WHERE photo_id IS NOT NULL UNION ALL SELECT photo_id FROM nutrition_entries WHERE photo_id IS NOT NULL',
         )
       ).rows.map((r) => r.photo_id as string),
     );
@@ -127,7 +127,7 @@ export class TrainingMedia {
         /^([0-9a-f-]{36})(\.[0-9a-f-]{36}\.part|\.mp4|\.upload|\.processing\.mp4|\.thumb\.jpg)$/u.exec(
           name,
         );
-      const photo = /^progress-([0-9a-f-]{36})(\.input|\.jpg)$/u.exec(name);
+      const photo = /^(?:progress|nutrition)-([0-9a-f-]{36})(\.input|\.jpg)$/u.exec(name);
       if (!lesson && !photo) continue;
       const path = join(this.directory, name);
       const file = await stat(path).catch(() => null);
