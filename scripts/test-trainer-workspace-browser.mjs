@@ -413,6 +413,9 @@ export const runTrainerWorkspaceBrowser = async (h) => {
     await client.cdp.send('Page.bringToFront');
     assert.equal(await client.cdp.evaluate('document.hasFocus()'), true);
     await client.cdp.evaluate("document.getElementById('training-session-heading').focus()");
+    await client.cdp.evaluate(
+      `(()=>{window.__trainingFocusTrace=[];for(const type of ['keydown','keyup','focusin','focusout'])document.addEventListener(type,e=>queueMicrotask(()=>{window.__trainingFocusTrace.push({type,key:e.key,prevented:e.defaultPrevented,target:e.target?.tagName,id:e.target?.id,active:document.activeElement?.tagName,activeId:document.activeElement?.id});}),true);return new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));})()`,
+    );
     await client.cdp.send('Input.dispatchKeyEvent', {
       type: 'rawKeyDown',
       key: 'Tab',
@@ -427,10 +430,22 @@ export const runTrainerWorkspaceBrowser = async (h) => {
       windowsVirtualKeyCode: 9,
       nativeVirtualKeyCode: 9,
     });
-    await h.waitFor(
-      'keyboard focus reaches workout controls',
-      async () => (await client.cdp.evaluate('document.activeElement?.tagName')) === 'BUTTON',
-    );
+    try {
+      await h.waitFor(
+        'keyboard focus reaches workout controls',
+        async () => (await client.cdp.evaluate('document.activeElement?.tagName')) === 'BUTTON',
+      );
+    } catch (error) {
+      throw new Error(
+        String(error) +
+          ' ' +
+          JSON.stringify(
+            await client.cdp.evaluate(
+              `({focus:document.activeElement?.outerHTML?.slice(0,500),trace:window.__trainingFocusTrace.slice(-25),controls:[...document.querySelectorAll('.training-session button')].slice(0,8).map(b=>({text:b.textContent,tabIndex:b.tabIndex,disabled:b.matches(':disabled'),display:getComputedStyle(b).display,visibility:getComputedStyle(b).visibility}))})`,
+            ),
+          ),
+      );
+    }
     await client.setViewport(390, 844);
     rejectLogs = true;
     await client.cdp.evaluate(
