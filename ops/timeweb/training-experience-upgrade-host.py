@@ -1,11 +1,11 @@
-"""Install personal trainer programs, additive migration 018 and private host media.
+"""Install personal trainer programs, additive migration 019 and private host media.
 
 Input is authenticated by the caller before SSH. No credentials arrive from the caller.
 Existing private env files remain on the host. Caddy/PostgreSQL are never restarted.
 """
 import base64,fcntl,hashlib,http.client,json,os,pathlib,re,resource,secrets,shutil,signal,stat,subprocess,sys,time
-S=pathlib.Path('/srv/kinetra-stage');APP='c57cc5d54e87bb2468a9d84630557d4f52ec57d1';BASE='5be7df36f85b65c8248c221509ea3a7fec1919db'
-OLD_IMAGES={'backend':'ghcr.io/san4o9910/kinetra-backend@sha256:96c21c21afeee176937afcff0996b38f4dc8c8d21d24ab7fdca1330644fc5a6d','frontend':'ghcr.io/san4o9910/kinetra-frontend@sha256:b394b4e58702ea7543640f8bd828a61a9aba26470ba52097dc221a532596884d'}
+S=pathlib.Path('/srv/kinetra-stage');APP='125af45560e86fbe5f47837ffabe813e4aebfb4d';BASE='c57cc5d54e87bb2468a9d84630557d4f52ec57d1'
+OLD_IMAGES={'backend':'ghcr.io/san4o9910/kinetra-backend@sha256:469b2f69df8b88bdb959b0cbf482cc143cd557b45562c59babd9d4f58e974c9c','frontend':'ghcr.io/san4o9910/kinetra-frontend@sha256:472fab3ec4a647aae64e35736e359421be59c1cd912cc00ef0fc5a95550b9ae9'}
 class Failure(Exception):pass
 def require(ok,code):
  if not ok:raise Failure(code)
@@ -84,7 +84,7 @@ for(const row of rows)assert.equal(expected[row.filename],row.checksum);
 for(const [filename,checksum]of Object.entries(expected)){
 const text=readFileSync('/app/apps/backend/migrations/'+filename,'utf8');assert.equal(createHash('sha256').update(text).digest('hex'),checksum);
 if(rows.some(r=>r.filename===filename))continue;
-assert.ok(/^018_/.test(filename));await c.query('BEGIN');try{await c.query(text);await c.query('INSERT INTO schema_migrations(filename,checksum)VALUES($1,$2)',[filename,checksum]);await c.query('COMMIT')}catch(e){await c.query('ROLLBACK');throw e}}
+assert.ok(/^019_/.test(filename));await c.query('BEGIN');try{await c.query(text);await c.query('INSERT INTO schema_migrations(filename,checksum)VALUES($1,$2)',[filename,checksum]);await c.query('COMMIT')}catch(e){await c.query('ROLLBACK');throw e}}
 await c.query(readFileSync('/release/runtime-grants.sql','utf8').replace(/^\\\\set ON_ERROR_STOP on\\r?\\n/m,''));
 assert.equal((await c.query('SELECT count(*)::int AS n FROM schema_migrations')).rows[0].n,Object.keys(expected).length);
 console.log('MIGRATIONS_AND_GRANTS=PASS');
@@ -119,9 +119,9 @@ def main():
   require(all(current[k]['Config']['Image']==v for k,v in OLD_IMAGES.items()),'BASE_IMAGES_CHANGED')
   require(all(c['State']['Running'] for c in current.values()),'BASE_NOT_RUNNING');pgid=current['postgres']['Id']
   require(current['backend']['State'].get('Health',{}).get('Status')=='healthy' and get('/health')[0]==200,'BASE_NOT_HEALTHY')
-  oldledger=ledger(pgid);expected=data['migrations'];require(len(expected)==18 and len(oldledger)==17 and all(expected.get(r['filename'])==r['checksum'] for r in oldledger),'MIGRATION_HISTORY_CHANGED')
+  oldledger=ledger(pgid);expected=data['migrations'];require(len(expected)==19 and len(oldledger)==18 and all(expected.get(r['filename'])==r['checksum'] for r in oldledger),'MIGRATION_HISTORY_CHANGED')
   grants=base64.b64decode(data['grants'],validate=True);require(len(grants)<16384 and b'chat_video_assets' in grants,'GRANTS_INVALID')
-  prior=S/'training-experience-release-5be7df36f85b-35362046745'
+  prior=S/'lesson-sharing-release-c57cc5d54e87-35387448821'
   previous=json.loads(private(prior/'accepted.json'))
   require(previous['result']=='PASS_UPGRADED' and previous['app']==BASE and previous['images']==OLD_IMAGES,'PREVIOUS_RELEASE_CHANGED')
   require(current['postgres']['HostConfig']['RestartPolicy']['Name']=='unless-stopped','DATABASE_BOOT_POLICY_CHANGED')
@@ -132,7 +132,7 @@ def main():
    command(['docker','pull',image],timeout=180)
    meta=json.loads(command(['docker','image','inspect',image]))[0];require(meta['Config']['Labels'].get('org.opencontainers.image.revision')==APP and meta['Architecture']=='amd64','IMAGE_REVISION_CHANGED')
   require(shutil.disk_usage(S).free>8*1024**3,'BACKUP_CAPACITY_INSUFFICIENT')
-  work=S/('lesson-sharing-release-'+APP[:12]+'-'+data['run']);work.mkdir(mode=0o700)
+  work=S/('nutrition-coach-release-'+APP[:12]+'-'+data['run']);work.mkdir(mode=0o700)
   write(work/'request.json',raw);write(work/'previous-containers.json',json.dumps(current).encode())
   oldprod=private(S/'env/production.env');oldapi=private(S/'env/api.env')
   write(work/'previous-production.env',oldprod);write(work/'previous-api.env',oldapi)
@@ -177,11 +177,11 @@ def main():
   require('AUTH_PASSWORD_MIN_LENGTH=6' in now['backend']['Config']['Env'] and 'CHAT_ENABLED=true' in now['backend']['Config']['Env'] and 'TRAINING_REMINDERS_ENABLED=true' in now['backend']['Config']['Env'],'EFFECTIVE_ENVIRONMENT_MISMATCH')
   mount=next((m for m in now['backend']['Mounts'] if m['Destination']=='/training-media'),None)
   require(mount and mount['Source']==str(media) and mount['RW'] and 'TRAINING_MEDIA_DIR=/training-media' in now['backend']['Config']['Env'],'MEDIA_MOUNT_INVALID')
-  media_check="""import assert from 'node:assert/strict';import {writeFile,unlink,stat} from 'node:fs/promises';import {randomUUID} from 'node:crypto';import {databasePool} from './apps/backend/dist/db/pool.js';import {TrainingService} from './apps/backend/dist/training/service.js';import {TrainingExperience} from './apps/backend/dist/training/experience.js';
-const dir=process.env.TRAINING_MEDIA_DIR;assert.equal(dir,'/training-media');const info=await stat(dir);assert.equal(info.uid,1000);assert.equal(info.mode&511,448);const file=dir+'/release-probe-'+randomUUID();await writeFile(file,'private',{flag:'wx',mode:384});await unlink(file);
-const service=new TrainingService(databasePool,true);assert.deepEqual(await service.myTraining(randomUUID()),{trainer_name:null,student_id:null,plans:[],assigned_lessons:[]});const experience=new TrainingExperience(service);assert.deepEqual(await experience.measurements(randomUUID()),{measurements:[]});assert.deepEqual(await experience.reschedules(randomUUID()),{requests:[]});assert.deepEqual(await experience.complaints(randomUUID()),{complaints:[]});assert.equal(process.env.TRAINING_REMINDERS_ENABLED,'true');await databasePool.end();console.log('LIVE_TRAINER_WORKSPACE=PASS');"""
+  media_check="""import assert from 'node:assert/strict';import {writeFile,unlink,stat} from 'node:fs/promises';import {randomUUID} from 'node:crypto';import {databasePool} from './apps/backend/dist/db/pool.js';import {TrainingService} from './apps/backend/dist/training/service.js';import {TrainingExperience} from './apps/backend/dist/training/experience.js';import {NutritionService} from './apps/backend/dist/training/nutrition.js';import {CoachProfiles} from './apps/backend/dist/training/coach-profile.js';import {env} from './apps/backend/dist/config/env.js';
+assert.equal(env.paymentsEnabled,false);assert.equal(env.freeBetaEnabled,true);const dir=process.env.TRAINING_MEDIA_DIR;assert.equal(dir,'/training-media');const info=await stat(dir);assert.equal(info.uid,1000);assert.equal(info.mode&511,448);const file=dir+'/release-probe-'+randomUUID();await writeFile(file,'private',{flag:'wx',mode:384});await unlink(file);
+const service=new TrainingService(databasePool,true);assert.deepEqual(await service.myTraining(randomUUID()),{trainer_name:null,student_id:null,plans:[],assigned_lessons:[]});const experience=new TrainingExperience(service);assert.deepEqual(await experience.measurements(randomUUID()),{measurements:[]});assert.deepEqual(await experience.reschedules(randomUUID()),{requests:[]});assert.deepEqual(await experience.complaints(randomUUID()),{complaints:[]});const nutrition=new NutritionService(service);assert.deepEqual(await nutrition.list(randomUUID(),'2026-09-19'),{entries:[]});assert.deepEqual(await nutrition.templates(randomUUID()),{templates:[]});assert.deepEqual(await new CoachProfiles(service).mine(randomUUID()),{profile:null,score:null,can_review:false});assert.equal(process.env.TRAINING_REMINDERS_ENABLED,'true');await databasePool.end();console.log('LIVE_TRAINER_WORKSPACE=PASS');"""
   require(command(['docker','exec','--user','1000:1000','--workdir','/app',now['backend']['Id'],'node','--input-type=module','-e',media_check]).strip()==b'LIVE_TRAINER_WORKSPACE=PASS','LIVE_WORKSPACE_FAILED')
-  require(all(get(p)[0]==401 for p in ('/api/v1/training/students','/api/v1/training/mine','/api/v1/training/lessons','/api/v1/training/templates','/api/v1/training/attention','/api/v1/training/measurements','/api/v1/training/reschedules','/api/v1/training/admin/complaints','/api/v1/training/lessons/00000000-0000-4000-8000-000000000001/assignments','/api/v1/training/media/00000000-0000-4000-8000-000000000001?token=invalid')),'TRAINING_AUTH_BOUNDARY_FAILED')
+  require(all(get(p)[0]==401 for p in ('/api/v1/training/students','/api/v1/training/mine','/api/v1/training/lessons','/api/v1/training/templates','/api/v1/training/attention','/api/v1/training/nutrition?date=2026-09-19','/api/v1/training/nutrition-templates','/api/v1/training/coach-profile','/api/v1/training/my-coach','/api/v1/training/measurements','/api/v1/training/reschedules','/api/v1/training/admin/complaints','/api/v1/training/lessons/00000000-0000-4000-8000-000000000001/assignments','/api/v1/training/media/00000000-0000-4000-8000-000000000001?token=invalid')),'TRAINING_AUTH_BOUNDARY_FAILED')
   require({r['filename']:r['checksum'] for r in ledger(pgid)}==expected,'FINAL_LEDGER_MISMATCH')
   html=get('/')[1].decode();assets=re.findall(r'(?:src|href)="(/assets/[^" ]+\.(?:js|css))"',html);require(len(assets)>=2,'ASSETS_MISSING')
   css=b''.join(get(p)[1] for p in assets if p.endswith('.css'));require(b'#ff4103' in css.lower() and b'#001621' in css.lower(),'NEW_PALETTE_MISSING')
@@ -189,7 +189,7 @@ const service=new TrainingService(databasePool,true);assert.deepEqual(await serv
   state['stage']='COMMIT_RELEASE_METADATA'
   require(private(S/'source/deploy/compose.training-media.yml')==media_compose,'EXISTING_MEDIA_CONFIGURATION_CHANGED')
   replace_private(S/'env/production.env',encoded(prod));replace_private(S/'env/api.env',encoded(api))
-  state.update(result='PASS_UPGRADED',stage='COMPLETE',app=APP,images=data['images'],containers={k:c['Id'] for k,c in now.items()},migrations=len(expected),password_min_length=6,chat_enabled=True,private_trainer_media=True,trainer_workspace=True,training_experience=True,personal_reminders_enabled=True,lesson_assignments=True,video_brand_intro=True)
+  state.update(result='PASS_UPGRADED',stage='COMPLETE',app=APP,images=data['images'],containers={k:c['Id'] for k,c in now.items()},migrations=len(expected),password_min_length=6,chat_enabled=True,private_trainer_media=True,trainer_workspace=True,training_experience=True,personal_reminders_enabled=True,lesson_assignments=True,video_brand_intro=True,nutrition_diary=True,coach_levels=True,coach_package_calculator=True,chat_before_onboarding=True,payments_enabled=False)
   write(work/'accepted.json',json.dumps(state,sort_keys=True).encode())
  except BaseException as e:
   state['result']='FAIL'
