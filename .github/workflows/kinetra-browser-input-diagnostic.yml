@@ -12,14 +12,14 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: 5f952744fc1015f3441b98d7d78e5a2f4ba6ad1b
+          ref: e89b791398cd5c8b801348440623da7ac7b63e24
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
       - name: Verify exact candidate and install pinned dependencies
         run: |
-          test "$(git rev-parse HEAD)" = 5f952744fc1015f3441b98d7d78e5a2f4ba6ad1b
+          test "$(git rev-parse HEAD)" = e89b791398cd5c8b801348440623da7ac7b63e24
           sha256sum --check --quiet MANIFEST.sha256
           npm ci
       - name: Install the same media decoder as CI
