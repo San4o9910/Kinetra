@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { journeySummary } from '../src/features/progress/journey.js';
+import { latestWeeklyMetrics, radarPoint, radarPolygon } from '../src/features/progress/radar.js';
 import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -105,7 +107,7 @@ const renderProgress = (
     }),
   );
 
-test('T09 progress view renders exactly four dashboard sections and aggregate data', () => {
+test('T09 progress view preserves all four original dashboard sections before the new views', () => {
   const markup = renderProgress();
 
   assert.equal((markup.match(/data-testid="progress-[^"]+-section"/gu) ?? []).length, 4);
@@ -124,6 +126,14 @@ test('T09 progress view renders exactly four dashboard sections and aggregate da
   assert.ok(markup.includes('data-state="locked"'));
   assert.ok(markup.includes('Получено 11.08.2026'));
   assert.ok(markup.includes('0/1'));
+  assert.ok(
+    markup.indexOf('data-testid="progress-achievements-section"') <
+      markup.indexOf('data-testid="progress-journey"'),
+  );
+  assert.ok(
+    markup.indexOf('data-testid="progress-journey"') <
+      markup.indexOf('data-testid="progress-wellbeing-overview"'),
+  );
 });
 
 test('all server goal codes have exact user-facing labels', () => {
@@ -227,4 +237,49 @@ test('progress model helpers clamp, normalize, format and patch immutably', () =
   assert.notEqual(withMetrics, response);
   assert.equal(withMetrics.metrics, updatedMetrics);
   assert.equal(withMetrics.goal, response.goal);
+});
+
+test('journey reports total work without inventing completed individual weeks', () => {
+  const markup = renderProgress();
+  assert.match(markup, /value="15"/u);
+  assert.match(markup, /max="84"/u);
+  assert.equal((markup.match(/aria-current="step"/gu) ?? []).length, 1);
+  assert.match(markup, /Полностью завершено недель: 2/u);
+  assert.deepEqual(journeySummary(999, 999), { completed: 84, currentWeek: 12 });
+  assert.deepEqual(journeySummary(-1, -1), { completed: 0, currentWeek: 1 });
+  assert.deepEqual(journeySummary(NaN, NaN), { completed: 0, currentWeek: 1 });
+});
+
+test('wellbeing overview uses latest reported week, neutral comparisons and no fabricated empty scores', () => {
+  const reversed = [...metrics].reverse();
+  assert.deepEqual(latestWeeklyMetrics(reversed), [metrics[1], metrics[0]]);
+  assert.deepEqual(reversed, [...metrics].reverse());
+  const markup = renderProgress({
+    ...response,
+    metrics: { ...response.metrics, history: reversed },
+  });
+  assert.match(markup, /Самооценка за неделю 2/u);
+  assert.match(markup, /Это описание ваших ответов, а не медицинская оценка/u);
+  assert.match(markup, /\+1 к неделе 1/u);
+  assert.match(markup, /0 к неделе 1/u);
+  const empty = renderProgress({ ...response, metrics: { ...response.metrics, history: [] } });
+  assert.match(empty, /data-testid="progress-radar-empty"/u);
+  assert.equal(empty.includes('data-testid="progress-radar"'), false);
+  const first = renderProgress({
+    ...response,
+    metrics: { ...response.metrics, history: metrics.slice(0, 1) },
+  });
+  assert.match(first, /Первая самооценка/u);
+  assert.equal(first.includes('к неделе'), false);
+});
+
+test('radar geometry maps all four axes and clamps malformed bounds', () => {
+  assert.deepEqual(radarPoint(0, 10), { x: 180, y: 60 });
+  assert.deepEqual(radarPoint(1, 10), { x: 270, y: 150 });
+  assert.deepEqual(radarPoint(2, 10), { x: 180, y: 240 });
+  assert.deepEqual(radarPoint(3, 10), { x: 90, y: 150 });
+  assert.deepEqual(radarPoint(0, -5), { x: 180, y: 150 });
+  assert.deepEqual(radarPoint(0, 99), { x: 180, y: 60 });
+  assert.deepEqual(radarPoint(0, NaN), { x: 180, y: 150 });
+  assert.equal(radarPolygon(metrics[0]!).split(' ').length, 4);
 });

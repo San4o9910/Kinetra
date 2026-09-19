@@ -1,5 +1,5 @@
 import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { config as loadEnv } from 'dotenv';
 import pg from 'pg';
@@ -7,11 +7,6 @@ import pg from 'pg';
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const backendRoot = resolve(scriptDirectory, '..');
 const repositoryRoot = resolve(backendRoot, '../..');
-
-loadEnv({ path: resolve(repositoryRoot, '.env'), quiet: true });
-
-const databaseUrl =
-  process.env.DATABASE_URL ?? 'postgresql://kinetra:kinetra_local_only@localhost:5432/kinetra';
 
 const daySchedule = [
   {
@@ -167,20 +162,84 @@ const achievements = [
   },
 ];
 
-const { Pool } = pg;
-const pool = new Pool({ connectionString: databaseUrl, max: 1 });
-const client = await pool.connect();
+const seedError = (code) => Object.assign(new Error('Content seed refused.'), { code });
 
-const workoutSlugs = [];
+export const contentSeedFailureSummary = (error) => {
+  const code = error?.code;
+  const knownCodes = new Set([
+    'KINETRA_CONTENT_SEED_CONFIGURATION',
+    'KINETRA_CONTENT_SEED_NOT_EMPTY',
+    'ECONNREFUSED',
+    'ECONNRESET',
+    'ENOTFOUND',
+    'ETIMEDOUT',
+    'CERT_HAS_EXPIRED',
+    'DEPTH_ZERO_SELF_SIGNED_CERT',
+    'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+  ]);
+  const safeCode =
+    typeof code === 'string' && (knownCodes.has(code) || /^[0-9][A-Z0-9]{4}$/u.test(code))
+      ? code
+      : 'UNKNOWN';
+  return `Content seed failed (${safeCode}).`;
+};
 
-try {
-  await client.query('BEGIN');
-  await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['kinetra-content-seed']);
+export const validateSeedArguments = (nodeEnv, args) => {
+  if (
+    !['development', 'test', 'production'].includes(nodeEnv) ||
+    (nodeEnv === 'production'
+      ? args.length !== 1 || args[0] !== '--initial-empty-database'
+      : args.length !== 0)
+  ) {
+    throw seedError('KINETRA_CONTENT_SEED_CONFIGURATION');
+  }
+};
 
-  for (let weekNumber = 1; weekNumber <= 12; weekNumber += 1) {
-    const weekStatus = weekNumber === 1 ? 'active' : 'locked';
-    const weekResult = await client.query(
-      `
+// Pool injection lets isolated tests verify refusal/transaction cleanup without
+// ever connecting to a deployment database. Production CLI always enables guard.
+export const runContentSeed = async ({ pool, initialEmptyDatabase = false, log = console.log }) => {
+  let client;
+  let transactionOpen = false;
+  let failure;
+  const onClientError = (error) => {
+    failure ??= error;
+  };
+  const workoutSlugs = [];
+  let expected;
+  try {
+    client = await pool.connect();
+    client.on('error', onClientError);
+    await client.query('BEGIN ISOLATION LEVEL READ COMMITTED');
+    transactionOpen = true;
+    await client.query("SET LOCAL statement_timeout = '60s'");
+    await client.query("SET LOCAL lock_timeout = '5s'");
+    await client.query("SET LOCAL idle_in_transaction_session_timeout = '60s'");
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['kinetra-content-seed']);
+    if (initialEmptyDatabase) {
+      await client.query('SET LOCAL row_security = off');
+      await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+        'kinetra-schema-migrations',
+      ]);
+      // Block ordinary INSERT/UPDATE/DELETE as well as concurrent seed/migration
+      // work until COMMIT. A read-before-upsert without these locks can race.
+      await client.query(
+        'LOCK TABLE users, program_weeks, program_days, videos, achievements IN SHARE ROW EXCLUSIVE MODE',
+      );
+      const existing = await client.query(`
+        SELECT EXISTS (SELECT 1 FROM users)
+          OR EXISTS (SELECT 1 FROM program_weeks)
+          OR EXISTS (SELECT 1 FROM program_days)
+          OR EXISTS (SELECT 1 FROM videos)
+          OR EXISTS (SELECT 1 FROM achievements) AS occupied
+      `);
+      if (existing.rows[0]?.occupied !== false) {
+        throw seedError('KINETRA_CONTENT_SEED_NOT_EMPTY');
+      }
+    }
+    for (let weekNumber = 1; weekNumber <= 12; weekNumber += 1) {
+      const weekStatus = weekNumber === 1 ? 'active' : 'locked';
+      const weekResult = await client.query(
+        `
         INSERT INTO program_weeks (
           week_number,
           title,
@@ -194,18 +253,23 @@ try {
           status = EXCLUDED.status
         RETURNING id
       `,
-      [weekNumber, `Неделя ${weekNumber}`, `Тренировочная неделя ${weekNumber} из 12.`, weekStatus],
-    );
+        [
+          weekNumber,
+          `Неделя ${weekNumber}`,
+          `Тренировочная неделя ${weekNumber} из 12.`,
+          weekStatus,
+        ],
+      );
 
-    const programWeekId = weekResult.rows[0]?.id;
+      const programWeekId = weekResult.rows[0]?.id;
 
-    if (typeof programWeekId !== 'string') {
-      throw new Error(`Could not resolve program week ${weekNumber}.`);
-    }
+      if (typeof programWeekId !== 'string') {
+        throw new Error(`Could not resolve program week ${weekNumber}.`);
+      }
 
-    for (const day of daySchedule) {
-      await client.query(
-        `
+      for (const day of daySchedule) {
+        await client.query(
+          `
           INSERT INTO program_days (
             program_week_id,
             day_of_week,
@@ -223,23 +287,23 @@ try {
             duration_minutes = EXCLUDED.duration_minutes,
             icon = EXCLUDED.icon
         `,
-        [
-          programWeekId,
-          day.dayOfWeek,
-          day.direction,
-          day.title,
-          day.description,
-          day.durationMinutes,
-          day.icon,
-        ],
-      );
+          [
+            programWeekId,
+            day.dayOfWeek,
+            day.direction,
+            day.title,
+            day.description,
+            day.durationMinutes,
+            day.icon,
+          ],
+        );
 
-      const paddedWeek = String(weekNumber).padStart(2, '0');
-      const workoutSlug = `workout-week-${paddedWeek}-day-${day.dayOfWeek}`;
-      workoutSlugs.push(workoutSlug);
+        const paddedWeek = String(weekNumber).padStart(2, '0');
+        const workoutSlug = `workout-week-${paddedWeek}-day-${day.dayOfWeek}`;
+        workoutSlugs.push(workoutSlug);
 
-      await client.query(
-        `
+        await client.query(
+          `
           INSERT INTO videos (
             slug,
             title,
@@ -259,24 +323,24 @@ try {
             description = EXCLUDED.description,
             order_index = EXCLUDED.order_index
         `,
-        [
-          workoutSlug,
-          `Неделя ${weekNumber} · ${day.weekday} · ${day.title}`,
-          `Заглушка тренировки: неделя ${weekNumber}, день ${day.dayOfWeek}.`,
-          day.dayOfWeek,
-          weekNumber,
-          day.durationMinutes * 60,
-          `videos/workouts/week-${paddedWeek}/day-${day.dayOfWeek}.mp4`,
-          `posters/workouts/week-${paddedWeek}/day-${day.dayOfWeek}.jpg`,
-          (weekNumber - 1) * 7 + day.dayOfWeek,
-        ],
-      );
+          [
+            workoutSlug,
+            `Неделя ${weekNumber} · ${day.weekday} · ${day.title}`,
+            `Заглушка тренировки: неделя ${weekNumber}, день ${day.dayOfWeek}.`,
+            day.dayOfWeek,
+            weekNumber,
+            day.durationMinutes * 60,
+            `videos/workouts/week-${paddedWeek}/day-${day.dayOfWeek}.mp4`,
+            `posters/workouts/week-${paddedWeek}/day-${day.dayOfWeek}.jpg`,
+            (weekNumber - 1) * 7 + day.dayOfWeek,
+          ],
+        );
+      }
     }
-  }
 
-  for (const [index, lesson] of baseLessons.entries()) {
-    await client.query(
-      `
+    for (const [index, lesson] of baseLessons.entries()) {
+      await client.query(
+        `
         INSERT INTO videos (
           slug,
           title,
@@ -301,13 +365,13 @@ try {
           status = EXCLUDED.status,
           order_index = EXCLUDED.order_index
       `,
-      [lesson.slug, lesson.title, lesson.description, lesson.durationSeconds, index + 1],
-    );
-  }
+        [lesson.slug, lesson.title, lesson.description, lesson.durationSeconds, index + 1],
+      );
+    }
 
-  for (const achievement of achievements) {
-    await client.query(
-      `
+    for (const achievement of achievements) {
+      await client.query(
+        `
         INSERT INTO achievements (
           code,
           title,
@@ -324,22 +388,22 @@ try {
           rule_type = EXCLUDED.rule_type,
           rule_value = EXCLUDED.rule_value
       `,
-      [
-        achievement.code,
-        achievement.title,
-        achievement.description,
-        achievement.iconKey,
-        achievement.ruleType,
-        achievement.ruleValue,
-      ],
-    );
-  }
+        [
+          achievement.code,
+          achievement.title,
+          achievement.description,
+          achievement.iconKey,
+          achievement.ruleType,
+          achievement.ruleValue,
+        ],
+      );
+    }
 
-  const baseLessonSlugs = baseLessons.map((lesson) => lesson.slug);
-  const achievementCodes = achievements.map((achievement) => achievement.code);
+    const baseLessonSlugs = baseLessons.map((lesson) => lesson.slug);
+    const achievementCodes = achievements.map((achievement) => achievement.code);
 
-  const verification = await client.query(
-    `
+    const verification = await client.query(
+      `
       SELECT
         (SELECT COUNT(*)::integer FROM program_weeks) AS program_weeks,
         (SELECT COUNT(*)::integer FROM program_days) AS program_days,
@@ -367,34 +431,93 @@ try {
           WHERE code = ANY($3::text[])
         ) AS achievements
     `,
-    [baseLessonSlugs, workoutSlugs, achievementCodes],
-  );
+      [baseLessonSlugs, workoutSlugs, achievementCodes],
+    );
 
-  const counts = verification.rows[0];
-  const expected = {
-    program_weeks: 12,
-    program_days: 84,
-    base_lessons: 7,
-    workouts: 84,
-    achievements: 5,
-  };
+    const counts = verification.rows[0];
+    expected = {
+      program_weeks: 12,
+      program_days: 84,
+      base_lessons: 7,
+      workouts: 84,
+      achievements: 5,
+    };
 
-  for (const [key, expectedCount] of Object.entries(expected)) {
-    if (counts?.[key] !== expectedCount) {
-      throw new Error(
-        `Content seed verification failed for ${key}: expected ${expectedCount}, received ${String(counts?.[key])}.`,
-      );
+    for (const [key, expectedCount] of Object.entries(expected)) {
+      if (counts?.[key] !== expectedCount) {
+        throw new Error(
+          `Content seed verification failed for ${key}: expected ${expectedCount}, received ${String(counts?.[key])}.`,
+        );
+      }
+    }
+
+    await client.query('COMMIT');
+    transactionOpen = false;
+  } catch (error) {
+    failure ??= error;
+    if (client && transactionOpen) {
+      try {
+        await client.query('ROLLBACK');
+      } catch {
+        /* Preserve the original failure. */
+      }
+    }
+  } finally {
+    if (client) {
+      try {
+        client.release(failure !== undefined);
+      } catch (error) {
+        failure ??= error;
+      } finally {
+        client.removeListener('error', onClientError);
+      }
+    }
+    try {
+      await pool.end();
+    } catch (error) {
+      failure ??= error;
     }
   }
+  if (failure !== undefined) throw failure;
+  log('KINETRA_CONTENT_SEED=PASS');
+  log(JSON.stringify(expected));
+};
 
-  await client.query('COMMIT');
+const main = async () => {
+  const nodeEnv = process.env.NODE_ENV ?? 'development';
+  validateSeedArguments(nodeEnv, process.argv.slice(2));
+  let databaseUrl;
+  if (nodeEnv === 'production') {
+    // The production image already includes compiled config/database.js. This
+    // shared strict parser never loads .env when the actual NODE_ENV is production.
+    const { parseDatabaseUrl } = await import('../dist/config/database.js');
+    try {
+      databaseUrl = parseDatabaseUrl(nodeEnv, process.env.DATABASE_URL);
+    } catch {
+      throw seedError('KINETRA_CONTENT_SEED_CONFIGURATION');
+    }
+  } else {
+    loadEnv({ path: resolve(repositoryRoot, '.env'), quiet: true });
+    // A file cannot turn the permissive local command into a production seed.
+    // Production must be explicitly selected in the process environment.
+    validateSeedArguments(process.env.NODE_ENV ?? nodeEnv, process.argv.slice(2));
+    databaseUrl =
+      process.env.DATABASE_URL ?? 'postgresql://kinetra:kinetra_local_only@localhost:5432/kinetra';
+  }
+  const pool = new pg.Pool({
+    connectionString: databaseUrl,
+    max: 1,
+    connectionTimeoutMillis: 10_000,
+    idleTimeoutMillis: 10_000,
+    statement_timeout: 60_000,
+    query_timeout: 65_000,
+  });
+  await runContentSeed({ pool, initialEmptyDatabase: nodeEnv === 'production' });
+};
 
-  console.log('KINETRA_CONTENT_SEED=PASS');
-  console.log(JSON.stringify(expected));
-} catch (error) {
-  await client.query('ROLLBACK');
-  throw error;
-} finally {
-  client.release();
-  await pool.end();
+if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
+  main().catch((error) => {
+    console.error(contentSeedFailureSummary(error));
+    process.exitCode = 1;
+  });
 }

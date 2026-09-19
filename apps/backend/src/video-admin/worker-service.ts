@@ -1,5 +1,5 @@
 import type { Clock } from '../auth/service.js';
-import type { VideoUploadsEnvironment } from '../config/env.js';
+import type { VideoVerificationEnvironment } from '../config/job-env.js';
 import type { VideoAdminRepository } from './repository.js';
 import type { VideoStorage } from './storage.js';
 import {
@@ -112,7 +112,7 @@ export class VideoUploadWorkerService {
   public constructor(
     private readonly repository: VideoAdminRepository,
     private readonly storage: VideoStorage,
-    private readonly config: Readonly<VideoUploadsEnvironment>,
+    private readonly config: Readonly<VideoVerificationEnvironment>,
     private readonly clock: Clock,
     verifier?: Pick<Mp4VideoVerifier, 'verify'>,
   ) {

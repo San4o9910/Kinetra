@@ -1,0 +1,12 @@
+# Merge after the single-server deployment. Private, persistent storage on the
+# existing host; no public filesystem route and no additional provider account.
+services:
+  backend:
+    environment:
+      TRAINING_MEDIA_DIR: /training-media
+    volumes:
+      - type: bind
+        source: ${KINETRA_TRAINING_MEDIA_DIR:?Set the private persistent lesson directory}
+        target: /training-media
+        bind:
+          create_host_path: false

@@ -272,9 +272,7 @@ export class ChatService {
     }
 
     const actor = await this.repository.findActor(userId);
-    return actor === null || (actor.role === 'client' && actor.onboardingStatus !== 'active')
-      ? null
-      : actor;
+    return actor;
   }
 
   public async validateSocketIdentity(
@@ -287,10 +285,7 @@ export class ChatService {
     }
 
     const actor = await this.repository.findActor(userId);
-    return this.enabled &&
-      actor !== null &&
-      actor.role === expectedRole &&
-      (actor.role === 'trainer' || actor.onboardingStatus === 'active')
+    return this.enabled && actor !== null && actor.role === expectedRole
       ? 'active'
       : 'account_changed';
   }
@@ -867,10 +862,6 @@ export class ChatService {
       throw new HttpError(401, 'AUTHENTICATION_REQUIRED', 'A valid access token is required.');
     }
 
-    if (actor.role === 'client' && actor.onboardingStatus !== 'active') {
-      throw new HttpError(403, 'CHAT_NOT_AVAILABLE', 'Complete onboarding to use trainer chat.');
-    }
-
     return actor;
   }
 
@@ -887,7 +878,7 @@ export class ChatService {
 
     const actor = await this.repository.findActor(context.userId);
 
-    if (actor === null || (actor.role === 'client' && actor.onboardingStatus !== 'active')) {
+    if (actor === null) {
       throw new HttpError(403, 'CHAT_NOT_AVAILABLE', 'Chat access changed for this account.');
     }
 

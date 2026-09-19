@@ -160,7 +160,7 @@ test('frontend keeps pending requested trainers out of the trainer shell and cha
   assert.ok(requestedTrainerGate > actualTrainerGate);
   assert.match(
     appSource,
-    /session\.profile\.user\.onboardingStatus === 'active' && !trainerVerificationRequired/u,
+    /session\.profile\.account_role === 'trainer' \|\| !trainerVerificationRequired/u,
   );
   assert.match(appSource, /onSignOut=\{handleTrainerSignOut\}/u);
   assert.match(verificationSource, /readonly onSignOut: \(\) => void/u);
@@ -178,7 +178,7 @@ test('verification UI uses link metadata only and defines mobile columns after d
 
   assert.doesNotMatch(screenSource, /type="file"/u);
   assert.doesNotMatch(screenSource, /\bS3\b/u);
-  assert.match(screenSource, /Файлы не загружаются/u);
+  assert.match(screenSource, /Можно отправить заявку без ссылок/u);
   assert.ok(desktopColumns >= 0);
   assert.ok(mobileBreakpoint > desktopColumns);
   assert.match(

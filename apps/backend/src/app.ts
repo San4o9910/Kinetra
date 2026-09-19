@@ -1,3 +1,10 @@
+import { TrainingService } from './training/service.js';
+import { TrainingMedia } from './training/media.js';
+import { createTrainingRouter } from './training/router.js';
+import { createChatVideosRouter } from './coaching/chat-videos.js';
+import { createCoachingRouter } from './coaching/router.js';
+import { CoachingService } from './coaching/service.js';
+import { OpenAiCoachProvider } from './coaching/provider.js';
 import type { ApiErrorResponse, HealthResponse } from '@kinetra/shared';
 import cors from 'cors';
 import express, { type NextFunction, type Request, type Response } from 'express';
@@ -14,6 +21,7 @@ import {
 import { createChatRouter } from './chat/router.js';
 import { createProductionChatRuntime, type ChatRuntime } from './chat/runtime.js';
 import { env } from './config/env.js';
+import { createDatabaseReadinessCheck, databasePool } from './db/pool.js';
 import { createPaymentsRouter } from './payments/router.js';
 import { createProductionPaymentsRuntime, type PaymentsRuntime } from './payments/runtime.js';
 import { createProfileRouter } from './profile/router.js';
@@ -41,6 +49,8 @@ import {
 } from './video-admin/runtime.js';
 
 export interface CreateAppOptions {
+  readonly readinessCheck?: () => Promise<boolean>;
+  readonly isDraining?: () => boolean;
   readonly authRuntime?: AuthRuntime;
   readonly profileRuntime?: ProfileRuntime;
   readonly baseLessonsRuntime?: BaseLessonsRuntime;
@@ -74,6 +84,10 @@ const safeUnhandledErrorCode = (error: unknown): string => {
 
 export const createApp = (options: CreateAppOptions = {}) => {
   const app = express();
+  const readinessCheck =
+    options.readinessCheck ??
+    createDatabaseReadinessCheck(() => databasePool.query('SELECT 1'), env.readinessTimeoutMs);
+  const isDraining = options.isDraining ?? (() => false);
   const authRuntime = options.authRuntime ?? createProductionAuthRuntime();
   const profileRuntime = options.profileRuntime ?? createProductionProfileRuntime();
   const baseLessonsRuntime = options.baseLessonsRuntime ?? createProductionBaseLessonsRuntime();
@@ -101,6 +115,16 @@ export const createApp = (options: CreateAppOptions = {}) => {
     response.setHeader('X-Request-Id', requestIdFrom(response));
     response.setHeader('Referrer-Policy', 'no-referrer');
     response.setHeader('X-Content-Type-Options', 'nosniff');
+    response.setHeader('Cache-Control', 'no-store');
+    response.setHeader(
+      'Content-Security-Policy',
+      "default-src 'none'; frame-ancestors 'none'; base-uri 'none'",
+    );
+    response.setHeader('X-Frame-Options', 'DENY');
+    response.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+    response.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    if (env.nodeEnv === 'production')
+      response.setHeader('Strict-Transport-Security', 'max-age=86400');
     next();
   });
   app.use(
@@ -120,6 +144,19 @@ export const createApp = (options: CreateAppOptions = {}) => {
     });
   });
 
+  // Private infrastructure endpoint. This checks connectivity, not migration version.
+  app.get('/ready', async (_request: Request, response: Response) => {
+    if (isDraining()) {
+      response.status(503).json({ status: 'not_ready' });
+      return;
+    }
+    const connected = await Promise.resolve()
+      .then(readinessCheck)
+      .catch(() => false);
+    const ready = connected && !isDraining();
+    response.status(ready ? 200 : 503).json({ status: ready ? 'ready' : 'not_ready' });
+  });
+
   app.use(
     '/api/v1/auth',
     createAuthRouter({
@@ -133,8 +170,42 @@ export const createApp = (options: CreateAppOptions = {}) => {
   app.use('/api/v1/me', createProfileRouter(profileRuntime));
   app.use('/api/v1/base-lessons', createBaseLessonsRouter(baseLessonsRuntime));
   app.use('/api/v1/chat', createChatRouter(chatRuntime));
+  app.use(
+    '/api/v1/chat-videos',
+    createChatVideosRouter(
+      databasePool,
+      chatRuntime,
+      env.s3,
+      env.chat.enabled && env.chat.photoUploadsEnabled,
+    ),
+  );
   app.use('/api/v1/program', createProgramRouter(programRuntime));
   app.use('/api/v1/progress', createProgressRouter(progressRuntime));
+  const trainingMediaDirectory = process.env.TRAINING_MEDIA_DIR?.trim() || null;
+  const trainingService = new TrainingService(databasePool, trainingMediaDirectory !== null);
+  app.use(
+    '/api/v1/training',
+    createTrainingRouter(
+      trainingService,
+      new TrainingMedia(trainingService, trainingMediaDirectory, env.auth.jwtAccessSecret),
+      programRuntime.authMiddleware,
+    ),
+  );
+  const coachKey = process.env.KINETRA_AI_API_KEY?.trim();
+  const coachModel = process.env.KINETRA_AI_MODEL?.trim();
+  app.use(
+    '/api/v1/coaching',
+    createCoachingRouter(
+      new CoachingService(
+        databasePool,
+        programRuntime.service,
+        progressRuntime.service,
+        coachKey && coachModel ? new OpenAiCoachProvider(coachKey, coachModel) : null,
+      ),
+      programRuntime.authMiddleware,
+    ),
+  );
+
   app.use('/api/v1/push', createPushRouter(pushRuntime));
   app.use(
     '/api/v1/settings',

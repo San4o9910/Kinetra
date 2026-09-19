@@ -17,7 +17,7 @@
     typeof window.matchMedia === 'function' &&
     window.matchMedia('(prefers-color-scheme: dark)').matches;
   const resolved = preference === 'system' ? (systemDark ? 'dark' : 'light') : preference;
-  const themeColor = resolved === 'dark' ? '#080909' : '#F4F6F2';
+  const themeColor = resolved === 'dark' ? '#001621' : '#F2F6F8';
 
   root.dataset.theme = resolved;
   root.dataset.themePreference = preference;

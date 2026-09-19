@@ -1,8 +1,9 @@
 import { z } from 'zod';
 
 import { SystemClock } from '../auth/service.js';
-import { closeDatabasePool, databasePool } from '../db/pool.js';
 import { PostgresTrainerVerificationRepository } from './postgres-trainer-verification.repository.js';
+
+let closeDatabasePool: (() => Promise<void>) | undefined;
 
 const uuidSchema = z.string().uuid();
 
@@ -31,6 +32,9 @@ const run = async (): Promise<void> => {
   if (command !== 'grant' && command !== 'revoke') throw new Error(help(command));
 
   const userId = parseUserId(arguments_);
+  const database = await import('../db/pool.js');
+  closeDatabasePool = database.closeDatabasePool;
+  const { databasePool } = database;
   const repository = new PostgresTrainerVerificationRepository(databasePool);
   const result =
     command === 'grant'
@@ -57,4 +61,4 @@ void run()
     console.error(error instanceof Error ? error.message : 'Reviewer command failed.');
     process.exitCode = 1;
   })
-  .finally(closeDatabasePool);
+  .finally(async () => closeDatabasePool?.());

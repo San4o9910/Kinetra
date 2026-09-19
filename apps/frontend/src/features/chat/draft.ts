@@ -1,3 +1,5 @@
+import { clearTrainingDrafts } from '../training/drafts';
+import { clearWorkoutQuestion } from '../program/workoutQuestion';
 import type { ChatMessageRequest, ChatPhotoDto } from './types';
 
 export interface ChatDraftSnapshot {
@@ -151,6 +153,8 @@ export const clearAccountChatDrafts = (
   }
 
   try {
+    clearWorkoutQuestion(accountId);
+    clearTrainingDrafts(accountId);
     const accountPrefix = `${CHAT_DRAFT_PREFIX}${accountId}:`;
     const matchingKeys: string[] = [];
 

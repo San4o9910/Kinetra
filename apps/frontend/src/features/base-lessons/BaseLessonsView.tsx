@@ -113,6 +113,7 @@ export interface BaseLessonsViewProps {
   readonly errorMessage: string | null;
   readonly onSelectLesson: (lessonId: string) => void;
   readonly onComplete: () => void;
+  readonly onBackToApp: () => void;
   readonly onOpenSettings: () => void;
 }
 
@@ -122,6 +123,7 @@ export const BaseLessonsView = ({
   errorMessage,
   onSelectLesson,
   onComplete,
+  onBackToApp,
   onOpenSettings,
 }: BaseLessonsViewProps): ReactNode => {
   const lessonCount = response.lessons.length;
@@ -144,15 +146,26 @@ export const BaseLessonsView = ({
             </span>
             <span>KINETRA</span>
           </div>
-          <button
-            className="ghost-button base-lessons-settings"
-            data-testid="open-settings"
-            type="button"
-            disabled={isCompleting}
-            onClick={onOpenSettings}
-          >
-            Настройки
-          </button>
+          <div className="base-lessons-topbar-actions">
+            <button
+              className="ghost-button base-lessons-back-to-app"
+              data-testid="base-lessons-back-to-app"
+              type="button"
+              disabled={isCompleting}
+              onClick={onBackToApp}
+            >
+              Вернуться в приложение
+            </button>
+            <button
+              className="ghost-button base-lessons-settings"
+              data-testid="open-settings"
+              type="button"
+              disabled={isCompleting}
+              onClick={onOpenSettings}
+            >
+              Настройки
+            </button>
+          </div>
         </header>
 
         <div className="base-lessons-heading">

@@ -1,5 +1,7 @@
 import type { SubscriptionResponse } from '@kinetra/shared';
 
+import { arePaymentsEnabled } from '../payments/model';
+
 const MONTHS_GENITIVE = [
   'января',
   'февраля',
@@ -62,6 +64,7 @@ export interface SubscriptionPresentation {
 export const subscriptionPresentation = (
   subscription: SubscriptionResponse,
 ): SubscriptionPresentation => {
+  const paymentsEnabled = arePaymentsEnabled(subscription);
   if (subscription.status === 'active') {
     return {
       label:
@@ -79,8 +82,8 @@ export const subscriptionPresentation = (
     return {
       label: 'Подписка истекла',
       tone: 'danger',
-      showRenew: true,
-      primaryActionLabel: 'Продлить подписку',
+      showRenew: paymentsEnabled,
+      primaryActionLabel: paymentsEnabled ? 'Продлить подписку' : null,
       showCancelAutoRenew: false,
     };
   }
@@ -89,8 +92,8 @@ export const subscriptionPresentation = (
     return {
       label: 'Подписка отменена',
       tone: 'danger',
-      showRenew: true,
-      primaryActionLabel: 'Продлить подписку',
+      showRenew: paymentsEnabled,
+      primaryActionLabel: paymentsEnabled ? 'Продлить подписку' : null,
       showCancelAutoRenew: false,
     };
   }
@@ -108,8 +111,8 @@ export const subscriptionPresentation = (
   return {
     label: 'Нет подписки',
     tone: 'neutral',
-    showRenew: true,
-    primaryActionLabel: 'Оформить подписку',
+    showRenew: paymentsEnabled,
+    primaryActionLabel: paymentsEnabled ? 'Оформить подписку' : null,
     showCancelAutoRenew: false,
   };
 };

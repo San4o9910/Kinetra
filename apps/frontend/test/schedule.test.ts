@@ -103,7 +103,7 @@ const renderSchedule = (response: ScheduleResponse, activeSection: ScheduleSecti
       response,
       activeSection,
       onSectionChange: () => undefined,
-      onOpenDay: () => undefined,
+      onOpenWorkout: () => undefined,
     }),
   );
 
@@ -129,6 +129,11 @@ test('current schedule renders seven canonical days, descriptions and completion
 
   assert.equal((markup.match(/data-testid="schedule-completed-\d+"/gu) ?? []).length, 2);
   assert.equal((markup.match(/✅/gu) ?? []).length, 2);
+  assert.equal((markup.match(/Открыть тренировку/gu) ?? []).length, 7);
+  assert.match(
+    markup,
+    /data-testid="schedule-current-day-1"[^>]*aria-label="Понедельник\. Дыхательная практика\. Настройка нервной системы, учимся дышать животом\. 25 минут\. Выполнено\. Открыть тренировку"/u,
+  );
 });
 
 test('segmented next-week view renders seven days without completion status', () => {

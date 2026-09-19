@@ -11,7 +11,14 @@ export const appRoutes = Object.freeze({
   settings: '/settings',
   editSurvey: '/settings/survey',
   chat: '/chat',
+  nutrition: '/nutrition',
+  trainerProfile: '/trainer/profile',
   trainerChats: '/trainer/chats',
+  trainerStudents: '/trainer/students',
+  trainerLessons: '/trainer/lessons',
+  myTraining: '/my-training',
+  adminApplications: '/admin/trainer-applications',
+  assistant: '/assistant',
   trainerVideos: '/trainer/videos',
   payment: '/payment',
   paymentSuccess: '/payment/success',
@@ -32,7 +39,7 @@ export const routeForOnboardingStatus = (status: OnboardingStatus): AppRoute => 
     case 'onboarding_pending':
       return appRoutes.onboarding;
     case 'base_lessons':
-      return appRoutes.baseLessons;
+      return appRoutes.home;
     case 'active':
       return appRoutes.home;
   }
@@ -76,6 +83,9 @@ export const isPaymentRoute = (route: AppRoute): boolean =>
   route === appRoutes.paymentCancel;
 
 export const isTrainerRoute = (route: AppRoute): boolean =>
+  route === appRoutes.trainerProfile ||
+  route === appRoutes.trainerStudents ||
+  route === appRoutes.trainerLessons ||
   route === appRoutes.trainerChats ||
   route === appRoutes.trainerVideos ||
   trainerConversationIdFromRoute(route) !== null;
@@ -87,7 +97,13 @@ export const isChatFabRoute = (route: AppRoute): boolean =>
   route === appRoutes.settings;
 
 export const isActiveAppRoute = (route: AppRoute): boolean =>
+  route === appRoutes.nutrition ||
+  route === appRoutes.myTraining ||
   route === appRoutes.home ||
   route === appRoutes.schedule ||
   route === appRoutes.progress ||
+  route === appRoutes.assistant ||
   isSettingsRoute(route);
+
+export const isExplorationAppRoute = (route: AppRoute): boolean =>
+  route === appRoutes.chat || route === appRoutes.baseLessons || isActiveAppRoute(route);

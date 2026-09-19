@@ -1,0 +1,95 @@
+name: kinetra-production
+
+x-job: &job
+  image: ${BACKEND_IMAGE:?Set the reviewed backend image digest}
+  user: '1000:1000'
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  tmpfs: ['/tmp:rw,noexec,nosuid,size=256m,uid=1000,gid=1000,mode=0700']
+  networks: [backend]
+  env_file:
+    - path: ${KINETRA_JOB_ENV_FILE:-./jobs/disabled.env.example}
+      format: raw
+  profiles: [jobs]
+  restart: 'no'
+  stop_grace_period: 35s
+  logging:
+    driver: local
+    options:
+      max-size: 10m
+      max-file: '3'
+
+services:
+  backend:
+    <<: *job
+    profiles: []
+    env_file:
+      - path: ${KINETRA_API_ENV_FILE:?Set the absolute API environment file path}
+        format: raw
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          CMD,
+          node,
+          -e,
+          "fetch('http://127.0.0.1:3000/ready',{signal:AbortSignal.timeout(4000)}).then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+  frontend:
+    image: ${FRONTEND_IMAGE:?Set the reviewed frontend image digest}
+    user: '101:101'
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ['/tmp:rw,noexec,nosuid,size=64m,uid=101,gid=101,mode=0700']
+    networks: [backend]
+    ports: ['127.0.0.1:8080:8080']
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    stop_grace_period: 15s
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: '3'
+  migrate:
+    <<: *job
+    working_dir: /app/apps/backend
+    command: [node, scripts/migrate.mjs]
+  notifications:
+    <<: *job
+    command: [node, apps/backend/dist/push/run-notifications.js]
+  renewals:
+    <<: *job
+    command: [node, apps/backend/dist/payments/run-renewals.js]
+  chat-cleanup:
+    <<: *job
+    command: [node, apps/backend/dist/chat/run-media-cleanup.js]
+  video-cleanup:
+    <<: *job
+    command: [node, apps/backend/dist/video-admin/run-media-cleanup.js]
+  video-verify:
+    <<: *job
+    command: [node, apps/backend/dist/video-admin/run-upload-worker.js]
+    environment:
+      TMPDIR: /video-scratch
+    volumes:
+      - type: bind
+        source: ${KINETRA_VIDEO_SCRATCH_DIR:-/nonexistent/kinetra-video-scratch}
+        target: /video-scratch
+        bind:
+          create_host_path: false
+    stop_grace_period: 950s
+
+networks:
+  backend:
+    driver: bridge
+# No public API/database/S3 ports. Egress is required for external dependencies;
+# this network is NOT marked internal:true. Enforce egress at the approved platform.

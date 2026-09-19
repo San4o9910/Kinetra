@@ -1,3 +1,5 @@
+import type { OnboardingStatus } from '@kinetra/shared';
+
 import {
   PROGRAM_DAYS_PER_WEEK,
   PROGRAM_WEEK_COUNT,
@@ -75,6 +77,8 @@ export class InMemoryProgramRepository implements ProgramRepository {
   private readonly completions = new Map<string, Date>();
   private readonly availableMedia = new Set<string>();
 
+  private onboardingStatus: OnboardingStatus = 'active';
+
   public constructor(private readonly userId: string) {
     this.weeks = Array.from({ length: PROGRAM_WEEK_COUNT }, (_, weekIndex) => {
       const weekNumber = weekIndex + 1;
@@ -103,6 +107,10 @@ export class InMemoryProgramRepository implements ProgramRepository {
         }),
       };
     });
+  }
+
+  public async getOnboardingStatus(userId: string): Promise<OnboardingStatus | null> {
+    return userId === this.userId ? this.onboardingStatus : null;
   }
 
   public async getProgress(userId: string): Promise<ProgramProgressSnapshot> {
@@ -168,6 +176,10 @@ export class InMemoryProgramRepository implements ProgramRepository {
     videoId: string,
     programWeek: number,
   ): Promise<CompleteWorkoutResult> {
+    if (userId === this.userId && this.onboardingStatus !== 'active') {
+      return { kind: 'onboarding_required' };
+    }
+
     const week = this.weeks.find((candidate) => candidate.weekNumber === programWeek);
 
     if (
@@ -198,6 +210,10 @@ export class InMemoryProgramRepository implements ProgramRepository {
 
   public markMediaAvailable(weekNumber: number, videoId: string): void {
     this.availableMedia.add(this.completionKey(weekNumber, videoId));
+  }
+
+  public setOnboardingStatus(status: OnboardingStatus): void {
+    this.onboardingStatus = status;
   }
 
   private completionKey(weekNumber: number, videoId: string): string {

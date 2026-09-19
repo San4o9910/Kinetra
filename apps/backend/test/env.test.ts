@@ -1,12 +1,101 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { spawnSync } from 'node:child_process';
 
 import {
   parseChatPhotoUploadTimeouts,
   parseCorsOrigins,
   parseS3Environment,
   parseVideoUploadsEnvironment,
+  parseTokenDeliveryWebhook,
+  parseTokenDeliverySmtp,
+  parseShutdownEnvironment,
+  parseDatabaseUrl,
+  parseYooKassaEnvironment,
 } from '../src/config/env.js';
+import { parseFreeBetaEnabled, parsePaymentsEnabled } from '../src/config/payments.js';
+
+test('free beta defaults off and requires an explicit disabled payment configuration', () => {
+  for (const paymentsEnabled of [true, false]) {
+    assert.equal(parseFreeBetaEnabled(undefined, paymentsEnabled), false);
+    assert.equal(parseFreeBetaEnabled('false', paymentsEnabled), false);
+    for (const value of ['', '0', '1', 'yes', 'FALSE', ' false ', 'true\n']) {
+      assert.throws(() => parseFreeBetaEnabled(value, paymentsEnabled), /FREE_BETA_ENABLED/u);
+    }
+  }
+  assert.equal(parseFreeBetaEnabled('true', false), true);
+  assert.throws(
+    () => parseFreeBetaEnabled('true', true),
+    /FREE_BETA_ENABLED=true requires PAYMENTS_ENABLED=false/u,
+  );
+});
+
+test('payments default on and accept only explicit boolean strings', () => {
+  assert.equal(parsePaymentsEnabled(undefined), true);
+  assert.equal(parsePaymentsEnabled('true'), true);
+  assert.equal(parsePaymentsEnabled('false'), false);
+  for (const value of ['', '0', '1', 'yes', 'FALSE', ' false ', 'true\n']) {
+    assert.throws(() => parsePaymentsEnabled(value), /PAYMENTS_ENABLED/u);
+    assert.throws(
+      () => parseYooKassaEnvironment('production', { PAYMENTS_ENABLED: value }),
+      /PAYMENTS_ENABLED/u,
+    );
+  }
+});
+
+test('deferred payments allow absent credentials and reject retained provider credentials', () => {
+  assert.equal(parseYooKassaEnvironment('production', { PAYMENTS_ENABLED: 'false' }), null);
+  assert.equal(
+    parseYooKassaEnvironment('production', {
+      PAYMENTS_ENABLED: 'false',
+      YUKASSA_SHOP_ID: '',
+      YUKASSA_SECRET_KEY: '',
+      YUKASSA_RETURN_URL: '',
+    }),
+    null,
+  );
+  for (const credentials of [
+    { YUKASSA_SHOP_ID: 'synthetic-shop' },
+    { YUKASSA_SECRET_KEY: 'synthetic-secret' },
+    { YUKASSA_SHOP_ID: 'synthetic-shop', YUKASSA_SECRET_KEY: 'synthetic-secret' },
+  ]) {
+    assert.throws(
+      () => parseYooKassaEnvironment('production', { PAYMENTS_ENABLED: 'false', ...credentials }),
+      /credentials must be empty/u,
+    );
+  }
+});
+
+test('enabled and default payment configuration preserve production requirements', () => {
+  const credentials = {
+    YUKASSA_SHOP_ID: 'synthetic-shop',
+    YUKASSA_SECRET_KEY: 'synthetic-secret',
+    YUKASSA_RETURN_URL: 'https://app.example.test/payment/success',
+  };
+  for (const values of [{}, { PAYMENTS_ENABLED: 'true' }]) {
+    assert.throws(() => parseYooKassaEnvironment('production', values), /required in production/u);
+    assert.throws(
+      () =>
+        parseYooKassaEnvironment('production', { ...values, YUKASSA_SHOP_ID: 'synthetic-shop' }),
+      /configuration is incomplete/u,
+    );
+    assert.equal(
+      parseYooKassaEnvironment('production', { ...values, ...credentials })?.requestTimeoutMs,
+      10000,
+    );
+    for (const overrides of [
+      { YUKASSA_RETURN_URL: 'http://app.example.test/payment/success' },
+      { YUKASSA_RETURN_URL: '' },
+      { YUKASSA_REQUEST_TIMEOUT_MS: '0' },
+      { YUKASSA_REQUEST_TIMEOUT_MS: '30001' },
+    ]) {
+      assert.throws(
+        () => parseYooKassaEnvironment('production', { ...values, ...credentials, ...overrides }),
+        /YUKASSA_/u,
+      );
+    }
+  }
+});
 
 test('CORS allowlist normalizes and deduplicates exact HTTP(S) origins', () => {
   assert.deepEqual(
@@ -149,4 +238,343 @@ test('private S3 configuration is complete and HTTP is restricted to explicit lo
       }),
     /must use HTTPS/u,
   );
+});
+
+test('production database refuses local defaults, ambiguous TLS and URL overrides', () => {
+  const valid = 'postgresql://worker:secure%40password@db.example.test/kinetra?sslmode=verify-full';
+  assert.equal(parseDatabaseUrl('production', valid), valid);
+  assert.match(parseDatabaseUrl('test', undefined), /localhost/u);
+  for (const invalid of [
+    undefined,
+    '',
+    valid + ' ',
+    valid.replace('worker:', '%20:'),
+    'http://db.example.test/kinetra',
+    valid.replace('secure%40password', 'kinetra_local_only'),
+    valid.replace('worker:secure%40password', ':'),
+    valid.replace('?sslmode=verify-full', ''),
+    valid + '&sslmode=disable',
+    valid + '&ssl=false',
+    valid + '&options=-c%20statement_timeout%3D0',
+  ]) {
+    assert.throws(() => parseDatabaseUrl('production', invalid), /DATABASE_URL/u);
+  }
+  for (const local of [
+    'localhost',
+    'localhost.',
+    'db.localhost.',
+    '127.0.0.1',
+    '127.1',
+    '2130706433',
+    '0x7f000001',
+    '[::1]',
+    '[::ffff:127.0.0.1]',
+    '0.0.0.0',
+  ]) {
+    assert.throws(
+      () => parseDatabaseUrl('production', valid.replace('db.example.test', local)),
+      /DATABASE_URL/u,
+    );
+  }
+});
+
+test('delivery webhook rejects credentials, redirects via URL, weak secrets and unbounded timeout', () => {
+  const valid = {
+    AUTH_TOKEN_DELIVERY_WEBHOOK_URL: 'https://delivery.example.test/v1/tokens',
+    AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET: 'synthetic-test-only-delivery-secret-32plus',
+  };
+  assert.equal(parseTokenDeliveryWebhook(valid).timeoutMs, 10000);
+  for (const url of [
+    'http://delivery.example.test',
+    'https://user:secret@delivery.example.test',
+    'https://delivery.example.test?a=1',
+    'https://delivery.example.test/#secret',
+  ]) {
+    assert.throws(
+      () => parseTokenDeliveryWebhook({ ...valid, AUTH_TOKEN_DELIVERY_WEBHOOK_URL: url }),
+      /AUTH_TOKEN_DELIVERY_WEBHOOK_URL/u,
+    );
+  }
+  for (const secret of [
+    '',
+    'short',
+    'contains whitespace even when long enough',
+    'a'.repeat(513),
+    'a'.repeat(32) + '\n',
+  ]) {
+    assert.throws(
+      () => parseTokenDeliveryWebhook({ ...valid, AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET: secret }),
+      /SECRET/u,
+    );
+  }
+  assert.throws(
+    () => parseTokenDeliveryWebhook({ ...valid, AUTH_TOKEN_DELIVERY_TIMEOUT_MS: '0' }),
+    /TIMEOUT/u,
+  );
+  assert.deepEqual(parseShutdownEnvironment({}), { drainMs: 5000, timeoutMs: 25000 });
+  assert.throws(
+    () => parseShutdownEnvironment({ SHUTDOWN_DRAIN_MS: '5000', SHUTDOWN_TIMEOUT_MS: '5000' }),
+    /SHUTDOWN/u,
+  );
+});
+
+test('SMTP delivery accepts fixed providers and binds the exact public app origin to CORS', () => {
+  const values = {
+    AUTH_TOKEN_DELIVERY_SMTP_SERVICE: 'yandex',
+    AUTH_TOKEN_DELIVERY_SMTP_USERNAME: 'support.kinetra+auth@custom-domain.test',
+    AUTH_TOKEN_DELIVERY_SMTP_PASSWORD: 'syntheticAppPassword123',
+    AUTH_TOKEN_DELIVERY_APP_ORIGIN: 'https://80.68.156.131',
+  };
+  const origins = ['https://80.68.156.131', 'https://app.kinetra.test'];
+  for (const service of ['yandex', 'gmail']) {
+    const config = parseTokenDeliverySmtp(
+      { ...values, AUTH_TOKEN_DELIVERY_SMTP_SERVICE: service },
+      origins,
+    );
+    assert.equal(config.service, service);
+    assert.equal(config.username, values.AUTH_TOKEN_DELIVERY_SMTP_USERNAME);
+    assert.equal(config.password, values.AUTH_TOKEN_DELIVERY_SMTP_PASSWORD);
+    assert.equal(config.appOrigin, values.AUTH_TOKEN_DELIVERY_APP_ORIGIN);
+    assert.equal(config.timeoutMs, 10000);
+    assert.ok(Object.isFrozen(config));
+  }
+  for (const origin of ['https://app.kinetra.test', 'https://[2606:4700:4700::1111]']) {
+    assert.equal(
+      parseTokenDeliverySmtp({ ...values, AUTH_TOKEN_DELIVERY_APP_ORIGIN: origin }, [origin])
+        .appOrigin,
+      origin,
+    );
+  }
+  for (const service of ['', 'Yandex', ' yandex ', 'custom', 'smtp.attacker.test']) {
+    assert.throws(
+      () =>
+        parseTokenDeliverySmtp({ ...values, AUTH_TOKEN_DELIVERY_SMTP_SERVICE: service }, origins),
+      /SMTP_SERVICE/u,
+    );
+  }
+  for (const username of [
+    '',
+    'user',
+    'user@localhost',
+    'user@gmail.com,attacker@gmail.com',
+    'Name <user@gmail.com>',
+    'user@gmail.com\r\nBcc: attacker@gmail.com',
+    ' user@gmail.com',
+    'a..b@gmail.com',
+    'user@-gmail.com',
+    `${'a'.repeat(65)}@gmail.com`,
+    '"user"@gmail.com',
+    'пользователь@yandex.ru',
+  ]) {
+    assert.throws(
+      () =>
+        parseTokenDeliverySmtp({ ...values, AUTH_TOKEN_DELIVERY_SMTP_USERNAME: username }, origins),
+      /SMTP_USERNAME/u,
+    );
+  }
+  for (const password of [
+    '',
+    'short',
+    'a'.repeat(15),
+    'a'.repeat(257),
+    'abcd efgh ijkl mnop',
+    'a'.repeat(16) + '\n',
+    'a'.repeat(16) + '\u007f',
+    'парольдостаточнодлинный',
+  ]) {
+    assert.throws(
+      () =>
+        parseTokenDeliverySmtp({ ...values, AUTH_TOKEN_DELIVERY_SMTP_PASSWORD: password }, origins),
+      /SMTP_PASSWORD/u,
+    );
+  }
+  for (const origin of [
+    '',
+    'http://app.kinetra.test',
+    'https://app.kinetra.test/',
+    'https://app.kinetra.test/path',
+    'https://app.kinetra.test?next=evil',
+    'https://app.kinetra.test#token',
+    'https://user:pass@app.kinetra.test',
+    'https://evil.test',
+    'https://localhost',
+    'https://sub.localhost',
+    'https://server.internal',
+    'https://127.0.0.1',
+    'https://127.1',
+    'https://10.0.0.1',
+    'https://172.16.0.1',
+    'https://192.168.1.1',
+    'https://169.254.169.254',
+    'https://0.0.0.0',
+    'https://[::1]',
+    'https://[::ffff:7f00:1]',
+    'https://[fc00::1]',
+    'https://[2001:db8::1]',
+    'https://app.kinetra.test\n',
+  ]) {
+    assert.throws(
+      () =>
+        parseTokenDeliverySmtp(
+          { ...values, AUTH_TOKEN_DELIVERY_APP_ORIGIN: origin },
+          origin === 'https://evil.test' ? origins : [...origins, origin],
+        ),
+      /APP_ORIGIN/u,
+      origin,
+    );
+  }
+  for (const timeout of ['0', '999', '30001', 'NaN', '1000.5']) {
+    assert.throws(
+      () => parseTokenDeliverySmtp({ ...values, AUTH_TOKEN_DELIVERY_TIMEOUT_MS: timeout }, origins),
+      /TIMEOUT/u,
+    );
+  }
+  for (const timeout of ['1000', '30000']) {
+    assert.equal(
+      parseTokenDeliverySmtp({ ...values, AUTH_TOKEN_DELIVERY_TIMEOUT_MS: timeout }, origins)
+        .timeoutMs,
+      Number(timeout),
+    );
+  }
+});
+
+test('delivery mode refuses mixed provider configuration without exposing credentials', () => {
+  const smtp = {
+    AUTH_TOKEN_DELIVERY_SMTP_SERVICE: 'yandex',
+    AUTH_TOKEN_DELIVERY_SMTP_USERNAME: 'sender@yandex.ru',
+    AUTH_TOKEN_DELIVERY_SMTP_PASSWORD: 'syntheticAppPassword123',
+    AUTH_TOKEN_DELIVERY_APP_ORIGIN: 'https://app.kinetra.test',
+  };
+  const webhook = {
+    AUTH_TOKEN_DELIVERY_WEBHOOK_URL: 'https://delivery.kinetra.test/tokens',
+    AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET: 'synthetic-test-only-delivery-secret-32plus',
+  };
+  for (const key of Object.keys(webhook)) {
+    assert.throws(
+      () =>
+        parseTokenDeliverySmtp({ ...smtp, [key]: webhook[key as keyof typeof webhook] }, [
+          smtp.AUTH_TOKEN_DELIVERY_APP_ORIGIN,
+        ]),
+      /must not mix webhook and SMTP/u,
+    );
+  }
+  for (const key of Object.keys(smtp)) {
+    assert.throws(
+      () => parseTokenDeliveryWebhook({ ...webhook, [key]: smtp[key as keyof typeof smtp] }),
+      /must not mix webhook and SMTP/u,
+    );
+  }
+  assert.equal(
+    parseTokenDeliverySmtp(
+      { ...smtp, AUTH_TOKEN_DELIVERY_WEBHOOK_URL: '', AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET: '' },
+      [smtp.AUTH_TOKEN_DELIVERY_APP_ORIGIN],
+    ).service,
+    'yandex',
+  );
+  assert.equal(
+    parseTokenDeliveryWebhook({ ...webhook, AUTH_TOKEN_DELIVERY_SMTP_PASSWORD: '' }).url,
+    webhook.AUTH_TOKEN_DELIVERY_WEBHOOK_URL,
+  );
+});
+
+test('actual production startup requires secure cookie and configured delivery without networking', () => {
+  const values = {
+    NODE_ENV: 'production',
+    DATABASE_URL: 'postgresql://api:synthetic-password@db.example.test/kinetra?sslmode=verify-full',
+    CORS_ORIGIN: 'https://app.example.test',
+    JWT_ACCESS_SECRET: 'synthetic-test-only-jwt-secret-32plus',
+    AUTH_TOKEN_DELIVERY_MODE: 'webhook',
+    AUTH_TOKEN_DELIVERY_WEBHOOK_URL: 'https://delivery.example.test/token',
+    AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET: 'synthetic-test-only-delivery-secret-32plus',
+    YUKASSA_SHOP_ID: 'synthetic-shop',
+    YUKASSA_SECRET_KEY: 'synthetic-key',
+    YUKASSA_RETURN_URL: 'https://app.example.test/payment/success',
+    VAPID_PUBLIC_KEY: 'a'.repeat(87),
+    VAPID_PRIVATE_KEY: 'a'.repeat(43),
+    VAPID_SUBJECT: 'mailto:test@example.test',
+  };
+  const moduleUrl = new URL('../src/config/env.ts', import.meta.url).href;
+  const run = (overrides: NodeJS.ProcessEnv) =>
+    spawnSync(
+      process.execPath,
+      [
+        '--import',
+        'tsx',
+        '--input-type=module',
+        '-e',
+        `try { await import(${JSON.stringify(moduleUrl)}); process.stdout.write('STARTUP_VALID'); } catch (error) { process.stderr.write(error.message); process.exitCode = 1; }`,
+      ],
+      { env: { ...values, ...overrides }, encoding: 'utf8' },
+    );
+  const valid = run({});
+  assert.equal(valid.status, 0, valid.stderr);
+  assert.equal(valid.stdout, 'STARTUP_VALID');
+  const insecure = run({ AUTH_REFRESH_COOKIE_SECURE: 'false' });
+  assert.equal(insecure.status, 1);
+  assert.match(insecure.stderr, /AUTH_REFRESH_COOKIE_SECURE/u);
+  for (const mode of ['console', 'disabled']) {
+    const invalid = run({ AUTH_TOKEN_DELIVERY_MODE: mode });
+    assert.equal(invalid.status, 1);
+    assert.match(invalid.stderr, /AUTH_TOKEN_DELIVERY_MODE=webhook/u);
+  }
+  const smtp = {
+    AUTH_TOKEN_DELIVERY_MODE: 'smtp',
+    AUTH_TOKEN_DELIVERY_SMTP_SERVICE: 'yandex',
+    AUTH_TOKEN_DELIVERY_SMTP_USERNAME: 'sender@yandex.ru',
+    AUTH_TOKEN_DELIVERY_SMTP_PASSWORD: 'syntheticAppPassword123',
+    AUTH_TOKEN_DELIVERY_APP_ORIGIN: 'https://app.example.test',
+    AUTH_TOKEN_DELIVERY_WEBHOOK_URL: '',
+    AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET: '',
+  };
+  for (const service of ['yandex', 'gmail']) {
+    const smtpStartup = run({ ...smtp, AUTH_TOKEN_DELIVERY_SMTP_SERVICE: service });
+    assert.equal(smtpStartup.status, 0, smtpStartup.stderr);
+    assert.equal(smtpStartup.stdout, 'STARTUP_VALID');
+  }
+  for (const overrides of [
+    { AUTH_TOKEN_DELIVERY_SMTP_PASSWORD: '' },
+    { AUTH_TOKEN_DELIVERY_APP_ORIGIN: 'https://evil.test' },
+    { AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET: values.AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET },
+    { AUTH_REFRESH_COOKIE_SECURE: 'false' },
+  ]) {
+    const invalid = run({ ...smtp, ...overrides });
+    assert.equal(invalid.status, 1);
+    assert.match(invalid.stderr, /AUTH_/u);
+    assert.doesNotMatch(invalid.stderr, /synthetic/u);
+  }
+  const deferred = {
+    PAYMENTS_ENABLED: 'false',
+    YUKASSA_SHOP_ID: '',
+    YUKASSA_SECRET_KEY: '',
+    YUKASSA_RETURN_URL: '',
+  };
+  const noPayments = run(deferred);
+  assert.equal(noPayments.status, 0, noPayments.stderr);
+  assert.equal(noPayments.stdout, 'STARTUP_VALID');
+  for (const freeBeta of ['false', 'true']) {
+    const beta = run({ ...deferred, FREE_BETA_ENABLED: freeBeta });
+    assert.equal(beta.status, 0, beta.stderr);
+    assert.equal(beta.stdout, 'STARTUP_VALID');
+  }
+  for (const paymentOverrides of [{}, { PAYMENTS_ENABLED: 'true' }]) {
+    const conflict = run({ ...paymentOverrides, FREE_BETA_ENABLED: 'true' });
+    assert.equal(conflict.status, 1);
+    assert.match(conflict.stderr, /FREE_BETA_ENABLED=true requires PAYMENTS_ENABLED=false/u);
+  }
+  const invalidBeta = run({ ...deferred, FREE_BETA_ENABLED: 'yes' });
+  assert.equal(invalidBeta.status, 1);
+  assert.match(invalidBeta.stderr, /FREE_BETA_ENABLED/u);
+  for (const [overrides, expected] of [
+    [{ AUTH_REFRESH_COOKIE_SECURE: 'false' }, /AUTH_REFRESH_COOKIE_SECURE/u],
+    [{ AUTH_TOKEN_DELIVERY_MODE: 'disabled' }, /AUTH_TOKEN_DELIVERY_MODE=webhook/u],
+    [{ AUTH_TOKEN_DELIVERY_WEBHOOK_URL: '' }, /AUTH_TOKEN_DELIVERY_WEBHOOK_URL/u],
+    [{ AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET: '' }, /AUTH_TOKEN_DELIVERY_WEBHOOK_SECRET/u],
+    [{ DATABASE_URL: values.DATABASE_URL.replace('?sslmode=verify-full', '') }, /DATABASE_URL/u],
+  ] as const) {
+    for (const freeBeta of ['false', 'true']) {
+      const invalid = run({ ...deferred, FREE_BETA_ENABLED: freeBeta, ...overrides });
+      assert.equal(invalid.status, 1);
+      assert.match(invalid.stderr, expected);
+    }
+  }
 });

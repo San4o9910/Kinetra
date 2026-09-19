@@ -1,3 +1,9 @@
+import { TrainingReminders } from './training/reminders.js';
+import { WebPushSender } from './push/webpush-sender.js';
+import { TrainingService } from './training/service.js';
+import { TrainingMedia } from './training/media.js';
+import { ResumableTrainingMedia } from './training/resumable-media.js';
+import { databasePool } from './db/pool.js';
 import { createServer } from 'node:http';
 
 import { createApp } from './app.js';
@@ -7,14 +13,45 @@ import { createProductionChatRuntime } from './chat/runtime.js';
 import { env } from './config/env.js';
 import { closeDatabasePool } from './db/pool.js';
 import { createSocketServer } from './realtime/socket.js';
+import { createShutdownHandler } from './shutdown.js';
 
 const authRuntime = createProductionAuthRuntime();
 const chatRuntime = createProductionChatRuntime({
   accessTokenVerifier: authRuntime.accessTokenVerifier,
 });
-const app = createApp({ authRuntime, chatRuntime });
+let shutdownStarted = false;
+const trainingDirectory = process.env.TRAINING_MEDIA_DIR?.trim() || null;
+const trainingWorker = new ResumableTrainingMedia(
+  new TrainingMedia(
+    new TrainingService(databasePool, trainingDirectory !== null),
+    trainingDirectory,
+    env.auth.jwtAccessSecret,
+  ),
+);
+const trainingTimer = setInterval(() => {
+  if (!shutdownStarted) void trainingWorker.processNext();
+}, 15_000);
+trainingTimer.unref();
+const reminders =
+  env.vapid && process.env.TRAINING_REMINDERS_ENABLED === 'true'
+    ? new TrainingReminders(databasePool, new WebPushSender(env.vapid))
+    : null;
+let remindersRunning = false;
+const remindersTimer = setInterval(() => {
+  if (!shutdownStarted && reminders && !remindersRunning) {
+    remindersRunning = true;
+    void reminders
+      .run()
+      .catch(() => console.error('Personal reminder delivery failed.'))
+      .finally(() => {
+        remindersRunning = false;
+      });
+  }
+}, 30_000);
+remindersTimer.unref();
+const app = createApp({ authRuntime, chatRuntime, isDraining: () => shutdownStarted });
 const httpServer = createServer(app);
-httpServer.requestTimeout = env.chat.photoUploadTotalTimeoutMs + 5_000;
+httpServer.requestTimeout = Math.max(env.chat.photoUploadTotalTimeoutMs + 5_000, 610_000);
 const socketServer = createSocketServer(httpServer);
 const detachChatRealtime = attachChatRealtime(socketServer, {
   accessTokenVerifier: authRuntime.accessTokenVerifier,
@@ -28,8 +65,6 @@ const detachChatRealtime = attachChatRealtime(socketServer, {
 httpServer.listen(env.port, env.host, () => {
   console.log(`Kinetra backend is listening on http://${env.host}:${env.port} (${env.nodeEnv}).`);
 });
-
-let shutdownStarted = false;
 
 const closeHttpServer = async (): Promise<void> => {
   if (!httpServer.listening) {
@@ -53,28 +88,37 @@ const closeSocketServer = async (): Promise<void> => {
   });
 };
 
-const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
-  if (shutdownStarted) {
-    return;
-  }
-
-  shutdownStarted = true;
-  console.log(`${signal} received. Closing Kinetra backend.`);
-
-  try {
-    detachChatRealtime();
-    await closeSocketServer();
-    await closeHttpServer();
-    await closeDatabasePool();
-  } catch (error) {
-    console.error('Failed to close Kinetra backend cleanly.', error);
+const shutdown = createShutdownHandler({
+  ...env.shutdown,
+  markDraining: () => {
+    shutdownStarted = true;
+    clearInterval(trainingTimer);
+    clearInterval(remindersTimer);
+    void trainingWorker.stop();
+    console.log('Kinetra backend is draining.');
+  },
+  closeRealtime: async () => {
+    try {
+      detachChatRealtime();
+    } finally {
+      await closeSocketServer();
+    }
+  },
+  closeHttp: closeHttpServer,
+  closeDatabase: closeDatabasePool,
+  reportFailure: (stage) => {
+    console.error('Kinetra backend shutdown failed.', { stage });
     process.exitCode = 1;
-  }
-};
-
-process.on('SIGINT', (signal) => {
-  void shutdown(signal);
+  },
+  forceExit: () => {
+    httpServer.closeAllConnections();
+    process.exit(1);
+  },
 });
-process.on('SIGTERM', (signal) => {
-  void shutdown(signal);
+
+process.on('SIGINT', () => {
+  void shutdown();
+});
+process.on('SIGTERM', () => {
+  void shutdown();
 });

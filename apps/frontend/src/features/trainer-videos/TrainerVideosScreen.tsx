@@ -1,3 +1,4 @@
+import { WorkoutGuideEditor } from '../coaching/WorkoutGuideEditor';
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
 import type { TrainerVideoProgramResponse, TrainerVideoSlotDto } from '@kinetra/shared';
 
@@ -15,6 +16,7 @@ import {
   type TrainerVideoProgramPollingController,
 } from './program-polling';
 import { uploadWorkoutVideo } from './upload';
+import { openPreviewDialog } from './preview-dialog-lifecycle';
 
 export interface TrainerVideosScreenProps {
   readonly online: boolean;
@@ -30,6 +32,7 @@ export const TrainerVideosScreen = ({
   online,
   onSessionExpired,
 }: TrainerVideosScreenProps): ReactNode => {
+  const [guideVideo, setGuideVideo] = useState<{ id: string; title: string } | null>(null);
   const [program, setProgram] = useState<TrainerVideoProgramResponse | null>(null);
   const [selectedWeek, setSelectedWeek] = useState(1);
   const [error, setError] = useState<TrainerVideoScreenError | null>(null);
@@ -40,6 +43,18 @@ export const TrainerVideosScreen = ({
   const [fileSlot, setFileSlot] = useState<TrainerVideoSlotDto | null>(null);
   const [preview, setPreview] = useState<{ title: string; url: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const previewDialogRef = useRef<HTMLDialogElement>(null);
+  const previewCloseRef = useRef<HTMLButtonElement>(null);
+  const previewTriggerRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (preview === null || previewDialogRef.current === null) return;
+    return openPreviewDialog(
+      previewDialogRef.current,
+      previewCloseRef.current,
+      previewTriggerRef.current,
+    );
+  }, [preview]);
   const controllersRef = useRef(new Map<string, AbortController>());
   const initialOnlineRef = useRef(online);
   const programPollingRef = useRef<TrainerVideoProgramPollingController | null>(null);
@@ -200,6 +215,8 @@ export const TrainerVideosScreen = ({
   };
 
   const openPreview = (slot: TrainerVideoSlotDto): void => {
+    previewTriggerRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
     previewControllerRef.current?.abort();
     const controller = new AbortController();
     previewControllerRef.current = controller;
@@ -237,6 +254,14 @@ export const TrainerVideosScreen = ({
     program.weeks.find((candidate) => candidate.week_number === selectedWeek) ?? program.weeks[0]!;
   return (
     <main className="trainer-video-screen" data-testid="trainer-video-screen">
+      {guideVideo !== null && (
+        <WorkoutGuideEditor
+          key={guideVideo.id}
+          videoId={guideVideo.id}
+          title={guideVideo.title}
+          onClose={() => setGuideVideo(null)}
+        />
+      )}
       <header className="trainer-video-heading">
         <div>
           <p>ТРЕНЕР KINETRA</p>
@@ -290,6 +315,13 @@ export const TrainerVideosScreen = ({
                   ));
             return (
               <li key={slot.video_id} className={`trainer-video-slot is-${slot.slot_state}`}>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => setGuideVideo({ id: slot.video_id, title: slot.title })}
+                >
+                  Подсказки и разделы видео
+                </button>
                 <div className="trainer-video-slot-copy">
                   <strong>
                     {slot.day_label} · {slot.title}
@@ -423,12 +455,27 @@ export const TrainerVideosScreen = ({
       {preview === null ? null : (
         <dialog
           className="trainer-video-preview"
-          open
+          ref={previewDialogRef}
+          onCancel={(event) => {
+            event.preventDefault();
+            setPreview(null);
+          }}
+          onClick={(event) => {
+            if (event.target !== event.currentTarget) return;
+            const bounds = event.currentTarget.getBoundingClientRect();
+            if (
+              event.clientX < bounds.left ||
+              event.clientX > bounds.right ||
+              event.clientY < bounds.top ||
+              event.clientY > bounds.bottom
+            )
+              setPreview(null);
+          }}
           aria-labelledby="trainer-video-preview-title"
         >
           <div>
             <h2 id="trainer-video-preview-title">{preview.title}</h2>
-            <button type="button" autoFocus onClick={() => setPreview(null)}>
+            <button ref={previewCloseRef} type="button" onClick={() => setPreview(null)}>
               Закрыть
             </button>
           </div>

@@ -18,6 +18,69 @@ export interface AuthTokenDelivery {
   sendEmailVerification(message: EmailVerificationDelivery): Promise<void>;
 }
 
+export interface WebhookDeliveryConfig {
+  readonly url: string;
+  readonly secret: string;
+  readonly timeoutMs: number;
+}
+
+export class WebhookAuthTokenDelivery implements AuthTokenDelivery {
+  public constructor(
+    private readonly config: WebhookDeliveryConfig,
+    private readonly request: typeof fetch = fetch,
+  ) {}
+
+  private async send(
+    event: 'password_reset' | 'email_verification',
+    recipient: { readonly type: 'email' | 'phone'; readonly value: string },
+    token: string,
+    expiresAt: Date,
+  ): Promise<void> {
+    let response: Response;
+    try {
+      response = await this.request(this.config.url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.config.secret}`,
+        },
+        body: JSON.stringify({
+          version: 1,
+          event,
+          recipient,
+          token,
+          expiresAt: expiresAt.toISOString(),
+        }),
+        redirect: 'error',
+        signal: AbortSignal.timeout(this.config.timeoutMs),
+      });
+    } catch {
+      // Never retain the raw transport error: it can include URL, token or headers.
+      throw new Error('Auth token delivery request failed.');
+    }
+    // Provider responses may contain private data. Neither read nor log the body.
+    await response.body?.cancel().catch(() => undefined);
+    if (!response.ok) throw new Error(`Auth token delivery rejected (HTTP ${response.status}).`);
+  }
+
+  public async sendPasswordReset(message: PasswordResetDelivery): Promise<void> {
+    await this.send(
+      'password_reset',
+      { type: message.destinationType, value: message.destination },
+      message.token,
+      message.expiresAt,
+    );
+  }
+  public async sendEmailVerification(message: EmailVerificationDelivery): Promise<void> {
+    await this.send(
+      'email_verification',
+      { type: 'email', value: message.email },
+      message.token,
+      message.expiresAt,
+    );
+  }
+}
+
 const maskDestination = (value: string): string => {
   const atIndex = value.indexOf('@');
 

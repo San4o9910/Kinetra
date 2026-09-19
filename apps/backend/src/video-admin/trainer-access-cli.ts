@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { closeDatabasePool, databasePool } from '../db/pool.js';
+let closeDatabasePool: (() => Promise<void>) | undefined;
 
 const uuid = z.string().uuid();
 const help = (command: string | undefined): string =>
@@ -26,6 +26,9 @@ const run = async (): Promise<void> => {
   }
   if (command !== 'grant' && command !== 'revoke') throw new Error(help(command));
   const userId = userIdFrom(arguments_);
+  const database = await import('../db/pool.js');
+  closeDatabasePool = database.closeDatabasePool;
+  const { databasePool } = database;
   const client = await databasePool.connect();
   try {
     await client.query('BEGIN');
@@ -109,4 +112,4 @@ void run()
     );
     process.exitCode = 1;
   })
-  .finally(closeDatabasePool);
+  .finally(async () => closeDatabasePool?.());

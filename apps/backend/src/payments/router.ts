@@ -15,8 +15,11 @@ import { HttpError } from '../auth/errors.js';
 import { requireAuthenticatedPrincipal } from '../auth/middleware.js';
 import type { PaymentsService } from './service.js';
 import type { WebhookSourceVerifier } from './webhook-source.js';
+import type { FreeBetaAccessChecker } from '../program/free-beta-access.js';
 
 export interface PaymentsRouterDependencies {
+  readonly enabled?: boolean;
+  readonly freeBetaAccess?: FreeBetaAccessChecker;
   readonly service: PaymentsService;
   readonly authMiddleware: RequestHandler;
   readonly webhookSourceVerifier: WebhookSourceVerifier;
@@ -29,16 +32,26 @@ const disableCaching = (_request: Request, response: Response, next: NextFunctio
 };
 
 export const createPaymentsRouter = ({
+  enabled = true,
+  freeBetaAccess,
   service,
   authMiddleware,
   webhookSourceVerifier,
 }: PaymentsRouterDependencies): Router => {
   const router = Router();
+  const requirePaymentsEnabled: RequestHandler = (_request, _response, next): void => {
+    next(
+      enabled
+        ? undefined
+        : new HttpError(503, 'PAYMENTS_DISABLED', 'Payments are not available yet.'),
+    );
+  };
 
   router.use(disableCaching);
 
   router.post(
     '/webhook',
+    requirePaymentsEnabled,
     (request: Request, _response: Response, next: NextFunction): void => {
       if (!webhookSourceVerifier.isAllowed(request.ip)) {
         next(
@@ -64,6 +77,7 @@ export const createPaymentsRouter = ({
   router.post(
     '/create',
     authMiddleware,
+    requirePaymentsEnabled,
     (
       request: Request,
       response: Response<CreatePaymentResponse | ApiErrorResponse>,
@@ -83,14 +97,29 @@ export const createPaymentsRouter = ({
     authMiddleware,
     (
       request: Request,
-      response: Response<SubscriptionResponse | ApiErrorResponse>,
+      response: Response<
+        | (SubscriptionResponse & {
+            readonly payments_enabled?: false;
+            readonly training_access?: 'free_beta';
+          })
+        | ApiErrorResponse
+      >,
       next: NextFunction,
     ): void => {
       const { userId } = requireAuthenticatedPrincipal(request);
 
       void service
         .cancelSubscription(userId)
-        .then((subscription) => response.status(200).json(subscription))
+        .then(async (subscription) => {
+          if (enabled) return response.status(200).json(subscription);
+          const beta =
+            freeBetaAccess !== undefined && (await freeBetaAccess.hasFreeBetaAccess(userId));
+          return response.status(200).json({
+            ...subscription,
+            payments_enabled: false,
+            ...(beta ? { training_access: 'free_beta' as const } : {}),
+          });
+        })
         .catch(next);
     },
   );

@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "version": "22.23.2",
+  "moduleAbi": "127",
+  "minimumOpenSSL": "3.5.8",
+  "sourceFile": "node-v22.23.2.tar.xz",
+  "sourceDirectory": "node-v22.23.2",
+  "sourceUrl": "https://nodejs.org/dist/v22.23.2/node-v22.23.2.tar.xz",
+  "sourceSha256": "bbe768df8d5815d7fa76124052985332452e0a4742d39f32027550d1aab8f6fb",
+  "signedChecksumsUrl": "https://nodejs.org/dist/v22.23.2/SHASUMS256.txt.asc",
+  "signedChecksumsSha256": "cfcf12eb3146d641be185d08ca018166b98495b1d8e5f7f94ab77f9965b651d2",
+  "keyFile": "keys/node-release.asc",
+  "keySha256": "d18c38f20a6e6c99a88c26d15a967de21fdb6084c76cbfe3e730cc5f94ce8b33",
+  "signerFingerprint": "CC68F5A3106FF448322E48ED27F5E38D5B0A215F",
+  "signerAuthorityUrl": "https://github.com/nodejs/node/blob/v22.23.2/README.md#release-keys",
+  "configure": [
+    "--prefix=/usr/local",
+    "--shared-openssl",
+    "--shared-openssl-includes=/usr/include",
+    "--shared-openssl-libpath=/usr/lib",
+    "--without-npm",
+    "--without-corepack"
+  ],
+  "parallelJobs": 4,
+  "compileTimeoutMs": 10800000
+}

@@ -79,7 +79,13 @@ export const buildNormalizedFrontendEnv = (
 });
 
 export const buildImageContentSecurityPolicy = (privateMediaOrigin: string | null): string =>
-  `img-src 'self' blob:${privateMediaOrigin === null ? '' : ` ${privateMediaOrigin}`};`;
+  `img-src 'self' blob:${privateMediaOrigin === null ? '' : ` ${privateMediaOrigin}`}; media-src 'self' blob:${privateMediaOrigin === null ? '' : ` ${privateMediaOrigin}`};`;
+
+export const assertBuildApiOrigin = (command: string, apiOrigin: string | null): void => {
+  if (command === 'build' && apiOrigin === null) {
+    throw new Error('VITE_API_URL is required for a build. Set the exact API origin.');
+  }
+};
 
 const contentSecurityPolicyPlugin = (policy: string): Plugin => ({
   name: 'kinetra-private-media-content-security-policy',
@@ -111,6 +117,7 @@ export default defineConfig(({ command, mode }) => {
   const allowInsecureLoopback =
     (command === 'serve' && mode === 'development') || mode === 'browser-test';
   const apiOrigin = normalizeApiOrigin(runtimeEnv.VITE_API_URL, allowInsecureLoopback);
+  assertBuildApiOrigin(command, apiOrigin);
   const privateMediaOrigin = normalizePrivateMediaOrigin(
     runtimeEnv.VITE_PRIVATE_MEDIA_ORIGIN,
     allowInsecureLoopback,
@@ -137,7 +144,15 @@ export default defineConfig(({ command, mode }) => {
       headers: securityHeaders,
     },
     build: {
-      sourcemap: true,
+      sourcemap: false,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'react-vendor': ['react', 'react-dom', 'react-dom/client'],
+            'realtime-vendor': ['socket.io-client'],
+          },
+        },
+      },
     },
   };
 });

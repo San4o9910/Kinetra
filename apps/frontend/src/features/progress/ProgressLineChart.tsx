@@ -1,11 +1,12 @@
 import React, { type ReactNode } from 'react';
 import type { WeeklyMetric } from '@kinetra/shared';
 
-import { metricValue, type ProgressMetricConfig } from './model';
+import { clampMetricScore, metricValue, type ProgressMetricConfig } from './model';
 
 export interface ProgressLineChartProps {
   readonly history: readonly WeeklyMetric[];
   readonly metric: ProgressMetricConfig;
+  readonly testIdPrefix?: string;
 }
 
 const chart = Object.freeze({
@@ -19,14 +20,18 @@ const chart = Object.freeze({
 
 const yGridValues = [10, 7, 4, 1] as const;
 
-export const ProgressLineChart = ({ history, metric }: ProgressLineChartProps): ReactNode => {
+export const ProgressLineChart = ({
+  history,
+  metric,
+  testIdPrefix = 'progress-chart',
+}: ProgressLineChartProps): ReactNode => {
   const titleId = React.useId();
   const descriptionId = React.useId();
   const points = [...history].sort((left, right) => left.program_week - right.program_week);
 
   if (points.length < 2) {
     return (
-      <p className="progress-chart-empty" data-testid="progress-chart-empty">
+      <p className="progress-chart-empty" data-testid={`${testIdPrefix}-empty`}>
         Заполните самооценку минимум за 2 недели, чтобы увидеть динамику
       </p>
     );
@@ -41,7 +46,7 @@ export const ProgressLineChart = ({ history, metric }: ProgressLineChartProps): 
     week: point.program_week,
     value: metricValue(point, metric.key),
     x: chart.left + ((point.program_week - minimumWeek) / weekSpan) * plotWidth,
-    y: chart.top + ((10 - metricValue(point, metric.key)) / 9) * plotHeight,
+    y: chart.top + ((10 - clampMetricScore(metricValue(point, metric.key))) / 9) * plotHeight,
   }));
   const linePoints = coordinates.map(({ x, y }) => `${x.toFixed(2)},${y.toFixed(2)}`).join(' ');
   const description = coordinates
@@ -52,7 +57,7 @@ export const ProgressLineChart = ({ history, metric }: ProgressLineChartProps): 
   return (
     <svg
       className="progress-chart"
-      data-testid="progress-chart"
+      data-testid={testIdPrefix}
       data-metric={metric.key}
       viewBox={`0 0 ${chart.width} ${chart.height}`}
       role="img"
@@ -77,6 +82,7 @@ export const ProgressLineChart = ({ history, metric }: ProgressLineChartProps): 
       <polyline
         className="progress-chart-line"
         points={linePoints}
+        pathLength={1}
         vectorEffect="non-scaling-stroke"
       />
       {coordinates.map(({ week, value, x, y }, index) => {
@@ -89,7 +95,7 @@ export const ProgressLineChart = ({ history, metric }: ProgressLineChartProps): 
           <g key={week}>
             <circle
               className="progress-chart-point"
-              data-testid="progress-chart-point"
+              data-testid={`${testIdPrefix}-point`}
               cx={x}
               cy={y}
               r="4.5"

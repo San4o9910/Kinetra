@@ -124,16 +124,24 @@ const assertCanonicalSubscriptionPayment = (payment: YooKassaPayment): void => {
 export class PaymentsService {
   private readonly allowedReturnUrls: ReadonlySet<string>;
 
+  private requireEnabled(): void {
+    if (!this.enabled) {
+      throw new HttpError(503, 'PAYMENTS_DISABLED', 'Payments are not available yet.');
+    }
+  }
+
   public constructor(
     private readonly repository: PaymentsRepository,
     private readonly client: YooKassaClient,
     private readonly clock: Clock,
     allowedReturnUrls: readonly string[],
+    private readonly enabled = true,
   ) {
     this.allowedReturnUrls = new Set(allowedReturnUrls.map(normalizeUrl));
   }
 
   public async createPayment(userId: string, body: unknown): Promise<CreatePaymentResponse> {
+    this.requireEnabled();
     const parsed = createPaymentRequestSchema.safeParse(body);
 
     if (!parsed.success) {
@@ -299,6 +307,7 @@ export class PaymentsService {
   }
 
   public async handleWebhook(body: unknown): Promise<'applied' | 'duplicate' | 'ignored'> {
+    this.requireEnabled();
     const parsedNotification = webhookNotificationSchema.safeParse(body);
 
     if (!parsedNotification.success) {
