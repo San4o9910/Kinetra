@@ -106,6 +106,15 @@ test(
         nutrition.save(unconnected, randomUUID(), { ...meal, share_with_trainer: true }),
         denies('TRAINER_NOT_CONNECTED'),
       );
+      const earlyMeal = randomUUID();
+      await nutrition.save(unconnected, earlyMeal, meal);
+      const lateStudent = await service.createStudent(otherTrainer, { name: 'Новый ученик' });
+      await service.acceptInvite(unconnected, { token: lateStudent.token });
+      await photos.share(unconnected, earlyMeal, { share: true });
+      assert.equal(
+        (await nutrition.list(otherTrainer, meal.recorded_date, lateStudent.id)).entries[0]?.id,
+        earlyMeal,
+      );
       await nutrition.save(client, id, { ...meal, revision: 1, share_with_trainer: true });
       assert.equal(
         (await nutrition.list(trainer, meal.recorded_date, student.id)).entries[0]!.items[2]!

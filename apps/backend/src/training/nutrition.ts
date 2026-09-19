@@ -93,7 +93,7 @@ export class NutritionService {
         return { id, revision: old.revision };
       if ((old?.revision ?? 0) !== value.revision)
         trainingError(409, 'MEAL_CHANGED', 'Запись изменилась. Откройте её заново.');
-      const student = old ? old.student_id : await this.connection(db, user);
+      const student = old?.student_id ?? (await this.connection(db, user));
       if (value.share_with_trainer && !student)
         trainingError(
           409,
@@ -119,7 +119,7 @@ export class NutritionService {
       ];
       const saved = old
         ? await db.query(
-            'UPDATE nutrition_entries SET recorded_date=$4,slot=$5,title=$6,items=$7::jsonb,note=$8,share_with_trainer=$9,revision=revision+1,updated_at=now() WHERE id=$1 AND client_id=$2 AND student_id IS NOT DISTINCT FROM $3::uuid RETURNING revision',
+            'UPDATE nutrition_entries SET student_id=$3,recorded_date=$4,slot=$5,title=$6,items=$7::jsonb,note=$8,share_with_trainer=$9,revision=revision+1,updated_at=now() WHERE id=$1 AND client_id=$2 RETURNING revision',
             args,
           )
         : await db.query(

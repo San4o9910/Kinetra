@@ -2253,7 +2253,7 @@ const runBrowserScenario = async () => {
       assert.ok(metrics.scrollWidth <= width, `Main screen horizontal overflow at ${width}px.`);
       assert.equal(metrics.cardCount, browserTodayDashboardDayNumbers.length);
       assert.equal(metrics.cardsInsideViewport, true, `Workout card overflow at ${width}px.`);
-      assert.equal(metrics.tabCount, 4);
+      assert.equal(metrics.tabCount, 5);
       assert.equal(metrics.tabTargetsAreLargeEnough, true, `Tab target below 44px at ${width}px.`);
       assert.ok(
         Math.abs(metrics.tabBarBottom - metrics.innerHeight) <= 1,
@@ -2434,7 +2434,7 @@ const runBrowserScenario = async () => {
         true,
         `Progress control below 44px at ${width}px.`,
       );
-      assert.equal(metrics.tabCount, 4);
+      assert.equal(metrics.tabCount, 5);
       assert.equal(
         metrics.tabTargetsAreLargeEnough,
         true,

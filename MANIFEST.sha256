@@ -140,8 +140,8 @@ c8b9b4a21e577faa6d4435786e0489702d3f775fda19b3fb32a4a7ef152ffbc3  ./apps/backend
 1828a0e31b331b30bc9f56607aff300a723d14c5965e5e0b003e856fd26ee8eb  ./apps/backend/src/training/experience.ts
 aeed12493df1eccf7667af06256491e2a8febf41c756be44d6c5174f35f92b07  ./apps/backend/src/training/lesson-assignments.ts
 c07139e241eaf8c4b58c2d0cc02ff820f736f3a3b155669e4fd28b737d4df648  ./apps/backend/src/training/media.ts
-478ae63aa11ff0f824d0121c42edfba94380790b9885469a276ff40caaa81c65  ./apps/backend/src/training/nutrition.ts
-63d14f7c30fa3acf1e95d82d53a7d2acea8a8ae3930f03622df6238557fc61f3  ./apps/backend/src/training/progress-photos.ts
+d0dbc7a6d6218453ec1dc360f6f71fafff34d038475b0ccbac94015d581f3a24  ./apps/backend/src/training/nutrition.ts
+7de2b213cdcaa7c2e36ce7a4d4186c8d6a2054ae2c8867b4574e8617cf7b973e  ./apps/backend/src/training/progress-photos.ts
 26e4b1501b2c267b345e60aabef57421f722a19f745f23c1d7a5c03f212ed65e  ./apps/backend/src/training/reminders.ts
 e5fed1d277c1571e1a59526f579920e96a51bee95b19d0837f9cca4c4aaa1fa5  ./apps/backend/src/training/resumable-media.ts
 81543f4d6b6f25947746c8af8e9e4569425df9ab87d595a8a7db043e64eb41b2  ./apps/backend/src/training/router.ts
@@ -185,7 +185,7 @@ f0e6d42aada7517c6b414bc92df4fb6798a47405c303426bf92aea66d0d7bac0  ./apps/backend
 50860f6590da504869ce6e0e8d7cf28b2ae92098ba07b7dff760321e6ae799aa  ./apps/backend/test/lesson-assignments.postgres.test.ts
 ad9309812d81432c2a82fa066131d5729ff2ba1c2123c9f797ee473c6ba8d572  ./apps/backend/test/migration-runner.test.ts
 32cbd9df87011ea0cc88536661b803d260edcef71347ac0f63ed118e0554f76c  ./apps/backend/test/notification-scheduler.test.ts
-504da25588443eddd36229c8269b2e8a6930033b72b0fb4f359549f50c11130c  ./apps/backend/test/nutrition-coach.postgres.test.ts
+5fb58cd3d6747462d2cf2d15234031a767811f89be9f07d8406bf1ee56d19c3b  ./apps/backend/test/nutrition-coach.postgres.test.ts
 8124465cb425eef91fbe2ed625e2f5dc1608f8d362ded298ea56ee2622871f07  ./apps/backend/test/payments.e2e.test.ts
 f217f941475fd6e1cc942600a512ffa96919e706901548080808bf47114fee43  ./apps/backend/test/payments.postgres.test.ts
 455ddffa8265df94c4c606cfa4a3d6fa0489e4c616cb24f759d8467949af5f05  ./apps/backend/test/platform.test.ts
@@ -486,8 +486,8 @@ c8171db33a1b645b8c36d542cf4bfc5c47073df8842b846f91a6ebf083973c5e  ./packages/sha
 d16d01c4778cc1b7b5f6695a8ad979bc82ed5d3ecec2a77ac579f3bda9e4210f  ./scripts/local-demo-guard.mjs
 aa40f7eec1b859bca8bfe25c88bb945223365e3490c3b675f3b837afda357737  ./scripts/prepare-local-demo.mjs
 bd552b5c0ba879666a9fecf9a8bba3b30f5b1223fbc1cf69fef30a5c6437aaf2  ./scripts/run-local-demo.mjs
-2ec07451758d5b5cd7f06298ff7d510224df9c23a9c7e82acd523af383dd9071  ./scripts/test-frontend-browser.mjs
-10e4cca8d87a8e8601ae6f921e2495769bc8b28ae59ab5c4a0b6f5e86d8f3741  ./scripts/test-nutrition-coaching-browser.mjs
+eef3e70c587946f66441fe8ffeb2278489633512cae15360b598f5a749633a2b  ./scripts/test-frontend-browser.mjs
+d3f104a0541bd4421de66201e0560e778138ca720ac332dd735c105b27236ea6  ./scripts/test-nutrition-coaching-browser.mjs
 851d02d74a7ad70dc92d493f658d506c4c3e060e770000c5abe2b48708cf6652  ./scripts/test-trainer-workspace-browser.mjs
 6703636877be934ce7469d330a30ef05134c0c95746a0afc35d9f592b249ccc7  ./scripts/verify-project.mjs
 2b67887209f3334ebdc96426f5c2cb87480fb85ff2f75c0d42b0a944dae7922a  ./tsconfig.base.json

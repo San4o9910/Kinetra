@@ -181,16 +181,23 @@ export class TrainingProgressPhotos {
       trainingError(400, 'INVALID_SHARING', 'Выберите доступ.');
     return this.media.service.transaction(async (db) => {
       if (this.kind === 'meal' && body.share) {
-        const connected = await db.query(
-          'SELECT 1 FROM nutrition_entries m JOIN training_students s ON s.id=m.student_id JOIN trainer_profiles t ON t.user_id=s.trainer_id WHERE m.id=$1 AND m.client_id=$2 AND s.archived_at IS NULL AND t.is_active',
+        const owned = await db.query(
+          'SELECT id FROM nutrition_entries WHERE id=$1 AND client_id=$2 FOR UPDATE',
           [trainingId(id), user],
         );
+        if (!owned.rowCount) trainingError(404, 'MEASUREMENT_UNAVAILABLE', 'Запись недоступна.');
+        const connected = await db.query(
+          'SELECT s.id FROM training_students s JOIN trainer_profiles t ON t.user_id=s.trainer_id WHERE s.client_id=$1 AND s.archived_at IS NULL AND t.is_active FOR SHARE OF s,t',
+          [user],
+        );
         if (!connected.rowCount)
-          trainingError(
-            409,
-            'TRAINER_NOT_CONNECTED',
-            'Нет действующего подключения к тренеру для этой записи.',
-          );
+          trainingError(409, 'TRAINER_NOT_CONNECTED', 'Сначала подключитесь к тренеру.');
+        // This explicit consent may share an earlier private meal with the current trainer.
+        await db.query(
+          'UPDATE nutrition_entries SET student_id=$3,share_with_trainer=true,revision=revision+1 WHERE id=$1 AND client_id=$2',
+          [id, user, connected.rows[0].id],
+        );
+        return { saved: true };
       }
       const r = await db.query(
         `UPDATE ${this.table} SET share_with_trainer=$3${this.kind === 'meal' ? ',revision=revision+1' : ''} WHERE id=$1 AND client_id=$2 RETURNING id`,

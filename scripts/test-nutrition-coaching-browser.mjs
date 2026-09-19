@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { Server as SocketIOServer } from 'socket.io';
 export const nutritionFixture = (h, { studentId, getStudent, getCompleted, photoFile }) => {
   const meals = [],
@@ -280,6 +280,15 @@ export const runNutritionCoachingBrowser = async (
   clickReady,
   photoFile,
 ) => {
+  const capture = async (context, name) => {
+    await context.setViewport(390, 844);
+    await context.cdp.evaluate('window.scrollTo(0,0)');
+    const shot = await context.cdp.send('Page.captureScreenshot', { format: 'png' });
+    await mkdir('artifacts/lesson-sharing', { recursive: true });
+    await writeFile(`artifacts/lesson-sharing/${name}.png`, Buffer.from(shot.data, 'base64'));
+    if (process.env.KINETRA_CAPTURE_PREVIEW_LOG === 'true')
+      console.log('KINETRA_COACHING_PREVIEW=' + JSON.stringify({ name, data: shot.data }));
+  };
   await client.navigate('/chat');
   await h.waitFor('chat opens before onboarding', () => client.exists('chat-composer'));
   await client.setValue('chat-message-input', 'Как заменить упражнение?');
@@ -334,6 +343,7 @@ export const runNutritionCoachingBrowser = async (
   await h.waitFor('meal photograph visible', () =>
     client.cdp.evaluate("!!document.querySelector('.nutrition-entry img')?.naturalWidth"),
   );
+  await capture(client, 'nutrition-mobile');
   await clickReady(client, 'Поделиться с тренером');
   await h.waitFor('meal consent persisted', () => fixture.meals[0].share_with_trainer);
   await trainer.navigate('/trainer/students');
@@ -384,6 +394,7 @@ export const runNutritionCoachingBrowser = async (
       "document.querySelector('.coach-quote').textContent.replace(/\\s/g,'').includes('5500')",
     ),
   );
+  await capture(trainer, 'coach-profile-mobile');
   for (const context of [trainer, client])
     for (const width of [390, 1280]) {
       await context.setViewport(width, 844);
