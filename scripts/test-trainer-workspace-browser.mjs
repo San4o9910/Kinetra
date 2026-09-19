@@ -1,3 +1,7 @@
+import {
+  nutritionFixture,
+  runNutritionCoachingBrowser,
+} from './test-nutrition-coaching-browser.mjs';
 import { execFileSync } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, stat } from 'node:fs/promises';
@@ -10,6 +14,7 @@ export const runTrainerWorkspaceBrowser = async (h) => {
     studentId = '00000000-0000-4000-8000-000000000303',
     planId = '00000000-0000-4000-8000-000000000304',
     lessonId = '00000000-0000-4000-8000-000000000305';
+  let clientOnboarding = 'active';
   const token = 'a'.repeat(43);
   let student = null,
     plan = null,
@@ -37,6 +42,16 @@ export const runTrainerWorkspaceBrowser = async (h) => {
     'yuv420p',
     mediaFile,
   ]);
+  const photoFile = path.join(mediaDirectory, 'meal.png');
+  execFileSync('ffmpeg', ['-v', 'error', '-i', mediaFile, '-frames:v', '1', photoFile]);
+  const nutrition = nutritionFixture(h, {
+    trainerId,
+    clientId,
+    studentId,
+    getStudent: () => student,
+    getCompleted: () => lessonCompleted,
+    photoFile,
+  });
   const assignedLessons = () =>
     lessonAssigned && lesson
       ? [
@@ -58,7 +73,7 @@ export const runTrainerWorkspaceBrowser = async (h) => {
     user: {
       ...h.profile.user,
       id: role === 'trainer' ? trainerId : clientId,
-      onboardingStatus: 'active',
+      onboardingStatus: role === 'client' ? clientOnboarding : 'active',
     },
   });
   const session = (role) => ({
@@ -106,10 +121,7 @@ export const runTrainerWorkspaceBrowser = async (h) => {
       h.json(res, 200, { can_review: false });
       return;
     }
-    if (pathname === '/api/v1/chat/session') {
-      h.json(res, 200, { enabled: false, available: false, reason: 'disabled' });
-      return;
-    }
+    if (await nutrition.handle(req, res, role)) return;
     if (pathname === '/api/v1/settings/subscription') {
       h.json(res, 200, {
         status: 'active',
@@ -386,6 +398,7 @@ export const runTrainerWorkspaceBrowser = async (h) => {
     });
     res.end(await readFile(file));
   });
+  nutrition.attach(server);
   const dirs = await Promise.all([
     mkdtemp(path.join(os.tmpdir(), 'kinetra-browser-')),
     mkdtemp(path.join(os.tmpdir(), 'kinetra-browser-')),
@@ -716,6 +729,13 @@ export const runTrainerWorkspaceBrowser = async (h) => {
       (await client.bodyText()).includes('Приседания'),
     );
     assert.ok((await client.bodyText()).includes('Замеры'));
+    await h.waitFor('coach rating available after completion', () =>
+      client.cdp.evaluate('!!document.querySelector(\'.coach-stars input[value="5"]\')'),
+    );
+    await client.cdp.evaluate('document.querySelector(\'.coach-stars input[value="5"]\').click()');
+    await clickReady(client, 'Оценить');
+    await h.waitFor('one coach rating saved', () => nutrition.getScore() === 5);
+
     for (const context of [trainer, client])
       for (const width of [390, 1280]) {
         await context.setViewport(width, 844);
@@ -725,11 +745,14 @@ export const runTrainerWorkspaceBrowser = async (h) => {
           `Trainer workspace overflows at ${width}`,
         );
       }
+    clientOnboarding = 'survey_pending';
+    await runNutritionCoachingBrowser(h, trainer, client, nutrition, fill, clickReady, photoFile);
   } finally {
     for (const context of [trainer, client]) {
       context?.cdp.close();
       await h.terminateChrome(context?.chrome ?? null);
     }
+    await nutrition.close();
     await h.close(server);
     await h.removeProfileDirectory(mediaDirectory);
     for (const dir of dirs) await h.removeProfileDirectory(dir);

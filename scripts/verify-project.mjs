@@ -2277,8 +2277,8 @@ expectIncludes(
 );
 expectIncludes(
   browserTest,
-  'KINETRA_EXPLORATION_CHAT_LOCK=PASS',
-  'browser test proves chat remains inaccessible during exploration',
+  'KINETRA_EXPLORATION_CHAT_ACCESS=PASS',
+  'browser test proves chat is accessible before the introductory course',
 );
 expectIncludes(
   browserTest,
@@ -2702,7 +2702,7 @@ for (const scenario of [
   'week progress exposes',
   'today dashboard delegates full week browsing to schedule',
   'today is highlighted only in the actual current week',
-  'tab bar renders four client routes with trainer and its unread badge',
+  'tab bar renders five client routes with trainer and its unread badge',
   'system back keeps the saving workout on its canonical history entry',
 ]) {
   expectIncludes(
@@ -5402,7 +5402,7 @@ for (const appContract of [
   expectIncludes(frontendApp, appContract, `T12 client/trainer app integration: ${appContract}`);
 }
 for (const appChatTabContract of [
-  "showChat={profile.user.onboardingStatus === 'active'}",
+  'showChat={true}',
   'chatUnreadCount={chatRuntime.unreadCount}',
   'route === appRoutes.chat',
   'return withActiveNavigation(',

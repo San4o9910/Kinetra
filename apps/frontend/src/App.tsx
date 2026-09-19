@@ -1,3 +1,5 @@
+import { NutritionDiary } from './features/training/NutritionDiary';
+import { CoachProfileScreen } from './features/training/CoachProfile';
 import { TrainerWorkspace } from './features/training/TrainerWorkspace';
 import { TrainerLessons } from './features/training/TrainerLessons';
 import { MyTraining } from './features/training/MyTraining';
@@ -589,8 +591,7 @@ export const App = (): ReactNode => {
     session.profile.requested_role === 'trainer';
   const chatEnabled =
     session.kind === 'authenticated' &&
-    (session.profile.account_role === 'trainer' ||
-      (session.profile.user.onboardingStatus === 'active' && !trainerVerificationRequired));
+    (session.profile.account_role === 'trainer' || !trainerVerificationRequired);
   const chatRuntime = useChatRuntime({
     accountId: authenticatedUserId,
     role: authenticatedRole,
@@ -599,6 +600,10 @@ export const App = (): ReactNode => {
     realtime: chatRealtime,
     onSessionExpired: handleActiveSessionExpired,
   });
+  const refreshChat = chatRuntime.refresh;
+  useEffect(() => {
+    if (route === appRoutes.chat && chatEnabled) refreshChat();
+  }, [route, chatEnabled, refreshChat]);
   chatDisposeRef.current = chatRuntime.disposeNow;
   chatSuspendRef.current = chatRuntime.suspendNow;
   authenticatedUserIdRef.current = authenticatedUserId;
@@ -755,7 +760,12 @@ export const App = (): ReactNode => {
         navigate(appRoutes.myTraining, true);
         return;
       }
-      if (route === appRoutes.myTraining) return;
+      if (
+        route === appRoutes.myTraining ||
+        route === appRoutes.chat ||
+        route === appRoutes.nutrition
+      )
+        return;
     }
 
     if (session.profile.account_role === 'trainer') {
@@ -927,6 +937,8 @@ export const App = (): ReactNode => {
       </TrainerAdminShell>
     );
 
+    if (route === appRoutes.trainerProfile)
+      return withTrainerShell(<CoachProfileScreen key={profile.user.id} />);
     if (route === appRoutes.trainerStudents)
       return withTrainerShell(
         <TrainerWorkspace
@@ -1064,13 +1076,16 @@ export const App = (): ReactNode => {
 
   const withActiveNavigation = (content: ReactNode): ReactNode =>
     profile.user.onboardingStatus === 'active' ||
-    profile.user.onboardingStatus === 'base_lessons' ? (
+    profile.user.onboardingStatus === 'base_lessons' ||
+    route === appRoutes.myTraining ||
+    route === appRoutes.chat ||
+    route === appRoutes.nutrition ? (
       <ActiveAppShell
         canReview={canReview}
         displayName={clientDisplayName(profile)}
         route={route}
         navigationDisabled={workoutCompletionBusy}
-        showChat={profile.user.onboardingStatus === 'active'}
+        showChat={true}
         chatUnreadCount={chatRuntime.unreadCount}
         onNavigate={navigateActiveTab}
       >
@@ -1079,6 +1094,9 @@ export const App = (): ReactNode => {
     ) : (
       content
     );
+
+  if (route === appRoutes.nutrition)
+    return withActiveNavigation(<NutritionDiary key={profile.user.id} />);
 
   if (route === appRoutes.myTraining)
     return withActiveNavigation(
@@ -1123,7 +1141,7 @@ export const App = (): ReactNode => {
     );
   }
 
-  if (profile.user.onboardingStatus === 'survey_pending') {
+  if (profile.user.onboardingStatus === 'survey_pending' && route !== appRoutes.chat) {
     return (
       <SurveyWizard
         initialSurvey={profile.survey}
@@ -1135,7 +1153,7 @@ export const App = (): ReactNode => {
     );
   }
 
-  if (profile.user.onboardingStatus === 'onboarding_pending') {
+  if (profile.user.onboardingStatus === 'onboarding_pending' && route !== appRoutes.chat) {
     return (
       <OnboardingCarousel
         key={profile.user.id}
@@ -1318,7 +1336,7 @@ export const App = (): ReactNode => {
       displayName={clientDisplayName(profile)}
       route={route}
       navigationDisabled={workoutCompletionBusy}
-      showChat={profile.user.onboardingStatus === 'active'}
+      showChat={true}
       chatUnreadCount={chatRuntime.unreadCount}
       onNavigate={navigateActiveTab}
     >

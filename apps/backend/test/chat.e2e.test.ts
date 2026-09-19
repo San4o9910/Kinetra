@@ -649,3 +649,30 @@ test('multipart stream bytes are charged once for valid and malformed photo requ
     await malformedHarness.close();
   }
 });
+
+test('registered student can open and send in chat before the introductory course', async () => {
+  const harness = await startHarness(false);
+  try {
+    for (const status of ['survey_pending', 'onboarding_pending', 'base_lessons'] as const) {
+      harness.repository.addActor({
+        userId: harness.repository.clientId,
+        role: 'client',
+        onboardingStatus: status,
+        displayName: 'Ученик',
+        avatarUrl: null,
+      });
+      const session = await jsonRequest(harness, '/api/v1/chat/session');
+      assert.equal(session.status, 200);
+      const created = await jsonRequest(harness, '/api/v1/chat/conversations', { method: 'POST' });
+      assert.ok(created.status === 200 || created.status === 201);
+      const id = asRecord(asRecord(created.body).conversation).id;
+      const sent = await jsonRequest(harness, `/api/v1/chat/conversations/${id}/messages`, {
+        method: 'POST',
+        body: { kind: 'text', text: 'Вопрос до вводного курса', client_message_id: randomUUID() },
+      });
+      assert.equal(sent.status, 201);
+    }
+  } finally {
+    await harness.close();
+  }
+});

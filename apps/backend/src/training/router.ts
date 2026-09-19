@@ -1,3 +1,5 @@
+import { NutritionService } from './nutrition.js';
+import { CoachProfiles } from './coach-profile.js';
 import { LessonAssignments } from './lesson-assignments.js';
 import { TrainingProgressPhotos } from './progress-photos.js';
 import { ResumableTrainingMedia } from './resumable-media.js';
@@ -15,6 +17,10 @@ export const createTrainingRouter = (
   const router = Router();
   const uploads = new ResumableTrainingMedia(media);
   const photos = new TrainingProgressPhotos(media);
+  const foodPhotos = new TrainingProgressPhotos(media, 'meal');
+  router.get('/nutrition-photos/:id', (req, res, next) => {
+    void foodPhotos.stream(String(req.params.id ?? ''), req.query.token, res).catch(next);
+  });
   router.get('/progress-photos/:id', (req, res, next) => {
     void photos.stream(String(req.params.id ?? ''), req.query.token, res).catch(next);
   });
@@ -49,6 +55,50 @@ export const createTrainingRouter = (
         .catch(next);
     });
   };
+  const nutrition = new NutritionService(service);
+  const coaches = new CoachProfiles(service);
+  endpoint('get', '/coach-profile', (id) => coaches.profile(id));
+  endpoint('get', '/my-coach', (id) => coaches.mine(id));
+  endpoint('put', '/my-coach/rating', (id, req) => coaches.review(id, req.body));
+  endpoint('get', '/nutrition', (id, req) => nutrition.list(id, req.query.date));
+  endpoint('get', '/students/:id/nutrition', (id, req) =>
+    nutrition.list(id, req.query.date, String(req.params.id ?? '')),
+  );
+  endpoint('put', '/nutrition/:id', (id, req) =>
+    nutrition.save(id, String(req.params.id ?? ''), req.body),
+  );
+  endpoint('delete', '/nutrition/:id', (id, req) =>
+    foodPhotos.remove(id, String(req.params.id ?? '')),
+  );
+  endpoint('put', '/nutrition/:id/sharing', (id, req) =>
+    foodPhotos.share(id, String(req.params.id ?? ''), req.body),
+  );
+  endpoint('delete', '/nutrition/:id/photo', (id, req) =>
+    foodPhotos.removePhoto(id, String(req.params.id ?? '')),
+  );
+  endpoint('get', '/nutrition/:id/photo', (id, req) =>
+    foodPhotos.access(id, String(req.params.id ?? '')),
+  );
+  router.put(
+    '/nutrition/:id/photo',
+    raw({ type: ['image/jpeg', 'image/png', 'image/webp'], limit: '10mb' }),
+    (req, res, next) => {
+      void foodPhotos
+        .upload(user(req).userId, String(req.params.id ?? ''), req.body)
+        .then((v) => res.json(v))
+        .catch(next);
+    },
+  );
+  endpoint('get', '/nutrition-templates', (id) => nutrition.templates(id));
+  endpoint('put', '/nutrition-templates/:id', (id, req) =>
+    nutrition.saveTemplate(id, String(req.params.id ?? ''), req.body),
+  );
+  endpoint('delete', '/nutrition-templates/:id', (id, req) =>
+    nutrition.removeTemplate(id, String(req.params.id ?? '')),
+  );
+  endpoint('post', '/nutrition-templates/:id/apply', (id, req) =>
+    nutrition.apply(id, String(req.params.id ?? ''), req.body),
+  );
   endpoint('get', '/lessons/:id/assignments', (id, req) =>
     assignments.recipients(id, String(req.params.id ?? '')),
   );

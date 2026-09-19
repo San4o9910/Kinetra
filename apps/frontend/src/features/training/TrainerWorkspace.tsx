@@ -1,3 +1,4 @@
+import { NutritionDiary } from './NutritionDiary';
 import { AssignedLessons } from './AssignedLessons';
 import { TrainerAttention, TemplatePicker } from './TrainerTools';
 import { ExerciseProgress, Measurements } from './Measurements';
@@ -339,7 +340,10 @@ export const TrainerWorkspace = ({
                 <AssignedLessons lessons={detail.assigned_lessons ?? []} readOnly />
                 <ExerciseProgress plans={detail.plans} />
                 {!detail.student.archived_at && (
-                  <Measurements key={`measurements:${selected}`} studentId={selected} />
+                  <>
+                    <Measurements key={`measurements:${selected}`} studentId={selected} />
+                    <NutritionDiary key={`nutrition:${selected}`} studentId={selected} />
+                  </>
                 )}
                 {detail.plans.length === 0 && (
                   <p className="training-empty">

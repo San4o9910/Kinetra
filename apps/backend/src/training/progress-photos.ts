@@ -8,14 +8,23 @@ import { type TrainingMedia } from './media.js';
 import { trainingId, trainingError } from './service.js';
 const execute = promisify(execFile);
 export class TrainingProgressPhotos {
-  public constructor(private readonly media: TrainingMedia) {}
+  public constructor(
+    private readonly media: TrainingMedia,
+    private readonly kind: 'measurement' | 'meal' = 'measurement',
+  ) {}
+  private get table() {
+    return this.kind === 'meal' ? 'nutrition_entries' : 'training_measurements';
+  }
+  private get prefix() {
+    return this.kind === 'meal' ? 'nutrition' : 'progress';
+  }
   private path(id: string, suffix = '.jpg') {
     if (!this.media.directory) trainingError(503, 'MEDIA_UNAVAILABLE', 'Фото временно недоступны.');
-    return join(this.media.directory, 'progress-' + trainingId(id) + suffix);
+    return join(this.media.directory, this.prefix + '-' + trainingId(id) + suffix);
   }
   private async permitted(user: string, id: string) {
     const r = await this.media.service.pool.query(
-      `SELECT m.* FROM training_measurements m WHERE m.id=$1 AND (m.client_id=$2 OR (m.share_with_trainer AND EXISTS(SELECT 1 FROM training_students s JOIN trainer_profiles t ON t.user_id=s.trainer_id WHERE s.id=m.student_id AND s.trainer_id=$2 AND s.archived_at IS NULL AND t.is_active)))`,
+      `SELECT m.* FROM ${this.table} m WHERE m.id=$1 AND (m.client_id=$2 OR (m.share_with_trainer AND EXISTS(SELECT 1 FROM training_students s JOIN trainer_profiles t ON t.user_id=s.trainer_id WHERE s.id=m.student_id AND s.trainer_id=$2 AND s.archived_at IS NULL AND t.is_active)))`,
       [trainingId(id), user],
     );
     if (!r.rows[0]) trainingError(404, 'MEASUREMENT_UNAVAILABLE', 'Запись недоступна.');
@@ -33,13 +42,13 @@ export class TrainingProgressPhotos {
     return this.media.service.transaction(async (db) => {
       await db.query("SELECT pg_advisory_xact_lock(hashtext('training-progress-photos'))");
       const r = await db.query(
-        'SELECT * FROM training_measurements WHERE id=$1 AND client_id=$2 FOR UPDATE',
+        `SELECT * FROM ${this.table} WHERE id=$1 AND client_id=$2 FOR UPDATE`,
         [trainingId(id), user],
       );
       if (!r.rows[0]) trainingError(404, 'MEASUREMENT_UNAVAILABLE', 'Запись недоступна.');
       if (r.rows[0].photo_id) trainingError(409, 'PHOTO_EXISTS', 'У записи уже есть фото.');
       const quota = await db.query(
-        'SELECT COALESCE(sum(photo_bytes),0)::float8 total,COALESCE(sum(photo_bytes) FILTER(WHERE client_id=$1),0)::float8 own FROM training_measurements',
+        'SELECT COALESCE(sum(photo_bytes),0)::float8 total,COALESCE(sum(photo_bytes) FILTER(WHERE client_id=$1),0)::float8 own FROM (SELECT client_id,photo_bytes FROM training_measurements UNION ALL SELECT client_id,photo_bytes FROM nutrition_entries) photos',
         [user],
       );
       if (
@@ -89,7 +98,7 @@ export class TrainingProgressPhotos {
         const f = await stat(output);
         if (f.size < 1 || f.size > 5 * 1024 ** 2)
           trainingError(400, 'PHOTO_SIZE', 'Фото не удалось уменьшить.');
-        await db.query('UPDATE training_measurements SET photo_id=$2,photo_bytes=$3 WHERE id=$1', [
+        await db.query(`UPDATE ${this.table} SET photo_id=$2,photo_bytes=$3 WHERE id=$1`, [
           id,
           photo,
           f.size,
@@ -109,9 +118,9 @@ export class TrainingProgressPhotos {
     const expires = Math.floor(Date.now() / 1000) + 300;
     const payload = Buffer.from(JSON.stringify({ user, id, expires })).toString('base64url');
     const mac = createHmac('sha256', this.media.secret)
-      .update('training-photo:' + payload)
+      .update((this.kind === 'meal' ? 'nutrition-photo:' : 'training-photo:') + payload)
       .digest('base64url');
-    return { path: `/api/v1/training/progress-photos/${id}?token=${payload}.${mac}` };
+    return { path: `/api/v1/training/${this.prefix}-photos/${id}?token=${payload}.${mac}` };
   }
   public async stream(id: string, token: unknown, res: Response) {
     if (typeof token !== 'string' || token.length > 600)
@@ -119,7 +128,7 @@ export class TrainingProgressPhotos {
     const [payload, mac, ...extra] = token.split('.');
     if (!payload || !mac || extra.length) trainingError(401, 'PHOTO_EXPIRED', 'Обновите фото.');
     const expected = createHmac('sha256', this.media.secret)
-        .update('training-photo:' + payload)
+        .update((this.kind === 'meal' ? 'nutrition-photo:' : 'training-photo:') + payload)
         .digest(),
       actual = Buffer.from(mac, 'base64url');
     if (actual.length !== expected.length || !timingSafeEqual(actual, expected))
@@ -147,10 +156,22 @@ export class TrainingProgressPhotos {
   public async remove(user: string, id: string) {
     return this.media.service.transaction(async (db) => {
       const r = await db.query(
-        'DELETE FROM training_measurements WHERE id=$1 AND client_id=$2 RETURNING photo_id',
+        `DELETE FROM ${this.table} WHERE id=$1 AND client_id=$2 RETURNING photo_id`,
         [trainingId(id), user],
       );
       if (!r.rows[0]) trainingError(404, 'MEASUREMENT_UNAVAILABLE', 'Запись недоступна.');
+      if (r.rows[0].photo_id) await rm(this.path(r.rows[0].photo_id), { force: true });
+      return { saved: true };
+    });
+  }
+  public async removePhoto(user: string, id: string) {
+    return this.media.service.transaction(async (db) => {
+      const r = await db.query(
+        `SELECT photo_id FROM ${this.table} WHERE id=$1 AND client_id=$2 FOR UPDATE`,
+        [trainingId(id), user],
+      );
+      if (!r.rows[0]) trainingError(404, 'MEASUREMENT_UNAVAILABLE', 'Запись недоступна.');
+      await db.query(`UPDATE ${this.table} SET photo_id=NULL,photo_bytes=0 WHERE id=$1`, [id]);
       if (r.rows[0].photo_id) await rm(this.path(r.rows[0].photo_id), { force: true });
       return { saved: true };
     });
@@ -159,8 +180,27 @@ export class TrainingProgressPhotos {
     if (!body || typeof body !== 'object' || !('share' in body) || typeof body.share !== 'boolean')
       trainingError(400, 'INVALID_SHARING', 'Выберите доступ.');
     return this.media.service.transaction(async (db) => {
+      if (this.kind === 'meal' && body.share) {
+        const owned = await db.query(
+          'SELECT id FROM nutrition_entries WHERE id=$1 AND client_id=$2 FOR UPDATE',
+          [trainingId(id), user],
+        );
+        if (!owned.rowCount) trainingError(404, 'MEASUREMENT_UNAVAILABLE', 'Запись недоступна.');
+        const connected = await db.query(
+          'SELECT s.id FROM training_students s JOIN trainer_profiles t ON t.user_id=s.trainer_id WHERE s.client_id=$1 AND s.archived_at IS NULL AND t.is_active FOR SHARE OF s,t',
+          [user],
+        );
+        if (!connected.rowCount)
+          trainingError(409, 'TRAINER_NOT_CONNECTED', 'Сначала подключитесь к тренеру.');
+        // This explicit consent may share an earlier private meal with the current trainer.
+        await db.query(
+          'UPDATE nutrition_entries SET student_id=$3,share_with_trainer=true,revision=revision+1 WHERE id=$1 AND client_id=$2',
+          [id, user, connected.rows[0].id],
+        );
+        return { saved: true };
+      }
       const r = await db.query(
-        'UPDATE training_measurements SET share_with_trainer=$3 WHERE id=$1 AND client_id=$2 RETURNING id',
+        `UPDATE ${this.table} SET share_with_trainer=$3${this.kind === 'meal' ? ',revision=revision+1' : ''} WHERE id=$1 AND client_id=$2 RETURNING id`,
         [trainingId(id), user, body.share],
       );
       if (r.rowCount !== 1) trainingError(404, 'MEASUREMENT_UNAVAILABLE', 'Запись недоступна.');

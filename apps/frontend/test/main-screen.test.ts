@@ -190,7 +190,7 @@ test('base-lessons gate offers preparation and a return to app exploration', () 
   assert.ok(markup.includes('Вернуться к изучению приложения'));
 });
 
-test('tab bar renders four client routes with Trainer and its unread badge', () => {
+test('tab bar renders five client routes with Trainer and its unread badge', () => {
   const markup = renderToStaticMarkup(
     createElement(TabBar, {
       route: appRoutes.chat,
@@ -229,8 +229,8 @@ test('tab bar renders four client routes with Trainer and its unread badge', () 
   );
   assert.match(savingMarkup, /data-testid="tab-bar"[^>]*aria-busy="true"/u);
   assert.equal(savingMarkup.includes('data-testid="tab-chat"'), false);
-  assert.equal((savingMarkup.match(/aria-disabled="true"/gu) ?? []).length, 3);
-  assert.equal((savingMarkup.match(/tabindex="-1"/gu) ?? []).length, 3);
+  assert.equal((savingMarkup.match(/aria-disabled="true"/gu) ?? []).length, 4);
+  assert.equal((savingMarkup.match(/tabindex="-1"/gu) ?? []).length, 4);
 });
 
 test('system Back keeps the saving workout on its canonical history entry', async () => {

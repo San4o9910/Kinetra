@@ -739,3 +739,341 @@
 .lesson-recipient-progress > div {
   min-width: 0;
 }
+/* Shared student diary and coach practice screens. */
+.tab-bar-inner {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.tab-bar-inner.has-chat {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+.trainer-admin-shell {
+  padding-bottom: calc(65px + env(safe-area-inset-bottom));
+}
+.trainer-admin-content {
+  padding-bottom: 0;
+}
+/* The pupil summary and conversation share the available height. */
+.trainer-conversation-pane {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.trainer-conversation-pane > .trainer-client-summary {
+  flex: 0 0 auto;
+  max-height: 35%;
+  overflow: auto;
+}
+.trainer-conversation-pane > .chat-conversation-shell {
+  flex: 1 1 0;
+  height: auto;
+  min-height: 0;
+}
+.trainer-bottom-nav {
+  position: fixed;
+  z-index: 40;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  padding: 8px max(12px, env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--divider);
+  background: var(--surface-inset);
+}
+.trainer-bottom-nav a {
+  min-height: 48px;
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+  align-content: center;
+  text-decoration: none;
+  color: var(--muted);
+  font-size: 13px;
+  border-radius: 12px;
+}
+.trainer-bottom-nav a[aria-current='page'] {
+  color: var(--accent);
+  background: var(--surface-subtle);
+}
+.trainer-bottom-nav svg {
+  width: 24px;
+  height: 24px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.trainer-bottom-nav a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.nutrition-diary {
+  width: 100%;
+}
+.nutrition-date {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 24px;
+  margin: 24px 0;
+}
+.nutrition-diary label,
+.coach-profile label {
+  display: grid;
+  gap: 8px;
+  font-weight: 600;
+}
+.nutrition-diary input:not([type='checkbox']),
+.nutrition-diary select,
+.nutrition-diary textarea,
+.coach-profile input {
+  max-width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 12px;
+  border: 1px solid var(--divider-strong);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+.nutrition-diary .training-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.nutrition-diary input[type='checkbox'] {
+  width: 22px;
+  height: 22px;
+}
+.nutrition-foods {
+  display: grid;
+  gap: 18px;
+}
+.nutrition-food-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 2fr) minmax(70px, 1fr) minmax(90px, 1fr);
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid var(--divider);
+  border-radius: 18px;
+  background: var(--surface-subtle);
+}
+.nutrition-row-actions {
+  grid-column: 1/-1;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.nutrition-row-actions button {
+  font-size: 13px;
+  min-height: 36px;
+}
+.nutrition-template-save {
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+  border: 1px dashed var(--divider-strong);
+  border-radius: 16px;
+}
+.nutrition-template-grid,
+.nutrition-entries {
+  display: grid;
+  gap: 18px;
+}
+.nutrition-template-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
+}
+.nutrition-template-grid article {
+  padding: 18px;
+  border: 1px solid var(--divider);
+  border-radius: 18px;
+  overflow-wrap: anywhere;
+}
+.nutrition-template-grid p {
+  color: var(--muted);
+  font-size: 14px;
+}
+.nutrition-templates summary {
+  font-size: 19px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.nutrition-templates summary span {
+  color: var(--accent);
+  margin-left: 8px;
+}
+.nutrition-portions {
+  padding: 0;
+  list-style: none;
+  margin: 16px 0;
+}
+.nutrition-portions li {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--divider);
+}
+.nutrition-portions li span {
+  overflow-wrap: anywhere;
+}
+.nutrition-portions li strong {
+  white-space: nowrap;
+}
+.nutrition-day-save {
+  display: grid;
+  gap: 12px;
+}
+.nutrition-notice {
+  padding: 16px;
+  border-left: 3px solid var(--accent);
+  background: var(--surface-subtle);
+  border-radius: 0 12px 12px 0;
+}
+.coach-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  padding: 24px 0;
+}
+.coach-metrics div {
+  display: grid;
+  gap: 6px;
+}
+.coach-metrics strong {
+  font-size: clamp(24px, 4vw, 38px);
+  font-weight: 700;
+  color: var(--accent);
+}
+.coach-metrics span {
+  font-size: 13px;
+  color: var(--muted);
+}
+.coach-level-list {
+  display: grid;
+  gap: 14px;
+  margin: 20px 0;
+}
+.coach-level-list div {
+  display: grid;
+  gap: 6px;
+  border-left: 2px solid var(--accent);
+  padding-left: 14px;
+}
+.coach-level-list span {
+  font-size: 14px;
+  color: var(--muted);
+}
+.coach-review fieldset {
+  border: 0;
+  padding: 0;
+}
+.coach-stars {
+  display: flex;
+  gap: 10px;
+  margin: 16px 0;
+}
+.coach-stars label {
+  position: relative;
+  cursor: pointer;
+  padding: 12px;
+  border: 1px solid var(--divider-strong);
+  border-radius: 12px;
+}
+.coach-stars .is-selected {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--surface-subtle);
+}
+.coach-stars input {
+  margin-right: 5px;
+  accent-color: var(--accent);
+}
+.coach-packages {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 28px 0;
+}
+.coach-packages button {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: flex-start;
+  padding: 18px;
+  border: 1px solid var(--divider-strong);
+  border-radius: 20px;
+  background: var(--surface);
+  color: var(--text);
+}
+.coach-packages button[aria-pressed='true'] {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.coach-packages strong {
+  font-size: 23px;
+}
+.coach-packages b {
+  color: var(--accent);
+  font-size: 21px;
+}
+.coach-packages small {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 400;
+}
+.coach-packages span {
+  font-size: 13px;
+}
+.coach-quote {
+  display: grid;
+  gap: 12px;
+  padding: 24px;
+  margin: 24px 0;
+  background: var(--surface-subtle);
+  border-radius: 20px;
+}
+.coach-quote > strong {
+  font-size: 36px;
+}
+.coach-quote small {
+  font-size: 16px;
+  font-weight: 400;
+}
+@media (max-width: 760px) {
+  .coach-packages {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .nutrition-food-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    padding: 14px;
+  }
+  .nutrition-food-row > label:first-child {
+    grid-column: 1/-1;
+  }
+  .nutrition-diary {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  .nutrition-diary .training-heading {
+    align-items: flex-start;
+  }
+  .nutrition-diary h1 {
+    font-size: 30px;
+  }
+  .coach-stars {
+    gap: 6px;
+  }
+  .coach-stars label {
+    padding: 8px;
+  }
+  .trainer-admin-header nav:empty {
+    display: none;
+  }
+}

@@ -3,7 +3,7 @@ import React, { type MouseEvent, type ReactNode } from 'react';
 import { appRoutes, type AppRoute } from '../../routing';
 import { chatFabAccessibleName, chatUnreadBadge } from '../chat/model';
 
-type TabIconName = 'home' | 'calendar' | 'progress' | 'chat';
+type TabIconName = 'home' | 'calendar' | 'progress' | 'chat' | 'food';
 
 interface TabItem {
   readonly route: AppRoute;
@@ -26,10 +26,17 @@ const tabItems: readonly TabItem[] = [
     testId: 'tab-progress',
     icon: 'progress',
   },
+  { route: appRoutes.nutrition, label: 'Питание', testId: 'tab-nutrition', icon: 'food' },
   { route: appRoutes.chat, label: 'Чат', testId: 'tab-chat', icon: 'chat' },
 ];
 
 const TabIcon = ({ name }: { readonly name: TabIconName }): ReactNode => {
+  if (name === 'food')
+    return (
+      <svg className="tab-bar-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 3v6a3 3 0 0 0 6 0V3M7 3v18M17 3v18M17 3c5 3 5 9 0 9" />
+      </svg>
+    );
   if (name === 'home') {
     return React.createElement(
       'svg',
@@ -83,7 +90,12 @@ export const TabBar = ({
   chatUnreadCount,
   onNavigate,
 }: TabBarProps): ReactNode => {
-  const activeRoute = route === appRoutes.assistant ? appRoutes.chat : route;
+  const activeRoute =
+    route === appRoutes.assistant
+      ? appRoutes.chat
+      : route === appRoutes.myTraining
+        ? appRoutes.home
+        : route;
   const visibleItems = showChat
     ? tabItems
     : tabItems.filter((item) => item.route !== appRoutes.chat);
