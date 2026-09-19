@@ -291,12 +291,20 @@ export const runNutritionCoachingBrowser = async (
   };
   await client.navigate('/chat');
   await h.waitFor('chat opens before onboarding', () => client.exists('chat-composer'));
+  await h.waitFor(
+    'student realtime connection ready',
+    async () => (await client.text('chat-connection-status')) === 'Подключено',
+  );
   await client.setValue('chat-message-input', 'Как заменить упражнение?');
   await client.click('chat-send-button');
   await h.waitFor('student message saved', () => fixture.messages.length === 1);
   await trainer.navigate('/trainer/chats/' + fixture.conversationId);
   await h.waitFor('trainer sees student message', async () =>
     (await trainer.bodyText()).includes('Как заменить упражнение?'),
+  );
+  await h.waitFor(
+    'trainer realtime connection ready',
+    async () => (await trainer.text('chat-connection-status')) === 'Подключено',
   );
   await trainer.setValue('chat-message-input', 'Пришлю замену в программе.');
   await trainer.click('chat-send-button');
