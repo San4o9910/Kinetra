@@ -12,14 +12,14 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: d99d614194af38f027ea24dd7801b76d6ee9f74d
+          ref: 6f036dccd0bd4513f9ca8b2fd712069758ccb335
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
       - name: Verify exact candidate and install pinned dependencies
         run: |
-          test "$(git rev-parse HEAD)" = d99d614194af38f027ea24dd7801b76d6ee9f74d
+          test "$(git rev-parse HEAD)" = 6f036dccd0bd4513f9ca8b2fd712069758ccb335
           sha256sum --check --quiet MANIFEST.sha256
           npm ci
       - name: Install the same media decoder as CI
@@ -35,6 +35,13 @@ jobs:
           for call in ['await runBrowserScenario();','await runT12BrowserScenario();','await runTrainerApplicationBrowserScenario();']:
               assert s.count(call)==1;s=s.replace(call,'// Other suites remain mandatory in release CI.')
           p.write_text(s)
+          p=Path('scripts/test-nutrition-coaching-browser.mjs');s=p.read_text()
+          needle="    assert.ok(\n      metrics.composerBottom"
+          assert needle in s
+          diagnostic="""    console.log('KINETRA_CHAT_LAYOUT_DIAGNOSTIC='+JSON.stringify({role, nodes:await context.cdp.evaluate(`(() => {let n=document.querySelector('[data-testid=chat-composer]');const a=[];while(n){const r=n.getBoundingClientRect(),s=getComputedStyle(n);a.push({class:n.className,top:r.top,bottom:r.bottom,height:s.height,minHeight:s.minHeight,padding:s.padding,display:s.display,gridRows:s.gridTemplateRows,overflow:s.overflow});n=n.parentElement;}return a;})()`)}));
+              if(metrics.composerBottom>metrics.navTop+1) await capture(context, 'chat-'+role);
+          """
+          s=s.replace(needle,diagnostic+needle);p.write_text(s)
           PY
           for attempt in 1; do
             node scripts/test-frontend-browser.mjs
