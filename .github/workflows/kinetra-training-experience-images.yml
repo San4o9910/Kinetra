@@ -21,14 +21,14 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  APPROVED_APP_COMMIT: c57cc5d54e87bb2468a9d84630557d4f52ec57d1
-  APPROVED_BASE_COMMIT: cd6bd3c853caaea4a262e7821776461cb691f504
+  APPROVED_APP_COMMIT: 125af45560e86fbe5f47837ffabe813e4aebfb4d
+  APPROVED_BASE_COMMIT: badac80ca01fa84e9ba246b763f018f3b6277d3d
   QUALIFIED_RUNTIME_COMMIT: 73b665065e00a5b375e90f701373b3e0856a0386
-  APPROVED_MERGE_COMMIT: 0f177341e8c3028b6e60ac422ffd534825cc5da3
-  RELEASE_MERGE_COMMIT: badac80ca01fa84e9ba246b763f018f3b6277d3d
+  APPROVED_MERGE_COMMIT: 83f086d7b92658009dd898a4c66412d520f6c14b
+  RELEASE_MERGE_COMMIT: 9a283868f893012f87ad1d8daf54aefb29d3ca36
   RUNTIME_IMAGE: ghcr.io/san4o9910/kinetra-backend@sha256:9138a6408442b847ca771690053870880cee831769919aaf2a2dc858d52e8362
-  APPROVED_HEAD_RUN: '35386025095'
-  APPROVED_MERGE_RUN: '35386029688'
+  APPROVED_HEAD_RUN: '35408983368'
+  APPROVED_MERGE_RUN: '35408985588'
   PUBLISH_TO_GHCR: 'true'
   PUBLIC_ORIGIN: https://80.68.156.131
   NODE_TAG: docker.io/library/node:22-alpine3.24
@@ -87,10 +87,10 @@ jobs:
                   raw = response.read(16 * 1024 * 1024 + 1)
               assert len(raw) <= 16 * 1024 * 1024
               return raw.decode('utf-8-sig')
-          pr = get('/pulls/27')
+          pr = get('/pulls/28')
           assert pr['state'] == 'closed' and pr['merged'] and pr['merge_commit_sha'] == os.environ['RELEASE_MERGE_COMMIT']
           assert pr['head']['repo']['full_name'] == repo
-          assert pr['head']['ref'] == 'feature/lesson-sharing-brand-intro'
+          assert pr['head']['ref'] == 'feature/nutrition-coach-plans'
           assert pr['head']['sha'] == app
           released = get('/commits/' + os.environ['RELEASE_MERGE_COMMIT'])
           assert [p['sha'] for p in released['parents']] == [base, app]
@@ -109,7 +109,7 @@ jobs:
               # GitHub may clear run.pull_requests after merge; authenticated checkout logs below
               # still bind the historical merge to the exact two approved parents.
               if event == 'pull_request' and run['pull_requests']:
-                  assert any(p['number'] == 27 and p['head']['sha'] == app and p['base']['sha'] == base
+                  assert any(p['number'] == 28 and p['head']['sha'] == app and p['base']['sha'] == base
                              for p in run['pull_requests'])
               jobs = get('/actions/runs/' + run_id + '/attempts/' + str(run['run_attempt']) + '/jobs?per_page=100')
               assert jobs['total_count'] == 3
@@ -127,6 +127,8 @@ jobs:
                   if job['name'] == 'Unit & E2E Tests':
                       assert re.search(prefix + r'(?:# )?KINETRA_TRAINING_EXPERIENCE_POSTGRES=PASS\r?$', output, re.M)
                       assert re.search(prefix + r'KINETRA_TRAINING_EXPERIENCE_BROWSER=PASS\r?$', output, re.M)
+                      for marker in ('KINETRA_NUTRITION_COACH_CHAT_POSTGRES', 'KINETRA_CHAT_BEFORE_ONBOARDING_ROUNDTRIP_BROWSER', 'KINETRA_NUTRITION_TEMPLATES_PHOTOS_PACKAGES_BROWSER'):
+                          assert re.search(prefix + r'(?:# )?' + marker + r'=PASS\r?$', output, re.M)
                   checked_jobs.append({'id': job['id'], 'name': job['name'], 'semantics': semantics[0], 'checkout': checkout[0]})
               evidence['runs'].append({'kind': kind, 'id': int(run_id), 'attempt': run['run_attempt'], 'url': run['html_url'], 'jobs': checked_jobs})
           path = pathlib.Path(os.environ['RUNNER_TEMP']) / 'kinetra-image-evidence'
@@ -189,7 +191,7 @@ jobs:
           set -euo pipefail
           sha256sum --check --strict <<'SHA256'
           61fc0550edbc533938b1850ad17aa6779c1d2fa7122db08296748acfe43924ea  .kinetra-control/ops/timeweb/verify-launch-provenance.py
-          55ed38e9634426ac2a0e2dd044b7c13bac07943ab9c5ebfc630892a11933bc33  .kinetra-control/ops/timeweb/training-experience-package.py
+          ef3323085901323faa1179cdeec2f61c5bd7db29ef40bc57d304ac21c99bb16a  .kinetra-control/ops/timeweb/training-experience-package.py
           SHA256
           python3 -B - <<'PY'
           import json, os, runpy, urllib.request
@@ -616,7 +618,7 @@ jobs:
           ba9d7f7d4a5475de9a4401be60694bcbeab1e62308d2f304454360fc72d2267e  .kinetra-control/ops/timeweb/upstream-disposition.py
           85f25de920ccffb1878a56b5be6132c0d3ab99a0d21125112575ba8efffd3c82  .kinetra-control/ops/timeweb/test-upstream-disposition.py
           61fc0550edbc533938b1850ad17aa6779c1d2fa7122db08296748acfe43924ea  .kinetra-control/ops/timeweb/verify-launch-provenance.py
-          55ed38e9634426ac2a0e2dd044b7c13bac07943ab9c5ebfc630892a11933bc33  .kinetra-control/ops/timeweb/training-experience-package.py
+          ef3323085901323faa1179cdeec2f61c5bd7db29ef40bc57d304ac21c99bb16a  .kinetra-control/ops/timeweb/training-experience-package.py
           SHA256
           PYTHONDONTWRITEBYTECODE=1 python3 .kinetra-control/ops/timeweb/test-scan-upstream-media.py
           PYTHONDONTWRITEBYTECODE=1 python3 .kinetra-control/ops/timeweb/test-upstream-disposition.py
