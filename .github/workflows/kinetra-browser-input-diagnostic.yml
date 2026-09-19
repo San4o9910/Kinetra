@@ -12,19 +12,19 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: c57cc5d54e87bb2468a9d84630557d4f52ec57d1
+          ref: 8939f2aaf4fd60b30f0c6750bec440a16a790cb0
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
       - name: Verify exact candidate and install pinned dependencies
         run: |
-          test "$(git rev-parse HEAD)" = c57cc5d54e87bb2468a9d84630557d4f52ec57d1
+          test "$(git rev-parse HEAD)" = 8939f2aaf4fd60b30f0c6750bec440a16a790cb0
           sha256sum --check --quiet MANIFEST.sha256
           npm ci
       - name: Install the same media decoder as CI
         run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends ffmpeg
-      - name: Verify lesson assignment and visible animation stages
+      - name: Verify trainer-student chat, nutrition templates, photos and packages
         env:
           VITE_API_URL: https://api.ci.kinetra.test
           KINETRA_CAPTURE_PREVIEW_LOG: 'true'
@@ -39,7 +39,7 @@ jobs:
           for attempt in 1; do
             node scripts/test-frontend-browser.mjs
           done
-      - name: Retain animation previews
+      - name: Retain nutrition and trainer previews
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
