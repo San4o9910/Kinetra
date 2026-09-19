@@ -1039,8 +1039,8 @@
     grid-column: 1/-1;
   }
   .nutrition-diary {
-    padding-left: 0;
-    padding-right: 0;
+    padding-left: 16px;
+    padding-right: 16px;
   }
   .nutrition-diary .training-heading {
     align-items: flex-start;

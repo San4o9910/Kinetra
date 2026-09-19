@@ -142,7 +142,7 @@ export const NutritionDiary = ({ studentId }: { studentId?: string }) => {
         </div>
         {!studentId && (
           <button type="button" className="primary-button" disabled={busy} onClick={() => start()}>
-            ＋ Приём пищи
+            + Приём пищи
           </button>
         )}
       </div>
@@ -393,10 +393,7 @@ export const NutritionDiary = ({ studentId }: { studentId?: string }) => {
         </form>
       )}
       {!studentId && (
-        <details
-          className="training-card nutrition-templates"
-          open={templates.length > 0 || undefined}
-        >
+        <details className="training-card nutrition-templates">
           <summary>
             Мои порции и рационы <span>{templates.length}</span>
           </summary>

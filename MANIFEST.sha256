@@ -342,7 +342,7 @@ c2a7b358c64250ec6770863a5c655a5b531e5e4a34bed7bbbbaf0f382da3c54a  ./apps/fronten
 cf5af212257b8faa563c11df55b9fefe729c3d64b90f5b4a1b43fee3e9c7b08a  ./apps/frontend/src/features/training/LessonSharing.tsx
 111a6c6ff462af6a0555684da19ac5ebe2ab6ad12dad9afcf36c4138820fa0ab  ./apps/frontend/src/features/training/Measurements.tsx
 49ee83c8db75e824b5cab39482ea9f490692e388c441b4fa2e157929d26570a5  ./apps/frontend/src/features/training/MyTraining.tsx
-99398c44d02124dffb1d61dde9ef2382f28db9808aabdad861e6bc3769b73b12  ./apps/frontend/src/features/training/NutritionDiary.tsx
+b9233c11f8fcdcbe3f1751fc9217ff73aff36885d883ef99d617820da91ca26b  ./apps/frontend/src/features/training/NutritionDiary.tsx
 32d631297ca7feea02e8498fd16e8525b3d1cb02286fd83f9b08f82932faed1f  ./apps/frontend/src/features/training/PersonalTraining.tsx
 c0540c067352a6fe91556eeb05e0a9b6a2342a625e9cea390615b0f98db5fdce  ./apps/frontend/src/features/training/PlanEditor.tsx
 0f60ca6d315199655d1e1f55dd2ea555cfffa00efcc39c92e8db16bcc6a1e254  ./apps/frontend/src/features/training/ReminderSettings.tsx
@@ -354,7 +354,7 @@ bca166c0618aaa4eceb8bcce6c1eabb1f7cf2a252727e1228deb90ec8f11fe2d  ./apps/fronten
 72a8b60fd5cb9bf6a3616fef0e03062a2f72efd79f238dd606f80546011e80ad  ./apps/frontend/src/features/training/WorkoutSession.tsx
 7381dc3a6952a6bdad6c90a0040e3318142484c6c63832777c423f5b406bb3ae  ./apps/frontend/src/features/training/api.ts
 135daf2faab86e8e9bef5f7dbf09a10581a44f687de6381a2f1f891782dc6820  ./apps/frontend/src/features/training/drafts.ts
-b5399ee645adbee79fff69a4521ae05cbd91c67bd314d66ce247d8d4d82e6525  ./apps/frontend/src/features/training/training.css
+9626fe061b1c3ee3c9cc60ee1f994d8eea6d84d773addb6a6e7474dad6223953  ./apps/frontend/src/features/training/training.css
 5d48d620f85a1e5f1474bee60dde745b675565620553d0a70096388b3e7d1fb7  ./apps/frontend/src/hooks/useOnlineStatus.ts
 0f29cd180dfb9a144cf7ce35dd87285762101c324cfe75787111f31183161541  ./apps/frontend/src/lib/api.ts
 db4c710477295ee61a8a8049b1d9514458a13591a766c46bb9e83ced3603c680  ./apps/frontend/src/main.tsx
@@ -487,7 +487,7 @@ d16d01c4778cc1b7b5f6695a8ad979bc82ed5d3ecec2a77ac579f3bda9e4210f  ./scripts/loca
 aa40f7eec1b859bca8bfe25c88bb945223365e3490c3b675f3b837afda357737  ./scripts/prepare-local-demo.mjs
 bd552b5c0ba879666a9fecf9a8bba3b30f5b1223fbc1cf69fef30a5c6437aaf2  ./scripts/run-local-demo.mjs
 eef3e70c587946f66441fe8ffeb2278489633512cae15360b598f5a749633a2b  ./scripts/test-frontend-browser.mjs
-d3f104a0541bd4421de66201e0560e778138ca720ac332dd735c105b27236ea6  ./scripts/test-nutrition-coaching-browser.mjs
+4f3efb8018b2672f0d4dc6c48e2cd72f246758b1164b062aaed08e594b8b41b3  ./scripts/test-nutrition-coaching-browser.mjs
 851d02d74a7ad70dc92d493f658d506c4c3e060e770000c5abe2b48708cf6652  ./scripts/test-trainer-workspace-browser.mjs
 6703636877be934ce7469d330a30ef05134c0c95746a0afc35d9f592b249ccc7  ./scripts/verify-project.mjs
 2b67887209f3334ebdc96426f5c2cb87480fb85ff2f75c0d42b0a944dae7922a  ./tsconfig.base.json

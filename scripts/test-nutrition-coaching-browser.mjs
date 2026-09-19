@@ -313,10 +313,22 @@ export const runNutritionCoachingBrowser = async (
     ),
     'fixed',
   );
+  for (const context of [trainer, client]) {
+    await context.setViewport(390, 844);
+    assert.equal(
+      await context.cdp.evaluate(`(() => {
+      const composer=document.querySelector('[data-testid=chat-composer]').getBoundingClientRect();
+      const nav=document.querySelector('.trainer-bottom-nav, .tab-bar').getBoundingClientRect();
+      return composer.bottom<=nav.top+1 && composer.top>=0;
+    })()`),
+      true,
+      'Bottom navigation must not cover the chat composer',
+    );
+  }
   console.log('KINETRA_CHAT_BEFORE_ONBOARDING_ROUNDTRIP_BROWSER=PASS');
   await client.navigate('/nutrition');
   await h.waitFor('nutrition diary', () => client.exists('nutrition-diary'));
-  await clickReady(client, '＋ Приём пищи');
+  await clickReady(client, '+ Приём пищи');
   await fill(client, 'Продукт 1', 'Рис варёный');
   await fill(client, 'Количество', '150');
   await clickReady(client, 'Сохранить порцию');
@@ -359,6 +371,7 @@ export const runNutritionCoachingBrowser = async (
   await fill(client, 'Название рациона', 'День с тренировкой');
   await clickReady(client, 'Сохранить рацион на день');
   await h.waitFor('ration template persisted', () => fixture.templates.length === 3);
+  await client.cdp.evaluate("document.querySelector('.nutrition-templates').open=true");
   const day = fixture.meals[0].recorded_date;
   await clickReady(client, `Добавить в день ${day.split('-').reverse().join('.')}`);
   await h.waitFor(
@@ -367,6 +380,9 @@ export const runNutritionCoachingBrowser = async (
   );
   assert.equal(fixture.meals[1].share_with_trainer, false);
   assert.equal(fixture.meals[1].photo_id, null);
+  await h.waitFor('two food entries rendered after template application', () =>
+    client.cdp.evaluate("document.querySelectorAll('.nutrition-entry').length===2"),
+  );
   await clickReady(client, 'Закрыть доступ тренеру');
   await h.waitFor('meal consent revoked', () => !fixture.meals[0].share_with_trainer);
   await trainer.navigate('/trainer/students');
