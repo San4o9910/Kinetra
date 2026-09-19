@@ -746,8 +746,11 @@
 .tab-bar-inner.has-chat {
   grid-template-columns: repeat(5, minmax(0, 1fr));
 }
+.trainer-admin-shell {
+  padding-bottom: calc(65px + env(safe-area-inset-bottom));
+}
 .trainer-admin-content {
-  padding-bottom: calc(100px + env(safe-area-inset-bottom));
+  padding-bottom: 0;
 }
 .trainer-bottom-nav {
   position: fixed;

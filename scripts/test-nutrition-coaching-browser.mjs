@@ -313,16 +313,22 @@ export const runNutritionCoachingBrowser = async (
     ),
     'fixed',
   );
-  for (const context of [trainer, client]) {
+  for (const [role, context] of [
+    ['trainer', trainer],
+    ['student', client],
+  ]) {
     await context.setViewport(390, 844);
-    assert.equal(
-      await context.cdp.evaluate(`(() => {
+    await context.cdp.evaluate(
+      'new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+    );
+    const metrics = await context.cdp.evaluate(`(() => {
       const composer=document.querySelector('[data-testid=chat-composer]').getBoundingClientRect();
       const nav=document.querySelector('.trainer-bottom-nav, .tab-bar').getBoundingClientRect();
-      return composer.bottom<=nav.top+1 && composer.top>=0;
-    })()`),
-      true,
-      'Bottom navigation must not cover the chat composer',
+      return {composerTop:composer.top, composerBottom:composer.bottom, navTop:nav.top};
+    })()`);
+    assert.ok(
+      metrics.composerBottom <= metrics.navTop + 1 && metrics.composerTop >= 0,
+      `${role} chat composer must be visible: ${JSON.stringify(metrics)}`,
     );
   }
   console.log('KINETRA_CHAT_BEFORE_ONBOARDING_ROUNDTRIP_BROWSER=PASS');
