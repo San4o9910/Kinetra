@@ -487,7 +487,7 @@ d16d01c4778cc1b7b5f6695a8ad979bc82ed5d3ecec2a77ac579f3bda9e4210f  ./scripts/loca
 aa40f7eec1b859bca8bfe25c88bb945223365e3490c3b675f3b837afda357737  ./scripts/prepare-local-demo.mjs
 bd552b5c0ba879666a9fecf9a8bba3b30f5b1223fbc1cf69fef30a5c6437aaf2  ./scripts/run-local-demo.mjs
 eef3e70c587946f66441fe8ffeb2278489633512cae15360b598f5a749633a2b  ./scripts/test-frontend-browser.mjs
-af48550fe6cc6a76cb3ad5f306b56d495009d91dfc6f47258cfa9f1a2ab3d45f  ./scripts/test-nutrition-coaching-browser.mjs
+d46dab6c98da2a1b7c06d76271d057a3275329921d24a80f5371d979035c6a55  ./scripts/test-nutrition-coaching-browser.mjs
 851d02d74a7ad70dc92d493f658d506c4c3e060e770000c5abe2b48708cf6652  ./scripts/test-trainer-workspace-browser.mjs
 6703636877be934ce7469d330a30ef05134c0c95746a0afc35d9f592b249ccc7  ./scripts/verify-project.mjs
 2b67887209f3334ebdc96426f5c2cb87480fb85ff2f75c0d42b0a944dae7922a  ./tsconfig.base.json

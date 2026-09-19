@@ -296,7 +296,8 @@ export const runNutritionCoachingBrowser = async (
     async () => (await client.text('chat-connection-status')) === 'Подключено',
   );
   await client.setValue('chat-message-input', 'Как заменить упражнение?');
-  await client.click('chat-send-button');
+  await h.waitFor('student send enabled', async () => !(await client.disabled('chat-send-button')));
+  await client.trustedClick('chat-send-button');
   await h.waitFor('student message saved', () => fixture.messages.length === 1);
   await trainer.navigate('/trainer/chats/' + fixture.conversationId);
   await h.waitFor('trainer sees student message', async () =>
@@ -307,7 +308,12 @@ export const runNutritionCoachingBrowser = async (
     async () => (await trainer.text('chat-connection-status')) === 'Подключено',
   );
   await trainer.setValue('chat-message-input', 'Пришлю замену в программе.');
-  await trainer.click('chat-send-button');
+  await h.waitFor(
+    'trainer send enabled',
+    async () => !(await trainer.disabled('chat-send-button')),
+  );
+  await trainer.trustedClick('chat-send-button');
+  await h.waitFor('trainer reply saved', () => fixture.messages.length === 2);
   await h.waitFor('student receives live reply', async () =>
     (await client.bodyText()).includes('Пришлю замену в программе.'),
   );
