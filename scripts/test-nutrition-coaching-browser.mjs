@@ -289,6 +289,21 @@ export const runNutritionCoachingBrowser = async (
     if (process.env.KINETRA_CAPTURE_PREVIEW_LOG === 'true')
       console.log('KINETRA_COACHING_PREVIEW=' + JSON.stringify({ name, data: shot.data }));
   };
+  const assertChatLayout = async (role, context) => {
+    await context.setViewport(390, 844);
+    await context.cdp.evaluate(
+      'new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
+    );
+    const metrics = await context.cdp.evaluate(`(() => {
+      const composer=document.querySelector('[data-testid=chat-composer]').getBoundingClientRect();
+      const nav=document.querySelector('.trainer-bottom-nav, .tab-bar').getBoundingClientRect();
+      return {composerTop:composer.top, composerBottom:composer.bottom, navTop:nav.top};
+    })()`);
+    assert.ok(
+      metrics.composerBottom <= metrics.navTop + 1 && metrics.composerTop >= 0,
+      `${role} chat composer must be visible: ${JSON.stringify(metrics)}`,
+    );
+  };
   await client.navigate('/chat');
   await h.waitFor('chat opens before onboarding', () => client.exists('chat-composer'));
   await h.waitFor(
@@ -307,6 +322,10 @@ export const runNutritionCoachingBrowser = async (
     'trainer realtime connection ready',
     async () => (await trainer.text('chat-connection-status')) === 'Подключено',
   );
+  await assertChatLayout('trainer before interaction', trainer);
+  await trainer.cdp.evaluate("document.querySelector('.trainer-client-summary').open=true");
+  await assertChatLayout('trainer with summary expanded', trainer);
+  await trainer.cdp.evaluate("document.querySelector('.trainer-client-summary').open=false");
   await trainer.setValue('chat-message-input', 'Пришлю замену в программе.');
   await h.waitFor(
     'trainer send enabled',
@@ -327,24 +346,8 @@ export const runNutritionCoachingBrowser = async (
     ),
     'fixed',
   );
-  for (const [role, context] of [
-    ['trainer', trainer],
-    ['student', client],
-  ]) {
-    await context.setViewport(390, 844);
-    await context.cdp.evaluate(
-      'new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
-    );
-    const metrics = await context.cdp.evaluate(`(() => {
-      const composer=document.querySelector('[data-testid=chat-composer]').getBoundingClientRect();
-      const nav=document.querySelector('.trainer-bottom-nav, .tab-bar').getBoundingClientRect();
-      return {composerTop:composer.top, composerBottom:composer.bottom, navTop:nav.top};
-    })()`);
-    assert.ok(
-      metrics.composerBottom <= metrics.navTop + 1 && metrics.composerTop >= 0,
-      `${role} chat composer must be visible: ${JSON.stringify(metrics)}`,
-    );
-  }
+  await assertChatLayout('trainer', trainer);
+  await assertChatLayout('student', client);
   console.log('KINETRA_CHAT_BEFORE_ONBOARDING_ROUNDTRIP_BROWSER=PASS');
   await client.navigate('/nutrition');
   await h.waitFor('nutrition diary', () => client.exists('nutrition-diary'));

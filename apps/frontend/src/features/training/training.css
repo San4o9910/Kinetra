@@ -752,6 +752,22 @@
 .trainer-admin-content {
   padding-bottom: 0;
 }
+/* The pupil summary and conversation share the available height. */
+.trainer-conversation-pane {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.trainer-conversation-pane > .trainer-client-summary {
+  flex: 0 0 auto;
+  max-height: 35%;
+  overflow: auto;
+}
+.trainer-conversation-pane > .chat-conversation-shell {
+  flex: 1 1 0;
+  height: auto;
+  min-height: 0;
+}
 .trainer-bottom-nav {
   position: fixed;
   z-index: 40;
