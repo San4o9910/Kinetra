@@ -121,6 +121,7 @@ export const runMarketplaceBrowser = async (h, trainer, fixture, fill, clickRead
   };
   try {
     guest = await h.launchT12BrowserContext(dir, 390, 844);
+    await h.waitFor('fresh guest login loaded', () => guest.exists('login-screen'));
     await guest.navigate('/catalog');
     await h.waitFor('guest empty catalogue', () => guest.exists('market-catalogue'));
     await h.waitFor(
