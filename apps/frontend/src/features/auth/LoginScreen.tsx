@@ -1,3 +1,4 @@
+import { KineticMark } from '../navigation/KineticMark';
 import { useState, type FormEvent, type ReactNode } from 'react';
 import type { MeResponse } from '@kinetra/shared';
 
@@ -50,7 +51,7 @@ export const LoginScreen = ({
       <section className="auth-card" aria-labelledby="login-title">
         <div className="survey-brand">
           <span className="survey-brand-mark" aria-hidden="true">
-            K
+            <KineticMark />
           </span>
           <span>KINETRA</span>
         </div>

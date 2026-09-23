@@ -16,6 +16,8 @@ on:
         feature/training-experience,
         feature/lesson-sharing-brand-intro,
         feature/nutrition-coach-plans,
+        feature/cinematic-brand-signature,
+        feature/marketplace-v1,
       ]
   pull_request:
     branches:
@@ -259,6 +261,8 @@ jobs:
             exit 1
           fi
           grep -F 'KINETRA_NUTRITION_COACH_CHAT_POSTGRES=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_MARKETPLACE_CATALOGUE_POSTGRES=PASS' /tmp/kinetra-test.log
+          grep -F 'KINETRA_MARKETPLACE_CATALOGUE_BROWSER=PASS' /tmp/kinetra-test.log
           grep -F 'KINETRA_CHAT_BEFORE_ONBOARDING_ROUNDTRIP_BROWSER=PASS' /tmp/kinetra-test.log
           grep -F 'KINETRA_NUTRITION_TEMPLATES_PHOTOS_PACKAGES_BROWSER=PASS' /tmp/kinetra-test.log
           grep -F 'KINETRA_TRAINING_EXPERIENCE_POSTGRES=PASS' /tmp/kinetra-test.log
@@ -348,6 +352,7 @@ jobs:
           grep -E '^KINETRA_FREE_BETA_BROWSER_E2E=PASS$' /tmp/kinetra-test.log
           grep -E '^KINETRA_PASSWORD_RECOVERY_BROWSER_E2E=PASS$' /tmp/kinetra-test.log
           grep -E '^KINETRA_EMAIL_VERIFICATION_BROWSER_E2E=PASS$' /tmp/kinetra-test.log
+          grep -F 'KINETRA_CINEMATIC_SIGNATURE_BROWSER=PASS' /tmp/kinetra-test.log
           node --input-type=module <<'JS_SUITE_EVIDENCE'
           import assert from 'node:assert/strict';
           import { readFileSync } from 'node:fs';
@@ -397,6 +402,15 @@ jobs:
         with:
           name: lesson-sharing-preview
           path: artifacts/lesson-sharing/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload marketplace previews
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: marketplace-preview
+          path: artifacts/marketplace/
           if-no-files-found: ignore
           retention-days: 7
 

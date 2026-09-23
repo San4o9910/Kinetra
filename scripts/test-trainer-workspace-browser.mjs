@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
+import { marketplaceFixture, runMarketplaceBrowser } from './test-marketplace-browser.mjs';
 
 export const runTrainerWorkspaceBrowser = async (h) => {
   const trainerId = '00000000-0000-4000-8000-000000000301',
@@ -64,6 +65,7 @@ export const runTrainerWorkspaceBrowser = async (h) => {
         ]
       : [];
   const accounts = new Map();
+  const marketplace = marketplaceFixture(h, trainerId);
   const person = (role) => ({
     ...h.profile,
     account_role: role,
@@ -121,6 +123,7 @@ export const runTrainerWorkspaceBrowser = async (h) => {
       h.json(res, 200, { can_review: false });
       return;
     }
+    if (await marketplace.handle(req, res, role)) return;
     if (await nutrition.handle(req, res, role)) return;
     if (pathname === '/api/v1/settings/subscription') {
       h.json(res, 200, {
@@ -637,14 +640,30 @@ export const runTrainerWorkspaceBrowser = async (h) => {
       (await client.bodyText()).includes('Воспроизвести урок'),
     );
     await client.setViewport(390, 844);
-    await clickReady(client, '▶ Воспроизвести урок');
+    await h.waitFor('lesson launch ready after access request', () =>
+      client.exists('lesson-start'),
+    );
+    await client.trustedClick('lesson-start');
     await h.waitFor('brand intro starts', () =>
       client.cdp.evaluate("!!document.querySelector('.kinetra-video-intro')"),
     );
     const started = Date.now();
+    await h.waitFor('signature starts from user gesture', () =>
+      client.cdp.evaluate(
+        "(() => {const a=document.querySelector('[data-testid=intro-audio]');return a && !a.paused && a.currentTime > 0 && a.readyState >= 2;})()",
+      ),
+    );
     const artifact = path.join(process.cwd(), 'artifacts/lesson-sharing');
     await mkdir(artifact, { recursive: true });
-    for (const phase of ['drop', 'bounce', 'draw', 'word', 'gather', 'split']) {
+    for (const phase of [
+      'charge',
+      'strike',
+      'sculpt',
+      'reveal',
+      'signature',
+      'tension',
+      'release',
+    ]) {
       await h.waitFor(`intro phase ${phase}`, () =>
         client.cdp.evaluate(
           `document.querySelector('.kinetra-video-intro svg')?.dataset.phase===${JSON.stringify(phase)}`,
@@ -653,7 +672,15 @@ export const runTrainerWorkspaceBrowser = async (h) => {
       await new Promise((resolve) =>
         setTimeout(
           resolve,
-          { drop: 500, bounce: 350, draw: 1200, word: 350, gather: 700, split: 400 }[phase],
+          {
+            charge: 350,
+            strike: 150,
+            sculpt: 200,
+            reveal: 100,
+            signature: 450,
+            tension: 100,
+            release: 150,
+          }[phase],
         ),
       );
       await client.cdp.evaluate(
@@ -677,16 +704,33 @@ export const runTrainerWorkspaceBrowser = async (h) => {
     // Reopen: keyboard-operable skip, then reduced motion omits the decorative sequence.
     await clickReady(client, 'Закрыть урок');
     await clickReady(client, 'Смотреть урок');
-    await clickReady(client, '▶ Воспроизвести урок');
+    await h.waitFor('lesson launch ready after access request', () =>
+      client.exists('lesson-start'),
+    );
+    await client.trustedClick('lesson-start');
     await h.waitFor('skip available', () =>
-      client.cdp.evaluate("!!document.querySelector('.kinetra-intro-caption button')"),
+      client.cdp.evaluate("!!document.querySelector('.kinetra-intro-skip')"),
     );
     await client.cdp.send('Page.bringToFront');
-    await client.cdp.evaluate(
-      "document.querySelector('.kinetra-intro-caption button').dataset.testid='intro-skip'",
+    assert.ok(
+      await client.cdp.evaluate(
+        "[...document.querySelectorAll('.kinetra-intro-caption button')].every(b => (b.getAttribute('aria-label') || b.textContent.trim()) && b.getBoundingClientRect().height >= 44 && b.getBoundingClientRect().width >= 44)",
+      ),
+      'Intro controls are named and touch accessible',
+    );
+    await client.trustedClick('intro-sound');
+    assert.equal(
+      await client.cdp.evaluate("document.querySelector('[data-testid=intro-audio]').muted"),
+      true,
+    );
+    assert.equal(
+      await client.cdp.evaluate(
+        "document.querySelector('[data-testid=intro-sound]').getAttribute('aria-pressed')",
+      ),
+      'false',
     );
     await client.cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true });
-    await client.cdp.evaluate("document.querySelector('.kinetra-intro-caption button').focus()");
+    await client.cdp.evaluate("document.querySelector('.kinetra-intro-skip').focus()");
     await client.cdp.send('Input.dispatchKeyEvent', {
       type: 'rawKeyDown',
       key: 'Enter',
@@ -702,6 +746,28 @@ export const runTrainerWorkspaceBrowser = async (h) => {
     await h.waitFor('keyboard skips animation', () =>
       client.cdp.evaluate("!document.querySelector('.kinetra-video-intro')"),
     );
+    assert.equal(
+      await client.cdp.evaluate("document.querySelector('[data-testid=intro-audio]').paused"),
+      true,
+      'Skip stops the signature before lesson audio',
+    );
+    await clickReady(client, 'Закрыть урок');
+    await clickReady(client, 'Смотреть урок');
+    await h.waitFor('lesson launch ready after access request', () =>
+      client.exists('lesson-start'),
+    );
+    await client.trustedClick('lesson-start');
+    assert.equal(
+      await client.cdp.evaluate("document.querySelector('[data-testid=intro-audio]').muted"),
+      true,
+      'Sound preference survives reopening',
+    );
+    await client.trustedClick('intro-sound');
+    await h.waitFor('signature can resume', () =>
+      client.cdp.evaluate(
+        "!document.querySelector('[data-testid=intro-audio]').paused && !document.querySelector('[data-testid=intro-audio]').muted",
+      ),
+    );
     await clickReady(client, 'Закрыть урок');
     await client.cdp.send('Emulation.setEmulatedMedia', {
       features: [{ name: 'prefers-reduced-motion', value: 'reduce' }],
@@ -712,8 +778,14 @@ export const runTrainerWorkspaceBrowser = async (h) => {
       await client.cdp.evaluate("!!document.querySelector('.kinetra-video-intro')"),
       false,
     );
+    assert.equal(
+      await client.cdp.evaluate("document.querySelector('[data-testid=intro-audio]').paused"),
+      true,
+      'Reduced motion omits sound and animation',
+    );
     await client.cdp.send('Emulation.setEmulatedMedia', { features: [] });
     console.log('KINETRA_LESSON_SHARING_INTRO_ACCESSIBILITY_BROWSER=PASS');
+    console.log('KINETRA_CINEMATIC_SIGNATURE_BROWSER=PASS');
     await client.navigate('/schedule');
     await h.waitFor(
       'personal calendar',
@@ -747,6 +819,7 @@ export const runTrainerWorkspaceBrowser = async (h) => {
       }
     clientOnboarding = 'survey_pending';
     await runNutritionCoachingBrowser(h, trainer, client, nutrition, fill, clickReady, photoFile);
+    await runMarketplaceBrowser(h, trainer, marketplace, fill, clickReady);
   } finally {
     for (const context of [trainer, client]) {
       context?.cdp.close();

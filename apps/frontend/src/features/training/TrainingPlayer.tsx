@@ -2,6 +2,7 @@ import { KinetraVideoIntro } from '../navigation/KinetraVideoIntro';
 import React, { useEffect, useRef, useState } from 'react';
 import { apiBaseUrl } from '../../lib/api';
 import { trainingApi, trainingMessage } from './api';
+const signatureUrl = new URL('../../assets/brand/kinetra-signature.mp3', import.meta.url).href;
 export const TrainingPlayer = ({
   id,
   title,
@@ -19,9 +20,16 @@ export const TrainingPlayer = ({
   const [error, setError] = useState('');
   const [retry, setRetry] = useState(0);
   const video = useRef<HTMLVideoElement>(null);
+  const signature = useRef<HTMLAudioElement>(null);
   const resume = useRef(position);
   const wasPlaying = useRef(false);
   const lastSave = useRef(0);
+  useEffect(() => {
+    const audio = signature.current;
+    return () => {
+      audio?.pause();
+    };
+  }, []);
   useEffect(() => {
     const controller = new AbortController();
     const refresh = () => {
@@ -49,6 +57,7 @@ export const TrainingPlayer = ({
     };
   }, [id, retry]);
   const play = () => {
+    signature.current?.pause();
     setPhase('playing');
     requestAnimationFrame(() => video.current?.focus({ preventScroll: true }));
     setNeedsPlay(false);
@@ -56,6 +65,13 @@ export const TrainingPlayer = ({
   };
   return (
     <div className="training-player">
+      <audio
+        ref={signature}
+        src={signatureUrl}
+        preload="auto"
+        aria-hidden="true"
+        data-testid="intro-audio"
+      />
       {error ? (
         <p role="alert">
           {error}{' '}
@@ -73,16 +89,31 @@ export const TrainingPlayer = ({
               <button
                 type="button"
                 className="primary-button"
+                data-testid="lesson-start"
                 onClick={() => {
                   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) play();
-                  else setPhase('intro');
+                  else {
+                    const audio = signature.current;
+                    if (audio) {
+                      audio.currentTime = 0;
+                      audio.volume = 0.7;
+                      try {
+                        audio.muted = localStorage.getItem('kinetra-intro-sound') === 'off';
+                      } catch {
+                        audio.muted = false;
+                      }
+                      // Play in the original user gesture, including on iOS. A denial never blocks the lesson.
+                      if (!audio.muted) void audio.play().catch(() => undefined);
+                    }
+                    setPhase('intro');
+                  }
                 }}
               >
                 ▶ Воспроизвести урок
               </button>
             </div>
           )}
-          {phase === 'intro' && <KinetraVideoIntro onDone={play} />}
+          {phase === 'intro' && <KinetraVideoIntro onDone={play} sound={signature.current} />}
           {needsPlay && (
             <button type="button" className="primary-button" onClick={play}>
               Воспроизвести видео

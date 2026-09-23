@@ -1,3 +1,4 @@
+import { KineticMark } from '../navigation/KineticMark';
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import type {
   MeResponse,
@@ -376,7 +377,7 @@ export const TrainerVerificationScreen = ({
       <section className="verification-card" aria-labelledby="verification-title">
         <div className="survey-brand">
           <span className="survey-brand-mark" aria-hidden="true">
-            K
+            <KineticMark />
           </span>
           <span>KINETRA</span>
         </div>

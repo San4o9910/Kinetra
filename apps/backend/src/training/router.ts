@@ -1,4 +1,5 @@
 import { NutritionService } from './nutrition.js';
+import { createMarketplaceOwnerRouter } from '../marketplace/router.js';
 import { CoachProfiles } from './coach-profile.js';
 import { LessonAssignments } from './lesson-assignments.js';
 import { TrainingProgressPhotos } from './progress-photos.js';
@@ -34,6 +35,7 @@ export const createTrainingRouter = (
     });
   });
   router.use(auth);
+  router.use('/marketplace', createMarketplaceOwnerRouter(service));
   router.use(
     createFixedWindowRateLimiter({
       windowMs: 60_000,

@@ -1,3 +1,4 @@
+import { KineticMark } from '../navigation/KineticMark';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { BaseLessonsResponse, MeResponse } from '@kinetra/shared';
 
@@ -137,7 +138,7 @@ export const BaseLessonsScreen = ({
         <section className="base-lessons-state-card" aria-labelledby="base-lessons-error-title">
           <div className="survey-brand">
             <span className="survey-brand-mark" aria-hidden="true">
-              K
+              <KineticMark />
             </span>
             <span>KINETRA</span>
           </div>

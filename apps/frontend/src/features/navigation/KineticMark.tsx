@@ -1,6 +1,7 @@
 import React from 'react';
+import { KINETRA_BLADES } from './kinetra-brand';
 
-/** One finite stroke, shared by the brand and a confirmed workout completion. */
+/** The same swept K as the film, with a finite completion highlight. */
 export const KineticMark = ({
   completed = false,
 }: {
@@ -11,7 +12,11 @@ export const KineticMark = ({
     viewBox="0 0 64 64"
     aria-hidden="true"
   >
-    <path className="kinetic-mark-track" d="M16 50V14M48 14 24 32 48 50" />
-    <path className="kinetic-mark-stroke" pathLength="1" d="M16 50V14M48 14 24 32 48 50" />
+    {KINETRA_BLADES.map((d) => (
+      <path key={d} className="kinetic-mark-silhouette" d={d} />
+    ))}
+    {completed && (
+      <path className="kinetic-mark-stroke" pathLength="1" d={KINETRA_BLADES.join(' ')} />
+    )}
   </svg>
 );

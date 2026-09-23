@@ -1,4 +1,5 @@
 import { TrainingService } from './training/service.js';
+import { createPublicMarketplaceRouter } from './marketplace/router.js';
 import { TrainingMedia } from './training/media.js';
 import { createTrainingRouter } from './training/router.js';
 import { createChatVideosRouter } from './coaching/chat-videos.js';
@@ -183,6 +184,7 @@ export const createApp = (options: CreateAppOptions = {}) => {
   app.use('/api/v1/progress', createProgressRouter(progressRuntime));
   const trainingMediaDirectory = process.env.TRAINING_MEDIA_DIR?.trim() || null;
   const trainingService = new TrainingService(databasePool, trainingMediaDirectory !== null);
+  app.use('/api/v1/marketplace', createPublicMarketplaceRouter(trainingService));
   app.use(
     '/api/v1/training',
     createTrainingRouter(

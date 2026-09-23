@@ -419,20 +419,14 @@ export const runNutritionCoachingBrowser = async (
     ),
   );
   await trainer.navigate('/trainer/profile');
-  await h.waitFor('coach packages', () => trainer.exists('coach-profile'));
-  assert.ok(
-    (await trainer.bodyText()).includes('1 225') || (await trainer.bodyText()).includes('1 225'),
+  await h.waitFor('coach profile', () => trainer.exists('coach-profile'));
+  assert.ok((await trainer.bodyText()).includes('Ваши услуги — ваша цена'));
+  assert.equal(
+    await trainer.cdp.evaluate("!!document.querySelector('.coach-packages')"),
+    false,
+    'Marketplace does not require purchasing student seats',
   );
-  await trainer.cdp.evaluate(
-    "[...document.querySelectorAll('.coach-packages button')].find(b=>b.textContent.includes('Большая практика')).click()",
-  );
-  await fill(trainer, 'Мест в большом пакете', '40');
-  await fill(trainer, 'Дополнительные места', '2');
-  await h.waitFor('large package price', () =>
-    trainer.cdp.evaluate(
-      "document.querySelector('.coach-quote').textContent.replace(/\\s/g,'').includes('5500')",
-    ),
-  );
+  assert.ok((await trainer.bodyText()).includes('Витрина и предложения'));
   await capture(trainer, 'coach-profile-mobile');
   for (const context of [trainer, client])
     for (const width of [390, 1280]) {

@@ -1,3 +1,4 @@
+import { KineticMark } from '../navigation/KineticMark';
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
 import type {
   MeResponse,
@@ -195,7 +196,7 @@ export const SurveyWizard = ({
         <header className="survey-header">
           <div className="survey-brand">
             <span className="survey-brand-mark" aria-hidden="true">
-              K
+              <KineticMark />
             </span>
             <span>KINETRA</span>
           </div>

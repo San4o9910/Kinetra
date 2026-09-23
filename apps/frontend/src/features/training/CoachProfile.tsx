@@ -1,12 +1,6 @@
 import { useEffect, useState } from 'react';
-import {
-  COACH_LEVELS,
-  COACH_PACKAGES,
-  coachPackageQuote,
-  type CoachProfile,
-} from '@kinetra/shared';
+import { COACH_LEVELS, type CoachProfile } from '@kinetra/shared';
 import { trainingApi, trainingMessage } from './api';
-const rub = (value: number) => `${value.toLocaleString('ru-RU')} ₽`;
 const LevelCard = ({ profile }: { profile: CoachProfile }) => (
   <section className="training-card coach-level-card">
     <p className="survey-kicker">УРОВЕНЬ ТРЕНЕРА</p>
@@ -151,10 +145,7 @@ export const MyCoachCard = () => {
 export const CoachProfileScreen = () => {
   const [profile, setProfile] = useState<CoachProfile | null>(null),
     [error, setError] = useState(''),
-    [revision, setRevision] = useState(0),
-    [plan, setPlan] = useState('start'),
-    [base, setBase] = useState(30),
-    [extra, setExtra] = useState(0);
+    [revision, setRevision] = useState(0);
   useEffect(() => {
     let active = true;
     void trainingApi
@@ -172,12 +163,10 @@ export const CoachProfileScreen = () => {
       active = false;
     };
   }, [revision]);
-  const quote = coachPackageQuote(plan, base, extra),
-    selected = COACH_PACKAGES.find((p) => p.id === plan)!;
   return (
     <main className="training-workspace coach-profile" data-testid="coach-profile">
       <p className="survey-kicker">ВАША ПРАКТИКА</p>
-      <h1>Профиль и пакеты</h1>
+      <h1>Профиль тренера</h1>
       {error ? (
         <p role="alert">
           {error}{' '}
@@ -190,102 +179,10 @@ export const CoachProfileScreen = () => {
       ) : (
         <p role="status">Загружаем профиль…</p>
       )}
-      <section className="training-card coach-pricing">
-        <div className="training-heading">
-          <div>
-            <p className="survey-kicker">БОЛЬШЕ УЧЕНИКОВ — ВЫГОДНЕЕ</p>
-            <h2>Рассчитайте свой пакет</h2>
-          </div>
-          <span className="training-badge">Сейчас бесплатная бета</span>
-        </div>
-        <p>
-          Платежи пока не подключены. Калькулятор показывает будущую стоимость; выбор пакета ничего
-          не списывает и не ограничивает доступ.
-        </p>
-        <div className="coach-packages">
-          {COACH_PACKAGES.map((p) => (
-            <button
-              type="button"
-              key={p.id}
-              aria-pressed={plan === p.id}
-              onClick={() => {
-                setPlan(p.id);
-                setExtra(0);
-              }}
-            >
-              <span>{p.name}</span>
-              <strong>{p.id === 'large' ? 'От 30' : p.seats} учеников</strong>
-              <b>
-                {rub(p.perSeat)} <small>за ученика / мес.</small>
-              </b>
-              <span>
-                {p.id === 'large' ? 'От ' : ''}
-                {rub(p.seats * p.perSeat)} / мес.
-              </span>
-              <span>Доп. место — {rub(p.extraSeat)}</span>
-            </button>
-          ))}
-        </div>
-        <div className="training-fields">
-          {plan === 'large' && (
-            <label>
-              Мест в большом пакете
-              <input
-                type="number"
-                min={30}
-                max={500}
-                step={1}
-                value={base}
-                onChange={(e) =>
-                  setBase(
-                    Math.max(30, Math.min(500 - extra, Math.trunc(Number(e.target.value) || 30))),
-                  )
-                }
-              />
-            </label>
-          )}
-          <label>
-            Дополнительные места · по {rub(selected.extraSeat)}
-            <input
-              type="number"
-              min={0}
-              max={500 - (plan === 'large' ? base : selected.seats)}
-              step={1}
-              value={extra}
-              onChange={(e) =>
-                setExtra(
-                  Math.max(
-                    0,
-                    Math.min(
-                      500 - (plan === 'large' ? base : selected.seats),
-                      Math.trunc(Number(e.target.value) || 0),
-                    ),
-                  ),
-                )
-              }
-            />
-          </label>
-        </div>
-        <div className="coach-quote" aria-live="polite">
-          <span>{quote.seats} мест для учеников</span>
-          <strong>
-            {rub(quote.monthly)} <small>/ месяц</small>
-          </strong>
-          <span>
-            Первые 3 платных месяца со скидкой 40%: <b>{rub(quote.introductory)} / мес.</b>
-          </span>
-          <span>Затем — {rub(quote.monthly)} / мес.</span>
-        </div>
-        <p className="training-muted">
-          План запуска: 14 дней полного доступа с первого входа после одобрения заявки, затем 3
-          платных месяца со скидкой. Пока пробный таймер не запущен. Доступ учеников к вашим урокам
-          и чату включён.
-        </p>
-        <p className="training-muted">
-          Считаются подключённые неархивные ученики. Для большого пакета места, выбранные на месяц
-          заранее, стоят по 130 ₽; отдельные дополнительные места — по 150 ₽. Перед оплатой будет
-          показана полная сумма.
-        </p>
+      <section className="training-card">
+        <h2>Ваши услуги — ваша цена</h2>
+        <p>Программы, занятия и сопровождение создаются в разделе «Витрина и предложения».</p>
+        <p>Сейчас действует бесплатный тестовый доступ. Покупки и списания пока не открыты.</p>
       </section>
     </main>
   );
