@@ -40,7 +40,7 @@ try{
   assert(!shell.headers['set-cookie']);assert.match(shell.headers['content-type'],/text\/html/);
   report.certificate={trusted:true,fingerprint:shell.certificate.fingerprint256,validTo:shell.certificate.valid_to};
   report.checks.push('trusted_ip_certificate','https_shell');
-  for(const [path,status] of [['/health',200],['/ready',404],['/api/v1/me',401],['/trainer/students',200],['/trainer/lessons',200],['/my-training',200],['/api/v1/training/students',401],['/api/v1/training/lessons',401],['/api/v1/training/mine',401],['/api/v1/training/templates',401],['/api/v1/training/measurements',401],['/api/v1/training/admin/complaints',401],['/schedule',200],['/progress',200]]){
+  for(const [path,status] of [['/catalog',200],['/api/v1/marketplace/',200],['/api/v1/training/marketplace/workspace',401],['/api/v1/training/marketplace/review',401],['/health',200],['/ready',404],['/api/v1/me',401],['/trainer/students',200],['/trainer/lessons',200],['/my-training',200],['/api/v1/training/students',401],['/api/v1/training/lessons',401],['/api/v1/training/mine',401],['/api/v1/training/templates',401],['/api/v1/training/measurements',401],['/api/v1/training/admin/complaints',401],['/schedule',200],['/progress',200]]){
     const result=await get(ORIGIN+path);assert.equal(result.status,status);assert(!result.headers['set-cookie']);
     if(path==='/health')assert.equal(JSON.parse(result.body).status,'ok');
     if(path.startsWith('/api/'))assert.match(result.headers['cache-control']??'',/no-store/);
@@ -158,6 +158,23 @@ try{
     assert(await evaluate("Boolean(document.querySelector('[data-testid=login-screen]'))"));
 
   }
+  phase='public_catalogue';
+  await evaluate("history.pushState(null,'','/catalog');window.dispatchEvent(new PopStateEvent('popstate'))");
+  let catalogueReady=false;
+  for(let n=0;n<100;n++){
+    catalogueReady=await evaluate("Boolean(document.querySelector('[data-testid=market-catalogue] .market-grid'))");
+    if(catalogueReady)break;await pause(150);
+  }
+  assert(catalogueReady,'PUBLIC_CATALOGUE_NOT_RENDERED');
+  for(const [name,width,height,mobile] of [['desktop',1440,1000,false],['mobile',390,844,true]]){
+    await send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile});
+    await pause(200);
+    assert(await evaluate("document.documentElement.scrollWidth<=innerWidth+1"),'CATALOGUE_OVERFLOW');
+    assert(await evaluate("Boolean(document.querySelector('[data-testid=market-catalogue]')) && !document.querySelector('[role=alert]')"),'CATALOGUE_ERROR');
+    const shot=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});
+    await writeFile(join(output,name+'-catalogue.png'),Buffer.from(shot.data,'base64'));
+  }
+  report.checks.push('public_catalogue_without_authentication','catalogue_desktop_mobile_no_overflow');
   for(let n=0;n<25&&[...refreshIds].some(id=>!finished.has(id));n++)await pause(100);
   assert(refreshCount>=1&&refreshCount<=2);assert.equal(refreshIds.size,refreshCount);
   for(const id of refreshIds){

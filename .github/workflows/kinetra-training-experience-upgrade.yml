@@ -26,17 +26,17 @@ jobs:
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           sha256sum --check --strict <<'SHA256'
           567d892221925bb438ece6a893360a891ffd4228f8af0a18252b8ba365a682c0  ops/timeweb/inspect-server.py
-          753cd7c920f863ce98eaf3e1b5b526ef6d0a3e8fe5bb1a6e57d04d07ce4c08ce  ops/timeweb/training-experience-release-gate.py
-          965c869483c8dabfd62f2585520bf3e9f29c849df14622268ff47a480bbda7f7  ops/timeweb/training-experience-upgrade-host.py
+          55c819d932926cf7a1234117f05fe7e10aa9c1cf2f34914b8593f1a6f62d9e7a  ops/timeweb/training-experience-release-gate.py
+          9a286b9b86de1f19bbdc0294b7d9faedf2e0a620a26e478921b7084f31a98827  ops/timeweb/training-experience-upgrade-host.py
           64e7d4f11a46a84c73fc654bf6868d141e69ef22c842dc90f5e99cc403a5c05b  ops/timeweb/training-experience-upgrade-caller.py
           767887b49c35ee7e32f4c23a68075112149861953f0d116e69a6d111fab41ed9  ops/timeweb/test-training-experience-upgrade.py
           ba9d7f7d4a5475de9a4401be60694bcbeab1e62308d2f304454360fc72d2267e  ops/timeweb/upstream-disposition.py
-          3b5fe41ef70612d4b6ce8adb3b1027d73e70582929bc1adea23eafa7b278b27d  ops/timeweb/training-experience-browser-acceptance.mjs
+          e10b7971676d1c421bbe69ca2573cd795926c13f18e61d7a21e8182698506010  ops/timeweb/training-experience-browser-acceptance.mjs
           SHA256
           sudo python3 -B ops/timeweb/test-training-experience-upgrade.py
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: 125af45560e86fbe5f47837ffabe813e4aebfb4d
+          ref: 4a4560fac325dc5a09f8ca124ea6101072558b72
           path: Kinetra
           persist-credentials: false
       - name: Verify merged source manifest and qualified image evidence
@@ -45,7 +45,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          test "$(git -C "$APP_CHECKOUT" rev-parse HEAD)" = 125af45560e86fbe5f47837ffabe813e4aebfb4d
+          test "$(git -C "$APP_CHECKOUT" rev-parse HEAD)" = 4a4560fac325dc5a09f8ca124ea6101072558b72
           (cd "$APP_CHECKOUT" && sha256sum --check --quiet MANIFEST.sha256)
           python3 -B ops/timeweb/training-experience-release-gate.py
       - name: Back up, prove restoration and install the qualified update
