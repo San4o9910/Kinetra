@@ -203,6 +203,9 @@
   color: var(--muted);
   padding: 14px 0;
 }
+.market-back {
+  margin-right: 24px;
+}
 .market-facts {
   margin: 22px 0;
   color: var(--muted);

@@ -289,7 +289,7 @@ f54548fe15345439ffbe87bd0e27c14c715c42702e50c51506e7a935a1a3e046  ./apps/fronten
 8ed37b751789c12c1279948e94fb35b5fc58adc0887e7da7b5770f46461e49ae  ./apps/frontend/src/features/marketplace/Catalogue.tsx
 7c5a22ffa2af8fe134ae68eca8c893f197f51159b64ae757d551e1e02462db4d  ./apps/frontend/src/features/marketplace/Workspace.tsx
 fda1e5f47c7a21f3f11d8257f7176b703af0da0f01569787434f9c045302e4cb  ./apps/frontend/src/features/marketplace/api.ts
-5ae4230d2e33f2e5de0dcb9fe6438b34119f706f4c005e1b2794d96660e48c88  ./apps/frontend/src/features/marketplace/marketplace.css
+64ad8f945f7acd4a848604d5213d0314c0b5c21f21fc1b9fa667d6e0b979f4be  ./apps/frontend/src/features/marketplace/marketplace.css
 3ee9ec198a0584e61e822f181a3b6dd6f07a698408918857ef27e63ad9fab062  ./apps/frontend/src/features/navigation/ActiveAppHeader.tsx
 612e46027eaf996af8d25c7a73a1ff1af8f3ce126ad5c3e4a2ff69bcab5ed0d4  ./apps/frontend/src/features/navigation/KineticMark.tsx
 04b92ad4de145106750d1ba6a25ce9951a49c281275ff83cf9b07e5b80993d1f  ./apps/frontend/src/features/navigation/KinetraVideoIntro.tsx
