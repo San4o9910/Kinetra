@@ -507,6 +507,6 @@ bd552b5c0ba879666a9fecf9a8bba3b30f5b1223fbc1cf69fef30a5c6437aaf2  ./scripts/run-
 74ba7c41f8c89acce5c7e24b6694ef7f39a0b7a9d7068673f8c2f1d7711f1831  ./scripts/test-frontend-browser.mjs
 70effc0fce9dd8c575f25dc53fdb1e214dae2ae2d18c47210f9a260e9d2f90c0  ./scripts/test-marketplace-browser.mjs
 fa51bc0627205b1c73862fba2c16181762b69a465c27a5e1e08eb81255a76cc2  ./scripts/test-nutrition-coaching-browser.mjs
-045efd81de2abf6c18306c11df7f919b230847e9923833ea96d0c48b3c523f5a  ./scripts/test-trainer-workspace-browser.mjs
+fa279a27e2b10477bdb43977ce0d41c8def9c8e8244e9b51552ef3ad6170719b  ./scripts/test-trainer-workspace-browser.mjs
 6703636877be934ce7469d330a30ef05134c0c95746a0afc35d9f592b249ccc7  ./scripts/verify-project.mjs
 2b67887209f3334ebdc96426f5c2cb87480fb85ff2f75c0d42b0a944dae7922a  ./tsconfig.base.json

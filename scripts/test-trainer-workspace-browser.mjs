@@ -640,6 +640,9 @@ export const runTrainerWorkspaceBrowser = async (h) => {
       (await client.bodyText()).includes('Воспроизвести урок'),
     );
     await client.setViewport(390, 844);
+    await h.waitFor('lesson launch ready after access request', () =>
+      client.exists('lesson-start'),
+    );
     await client.trustedClick('lesson-start');
     await h.waitFor('brand intro starts', () =>
       client.cdp.evaluate("!!document.querySelector('.kinetra-video-intro')"),
@@ -701,6 +704,9 @@ export const runTrainerWorkspaceBrowser = async (h) => {
     // Reopen: keyboard-operable skip, then reduced motion omits the decorative sequence.
     await clickReady(client, 'Закрыть урок');
     await clickReady(client, 'Смотреть урок');
+    await h.waitFor('lesson launch ready after access request', () =>
+      client.exists('lesson-start'),
+    );
     await client.trustedClick('lesson-start');
     await h.waitFor('skip available', () =>
       client.cdp.evaluate("!!document.querySelector('.kinetra-intro-skip')"),
@@ -747,6 +753,9 @@ export const runTrainerWorkspaceBrowser = async (h) => {
     );
     await clickReady(client, 'Закрыть урок');
     await clickReady(client, 'Смотреть урок');
+    await h.waitFor('lesson launch ready after access request', () =>
+      client.exists('lesson-start'),
+    );
     await client.trustedClick('lesson-start');
     assert.equal(
       await client.cdp.evaluate("document.querySelector('[data-testid=intro-audio]').muted"),
