@@ -1,3 +1,4 @@
+import { KineticMark } from '../navigation/KineticMark';
 import { useState, type FormEvent, type ReactNode } from 'react';
 import type { MeResponse, RequestedRole } from '@kinetra/shared';
 
@@ -110,7 +111,7 @@ export const RegisterScreen = ({ onAuthenticated, onBack }: RegisterScreenProps)
       <section className="auth-card" aria-labelledby="register-title">
         <div className="survey-brand">
           <span className="survey-brand-mark" aria-hidden="true">
-            K
+            <KineticMark />
           </span>
           <span>KINETRA</span>
         </div>

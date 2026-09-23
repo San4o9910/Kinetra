@@ -1,3 +1,7 @@
+import { KineticMark } from './features/navigation/KineticMark';
+import { Catalogue } from './features/marketplace/Catalogue';
+import { MarketplaceWorkspace, MarketplaceReview } from './features/marketplace/Workspace';
+import { isMarketplaceRoute, consumeMarketplaceReturn } from './routing';
 import { NutritionDiary } from './features/training/NutritionDiary';
 import { CoachProfileScreen } from './features/training/CoachProfile';
 import { TrainerWorkspace } from './features/training/TrainerWorkspace';
@@ -108,7 +112,7 @@ const SystemState = ({ kind, message, onRetry }: SystemStateProps): ReactNode =>
     <section className="stage-card system-state" aria-labelledby="system-state-title">
       <div className="survey-brand">
         <span className="survey-brand-mark" aria-hidden="true">
-          K
+          <KineticMark />
         </span>
         <span>KINETRA</span>
       </div>
@@ -188,6 +192,22 @@ const ActiveAppShell = ({
       </div>
     )}
     <div className="training-invite-link">
+      <button
+        type="button"
+        className="secondary-button"
+        onClick={() => onNavigate(appRoutes.catalogue)}
+      >
+        Каталог тренеров
+      </button>
+      {canReview && (
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={() => onNavigate(appRoutes.adminMarketplace)}
+        >
+          Проверка публикаций
+        </button>
+      )}
       <button
         type="button"
         className="secondary-button"
@@ -741,7 +761,12 @@ export const App = (): ReactNode => {
 
   useEffect(() => {
     if (session.kind === 'unauthenticated') {
-      if (route !== appRoutes.login && route !== appRoutes.adminApplications) {
+      if (
+        route !== appRoutes.login &&
+        route !== appRoutes.adminApplications &&
+        route !== appRoutes.adminMarketplace &&
+        !isMarketplaceRoute(route)
+      ) {
         navigate(appRoutes.login, true);
       }
       return;
@@ -751,7 +776,12 @@ export const App = (): ReactNode => {
       return;
     }
 
-    if (route === appRoutes.adminApplications) return;
+    if (
+      route === appRoutes.adminApplications ||
+      route === appRoutes.adminMarketplace ||
+      isMarketplaceRoute(route)
+    )
+      return;
     if (
       session.profile.account_role !== 'trainer' &&
       session.profile.requested_role !== 'trainer'
@@ -836,6 +866,15 @@ export const App = (): ReactNode => {
     }
   }, [navigate, route, session, subscriptionState]);
 
+  if (isMarketplaceRoute(route))
+    return (
+      <Catalogue
+        key={route}
+        route={route}
+        onNavigate={navigate}
+        authenticated={session.kind === 'authenticated'}
+      />
+    );
   if (session.kind === 'booting') {
     return (
       <main className="app-shell" data-testid="session-loading">
@@ -852,11 +891,12 @@ export const App = (): ReactNode => {
       setAuthView('login');
       setSession({ kind: 'authenticated', profile });
       navigate(
-        route === appRoutes.adminApplications
-          ? appRoutes.adminApplications
-          : profile.account_role === 'trainer'
-            ? appRoutes.trainerStudents
-            : routeForOnboardingStatus(profile.user.onboardingStatus),
+        route === appRoutes.adminApplications || route === appRoutes.adminMarketplace
+          ? route
+          : (consumeMarketplaceReturn() ??
+              (profile.account_role === 'trainer'
+                ? appRoutes.trainerStudents
+                : routeForOnboardingStatus(profile.user.onboardingStatus))),
         true,
       );
     };
@@ -895,6 +935,15 @@ export const App = (): ReactNode => {
   if (trainerSignOutState !== 'idle') {
     return <TrainerSignOutState state={trainerSignOutState} onRetry={handleTrainerSignOut} />;
   }
+
+  if (route === appRoutes.adminMarketplace)
+    return (
+      <MarketplaceReview
+        onBack={() =>
+          navigate(profile.account_role === 'trainer' ? appRoutes.trainerStudents : appRoutes.home)
+        }
+      />
+    );
 
   if (route === appRoutes.adminApplications) {
     return (
@@ -937,6 +986,15 @@ export const App = (): ReactNode => {
       </TrainerAdminShell>
     );
 
+    if (route === appRoutes.trainerMarketplace)
+      return withTrainerShell(
+        <MarketplaceWorkspace
+          key={profile.user.id}
+          account={profile.user.id}
+          name={profile.trainer_profile?.display_name ?? 'Тренер'}
+          onNavigate={navigate}
+        />,
+      );
     if (route === appRoutes.trainerProfile)
       return withTrainerShell(<CoachProfileScreen key={profile.user.id} />);
     if (route === appRoutes.trainerStudents)

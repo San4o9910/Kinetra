@@ -1,4 +1,5 @@
 import './features/navigation/kinetra-video-intro.css';
+import './features/marketplace/marketplace.css';
 import { StrictMode } from 'react';
 import { flushSync } from 'react-dom';
 import { createRoot } from 'react-dom/client';

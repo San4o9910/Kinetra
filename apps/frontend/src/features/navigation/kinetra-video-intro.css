@@ -1,58 +1,71 @@
 .kinetra-video-intro {
-  background: #001621;
-  color: #f4f6f2;
-  border-radius: 16px;
+  --film-ink: #020b10;
+  --film-paper: #f2f1e9;
+  --film-muted: #a9b7b9;
+  background: var(--film-ink);
+  color: var(--film-paper);
+  border: 1px solid #20343d;
+  border-radius: 18px;
   overflow: hidden;
   width: 100%;
+  isolation: isolate;
 }
-.kinetra-video-intro svg {
+.kinetra-video-intro > svg {
   display: block;
   width: 100%;
   height: auto;
 }
-.kinetra-video-intro [data-drop],
-.kinetra-video-intro [data-ball] {
-  fill: #ff4103;
-}
-.kinetra-video-intro [data-word],
-.kinetra-video-intro [data-mark] {
-  fill: none;
-  stroke: #ff4103;
-  stroke-width: 8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-.kinetra-video-intro [data-mark] {
-  stroke-width: 13;
-  opacity: 0;
-}
-.kinetra-video-intro [data-ball],
-.kinetra-video-intro [data-ripple] {
-  opacity: 0;
-}
-.kinetra-video-intro [data-ripple] {
-  fill: none;
-  stroke: #ff4103;
-  stroke-width: 2;
-}
-.kinetra-intro-floor {
-  stroke: #20414f;
-  stroke-width: 1;
-  fill: none;
+.kinetra-film-tagline {
+  fill: #a9b7b9;
+  font:
+    500 12px system-ui,
+    sans-serif;
+  letter-spacing: 4px;
 }
 .kinetra-intro-caption {
   display: flex;
-  align-items: center;
   justify-content: space-between;
+  align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
-  padding: 0 16px 16px;
-  font-size: 12px;
+  gap: 4px 12px;
+  padding: 4px 16px 12px;
 }
-.training-player .kinetra-intro-caption button {
-  color: #f4f6f2;
-  border-color: #365664;
-  font-size: 12px;
+.kinetra-intro-caption button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  min-width: 44px;
+  color: var(--film-paper);
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px;
+  font:
+    500 12px system-ui,
+    sans-serif;
+  cursor: pointer;
+}
+.kinetra-intro-caption button:hover {
+  background: #14232b;
+}
+.kinetra-intro-caption button:focus-visible {
+  outline: 2px solid #ff985e;
+  outline-offset: 2px;
+}
+.kinetra-intro-caption .kinetra-intro-skip {
+  margin-left: auto;
+}
+.kinetra-sound-control svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  overflow: visible;
 }
 .training-video-launch {
   min-height: 180px;
@@ -70,7 +83,13 @@
 .training-player video[hidden] {
   display: none;
 }
-
-.kinetra-video-intro [data-word] {
-  opacity: 0;
+@media (max-width: 420px) {
+  .kinetra-intro-caption {
+    padding-inline: 6px;
+    gap: 4px;
+  }
+  .kinetra-intro-caption button {
+    font-size: 11px;
+    gap: 6px;
+  }
 }

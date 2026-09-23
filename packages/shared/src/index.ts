@@ -864,3 +864,4 @@ export type {
 export type { AssignedTrainingLesson, TrainingLessonRecipient } from './training.js';
 
 export * from './coaching.js';
+export * from './marketplace.js';

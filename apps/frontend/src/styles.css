@@ -7086,11 +7086,16 @@ body {
   width: 40px;
   height: 40px;
   fill: none;
-  stroke: var(--accent-fill);
-  stroke-width: 6;
+  color: var(--accent-fill);
+  stroke: currentColor;
+  stroke-width: 1.2;
   stroke-linecap: round;
   stroke-linejoin: round;
   flex-shrink: 0;
+}
+.kinetic-mark-silhouette {
+  fill: currentColor;
+  stroke: none;
 }
 .kinetic-mark-track {
   opacity: 0.12;
@@ -7784,5 +7789,12 @@ body {
 .trainer-admin-brand .kinetic-mark {
   width: 28px;
   height: 28px;
+  color: var(--accent-ink);
   stroke: var(--accent-ink);
+}
+
+.survey-brand-mark .kinetic-mark {
+  width: 30px;
+  height: 30px;
+  color: var(--accent-ink);
 }

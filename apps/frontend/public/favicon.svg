@@ -1,4 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Kinetra">
-  <rect width="64" height="64" rx="18" fill="#001621" />
-  <path d="M16 50V14M48 14 24 32 48 50" fill="none" stroke="#ff4103" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Kinetra"><rect width="64" height="64" rx="18" fill="#001621"/><g fill="#ff4103" transform="translate(5 5) scale(.84)"><path d="M13 54 21 10H31L23 54Z"/><path d="M29 28 49 10H62L32 36H25Z"/><path d="M25 40 33 33 52 54H38Z"/></g></svg>

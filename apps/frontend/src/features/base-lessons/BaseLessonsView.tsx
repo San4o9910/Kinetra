@@ -1,3 +1,4 @@
+import { KineticMark } from '../navigation/KineticMark';
 import React, { useState, type CSSProperties, type ReactNode } from 'react';
 import type { BaseLesson, BaseLessonsResponse } from '@kinetra/shared';
 
@@ -142,7 +143,7 @@ export const BaseLessonsView = ({
         <header className="base-lessons-topbar">
           <div className="survey-brand">
             <span className="survey-brand-mark" aria-hidden="true">
-              K
+              <KineticMark />
             </span>
             <span>KINETRA</span>
           </div>

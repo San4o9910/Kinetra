@@ -42,6 +42,21 @@ export const TrainerAdminShell = ({
           <strong>KINETRA</strong>
         </a>
         <nav aria-label="Дополнительные разделы тренера">
+          <a
+            href={appRoutes.trainerMarketplace}
+            aria-current={route === appRoutes.trainerMarketplace ? 'page' : undefined}
+            onClick={(event) => navigate(event, appRoutes.trainerMarketplace)}
+          >
+            Витрина и предложения
+          </a>
+          {canReview && (
+            <a
+              href={appRoutes.adminMarketplace}
+              onClick={(event) => navigate(event, appRoutes.adminMarketplace)}
+            >
+              Публикации
+            </a>
+          )}
           {canManageVideos ? (
             <a
               href={appRoutes.trainerVideos}
