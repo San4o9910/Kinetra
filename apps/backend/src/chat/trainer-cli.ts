@@ -1,8 +1,16 @@
 import { z } from 'zod';
 
 import { SystemClock } from '../auth/service.js';
-import { databasePool, closeDatabasePool } from '../db/pool.js';
 import { PostgresChatRepository } from './postgres-chat.repository.js';
+
+let closeDatabasePool: (() => Promise<void>) | undefined;
+
+const createRepository = async (): Promise<PostgresChatRepository> => {
+  // Load database configuration only after the command's arguments are valid.
+  const database = await import('../db/pool.js');
+  closeDatabasePool = database.closeDatabasePool;
+  return new PostgresChatRepository(database.databasePool);
+};
 
 const uuid = z.string().uuid();
 
@@ -109,7 +117,6 @@ const run = async (): Promise<void> => {
   }
 
   const arguments_ = parseArguments(rawArguments);
-  const repository = new PostgresChatRepository(databasePool);
   const now = new SystemClock().now();
 
   if (command === 'grant') {
@@ -121,6 +128,7 @@ const run = async (): Promise<void> => {
     }
 
     const trainerUserId = userId(arguments_, '--user-id');
+    const repository = await createRepository();
     const result = await repository.grantTrainer({
       userId: trainerUserId,
       displayName,
@@ -165,6 +173,7 @@ const run = async (): Promise<void> => {
 
     const fromTrainerUserId = userId(arguments_, '--from-user-id');
     const toTrainerUserId = userId(arguments_, '--to-user-id');
+    const repository = await createRepository();
     const count = await repository.reassignTrainer({
       fromTrainerUserId,
       toTrainerUserId,
@@ -189,6 +198,7 @@ const run = async (): Promise<void> => {
   if (command === 'revoke') {
     assertOnly(arguments_, ['--user-id'], []);
     const trainerUserId = userId(arguments_, '--user-id');
+    const repository = await createRepository();
     const result = await repository.revokeTrainer(trainerUserId, now);
 
     if (result !== 'revoked') {
@@ -211,4 +221,4 @@ void run()
     console.error(error instanceof Error ? error.message : 'Trainer command failed.');
     process.exitCode = 1;
   })
-  .finally(async () => closeDatabasePool());
+  .finally(async () => closeDatabasePool?.());

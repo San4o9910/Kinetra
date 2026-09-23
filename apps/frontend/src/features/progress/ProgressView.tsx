@@ -2,6 +2,8 @@ import React, { type ReactNode } from 'react';
 import type { LockedAchievement, ProgressResponse, UnlockedAchievement } from '@kinetra/shared';
 
 import { ProgressLineChart } from './ProgressLineChart';
+import { ProgressJourney } from './ProgressJourney';
+import { ProgressWellbeingOverview } from './ProgressWellbeingOverview';
 import {
   formatAchievementDate,
   formatStreakDays,
@@ -125,7 +127,9 @@ export const ProgressView = ({
       >
         <div className="progress-panel">
           <header className="progress-header">
+            <p className="progress-eyebrow">ВАША ПРАКТИКА · ВАШ РЕЗУЛЬТАТ</p>
             <h1 id="progress-heading">Прогресс</h1>
+            <p className="progress-support-copy">Замечайте изменения. Продолжайте в своём ритме.</p>
           </header>
 
           <section
@@ -230,6 +234,8 @@ export const ProgressView = ({
               ))}
             </ul>
           </section>
+          <ProgressJourney response={response} />
+          <ProgressWellbeingOverview history={response.metrics.history} />
         </div>
       </main>
     </React.Fragment>

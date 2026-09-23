@@ -1,3 +1,17 @@
+import { KineticMark } from './features/navigation/KineticMark';
+import { Catalogue } from './features/marketplace/Catalogue';
+import { MarketplaceWorkspace, MarketplaceReview } from './features/marketplace/Workspace';
+import { isMarketplaceRoute, consumeMarketplaceReturn } from './routing';
+import { NutritionDiary } from './features/training/NutritionDiary';
+import { CoachProfileScreen } from './features/training/CoachProfile';
+import { TrainerWorkspace } from './features/training/TrainerWorkspace';
+import { TrainerLessons } from './features/training/TrainerLessons';
+import { MyTraining } from './features/training/MyTraining';
+import { captureInvite, pendingInvite } from './features/training/api';
+import { CoachAssistantScreen } from './features/coaching/CoachAssistantScreen';
+import { prepareWorkoutQuestion } from './features/program/workoutQuestion';
+import { TrainerApplicationsAdmin } from './features/trainer-verification/TrainerApplicationsAdmin';
+import { getReviewerAccess } from './lib/api';
 import React, {
   useCallback,
   useEffect,
@@ -10,14 +24,17 @@ import React, {
 import type { MeResponse, SubscriptionResponse } from '@kinetra/shared';
 
 import { LoginScreen } from './features/auth/LoginScreen';
+import { ForgotPasswordScreen } from './features/auth/ForgotPasswordScreen';
 import { RegisterScreen } from './features/auth/RegisterScreen';
 import { BaseLessonsScreen } from './features/base-lessons/BaseLessonsScreen';
 import { TabBar } from './features/navigation/TabBar';
+import { ActiveAppHeader } from './features/navigation/ActiveAppHeader';
 import { OnboardingCarousel } from './features/onboarding/OnboardingCarousel';
 import { PaymentCancelScreen } from './features/payments/PaymentCancelScreen';
+import { PaymentAvailabilityGate } from './features/payments/PaymentAvailabilityGate';
 import { PaymentScreen } from './features/payments/PaymentScreen';
 import { PaymentSuccessScreen } from './features/payments/PaymentSuccessScreen';
-import { isSubscriptionActive } from './features/payments/model';
+import { hasTrainingAccess, isSubscriptionActive } from './features/payments/model';
 import { SubscriptionLockedScreen } from './features/payments/SubscriptionLockedScreen';
 import { SubscriptionVerificationState } from './features/payments/SubscriptionVerificationState';
 import { ProgressScreen } from './features/progress/ProgressScreen';
@@ -27,7 +44,7 @@ import { ScheduleScreen } from './features/schedule/ScheduleScreen';
 import { SettingsScreen } from './features/settings/SettingsScreen';
 import { settleBestEffortWithin } from './features/settings/accountLifecycle';
 import { SurveyWizard } from './features/survey/SurveyWizard';
-import { ChatFloatingButton, ClientChatScreen, useChatRuntime } from './features/chat';
+import { ClientChatScreen, useChatRuntime } from './features/chat';
 import { TrainerChatsScreen } from './features/trainer-chat';
 import { TrainerAdminShell } from './features/trainer-shell/TrainerAdminShell';
 import { TrainerVerificationScreen } from './features/trainer-verification/TrainerVerificationScreen';
@@ -52,7 +69,7 @@ import { createFeatureChatRealtimeClient } from './realtime/socket';
 import {
   appRoutes,
   isActiveAppRoute,
-  isChatFabRoute,
+  isExplorationAppRoute,
   isPaymentRoute,
   isSettingsRoute,
   isTrainerRoute,
@@ -95,7 +112,7 @@ const SystemState = ({ kind, message, onRetry }: SystemStateProps): ReactNode =>
     <section className="stage-card system-state" aria-labelledby="system-state-title">
       <div className="survey-brand">
         <span className="survey-brand-mark" aria-hidden="true">
-          K
+          <KineticMark />
         </span>
         <span>KINETRA</span>
       </div>
@@ -117,28 +134,96 @@ const SystemState = ({ kind, message, onRetry }: SystemStateProps): ReactNode =>
 );
 
 interface ActiveAppShellProps {
+  readonly canReview?: boolean;
+  readonly displayName: string;
   readonly route: AppRoute;
   readonly navigationDisabled: boolean;
-  readonly chatFabHidden: boolean;
+  readonly showChat: boolean;
   readonly chatUnreadCount: number;
-  readonly onOpenChat: () => void;
   readonly onNavigate: (route: AppRoute) => void;
   readonly children: ReactNode;
 }
 
 const ActiveAppShell = ({
+  canReview = false,
+  displayName,
   route,
   navigationDisabled,
-  chatFabHidden,
+  showChat,
   chatUnreadCount,
-  onOpenChat,
   onNavigate,
   children,
 }: ActiveAppShellProps): ReactNode => (
   <div className="active-app-shell">
+    <ActiveAppHeader
+      displayName={displayName}
+      settingsActive={isSettingsRoute(route)}
+      disabled={navigationDisabled}
+      onOpenSettings={() => onNavigate(appRoutes.settings)}
+    />
+    {canReview && (
+      <div className="admin-entry">
+        <button
+          type="button"
+          className="secondary-button"
+          disabled={navigationDisabled}
+          onClick={() => onNavigate(appRoutes.adminApplications)}
+        >
+          Заявки тренеров ↗
+        </button>
+      </div>
+    )}
+    {(route === appRoutes.chat || route === appRoutes.assistant) && (
+      <div className="coach-switch" role="group" aria-label="С кем общаться">
+        <button
+          type="button"
+          aria-pressed={route === appRoutes.chat}
+          onClick={() => onNavigate(appRoutes.chat)}
+        >
+          Тренер
+        </button>
+        <button
+          type="button"
+          aria-pressed={route === appRoutes.assistant}
+          onClick={() => onNavigate(appRoutes.assistant)}
+        >
+          ИИ-помощник
+        </button>
+      </div>
+    )}
+    <div className="training-invite-link">
+      <button
+        type="button"
+        className="secondary-button"
+        onClick={() => onNavigate(appRoutes.catalogue)}
+      >
+        Каталог тренеров
+      </button>
+      {canReview && (
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={() => onNavigate(appRoutes.adminMarketplace)}
+        >
+          Проверка публикаций
+        </button>
+      )}
+      <button
+        type="button"
+        className="secondary-button"
+        onClick={() => onNavigate(appRoutes.myTraining)}
+      >
+        Мой тренер и программа
+      </button>
+    </div>
     <div className="active-app-content">{children}</div>
-    <ChatFloatingButton unreadCount={chatUnreadCount} hidden={chatFabHidden} onOpen={onOpenChat} />
-    <TabBar route={route} disabled={navigationDisabled} onNavigate={onNavigate} />
+    <TabBar
+      route={route}
+      disabled={navigationDisabled}
+      showChat={showChat}
+      chatUnreadCount={chatUnreadCount}
+      onNavigate={onNavigate}
+    />
   </div>
 );
 
@@ -223,7 +308,7 @@ type SessionState =
   | { readonly kind: 'server'; readonly message: string }
   | { readonly kind: 'authenticated'; readonly profile: MeResponse };
 
-type AuthView = 'login' | 'register';
+type AuthView = 'login' | 'register' | 'forgot-password';
 
 type SubscriptionLoadState =
   | { readonly kind: 'idle' }
@@ -239,14 +324,26 @@ interface TrainerSignOutAttempt {
 const routeAtStartup = (): AppRoute =>
   typeof window === 'undefined' ? appRoutes.login : normalizeAppRoute(window.location.pathname);
 
-const useBrowserRoute = (): readonly [AppRoute, (route: AppRoute, replace?: boolean) => void] => {
+interface BrowserRouteHistoryFence {
+  readonly current: boolean;
+}
+
+const useBrowserRoute = (
+  historyFenceRef: BrowserRouteHistoryFence,
+): readonly [AppRoute, (route: AppRoute, replace?: boolean) => void] => {
   const [route, setRoute] = useState<AppRoute>(routeAtStartup);
 
   useEffect(() => {
-    const handlePopState = (): void => setRoute(normalizeAppRoute(window.location.pathname));
+    const handlePopState = (): void => {
+      if (historyFenceRef.current) {
+        return;
+      }
+
+      setRoute(normalizeAppRoute(window.location.pathname));
+    };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
+  }, [historyFenceRef]);
 
   const navigate = useCallback((nextRoute: AppRoute, replace = false): void => {
     if (typeof window !== 'undefined' && window.location.pathname !== nextRoute) {
@@ -267,9 +364,19 @@ const useBrowserRoute = (): readonly [AppRoute, (route: AppRoute, replace?: bool
 export const App = (): ReactNode => {
   const [session, setSession] = useState<SessionState>({ kind: 'booting' });
   const [authView, setAuthView] = useState<AuthView>('login');
-  const [route, navigate] = useBrowserRoute();
+  const workoutCompletionBusyRef = useRef(false);
+  const [route, navigate] = useBrowserRoute(workoutCompletionBusyRef);
+  useEffect(() => {
+    const receiveInvite = (): void => {
+      captureInvite();
+      if (pendingInvite()) navigate(appRoutes.myTraining, true);
+    };
+    receiveInvite();
+    window.addEventListener('hashchange', receiveInvite);
+    return () => window.removeEventListener('hashchange', receiveInvite);
+  }, [navigate]);
   const [workoutCompletionBusy, setWorkoutCompletionBusy] = useState(false);
-  const [blockingDialogOpen, setBlockingDialogOpen] = useState(false);
+  const [, setBlockingDialogOpen] = useState(false);
   const [trainerSignOutState, setTrainerSignOutState] = useState<'idle' | TrainerSignOutUiState>(
     'idle',
   );
@@ -289,6 +396,11 @@ export const App = (): ReactNode => {
     [],
   );
 
+  const handleWorkoutCompletionBusyChange = useCallback((busy: boolean): void => {
+    workoutCompletionBusyRef.current = busy;
+    setWorkoutCompletionBusy(busy);
+  }, []);
+
   const navigateActiveTab = useCallback(
     (nextRoute: AppRoute): void => {
       if (workoutCompletionBusy) {
@@ -296,8 +408,15 @@ export const App = (): ReactNode => {
       }
 
       const workoutVideoId = window.history.state?.kinetraWorkoutVideoId;
+      const workoutDayOfWeek = window.history.state?.kinetraWorkoutDayOfWeek;
+      const workoutSelected =
+        typeof workoutVideoId === 'string' ||
+        (typeof workoutDayOfWeek === 'number' &&
+          Number.isInteger(workoutDayOfWeek) &&
+          workoutDayOfWeek >= 1 &&
+          workoutDayOfWeek <= 7);
 
-      if (typeof workoutVideoId === 'string') {
+      if (workoutSelected) {
         if (window.location.pathname === nextRoute) {
           window.history.back();
           return;
@@ -322,11 +441,39 @@ export const App = (): ReactNode => {
     navigate(appRoutes.login, true);
   }, [navigate]);
 
+  const openScheduledWorkout = useCallback(
+    (programWeek: number, dayOfWeek: number): void => {
+      if (
+        workoutCompletionBusy ||
+        !Number.isInteger(programWeek) ||
+        programWeek < 1 ||
+        programWeek > 12 ||
+        !Number.isInteger(dayOfWeek) ||
+        dayOfWeek < 1 ||
+        dayOfWeek > 7
+      ) {
+        return;
+      }
+
+      window.history.pushState(
+        {
+          kinetraWorkoutDayOfWeek: dayOfWeek,
+          kinetraProgramWeek: programWeek,
+        },
+        '',
+        appRoutes.home,
+      );
+      window.scrollTo({ top: 0, behavior: 'auto' });
+      navigate(appRoutes.home);
+    },
+    [navigate, workoutCompletionBusy],
+  );
+
   const handleTrainerVerificationProfileUpdated = useCallback(
     (updated: MeResponse): void => {
       setSession({ kind: 'authenticated', profile: updated });
       if (updated.account_role === 'trainer') {
-        navigate(appRoutes.trainerChats, true);
+        navigate(appRoutes.trainerStudents, true);
       }
     },
     [navigate],
@@ -442,14 +589,29 @@ export const App = (): ReactNode => {
 
   const authenticatedUserId = session.kind === 'authenticated' ? session.profile.user.id : null;
   const authenticatedRole = session.kind === 'authenticated' ? session.profile.account_role : null;
+  const [reviewerAccount, setReviewerAccount] = useState<string | null>(null);
+  const canReview = authenticatedUserId !== null && reviewerAccount === authenticatedUserId;
+  useEffect(() => {
+    if (authenticatedUserId === null) return;
+    const controller = new AbortController();
+    void getReviewerAccess(controller.signal)
+      .then((access) => {
+        if (!controller.signal.aborted)
+          setReviewerAccount(access.can_review ? authenticatedUserId : null);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setReviewerAccount(null);
+      });
+    return () => controller.abort();
+  }, [authenticatedUserId]);
+
   const trainerVerificationRequired =
     session.kind === 'authenticated' &&
     session.profile.account_role === 'client' &&
     session.profile.requested_role === 'trainer';
   const chatEnabled =
     session.kind === 'authenticated' &&
-    (session.profile.account_role === 'trainer' ||
-      (session.profile.user.onboardingStatus === 'active' && !trainerVerificationRequired));
+    (session.profile.account_role === 'trainer' || !trainerVerificationRequired);
   const chatRuntime = useChatRuntime({
     accountId: authenticatedUserId,
     role: authenticatedRole,
@@ -458,6 +620,10 @@ export const App = (): ReactNode => {
     realtime: chatRealtime,
     onSessionExpired: handleActiveSessionExpired,
   });
+  const refreshChat = chatRuntime.refresh;
+  useEffect(() => {
+    if (route === appRoutes.chat && chatEnabled) refreshChat();
+  }, [route, chatEnabled, refreshChat]);
   chatDisposeRef.current = chatRuntime.disposeNow;
   chatSuspendRef.current = chatRuntime.suspendNow;
   authenticatedUserIdRef.current = authenticatedUserId;
@@ -582,10 +748,7 @@ export const App = (): ReactNode => {
   }, [authenticatedRole, authenticatedUserId, loadSubscription, trainerVerificationRequired]);
 
   useLayoutEffect(() => {
-    if (
-      subscriptionState.kind === 'ready' &&
-      !isSubscriptionActive(subscriptionState.subscription)
-    ) {
+    if (subscriptionState.kind === 'ready' && !hasTrainingAccess(subscriptionState.subscription)) {
       clearWorkoutHistorySentinel();
     }
   }, [subscriptionState]);
@@ -598,7 +761,12 @@ export const App = (): ReactNode => {
 
   useEffect(() => {
     if (session.kind === 'unauthenticated') {
-      if (route !== appRoutes.login) {
+      if (
+        route !== appRoutes.login &&
+        route !== appRoutes.adminApplications &&
+        route !== appRoutes.adminMarketplace &&
+        !isMarketplaceRoute(route)
+      ) {
         navigate(appRoutes.login, true);
       }
       return;
@@ -608,16 +776,38 @@ export const App = (): ReactNode => {
       return;
     }
 
+    if (
+      route === appRoutes.adminApplications ||
+      route === appRoutes.adminMarketplace ||
+      isMarketplaceRoute(route)
+    )
+      return;
+    if (
+      session.profile.account_role !== 'trainer' &&
+      session.profile.requested_role !== 'trainer'
+    ) {
+      if (pendingInvite() && route !== appRoutes.myTraining) {
+        navigate(appRoutes.myTraining, true);
+        return;
+      }
+      if (
+        route === appRoutes.myTraining ||
+        route === appRoutes.chat ||
+        route === appRoutes.nutrition
+      )
+        return;
+    }
+
     if (session.profile.account_role === 'trainer') {
       if (
         route === appRoutes.trainerVideos &&
         session.profile.trainer_profile?.can_manage_videos !== true
       ) {
-        navigate(appRoutes.trainerChats, true);
+        navigate(appRoutes.trainerStudents, true);
         return;
       }
       if (!isTrainerRoute(route)) {
-        navigate(appRoutes.trainerChats, true);
+        navigate(appRoutes.trainerStudents, true);
       }
       return;
     }
@@ -650,6 +840,18 @@ export const App = (): ReactNode => {
       return;
     }
 
+    if (session.profile.user.onboardingStatus === 'base_lessons') {
+      if (route === appRoutes.editSurvey && session.profile.survey === null) {
+        navigate(appRoutes.settings, true);
+        return;
+      }
+
+      if (!isExplorationAppRoute(route)) {
+        navigate(appRoutes.home, true);
+      }
+      return;
+    }
+
     if (isSettingsRoute(route)) {
       if (route === appRoutes.editSurvey && session.profile.survey === null) {
         navigate(appRoutes.settings, true);
@@ -664,6 +866,15 @@ export const App = (): ReactNode => {
     }
   }, [navigate, route, session, subscriptionState]);
 
+  if (isMarketplaceRoute(route))
+    return (
+      <Catalogue
+        key={route}
+        route={route}
+        onNavigate={navigate}
+        authenticated={session.kind === 'authenticated'}
+      />
+    );
   if (session.kind === 'booting') {
     return (
       <main className="app-shell" data-testid="session-loading">
@@ -680,12 +891,19 @@ export const App = (): ReactNode => {
       setAuthView('login');
       setSession({ kind: 'authenticated', profile });
       navigate(
-        profile.account_role === 'trainer'
-          ? appRoutes.trainerChats
-          : routeForOnboardingStatus(profile.user.onboardingStatus),
+        route === appRoutes.adminApplications || route === appRoutes.adminMarketplace
+          ? route
+          : (consumeMarketplaceReturn() ??
+              (profile.account_role === 'trainer'
+                ? appRoutes.trainerStudents
+                : routeForOnboardingStatus(profile.user.onboardingStatus))),
         true,
       );
     };
+
+    if (authView === 'forgot-password') {
+      return <ForgotPasswordScreen onBack={() => setAuthView('login')} />;
+    }
 
     if (authView === 'register') {
       return (
@@ -697,6 +915,7 @@ export const App = (): ReactNode => {
       <LoginScreen
         onAuthenticated={handleAuthenticated}
         onRegister={() => setAuthView('register')}
+        onForgotPassword={() => setAuthView('forgot-password')}
       />
     );
   }
@@ -717,6 +936,32 @@ export const App = (): ReactNode => {
     return <TrainerSignOutState state={trainerSignOutState} onRetry={handleTrainerSignOut} />;
   }
 
+  if (route === appRoutes.adminMarketplace)
+    return (
+      <MarketplaceReview
+        onBack={() =>
+          navigate(profile.account_role === 'trainer' ? appRoutes.trainerStudents : appRoutes.home)
+        }
+      />
+    );
+
+  if (route === appRoutes.adminApplications) {
+    return (
+      <TrainerApplicationsAdmin
+        key={profile.user.id}
+        accountId={profile.user.id}
+        onSessionExpired={handleActiveSessionExpired}
+        onBack={() =>
+          navigate(
+            profile.account_role === 'trainer'
+              ? appRoutes.trainerStudents
+              : routeForOnboardingStatus(profile.user.onboardingStatus),
+          )
+        }
+      />
+    );
+  }
+
   if (profile.account_role === 'trainer') {
     if (!isTrainerRoute(route)) {
       return (
@@ -731,6 +976,7 @@ export const App = (): ReactNode => {
 
     const withTrainerShell = (content: ReactNode): ReactNode => (
       <TrainerAdminShell
+        canReview={canReview}
         route={route}
         canManageVideos={profile.trainer_profile?.can_manage_videos === true}
         onNavigate={navigate}
@@ -739,6 +985,28 @@ export const App = (): ReactNode => {
         {content}
       </TrainerAdminShell>
     );
+
+    if (route === appRoutes.trainerMarketplace)
+      return withTrainerShell(
+        <MarketplaceWorkspace
+          key={profile.user.id}
+          account={profile.user.id}
+          name={profile.trainer_profile?.display_name ?? 'Тренер'}
+          onNavigate={navigate}
+        />,
+      );
+    if (route === appRoutes.trainerProfile)
+      return withTrainerShell(<CoachProfileScreen key={profile.user.id} />);
+    if (route === appRoutes.trainerStudents)
+      return withTrainerShell(
+        <TrainerWorkspace
+          accountId={profile.user.id}
+          key={profile.user.id}
+          onChat={(id) => navigate(trainerConversationRoute(id))}
+        />,
+      );
+    if (route === appRoutes.trainerLessons)
+      return withTrainerShell(<TrainerLessons key={profile.user.id} />);
 
     if (route === appRoutes.trainerVideos) {
       return withTrainerShell(
@@ -807,6 +1075,7 @@ export const App = (): ReactNode => {
   if (profile.requested_role === 'trainer') {
     return (
       <TrainerVerificationScreen
+        onReviewApplications={canReview ? () => navigate(appRoutes.adminApplications) : undefined}
         onProfileUpdated={handleTrainerVerificationProfileUpdated}
         onSessionExpired={handleActiveSessionExpired}
         onSignOut={handleTrainerSignOut}
@@ -816,70 +1085,85 @@ export const App = (): ReactNode => {
 
   const defaultAuthenticatedRoute = routeForOnboardingStatus(profile.user.onboardingStatus);
 
+  const withPaymentAvailability = (content: ReactNode): ReactNode => (
+    <PaymentAvailabilityGate
+      subscription={subscriptionState.kind === 'ready' ? subscriptionState.subscription : null}
+      loading={subscriptionState.kind === 'loading' || subscriptionState.kind === 'idle'}
+      {...(subscriptionState.kind === 'error' ? { message: subscriptionState.message } : {})}
+      onRetry={() => loadSubscription()}
+      onBack={() => navigate(defaultAuthenticatedRoute, true)}
+    >
+      {content}
+    </PaymentAvailabilityGate>
+  );
+
   if (route === appRoutes.paymentSuccess) {
-    return (
+    return withPaymentAvailability(
       <PaymentSuccessScreen
         onActivated={handleSubscriptionUpdated}
         onContinue={() => navigate(defaultAuthenticatedRoute, true)}
         onSessionExpired={handleActiveSessionExpired}
-      />
+      />,
     );
   }
 
   if (route === appRoutes.paymentCancel) {
-    return (
+    return withPaymentAvailability(
       <PaymentCancelScreen
         onRetry={() => navigate(appRoutes.payment, true)}
         onLater={() => navigate(defaultAuthenticatedRoute, true)}
-      />
+      />,
     );
   }
 
   if (route === appRoutes.payment) {
-    if (subscriptionState.kind === 'loading' || subscriptionState.kind === 'idle') {
-      return <SubscriptionVerificationState loading onRetry={() => loadSubscription()} />;
-    }
-
-    if (subscriptionState.kind === 'error') {
-      return (
-        <SubscriptionVerificationState
-          loading={false}
-          message={subscriptionState.message}
-          onRetry={() => loadSubscription()}
-        />
-      );
-    }
-
-    if (!isSubscriptionActive(subscriptionState.subscription)) {
-      return (
+    return withPaymentAvailability(
+      subscriptionState.kind === 'ready' &&
+        !isSubscriptionActive(subscriptionState.subscription) ? (
         <PaymentScreen
           onBack={() => navigate(defaultAuthenticatedRoute)}
           onSessionExpired={handleActiveSessionExpired}
         />
-      );
-    }
-
-    return <SubscriptionVerificationState loading onRetry={() => loadSubscription()} />;
+      ) : (
+        <SubscriptionVerificationState loading onRetry={() => loadSubscription()} />
+      ),
+    );
   }
 
   const chatControlledUnavailable = chatRuntime.state.kind === 'unavailable';
-  const chatFabHidden =
-    blockingDialogOpen || !isChatFabRoute(route) || chatControlledUnavailable || !chatEnabled;
 
   const withActiveNavigation = (content: ReactNode): ReactNode =>
-    profile.user.onboardingStatus === 'active' ? (
+    profile.user.onboardingStatus === 'active' ||
+    profile.user.onboardingStatus === 'base_lessons' ||
+    route === appRoutes.myTraining ||
+    route === appRoutes.chat ||
+    route === appRoutes.nutrition ? (
       <ActiveAppShell
+        canReview={canReview}
+        displayName={clientDisplayName(profile)}
         route={route}
         navigationDisabled={workoutCompletionBusy}
-        chatFabHidden={chatFabHidden}
+        showChat={true}
         chatUnreadCount={chatRuntime.unreadCount}
-        onOpenChat={() => navigate(appRoutes.chat)}
         onNavigate={navigateActiveTab}
       >
         {content}
       </ActiveAppShell>
     ) : (
       content
+    );
+
+  if (route === appRoutes.nutrition)
+    return withActiveNavigation(<NutritionDiary key={profile.user.id} />);
+
+  if (route === appRoutes.myTraining)
+    return withActiveNavigation(
+      <MyTraining
+        accountId={profile.user.id}
+        timezone={profile.user.timezone}
+        key={profile.user.id}
+        onOpenChat={() => navigate(appRoutes.chat)}
+      />,
     );
 
   if (route === appRoutes.editSurvey) {
@@ -915,7 +1199,7 @@ export const App = (): ReactNode => {
     );
   }
 
-  if (profile.user.onboardingStatus === 'survey_pending') {
+  if (profile.user.onboardingStatus === 'survey_pending' && route !== appRoutes.chat) {
     return (
       <SurveyWizard
         initialSurvey={profile.survey}
@@ -927,7 +1211,7 @@ export const App = (): ReactNode => {
     );
   }
 
-  if (profile.user.onboardingStatus === 'onboarding_pending') {
+  if (profile.user.onboardingStatus === 'onboarding_pending' && route !== appRoutes.chat) {
     return (
       <OnboardingCarousel
         key={profile.user.id}
@@ -945,7 +1229,7 @@ export const App = (): ReactNode => {
     );
   }
 
-  if (profile.user.onboardingStatus === 'base_lessons') {
+  if (profile.user.onboardingStatus === 'base_lessons' && route === appRoutes.baseLessons) {
     return (
       <BaseLessonsScreen
         key={profile.user.id}
@@ -953,6 +1237,7 @@ export const App = (): ReactNode => {
           setSession({ kind: 'authenticated', profile: updated });
           navigate(routeForOnboardingStatus(updated.user.onboardingStatus), true);
         }}
+        onBackToApp={() => navigate(appRoutes.home)}
         onOpenSettings={() => navigate(appRoutes.settings)}
         onSessionExpired={() => {
           setSession({ kind: 'unauthenticated' });
@@ -962,33 +1247,43 @@ export const App = (): ReactNode => {
     );
   }
 
+  if (route === appRoutes.assistant) {
+    return withActiveNavigation(
+      <CoachAssistantScreen
+        key={profile.user.id}
+        onOpenTrainer={() => navigate(appRoutes.chat)}
+        onSessionExpired={handleActiveSessionExpired}
+      />,
+    );
+  }
+
   if (route === appRoutes.chat) {
     const backToActiveApp = (): void => navigate(appRoutes.home);
 
     if (chatRuntime.state.kind === 'idle' || chatRuntime.state.kind === 'loading') {
-      return (
+      return withActiveNavigation(
         <ChatRouteState
           kind="loading"
           message="Загружаем диалог и проверяем защищённую сессию…"
           onBack={backToActiveApp}
-        />
+        />,
       );
     }
 
     if (chatRuntime.state.kind === 'unavailable') {
-      return (
+      return withActiveNavigation(
         <ChatRouteState
           kind="unavailable"
           message={chatUnavailableMessage(chatRuntime.state.reason)}
           showEmailFallback
           onBack={backToActiveApp}
           onRetry={chatRuntime.refresh}
-        />
+        />,
       );
     }
 
     if (chatRuntime.state.kind === 'error' || chatRuntime.state.session.role !== 'client') {
-      return (
+      return withActiveNavigation(
         <ChatRouteState
           kind="error"
           message={
@@ -998,11 +1293,11 @@ export const App = (): ReactNode => {
           }
           onBack={backToActiveApp}
           onRetry={chatRuntime.refresh}
-        />
+        />,
       );
     }
 
-    return (
+    return withActiveNavigation(
       <ClientChatScreen
         accountId={profile.user.id}
         ownDisplayName={clientDisplayName(profile)}
@@ -1016,16 +1311,16 @@ export const App = (): ReactNode => {
         onSessionExpired={handleActiveSessionExpired}
         onConversationStateChange={chatRuntime.updateClientConversationState}
         registerObjectUrl={chatRuntime.registerObjectUrl}
-      />
+      />,
     );
   }
 
   const activeContent =
     route === appRoutes.schedule ? (
       subscriptionState.kind === 'ready' ? (
-        isSubscriptionActive(subscriptionState.subscription) ? (
+        hasTrainingAccess(subscriptionState.subscription) ? (
           <ScheduleScreen
-            onOpenHome={() => navigate(appRoutes.home)}
+            onOpenWorkout={openScheduledWorkout}
             onSessionExpired={handleActiveSessionExpired}
             onSubscriptionRequired={loadSubscription}
           />
@@ -1062,13 +1357,21 @@ export const App = (): ReactNode => {
         onSessionExpired={handleActiveSessionExpired}
       />
     ) : subscriptionState.kind === 'ready' ? (
-      isSubscriptionActive(subscriptionState.subscription) ? (
+      hasTrainingAccess(subscriptionState.subscription) ? (
         <ProgramScreen
+          onAskTrainer={(day, week, seconds) => {
+            prepareWorkoutQuestion(profile.user.id, day, week, seconds);
+            navigateActiveTab(appRoutes.chat);
+          }}
           timezone={profile.user.timezone}
           subscription={subscriptionState.subscription}
+          trainingLocked={profile.user.onboardingStatus === 'base_lessons'}
+          onOpenBaseLessons={() => navigate(appRoutes.baseLessons)}
+          onOpenSchedule={() => navigateActiveTab(appRoutes.schedule)}
+          onOpenCoach={() => navigateActiveTab(appRoutes.assistant)}
           onOpenPayment={() => navigate(appRoutes.payment)}
           onSubscriptionRequired={loadSubscription}
-          onWorkoutCompletionBusyChange={setWorkoutCompletionBusy}
+          onWorkoutCompletionBusyChange={handleWorkoutCompletionBusyChange}
           onSessionExpired={handleActiveSessionExpired}
         />
       ) : (
@@ -1087,14 +1390,28 @@ export const App = (): ReactNode => {
 
   return (
     <ActiveAppShell
+      canReview={canReview}
+      displayName={clientDisplayName(profile)}
       route={route}
       navigationDisabled={workoutCompletionBusy}
-      chatFabHidden={chatFabHidden}
+      showChat={true}
       chatUnreadCount={chatRuntime.unreadCount}
-      onOpenChat={() => navigate(appRoutes.chat)}
       onNavigate={navigateActiveTab}
     >
-      {activeContent}
+      <MyTraining
+        accountId={profile.user.id}
+        timezone={profile.user.timezone}
+        key={`${profile.user.id}:${route}`}
+        mode={
+          route === appRoutes.progress
+            ? 'progress'
+            : route === appRoutes.schedule
+              ? 'schedule'
+              : 'home'
+        }
+        onOpenChat={() => navigate(appRoutes.chat)}
+        fallback={activeContent}
+      />
     </ActiveAppShell>
   );
 };

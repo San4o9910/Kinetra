@@ -1,3 +1,4 @@
+import { createLoginRateLimiter } from './login-rate-limit.js';
 import type {
   LoginRequest,
   MessageResponse,
@@ -215,7 +216,7 @@ export const createAuthRouter = (options: AuthRouterOptions): Router => {
     response.status(201).json(result.session.response satisfies RegisterResponse);
   });
 
-  router.post('/login', async (request, response) => {
+  router.post('/login', createLoginRateLimiter(), async (request, response) => {
     const body = asJsonObject(request.body);
     assertNoUserIdOverride(body);
     const loginRequest: LoginRequest = {

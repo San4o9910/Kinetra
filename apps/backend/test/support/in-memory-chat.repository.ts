@@ -182,9 +182,7 @@ export class InMemoryChatRepository implements ChatRepository {
 
     const client = this.actors.get(conversation.client.userId);
     const trainer = this.actors.get(conversation.trainer.userId);
-    return client?.role === 'client' &&
-      client.onboardingStatus === 'active' &&
-      trainer?.role === 'trainer'
+    return client?.role === 'client' && trainer?.role === 'trainer'
       ? cloneConversation(conversation)
       : null;
   }
@@ -270,12 +268,7 @@ export class InMemoryChatRepository implements ChatRepository {
     const client = this.actors.get(clientUserId);
     const trainer = this.actors.get(this.trainerId);
 
-    if (
-      client?.role !== 'client' ||
-      client.onboardingStatus !== 'active' ||
-      trainer?.role !== 'trainer' ||
-      !this.defaultTrainerActive
-    ) {
+    if (client?.role !== 'client' || trainer?.role !== 'trainer' || !this.defaultTrainerActive) {
       return null;
     }
 
@@ -394,7 +387,7 @@ export class InMemoryChatRepository implements ChatRepository {
 
     const actor = this.actors.get(input.userId);
 
-    if (actor === undefined || (actor.role === 'client' && actor.onboardingStatus !== 'active')) {
+    if (actor === undefined) {
       return { kind: 'not_available' };
     }
 

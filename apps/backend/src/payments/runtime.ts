@@ -5,6 +5,10 @@ import { SystemClock } from '../auth/service.js';
 import { HmacJwtAccessTokenService } from '../auth/tokens.js';
 import { env } from '../config/env.js';
 import { databasePool } from '../db/pool.js';
+import {
+  PostgresFreeBetaAccessChecker,
+  type FreeBetaAccessChecker,
+} from '../program/free-beta-access.js';
 import { PostgresPaymentsRepository } from './postgres-payments.repository.js';
 import {
   ConsoleRenewalFailureNotifier,
@@ -20,6 +24,8 @@ import {
 import { YooKassaWebhookSourceVerifier, type WebhookSourceVerifier } from './webhook-source.js';
 
 export interface PaymentsRuntime {
+  readonly enabled?: boolean;
+  readonly freeBetaAccess?: FreeBetaAccessChecker;
   readonly service: PaymentsService;
   readonly renewalService: RenewalService;
   readonly authMiddleware: RequestHandler;
@@ -55,12 +61,15 @@ export const createProductionPaymentsRuntime = (
   const allowedReturnUrls = env.yookassa?.returnUrls ?? ['http://localhost:5173/payment/success'];
 
   return {
-    service: new PaymentsService(repository, client, clock, allowedReturnUrls),
+    enabled: env.paymentsEnabled,
+    freeBetaAccess: new PostgresFreeBetaAccessChecker(databasePool, env.freeBetaEnabled),
+    service: new PaymentsService(repository, client, clock, allowedReturnUrls, env.paymentsEnabled),
     renewalService: new RenewalService(
       repository,
       client,
       clock,
       options.renewalFailureNotifier ?? new ConsoleRenewalFailureNotifier(),
+      env.paymentsEnabled,
     ),
     authMiddleware: createAuthMiddleware(verifier),
     webhookSourceVerifier: options.webhookSourceVerifier ?? new YooKassaWebhookSourceVerifier(),

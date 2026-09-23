@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import {
+  assertBuildApiOrigin,
   buildImageContentSecurityPolicy,
   buildNormalizedFrontendEnv,
   normalizeApiOrigin,
@@ -18,9 +19,12 @@ test('T12 image CSP allows only the app, blob previews and one exact private med
   assert.equal(normalizePrivateMediaOrigin('http://127.0.0.1:3000', true), 'http://127.0.0.1:3000');
   assert.equal(
     buildImageContentSecurityPolicy('https://media.kinetra.test'),
-    "img-src 'self' blob: https://media.kinetra.test;",
+    "img-src 'self' blob: https://media.kinetra.test; media-src 'self' blob: https://media.kinetra.test;",
   );
-  assert.equal(buildImageContentSecurityPolicy(null), "img-src 'self' blob:;");
+  assert.equal(
+    buildImageContentSecurityPolicy(null),
+    "img-src 'self' blob:; media-src 'self' blob:;",
+  );
 
   for (const unsafeValue of [
     'https://media.kinetra.test/private',
@@ -35,6 +39,12 @@ test('T12 image CSP allows only the app, blob previews and one exact private med
 
   assert.throws(() => normalizePrivateMediaOrigin('http://127.0.0.1:3000'));
   assert.throws(() => normalizePrivateMediaOrigin('http://media.kinetra.test', true));
+});
+
+test('builds require an explicit API origin while local development can start unconfigured', () => {
+  assert.throws(() => assertBuildApiOrigin('build', null), /VITE_API_URL is required/);
+  assert.doesNotThrow(() => assertBuildApiOrigin('serve', null));
+  assert.doesNotThrow(() => assertBuildApiOrigin('build', 'https://api.kinetra.test'));
 });
 
 test('frontend API and private media config share an exact secure origin policy', () => {

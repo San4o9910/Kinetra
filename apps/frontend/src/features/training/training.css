@@ -1,0 +1,1079 @@
+.training-workspace {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 28px 20px 64px;
+  color: var(--text-primary, #001621);
+}
+.training-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 24px;
+}
+.training-heading h1 {
+  font-size: clamp(28px, 4vw, 40px);
+  line-height: 1.12;
+  margin: 6px 0 12px;
+  letter-spacing: -1px;
+}
+.training-heading h2 {
+  margin: 0;
+}
+.training-heading p {
+  margin: 6px 0;
+}
+.training-count {
+  font-size: 16px;
+  vertical-align: middle;
+  margin-left: 12px;
+  padding: 6px 10px;
+  border-radius: 30px;
+  background: #ff41031a;
+  color: #c33100;
+}
+.training-card {
+  border: 1px solid var(--divider-strong);
+  border-radius: 20px;
+  padding: 24px;
+  margin-bottom: 20px;
+  background: var(--surface, #fff);
+  overflow-wrap: anywhere;
+}
+.training-form label,
+.training-roster label,
+.training-invite label {
+  display: grid;
+  gap: 7px;
+  font-weight: 600;
+  font-size: 14px;
+}
+.training-form {
+  display: grid;
+  gap: 16px;
+}
+.training-form h2 {
+  margin: 0;
+}
+.training-form input,
+.training-form textarea,
+.training-form select,
+.training-roster input,
+.training-invite input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border: 1px solid var(--border-color, #cbd5d9);
+  border-radius: 11px;
+  color: inherit;
+  background: var(--background, #f7f9f9);
+  font: inherit;
+  min-height: 44px;
+}
+.training-form textarea {
+  resize: vertical;
+}
+.training-form fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+.training-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.training-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.training-workspace button,
+.training-card button {
+  min-height: 44px;
+  cursor: pointer;
+}
+.training-workspace button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.training-workspace button:not(.primary-button):not(.training-student),
+.training-card button:not(.primary-button):not(.training-student) {
+  padding: 10px 14px;
+  border: 1px solid var(--border-color, #cbd5d9);
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+.training-columns {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+.training-roster {
+  display: grid;
+  gap: 10px;
+  position: sticky;
+  top: 90px;
+}
+.training-student {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  width: 100%;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 16px;
+  padding: 14px;
+  color: inherit;
+}
+.training-student > span:nth-child(2) {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.training-student small {
+  display: block;
+  margin-top: 5px;
+  opacity: 0.7;
+}
+.training-student.is-selected {
+  background: #ff41030d;
+  border-color: #ff4103;
+}
+.training-avatar {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  border-radius: 12px;
+  background: #001621;
+  color: #fff;
+  font-weight: 700;
+}
+.training-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+  margin: 14px 0 22px;
+}
+.training-stats strong {
+  display: block;
+  font-size: 24px;
+  letter-spacing: -0.5px;
+}
+.training-stats span {
+  display: block;
+  font-size: 12px;
+  margin-top: 5px;
+  opacity: 0.7;
+}
+.training-card progress {
+  width: 100%;
+  height: 8px;
+  accent-color: #ff4103;
+}
+.training-badge {
+  display: inline-block;
+  border-radius: 30px;
+  background: #ff410314;
+  color: #b22c00;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.training-workout-editor {
+  border: 1px solid var(--divider-strong);
+  border-radius: 16px;
+  padding: 18px;
+  display: grid;
+  gap: 14px;
+}
+.training-workout-editor h3 {
+  margin: 0;
+  flex: 1;
+}
+.training-feedback {
+  border-top: 1px solid var(--divider-strong);
+  padding-top: 14px;
+}
+.training-feedback p {
+  white-space: pre-wrap;
+}
+.training-muted {
+  font-size: 13px;
+  opacity: 0.72;
+  font-weight: 400;
+  margin: 0;
+  line-height: 1.5;
+}
+.training-error {
+  background: #ff410312;
+  border-left: 3px solid #ff4103;
+  padding: 14px;
+  border-radius: 4px;
+  overflow-wrap: anywhere;
+}
+.training-empty {
+  padding: 44px 24px;
+  text-align: center;
+  border: 1px dashed var(--border-color, #cbd5d9);
+  border-radius: 20px;
+  margin: 18px 0;
+  line-height: 1.6;
+}
+.training-lesson-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+.training-player {
+  margin-top: 16px;
+}
+.training-player video {
+  width: 100%;
+  max-height: 65vh;
+  border-radius: 12px;
+  background: #001621;
+}
+.training-instructions {
+  white-space: pre-wrap;
+  line-height: 1.65;
+}
+.training-client-workout.is-complete {
+  border-left: 3px solid #ff4103;
+}
+.training-completion {
+  margin-top: 22px;
+}
+.training-completion summary {
+  cursor: pointer;
+  padding: 8px 0;
+}
+.training-completion details[open] {
+  display: grid;
+  gap: 14px;
+}
+.training-completion details > * {
+  margin-bottom: 14px;
+}
+.training-personal {
+  padding-top: 8px;
+}
+.training-course-label {
+  font-size: 13px;
+  opacity: 0.65;
+  margin: 24px 10px 8px;
+}
+.training-invite input {
+  margin-bottom: 14px;
+}
+.training-invite > button {
+  margin-right: 8px;
+  margin-top: 12px;
+}
+.training-invite-link {
+  margin: 0 20px 16px;
+}
+.training-detail {
+  min-width: 0;
+}
+[data-theme='dark'] .training-card {
+  background: #05232e;
+  border-color: #20414c;
+  color: #edf4f5;
+}
+[data-theme='dark'] .training-workspace {
+  color: #edf4f5;
+}
+[data-theme='dark'] .training-form input,
+[data-theme='dark'] .training-form textarea,
+[data-theme='dark'] .training-form select,
+[data-theme='dark'] .training-invite input,
+[data-theme='dark'] .training-roster input {
+  background: #001621;
+  border-color: #36515b;
+  color: #fff;
+}
+[data-theme='dark'] .training-badge,
+[data-theme='dark'] .training-count {
+  color: #ff835e;
+}
+@media (max-width: 760px) {
+  .training-workspace {
+    padding: 20px 12px 44px;
+  }
+  .training-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .training-columns {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+  .training-roster {
+    position: static;
+    max-height: 320px;
+    overflow: auto;
+  }
+  .training-fields,
+  .training-lesson-grid {
+    grid-template-columns: 1fr;
+  }
+  .training-card {
+    padding: 18px;
+    border-radius: 16px;
+  }
+  .training-stats {
+    gap: 10px;
+  }
+  .training-stats strong {
+    font-size: 20px;
+  }
+  .training-workout-editor {
+    padding: 12px;
+  }
+  .training-workspace .training-actions {
+    gap: 8px;
+  }
+  .trainer-admin-header nav {
+    overflow: auto;
+  }
+  .training-invite-link {
+    margin-left: 12px;
+    margin-right: 12px;
+  }
+}
+
+.training-workspace {
+  --training-accent: var(--accent-fill);
+  --training-muted: var(--muted);
+  --training-line: var(--divider-strong);
+  --training-soft: var(--surface-subtle);
+}
+.training-form fieldset {
+  min-width: 0;
+}
+.training-form fieldset:not(.exercise-builder) {
+  display: grid;
+  gap: 16px;
+}
+.training-workspace input:not([type='checkbox']),
+.training-workspace select,
+.training-workspace textarea {
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.exercise-builder {
+  display: grid;
+  gap: 16px;
+  border: 0;
+  padding: 0;
+}
+.exercise-builder legend {
+  font-weight: 750;
+  margin: 18px 0 12px;
+}
+.exercise-editor {
+  border: 1px solid var(--training-line);
+  border-left: 3px solid var(--training-accent);
+  padding: 18px;
+  border-radius: 14px;
+  display: grid;
+  gap: 14px;
+}
+.training-save-bar {
+  position: sticky;
+  bottom: 76px;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  padding: 16px;
+  background: var(--surface, #fff);
+  border: 1px solid var(--training-line);
+  border-radius: 16px;
+  box-shadow: 0 6px 25px #0016210d;
+}
+.training-save-bar [role='status'] {
+  flex: 1 0 100%;
+  font-size: 13px;
+  color: var(--training-muted);
+}
+.training-copy-week {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  background: var(--training-soft);
+  border-radius: 14px;
+}
+.training-attention {
+  padding: 22px;
+  margin-bottom: 28px;
+  border-radius: 20px;
+  border: 1px solid var(--training-line);
+}
+.training-attention-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
+  gap: 12px;
+}
+.training-attention-item {
+  padding: 12px;
+  background: var(--training-soft);
+  border-radius: 14px;
+}
+.training-attention-item > button {
+  width: 100%;
+  text-align: left;
+  display: grid;
+  gap: 5px;
+  background: transparent;
+  border: 0;
+}
+.training-attention-item.is-report,
+.training-attention-item.is-reschedule {
+  border-left: 3px solid var(--training-accent);
+}
+.training-template-picker {
+  margin: 18px 0;
+}
+.training-session {
+  border-top: 4px solid var(--training-accent);
+}
+.training-session-title {
+  font-size: clamp(24px, 5vw, 38px);
+  letter-spacing: -0.025em;
+}
+.training-set-list {
+  display: grid;
+  gap: 14px;
+  margin: 24px 0;
+}
+.training-set-list fieldset {
+  border: 1px solid var(--training-line);
+  border-radius: 16px;
+  min-width: 0;
+  padding: 16px;
+}
+.training-set-list legend {
+  padding: 0 8px;
+  font-weight: 650;
+}
+.training-set-list .training-fields {
+  align-items: end;
+}
+.training-done {
+  background: var(--training-soft);
+  border: 1px solid var(--training-accent);
+}
+.training-rest {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 10px;
+  border-radius: 18px;
+  padding: 20px;
+  margin: 18px 0;
+  background: var(--training-soft);
+}
+.training-rest strong {
+  grid-column: 1;
+  font-variant-numeric: tabular-nums;
+  font-size: 46px;
+  color: var(--training-accent);
+}
+.training-rest button {
+  grid-column: 2;
+  grid-row: 1 / 3;
+}
+.training-calendar {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 5px;
+}
+.training-calendar-weekday {
+  text-align: center;
+  padding: 10px 0;
+  font-size: 13px;
+  color: var(--training-muted);
+}
+.training-calendar button {
+  padding: 7px 0;
+  min-width: 0;
+  min-height: 54px;
+  display: grid;
+  gap: 1px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background: var(--training-soft);
+}
+.training-calendar button.is-today {
+  border-color: var(--training-accent);
+}
+.training-calendar button.is-selected {
+  background: var(--training-accent);
+  color: #001621;
+  font-weight: 750;
+}
+.training-calendar small {
+  min-height: 14px;
+}
+.training-calendar + section {
+  margin-top: 20px;
+}
+.training-rest-day {
+  padding: 32px;
+  border-left: 4px solid var(--training-accent);
+}
+.training-goal {
+  margin-bottom: 24px;
+  line-height: 1.6;
+}
+.training-table-wrap {
+  overflow-x: auto;
+  margin-top: 16px;
+}
+.training-table-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 14px;
+}
+.training-table-wrap caption {
+  text-align: left;
+  padding: 12px 0;
+}
+.training-table-wrap th,
+.training-table-wrap td {
+  padding: 12px 8px;
+  border-bottom: 1px solid var(--training-line);
+  white-space: nowrap;
+}
+.training-measurement {
+  padding: 18px 0;
+  border-bottom: 1px solid var(--training-line);
+}
+.training-progress-photo {
+  display: block;
+  max-width: min(100%, 480px);
+  border-radius: 16px;
+  margin: 16px 0;
+}
+.training-check {
+  display: flex !important;
+  flex-direction: row;
+  align-items: center;
+  min-height: 46px;
+  gap: 12px;
+}
+.training-check input {
+  width: 22px;
+  height: 22px;
+  accent-color: var(--training-accent);
+  flex-shrink: 0;
+}
+.training-weight-chart {
+  margin: 20px 0;
+  color: var(--training-accent);
+}
+.training-weight-chart svg {
+  display: block;
+  width: 100%;
+  max-height: 180px;
+}
+.training-weight-chart figcaption {
+  font-size: 13px;
+  color: var(--training-muted);
+}
+.training-library-toolbar {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 16px;
+  margin: 24px 0;
+}
+.training-library-toolbar label {
+  display: grid;
+  gap: 8px;
+}
+.training-lesson-cover {
+  width: 100%;
+  aspect-ratio: 16/9;
+  object-fit: cover;
+  border-radius: 14px;
+  margin-bottom: 18px;
+  background: var(--training-soft);
+}
+.training-cover-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  font-size: 68px;
+  letter-spacing: -0.08em;
+  color: var(--training-accent);
+}
+.training-cover-placeholder span {
+  margin-left: 22px;
+  font-size: 24px;
+}
+.training-file-hidden {
+  display: none;
+}
+.training-audit {
+  padding-left: 20px;
+}
+.training-audit li {
+  padding: 10px 0;
+}
+.training-audit small {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+}
+.training-workspace button,
+.training-workspace summary {
+  min-height: 46px;
+}
+.training-workspace button:focus-visible,
+.training-workspace input:focus-visible,
+.training-workspace select:focus-visible,
+.training-workspace textarea:focus-visible,
+.training-workspace summary:focus-visible {
+  outline: 3px solid var(--training-accent);
+  outline-offset: 3px;
+}
+@media (max-width: 600px) {
+  .training-library-toolbar {
+    grid-template-columns: 1fr;
+  }
+  .training-calendar {
+    gap: 2px;
+  }
+  .training-calendar button {
+    border-radius: 9px;
+  }
+  .training-card {
+    padding: 16px;
+  }
+  .training-attention {
+    padding: 16px;
+  }
+  .training-save-bar {
+    bottom: 70px;
+  }
+  .training-session .training-heading {
+    align-items: start;
+  }
+  .training-rest strong {
+    font-size: 38px;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .training-calendar button,
+  .training-done {
+    transition:
+      background-color 0.18s ease,
+      border-color 0.18s ease;
+  }
+}
+
+.lesson-sharing {
+  margin-top: 24px;
+  border-top: 1px solid var(--divider);
+  padding-top: 20px;
+}
+.lesson-sharing h3 {
+  margin: 0;
+}
+.lesson-recipient-list {
+  display: grid;
+  gap: 8px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.training-form .lesson-recipient-choice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 8px;
+  border-radius: 10px;
+  background: var(--surface-subtle);
+}
+.training-form .lesson-recipient-choice input {
+  width: 22px;
+  height: 22px;
+  min-height: 22px;
+  flex: 0 0 22px;
+  accent-color: var(--accent-fill);
+}
+.lesson-recipient-choice small {
+  display: block;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.lesson-recipient-progress {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--divider);
+  padding: 12px 0;
+}
+.lesson-recipient-progress p {
+  margin: 6px 0;
+  color: var(--muted);
+}
+.lesson-recipient-progress > div {
+  min-width: 0;
+}
+/* Shared student diary and coach practice screens. */
+.tab-bar-inner {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.tab-bar-inner.has-chat {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+.trainer-admin-shell {
+  padding-bottom: calc(65px + env(safe-area-inset-bottom));
+}
+.trainer-admin-content {
+  padding-bottom: 0;
+}
+/* The pupil summary and conversation share the available height. */
+.trainer-conversation-pane {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.trainer-conversation-pane > .trainer-client-summary {
+  flex: 0 0 auto;
+  max-height: 35%;
+  overflow: auto;
+}
+.trainer-conversation-pane > .chat-conversation-shell {
+  flex: 1 1 0;
+  height: auto;
+  min-height: 0;
+}
+.trainer-bottom-nav {
+  position: fixed;
+  z-index: 40;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  padding: 8px max(12px, env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--divider);
+  background: var(--surface-inset);
+}
+.trainer-bottom-nav a {
+  min-height: 48px;
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+  align-content: center;
+  text-decoration: none;
+  color: var(--muted);
+  font-size: 13px;
+  border-radius: 12px;
+}
+.trainer-bottom-nav a[aria-current='page'] {
+  color: var(--accent);
+  background: var(--surface-subtle);
+}
+.trainer-bottom-nav svg {
+  width: 24px;
+  height: 24px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.trainer-bottom-nav a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.nutrition-diary {
+  width: 100%;
+}
+.nutrition-date {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 24px;
+  margin: 24px 0;
+}
+.nutrition-diary label,
+.coach-profile label {
+  display: grid;
+  gap: 8px;
+  font-weight: 600;
+}
+.nutrition-diary input:not([type='checkbox']),
+.nutrition-diary select,
+.nutrition-diary textarea,
+.coach-profile input {
+  max-width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 12px;
+  border: 1px solid var(--divider-strong);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+.nutrition-diary .training-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.nutrition-diary input[type='checkbox'] {
+  width: 22px;
+  height: 22px;
+}
+.nutrition-foods {
+  display: grid;
+  gap: 18px;
+}
+.nutrition-food-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 2fr) minmax(70px, 1fr) minmax(90px, 1fr);
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid var(--divider);
+  border-radius: 18px;
+  background: var(--surface-subtle);
+}
+.nutrition-row-actions {
+  grid-column: 1/-1;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.nutrition-row-actions button {
+  font-size: 13px;
+  min-height: 36px;
+}
+.nutrition-template-save {
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+  border: 1px dashed var(--divider-strong);
+  border-radius: 16px;
+}
+.nutrition-template-grid,
+.nutrition-entries {
+  display: grid;
+  gap: 18px;
+}
+.nutrition-template-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
+}
+.nutrition-template-grid article {
+  padding: 18px;
+  border: 1px solid var(--divider);
+  border-radius: 18px;
+  overflow-wrap: anywhere;
+}
+.nutrition-template-grid p {
+  color: var(--muted);
+  font-size: 14px;
+}
+.nutrition-templates summary {
+  font-size: 19px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.nutrition-templates summary span {
+  color: var(--accent);
+  margin-left: 8px;
+}
+.nutrition-portions {
+  padding: 0;
+  list-style: none;
+  margin: 16px 0;
+}
+.nutrition-portions li {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--divider);
+}
+.nutrition-portions li span {
+  overflow-wrap: anywhere;
+}
+.nutrition-portions li strong {
+  white-space: nowrap;
+}
+.nutrition-day-save {
+  display: grid;
+  gap: 12px;
+}
+.nutrition-notice {
+  padding: 16px;
+  border-left: 3px solid var(--accent);
+  background: var(--surface-subtle);
+  border-radius: 0 12px 12px 0;
+}
+.coach-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  padding: 24px 0;
+}
+.coach-metrics div {
+  display: grid;
+  gap: 6px;
+}
+.coach-metrics strong {
+  font-size: clamp(24px, 4vw, 38px);
+  font-weight: 700;
+  color: var(--accent);
+}
+.coach-metrics span {
+  font-size: 13px;
+  color: var(--muted);
+}
+.coach-level-list {
+  display: grid;
+  gap: 14px;
+  margin: 20px 0;
+}
+.coach-level-list div {
+  display: grid;
+  gap: 6px;
+  border-left: 2px solid var(--accent);
+  padding-left: 14px;
+}
+.coach-level-list span {
+  font-size: 14px;
+  color: var(--muted);
+}
+.coach-review fieldset {
+  border: 0;
+  padding: 0;
+}
+.coach-stars {
+  display: flex;
+  gap: 10px;
+  margin: 16px 0;
+}
+.coach-stars label {
+  position: relative;
+  cursor: pointer;
+  padding: 12px;
+  border: 1px solid var(--divider-strong);
+  border-radius: 12px;
+}
+.coach-stars .is-selected {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--surface-subtle);
+}
+.coach-stars input {
+  margin-right: 5px;
+  accent-color: var(--accent);
+}
+.coach-packages {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 28px 0;
+}
+.coach-packages button {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: flex-start;
+  padding: 18px;
+  border: 1px solid var(--divider-strong);
+  border-radius: 20px;
+  background: var(--surface);
+  color: var(--text);
+}
+.coach-packages button[aria-pressed='true'] {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.coach-packages strong {
+  font-size: 23px;
+}
+.coach-packages b {
+  color: var(--accent);
+  font-size: 21px;
+}
+.coach-packages small {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 400;
+}
+.coach-packages span {
+  font-size: 13px;
+}
+.coach-quote {
+  display: grid;
+  gap: 12px;
+  padding: 24px;
+  margin: 24px 0;
+  background: var(--surface-subtle);
+  border-radius: 20px;
+}
+.coach-quote > strong {
+  font-size: 36px;
+}
+.coach-quote small {
+  font-size: 16px;
+  font-weight: 400;
+}
+@media (max-width: 760px) {
+  .coach-packages {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .nutrition-food-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    padding: 14px;
+  }
+  .nutrition-food-row > label:first-child {
+    grid-column: 1/-1;
+  }
+  .nutrition-diary {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  .nutrition-diary .training-heading {
+    align-items: flex-start;
+  }
+  .nutrition-diary h1 {
+    font-size: 30px;
+  }
+  .coach-stars {
+    gap: 6px;
+  }
+  .coach-stars label {
+    padding: 8px;
+  }
+  .trainer-admin-header nav:empty {
+    display: none;
+  }
+}

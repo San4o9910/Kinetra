@@ -9,6 +9,7 @@ import { databasePool } from '../db/pool.js';
 import { PostgresSubscriptionAccessChecker } from '../payments/subscription-access.js';
 import { PostgresProgramRepository } from './postgres-program.repository.js';
 import { ProgramService } from './service.js';
+import { PostgresFreeBetaAccessChecker } from './free-beta-access.js';
 
 export interface ProgramRuntime {
   readonly service: ProgramService;
@@ -31,6 +32,7 @@ export const createProductionProgramRuntime = (): ProgramRuntime => {
       objectUrlSigner,
       new PostgresSubscriptionAccessChecker(databasePool),
       new SystemClock(),
+      new PostgresFreeBetaAccessChecker(databasePool, env.freeBetaEnabled),
     ),
     authMiddleware: createAuthMiddleware(verifier),
   };

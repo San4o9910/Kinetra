@@ -1,3 +1,4 @@
+import { HttpError } from '../auth/errors.js';
 import type { Clock } from '../auth/service.js';
 import type { PaymentsRepository, RenewalClaim } from './repository.js';
 import { SUBSCRIPTION_AMOUNT_VALUE, SUBSCRIPTION_CURRENCY } from './service.js';
@@ -42,9 +43,13 @@ export class RenewalService {
     private readonly client: YooKassaClient,
     private readonly clock: Clock,
     private readonly notifier: RenewalFailureNotifier,
+    private readonly enabled = true,
   ) {}
 
   public async run(limit = 100): Promise<RenewalRunSummary> {
+    if (!this.enabled) {
+      throw new HttpError(503, 'PAYMENTS_DISABLED', 'Payments are not available yet.');
+    }
     const now = this.clock.now();
     const expired = await this.repository.expireElapsedSubscriptions(now);
     const claims = await this.repository.claimDueRenewals(

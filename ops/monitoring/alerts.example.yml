@@ -1,0 +1,21 @@
+# DESIGN EXAMPLE ONLY — DO NOT LOAD INTO PROMETHEUS.
+# No Kinetra metrics exporter or approved alert routes exist in this candidate.
+# Replace this file with reviewed rules after implementing and testing each metric.
+status: draft_not_deployable
+proposed_signals:
+  - name: public_app_unavailable
+    source_required: independent_https_probe
+    sustained_window: owner_to_confirm
+    runbook: docs/PRODUCTION_LAUNCH_RUNBOOK.md
+  - name: api_error_ratio_or_latency_regression
+    source_required: sanitized_route_http_metrics
+    threshold: measured_baseline_then_owner_approval
+    runbook: docs/PRODUCTION_LAUNCH_RUNBOOK.md
+  - name: worker_or_backup_stale
+    source_required: scheduler_and_verified_backup_completion
+    threshold: approved_schedule_plus_measured_duration
+    runbook: docs/DISASTER_RECOVERY.md
+  - name: monitoring_signal_missing
+    source_required: independent_exporter_heartbeat
+    threshold: owner_to_confirm
+    runbook: docs/PRODUCTION_MONITORING.md

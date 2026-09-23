@@ -17,6 +17,30 @@ const session: AuthSessionResponse = {
   expiresIn: 900,
 };
 
+test('chat video upload preserves its binary body and MIME type through authenticated requests', async () => {
+  const file = new File(['video-fixture'], 'exercise.mp4', { type: 'video/mp4' });
+  const uploadId = '00000000-0000-4000-8000-000000000003';
+  let uploaded = false;
+  const client = new ApiClient({
+    baseUrl: 'http://api.test',
+    fetchImpl: async (input, init) => {
+      if (String(input).endsWith('/api/v1/auth/refresh')) return Response.json(session);
+      const headers = new Headers(init?.headers);
+      assert.equal(headers.get('Content-Type'), 'video/mp4');
+      assert.equal(headers.get('Authorization'), 'Bearer program-token');
+      assert.equal(headers.get('X-Upload-Id'), uploadId);
+      assert.equal(init?.body, file);
+      uploaded = true;
+      return Response.json({ id: uploadId });
+    },
+  });
+  assert.deepEqual(
+    await client.uploadChatVideo('conversation', file, uploadId, new AbortController().signal),
+    { id: uploadId },
+  );
+  assert.equal(uploaded, true);
+});
+
 const response: WeekResponse = {
   week: {
     id: '10000000-0000-4000-8000-000000000001',

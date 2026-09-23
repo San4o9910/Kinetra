@@ -1,3 +1,4 @@
+import { KineticMark } from '../navigation/KineticMark';
 import {
   useCallback,
   useEffect,
@@ -332,7 +333,7 @@ export const OnboardingCarousel = ({
         <header className="onboarding-topbar">
           <div className="survey-brand">
             <span className="survey-brand-mark" aria-hidden="true">
-              K
+              <KineticMark />
             </span>
             <span>KINETRA</span>
           </div>

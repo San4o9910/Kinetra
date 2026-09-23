@@ -58,6 +58,7 @@ const renderList = (response: BaseLessonsResponse): string =>
       errorMessage: null,
       onSelectLesson: () => undefined,
       onComplete: () => undefined,
+      onBackToApp: () => undefined,
       onOpenSettings: () => undefined,
     }),
   );
@@ -82,6 +83,8 @@ test('base-lessons view renders all seven exact lesson cards in order', () => {
   assert.equal(renderedCards.length, 7);
   titles.forEach((title) => assert.ok(markup.includes(title), `Missing lesson title: ${title}`));
   assert.ok(markup.includes('Пройдено 0 из 7'));
+  assert.ok(markup.includes('data-testid="base-lessons-back-to-app"'));
+  assert.ok(markup.includes('Вернуться в приложение'));
 });
 
 test('base-lessons view renders completed, in-progress and not-started visual card states', () => {

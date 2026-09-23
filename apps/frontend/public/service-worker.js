@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kinetra-shell-v5';
+const CACHE_NAME = 'kinetra-shell-v12';
 const APP_SHELL = [
   '/',
   '/offline.html',

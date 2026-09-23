@@ -71,6 +71,13 @@ test('trainer verification reviewer CLI exposes strict grant and revoke argument
   const extra = await runReviewerCli(['grant', '--user-id', randomUUID(), '--admin']);
   assert.equal(extra.code, 1);
   assert.equal(extra.stderr.trim(), 'Provide exactly --user-id <UUID>.');
+
+  for (const command of ['grant', 'revoke']) {
+    const result = await runReviewerCli([command, '--user-id', randomUUID()]);
+    assert.equal(result.code, 1);
+    assert.equal(result.stdout, '');
+    assert.equal(result.stderr.trim(), 'DATABASE_URL must be an explicit PostgreSQL URL.');
+  }
 });
 
 test(

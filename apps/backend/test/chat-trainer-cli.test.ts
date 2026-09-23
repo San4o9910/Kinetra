@@ -82,4 +82,15 @@ test('trainer operator CLI exposes strict grant, reassign and revoke argument co
   const invalidRevoke = await runTrainerCli(['revoke', '--user-id', randomUUID(), '--default']);
   assert.equal(invalidRevoke.code, 1);
   assert.equal(invalidRevoke.stderr.trim(), 'Unsupported flag --default.');
+
+  for (const arguments_ of [
+    ['grant', '--user-id', randomUUID(), '--display-name', 'Trainer'],
+    ['reassign', '--from-user-id', randomUUID(), '--to-user-id', randomUUID(), '--all'],
+    ['revoke', '--user-id', randomUUID()],
+  ]) {
+    const result = await runTrainerCli(arguments_);
+    assert.equal(result.code, 1);
+    assert.equal(result.stdout, '');
+    assert.equal(result.stderr.trim(), 'DATABASE_URL must be an explicit PostgreSQL URL.');
+  }
 });

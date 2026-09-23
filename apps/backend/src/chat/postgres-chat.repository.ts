@@ -559,7 +559,6 @@ export class PostgresChatRepository implements ChatRepository {
     const result = await this.pool.query<ConversationRow>(
       `${CONVERSATION_SELECT}
        WHERE conversation.id = $1
-         AND client.onboarding_status = 'active'
          AND trainer_profile.is_active = true
          AND (
            ($3::text = 'client' AND conversation.client_user_id = $2)
@@ -706,7 +705,7 @@ export class PostgresChatRepository implements ChatRepository {
         (row) => row.user_id === clientUserId && row.is_active,
       );
 
-      if (user?.onboarding_status !== 'active' || clientIsTrainer) {
+      if (user === undefined || clientIsTrainer) {
         await client.query('COMMIT');
         return null;
       }
@@ -920,10 +919,7 @@ export class PostgresChatRepository implements ChatRepository {
       const senderRole =
         participant.client_user_id === input.userId ? ('client' as const) : ('trainer' as const);
 
-      if (
-        (senderRole === 'client' && participant.client_onboarding_status !== 'active') ||
-        (senderRole === 'trainer' && !participant.trainer_active)
-      ) {
+      if (!participant.trainer_active) {
         await client.query('COMMIT');
         return { kind: 'not_available' };
       }
@@ -1840,7 +1836,6 @@ export class PostgresChatRepository implements ChatRepository {
     const result = await queryable.query<ConversationRow>(
       `${CONVERSATION_SELECT}
        WHERE conversation.id = $1
-         AND client.onboarding_status = 'active'
          AND trainer_profile.is_active = true
        LIMIT 1
        ${lockForShare ? 'FOR SHARE OF conversation' : ''}`,

@@ -1,3 +1,4 @@
+import { peekWorkoutQuestion, clearWorkoutQuestion } from '../program/workoutQuestion';
 import React, {
   useCallback,
   useEffect,
@@ -153,7 +154,21 @@ export const ChatComposer = ({
   onSend,
   registerObjectUrl,
 }: ChatComposerProps): ReactNode => {
-  const initialDraft = useRef(loadChatDraft(accountId, conversationId));
+  const [initialDraftValue] = useState(() => {
+    const draft = loadChatDraft(accountId, conversationId);
+    const question = peekWorkoutQuestion(accountId);
+    return question
+      ? {
+          ...draft,
+          text: [draft.text, question].filter(Boolean).join('\n\n'),
+          pendingRequest: null,
+        }
+      : draft;
+  });
+  const initialDraft = useRef(initialDraftValue);
+  useEffect(() => {
+    clearWorkoutQuestion(accountId);
+  }, [accountId]);
   const [text, setText] = useState(initialDraft.current.text);
   const [selectedPhoto, setSelectedPhoto] = useState<SelectedPhotoState | null>(() =>
     !photoUploadsEnabled || initialDraft.current.photo === null
@@ -633,7 +648,7 @@ export const ChatComposer = ({
           </section>
         )}
 
-        <div className="chat-composer-row">
+        <div className={`chat-composer-row${photoUploadsEnabled ? ' has-attachment' : ''}`}>
           {photoUploadsEnabled ? (
             <React.Fragment>
               <input

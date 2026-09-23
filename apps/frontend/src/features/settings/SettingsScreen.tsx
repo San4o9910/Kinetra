@@ -18,6 +18,7 @@ import {
   type PreparedPushSubscriptionDeletion,
 } from '../../lib/api';
 import { useTheme } from '../theme/theme-context';
+import { preservePaymentAvailability } from '../payments/model';
 import {
   PushNotificationError,
   bestEffortUnsubscribeFromPush,
@@ -569,10 +570,14 @@ export const SettingsScreen = ({
     setDialogError(null);
     void cancelSubscription()
       .then((subscription) => {
-        setLoadState((current) =>
-          current.kind === 'ready' ? { ...current, subscription } : current,
+        const updated = preservePaymentAvailability(
+          subscription,
+          loadState.kind === 'ready' ? loadState.subscription : null,
         );
-        onSubscriptionUpdated(subscription);
+        setLoadState((current) =>
+          current.kind === 'ready' ? { ...current, subscription: updated } : current,
+        );
+        onSubscriptionUpdated(updated);
         setDialogBusy(false);
         setActiveDialog(null);
         setDialogError(null);

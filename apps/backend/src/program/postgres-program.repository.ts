@@ -1,4 +1,4 @@
-import type { ProgramDirection } from '@kinetra/shared';
+import type { OnboardingStatus, ProgramDirection } from '@kinetra/shared';
 import type { Pool, QueryResultRow } from 'pg';
 
 import {
@@ -39,8 +39,14 @@ interface WeekRow extends QueryResultRow {
 }
 
 interface CompleteWorkoutRow extends QueryResultRow {
+  readonly user_exists: boolean;
+  readonly onboarding_active: boolean;
   readonly eligible: boolean;
   readonly inserted: boolean;
+}
+
+interface OnboardingStatusRow extends QueryResultRow {
+  readonly onboarding_status: OnboardingStatus;
 }
 
 const integerFrom = (value: number, label: string): number => {
@@ -90,6 +96,18 @@ const mapDay = (row: WeekRow): ProgramDaySnapshot => ({
 
 export class PostgresProgramRepository implements ProgramRepository {
   public constructor(private readonly pool: Pool) {}
+
+  public async getOnboardingStatus(userId: string): Promise<OnboardingStatus | null> {
+    const result = await this.pool.query<OnboardingStatusRow>(
+      `SELECT onboarding_status
+       FROM users
+       WHERE id = $1
+       LIMIT 1`,
+      [userId],
+    );
+
+    return result.rows[0]?.onboarding_status ?? null;
+  }
 
   public async getProgress(userId: string): Promise<ProgramProgressSnapshot> {
     const result = await this.pool.query<ProgressRow>(
@@ -228,11 +246,16 @@ export class PostgresProgramRepository implements ProgramRepository {
   ): Promise<CompleteWorkoutResult> {
     const result = await this.pool.query<CompleteWorkoutRow>(
       `
-        WITH eligible_workout AS (
+        WITH authenticated_user AS (
+          SELECT id, onboarding_status
+          FROM users
+          WHERE id = $1
+        ),
+        eligible_workout AS (
           SELECT authenticated_user.id AS user_id, video.id AS video_id
-          FROM users AS authenticated_user
+          FROM authenticated_user
           CROSS JOIN videos AS video
-          WHERE authenticated_user.id = $1
+          WHERE authenticated_user.onboarding_status = 'active'
             AND video.id = $2
             AND video.type = 'workout'
             AND video.status = 'published'
@@ -253,6 +276,11 @@ export class PostgresProgramRepository implements ProgramRepository {
           RETURNING id
         )
         SELECT
+          EXISTS(SELECT 1 FROM authenticated_user) AS user_exists,
+          COALESCE(
+            (SELECT onboarding_status = 'active' FROM authenticated_user),
+            false
+          ) AS onboarding_active,
           EXISTS(SELECT 1 FROM eligible_workout) AS eligible,
           EXISTS(SELECT 1 FROM inserted) AS inserted
       `,
@@ -260,7 +288,15 @@ export class PostgresProgramRepository implements ProgramRepository {
     );
     const row = result.rows[0];
 
-    if (row === undefined || !row.eligible) {
+    if (row === undefined || !row.user_exists) {
+      return { kind: 'workout_not_found' };
+    }
+
+    if (!row.onboarding_active) {
+      return { kind: 'onboarding_required' };
+    }
+
+    if (!row.eligible) {
       return { kind: 'workout_not_found' };
     }
 

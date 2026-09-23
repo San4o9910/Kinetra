@@ -263,10 +263,14 @@ test(
       assert.equal(initial?.request?.id, requestId);
       assert.equal(initial?.request?.submittedAt, null);
 
-      const submitted = await repository.submit(applicantId, application('lifecycle'), submittedAt);
+      const submitted = await repository.submit(
+        applicantId,
+        { ...application('lifecycle'), materials: [] },
+        submittedAt,
+      );
       assert.equal(submitted.status, 'ok');
       assert.equal(submitted.status === 'ok' ? submitted.value.request?.id : null, requestId);
-      assert.equal(submitted.status === 'ok' ? submitted.value.request?.materials.length : null, 1);
+      assert.equal(submitted.status === 'ok' ? submitted.value.request?.materials.length : null, 0);
       assert.equal(
         (await pool.query('SELECT 1 FROM trainer_profiles WHERE user_id = $1', [applicantId]))
           .rowCount,

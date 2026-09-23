@@ -1,3 +1,4 @@
+import { KineticMark } from '../navigation/KineticMark';
 import { useState, type FormEvent, type ReactNode } from 'react';
 import type { MeResponse } from '@kinetra/shared';
 
@@ -6,9 +7,14 @@ import { ApiRequestError, fetchMe, login } from '../../lib/api';
 interface LoginScreenProps {
   readonly onAuthenticated: (profile: MeResponse) => void;
   readonly onRegister: () => void;
+  readonly onForgotPassword: () => void;
 }
 
-export const LoginScreen = ({ onAuthenticated, onRegister }: LoginScreenProps): ReactNode => {
+export const LoginScreen = ({
+  onAuthenticated,
+  onRegister,
+  onForgotPassword,
+}: LoginScreenProps): ReactNode => {
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -45,7 +51,7 @@ export const LoginScreen = ({ onAuthenticated, onRegister }: LoginScreenProps): 
       <section className="auth-card" aria-labelledby="login-title">
         <div className="survey-brand">
           <span className="survey-brand-mark" aria-hidden="true">
-            K
+            <KineticMark />
           </span>
           <span>KINETRA</span>
         </div>
@@ -98,6 +104,15 @@ export const LoginScreen = ({ onAuthenticated, onRegister }: LoginScreenProps): 
           </button>
         </form>
 
+        <button
+          className="auth-link-button"
+          data-testid="login-forgot-password"
+          type="button"
+          onClick={onForgotPassword}
+          disabled={isSubmitting}
+        >
+          Забыли пароль?
+        </button>
         <button className="auth-link-button" type="button" onClick={onRegister}>
           Создать аккаунт
         </button>

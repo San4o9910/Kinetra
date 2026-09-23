@@ -8,13 +8,9 @@
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait-primary",
-  "background_color": "#080909",
-  "theme_color": "#080909",
-  "categories": [
-    "fitness",
-    "health",
-    "lifestyle"
-  ],
+  "background_color": "#001621",
+  "theme_color": "#001621",
+  "categories": ["fitness", "health", "lifestyle"],
   "icons": [
     {
       "src": "/icons/icon-192.png",

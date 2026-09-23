@@ -1,7 +1,13 @@
 import type { SubscriptionResponse } from '@kinetra/shared';
 import React, { useEffect, type ReactNode } from 'react';
 
-import { effectivePaywallStatus, isSubscriptionActive } from './model';
+import {
+  PAYMENTS_UNAVAILABLE_DESCRIPTION,
+  PAYMENTS_UNAVAILABLE_TITLE,
+  arePaymentsEnabled,
+  effectivePaywallStatus,
+  isSubscriptionActive,
+} from './model';
 
 export interface SubscriptionPaywallDialogProps {
   readonly open: boolean;
@@ -18,6 +24,7 @@ export const SubscriptionPaywallDialog = ({
 }: SubscriptionPaywallDialogProps): ReactNode => {
   const dialogRef = React.useRef<HTMLDialogElement>(null);
   const status = effectivePaywallStatus(subscription);
+  const paymentsEnabled = arePaymentsEnabled(subscription);
   const expired =
     status === 'expired' ||
     status === 'cancelled' ||
@@ -60,29 +67,37 @@ export const SubscriptionPaywallDialog = ({
           K+
         </span>
         <h2 id="subscription-paywall-title">
-          {expired ? 'Подписка истекла' : 'Нужна подписка Kinetra Premium'}
+          {!paymentsEnabled
+            ? PAYMENTS_UNAVAILABLE_TITLE
+            : expired
+              ? 'Подписка истекла'
+              : 'Нужна подписка Kinetra Premium'}
         </h2>
         <p id="subscription-paywall-description">
-          {expired
-            ? 'Продлите подписку, чтобы снова открыть программу тренировок.'
-            : 'Оформите подписку, чтобы открыть 12-недельную программу тренировок.'}
+          {!paymentsEnabled
+            ? PAYMENTS_UNAVAILABLE_DESCRIPTION
+            : expired
+              ? 'Продлите подписку, чтобы снова открыть программу тренировок.'
+              : 'Оформите подписку, чтобы открыть 12-недельную программу тренировок.'}
         </p>
         <div className="subscription-paywall-actions">
-          <button
-            className="payment-primary"
-            data-testid="paywall-renew"
-            type="button"
-            onClick={onRenew}
-          >
-            {expired ? 'Продлить' : 'Оформить подписку'}
-          </button>
+          {paymentsEnabled ? (
+            <button
+              className="payment-primary"
+              data-testid="paywall-renew"
+              type="button"
+              onClick={onRenew}
+            >
+              {expired ? 'Продлить' : 'Оформить подписку'}
+            </button>
+          ) : null}
           <button
             className="payment-secondary"
             data-testid="paywall-close"
             type="button"
             onClick={onClose}
           >
-            Позже
+            {paymentsEnabled ? 'Позже' : 'Понятно'}
           </button>
         </div>
       </div>

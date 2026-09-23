@@ -7,7 +7,7 @@ export interface ScheduleViewProps {
   readonly response: ScheduleResponse;
   readonly activeSection: ScheduleSection;
   readonly onSectionChange: (section: ScheduleSection) => void;
-  readonly onOpenDay: (day: ProgramScheduleDay) => void;
+  readonly onOpenWorkout: (programWeek: number, dayOfWeek: number) => void;
 }
 
 interface ScheduleDayCardProps {
@@ -26,6 +26,7 @@ const ClockIcon = (): ReactNode => (
 const ScheduleDayCard = ({ day, section, onOpen }: ScheduleDayCardProps): ReactNode => {
   const completed = section === 'current' && day.completed;
   const description = day.description?.trim() ?? '';
+  const accessibleDescription = description.replace(/[.!?]+$/u, '');
 
   return (
     <li>
@@ -34,7 +35,7 @@ const ScheduleDayCard = ({ day, section, onOpen }: ScheduleDayCardProps): ReactN
         data-testid={`schedule-${section}-day-${day.day_of_week}`}
         data-completed={completed ? 'true' : 'false'}
         type="button"
-        aria-label={`${day.day_label}. ${day.title}${description.length === 0 ? '' : `. ${description}`}. ${day.duration_minutes} минут${completed ? '. Выполнено' : ''}. Открыть на главной`}
+        aria-label={`${day.day_label}. ${day.title}${accessibleDescription.length === 0 ? '' : `. ${accessibleDescription}`}. ${day.duration_minutes} минут${completed ? '. Выполнено' : ''}. Открыть тренировку`}
         onClick={() => onOpen(day)}
       >
         <span className="schedule-day-icon" aria-hidden="true">
@@ -73,14 +74,14 @@ interface ScheduleWeekSectionProps {
   readonly week: ProgramScheduleWeek;
   readonly section: ScheduleSection;
   readonly tabbed: boolean;
-  readonly onOpenDay: (day: ProgramScheduleDay) => void;
+  readonly onOpenWorkout: (programWeek: number, dayOfWeek: number) => void;
 }
 
 const ScheduleWeekSection = ({
   week,
   section,
   tabbed,
-  onOpenDay,
+  onOpenWorkout,
 }: ScheduleWeekSectionProps): ReactNode => {
   const current = section === 'current';
   const headingId = `schedule-${section}-week-heading`;
@@ -116,7 +117,12 @@ const ScheduleWeekSection = ({
 
       <ol className="schedule-day-list" aria-labelledby={headingId}>
         {week.days.map((day) => (
-          <ScheduleDayCard key={day.day_of_week} day={day} section={section} onOpen={onOpenDay} />
+          <ScheduleDayCard
+            key={day.day_of_week}
+            day={day}
+            section={section}
+            onOpen={(selectedDay) => onOpenWorkout(week.week_number, selectedDay.day_of_week)}
+          />
         ))}
       </ol>
     </section>
@@ -136,7 +142,7 @@ export const ScheduleView = ({
   response,
   activeSection,
   onSectionChange,
-  onOpenDay,
+  onOpenWorkout,
 }: ScheduleViewProps): ReactNode => {
   const currentTabRef = useRef<HTMLButtonElement>(null);
   const nextTabRef = useRef<HTMLButtonElement>(null);
@@ -217,7 +223,7 @@ export const ScheduleView = ({
               week={response.current_week}
               section="current"
               tabbed={hasNextWeek}
-              onOpenDay={onOpenDay}
+              onOpenWorkout={onOpenWorkout}
             />
             {hasNextWeek ? <HiddenSchedulePanel section="next" /> : null}
           </React.Fragment>
@@ -228,7 +234,7 @@ export const ScheduleView = ({
               week={response.next_week}
               section="next"
               tabbed
-              onOpenDay={onOpenDay}
+              onOpenWorkout={onOpenWorkout}
             />
           </React.Fragment>
         )}
